@@ -121,14 +121,15 @@ class PairMaker(BaseClass):
                 "random data not initialized", RuntimeError)
         return self._random_data
 
-    def setRandoms(self, RA, DEC, weights=None):
+    def setRandoms(self, RA, DEC, Z=None, weights=None):
         self._printMessage("regionizing %d objects\n" % len(RA))
-        self._random_data = self._regionizeData(RA, DEC, weights=weights)
+        self._random_data = self._regionizeData(RA, DEC, Z, weights=weights)
         self._printMessage("kept %d objects\n" % len(self._random_data))
 
     def generateRandoms(self, randoms_factor=10):
+        unknown_data = self.getUnknown()
         # compute the number of randoms per region
-        n_random = len(self._unknown_data) * randoms_factor
+        n_random = len(unknown_data) * randoms_factor
         randoms_per_thread = np.diff(
             np.linspace(0, n_random, self._threads + 1, dtype=int))
         self._printMessage("generating %d uniform random points\n" % n_random)
@@ -139,7 +140,14 @@ class PairMaker(BaseClass):
         randoms_threads = pool.map(generate_randoms)
         # stack data from threads
         randoms = pd.concat(randoms_threads)
-        self.setRandoms(randoms.RA, randoms.DEC)
+        # add redshifts by resampling values from the unknown data which will
+        # allow redshift binning for auto-correlation measurements
+        if "z" in unknown_data:
+            random_z = np.random.choice(
+                unknown_data.z, len(randoms), replace=True)
+            self.setRandoms(randoms.RA, randoms.DEC, random_z)
+        else:
+            self.setRandoms(randoms.RA, randoms.DEC)
 
     def writeRandoms(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
