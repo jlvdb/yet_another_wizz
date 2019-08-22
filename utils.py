@@ -73,6 +73,7 @@ def measure_region_area(mask_path, n_regions, region_idx):
     master_mask.RegionOnlyMap(region_idx, region_mask)
     # get the region area
     area = region_mask.Area()
+    del master_mask, region_mask
     return area
 
 
@@ -119,6 +120,7 @@ def regionize_data(mask_path, n_regions, data):
             region_idx[i] = stomp_mask.FindRegion(ang)
         else:
             region_idx[i] = -1
+    del stomp_mask, ang
     return region_idx
 
 
@@ -149,6 +151,7 @@ def generate_randoms(mask_path, n_randoms):
     RA = np.asarray([rand.RA() for rand in random_vector.iterator()])
     DEC = np.asarray([rand.DEC() for rand in random_vector.iterator()])
     randoms = pd.DataFrame({"RA": RA, "DEC": DEC})
+    del stomp_map, random_vector
     return randoms
 
 
