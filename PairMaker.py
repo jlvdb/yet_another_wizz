@@ -17,6 +17,7 @@ class PairMaker(BaseClass):
     _random_data = None
     _reference_data = None
     _scales = None
+    _dist_weight = True
     _pair_counts = None
 
     def __init__(
@@ -76,7 +77,8 @@ class PairMaker(BaseClass):
     def getMeta(self):
         meta_dict = {
             "cosmology": self.cosmology, "scale": self._scales,
-            "n_regions": self.n_regions, "region_weights": self.region_weights}
+            "inv_dist_weights": self._dist_weight, "n_regions": self.n_regions,
+            "region_weights": self.region_weights}
         return meta_dict
 
     def writeMeta(self, path):
@@ -153,8 +155,11 @@ class PairMaker(BaseClass):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
         self.getRandoms().to_parquet(path)
 
-    def countPairs(self, rmin, rmax, comoving=False, global_density=True):
+    def countPairs(
+            self, rmin, rmax, comoving=False, inv_distance_weight=True,
+            global_density=True):
         self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
+        self._dist_weight = inv_distance_weight
         # check if all data is present
         self.getReference()
         self.getUnknown()
@@ -168,6 +173,7 @@ class PairMaker(BaseClass):
         poolDD.add_constant((rmin, rmax))
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
+        poolDD.add_constant(inv_distance_weight)
         if global_density:
             poolDD.add_constant(len(self._unknown_data))
         # create pool to find pairs DD
@@ -178,6 +184,7 @@ class PairMaker(BaseClass):
         poolDR.add_constant((rmin, rmax))
         poolDR.add_constant(comoving)
         poolDR.add_constant(self.cosmology)
+        poolDR.add_constant(inv_distance_weight)
         if global_density:
             poolDR.add_constant(len(self._random_data))
         # find DD pairs in regions running parallel threads
