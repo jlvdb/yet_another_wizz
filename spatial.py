@@ -328,8 +328,8 @@ class SphericalKDTree(object):
 
 
 def count_pairs(
-        group_reference, group_other, rlimits,
-        comoving=False, cosmology=None, n_other=None):
+        group_reference, group_other, rlimits, comoving=False,
+        cosmology=None, inv_distance_weight=True, n_other=None):
     # unpack the pandas groups and dictionary
     region_idx, data_reference = group_reference
     region_idx, data_other = group_other
@@ -354,9 +354,15 @@ def count_pairs(
             # compute DD pair count including optional weights
             try:
                 weight = data_other.weight[idx]
-                pairs[n] = np.sum(weight / distance)
+                if inv_distance_weight:
+                    pairs[n] = np.sum(weight / distance)
+                else:
+                    pairs[n] = np.sum(weight)
             except AttributeError:
-                pairs[n] = np.sum(1.0 / distance)
+                if inv_distance_weight:
+                    pairs[n] = np.sum(1.0 / distance)
+                else:
+                    pairs[n] = len(idx)
     else:
         pairs = np.zeros(len(data_reference))
     if n_other is None:

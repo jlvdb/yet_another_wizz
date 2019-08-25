@@ -75,7 +75,8 @@ class PdfMaker(BaseClass):
         bin_types = ("adaptive", "comoving", "linear", "logspace")
         if bintype not in bin_types:
             self._throwException(
-                "'bintype' must be either of {%s}" % ", ".join(bintype))
+                "'bintype' must be either of {%s}" % ", ".join(bintype),
+                ValueError)
         if zmin is not None:
             self._zmin = zmin
         if zmax is not None:
@@ -103,10 +104,9 @@ class PdfMaker(BaseClass):
         pair_counts_regionized = pair_counts.groupby(
             pair_counts.stomp_region)
         n_bins = len(zbins) - 1
-        n_regions = len(pair_counts_regionized)
         # create output arrays
-        n_ref = np.empty((n_bins, n_regions), dtype=np.int32)
-        z_sum = np.empty((n_bins, n_regions))
+        n_ref = np.empty((n_bins, self.n_regions), dtype=np.int32)
+        z_sum = np.empty((n_bins, self.n_regions))
         DD_sum = np.empty_like(z_sum)
         DR_sum = np.empty_like(z_sum)
         # collapse objects into region statistics
@@ -120,7 +120,7 @@ class PdfMaker(BaseClass):
                 DR_sum[bin_idx, reg_idx] = zbin.DR.sum()
         pickle_dict = {
             "n_reference": n_ref, "redshift": z_sum,
-            "unknown": DD_sum, "rand": DR_sum}
+            "unknown": DD_sum, "rand": DR_sum, "n_regions": self.n_regions}
         if self.autocorr:
             pickle_dict["amplitude_factor"] = np.diff(zbins)
         self._region_pickle = pickle_dict
@@ -157,7 +157,7 @@ class PdfMaker(BaseClass):
         DR = region_pickle["rand"]
         # generate bootstrap region indices
         boot_idx = np.random.randint(
-            0, self._n_regions, size=(n_bootstraps, self._n_regions))
+            0, self.n_regions, size=(n_bootstraps, self.n_regions))
         # create bootstrapped pair counts
         samples_DD = DD[:, boot_idx].sum(axis=2)
         samples_DR = DR[:, boot_idx].sum(axis=2)
@@ -174,7 +174,8 @@ class PdfMaker(BaseClass):
         return np.stack([z, amp, err]).T
 
     def writeNz(self, path):
-        nz_array = self.getRedshifts()
+        nz_array = np.stack([
+            self.getRedshifts(), self.getAmplitudes(), self.getErrors()]).T
         self._printMessage(
             "writing redshift distribution to:\n    %s\n" % path)
         header = "col 1 = mean redshift\n"
