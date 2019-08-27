@@ -157,7 +157,7 @@ class PairMaker(BaseClass):
 
     def countPairs(
             self, rmin, rmax, comoving=False, inv_distance_weight=True,
-            global_density=True):
+            D_R_ratio="global"):
         self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
         self._dist_weight = inv_distance_weight
         # check if all data is present
@@ -174,8 +174,6 @@ class PairMaker(BaseClass):
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
         poolDD.add_constant(inv_distance_weight)
-        if global_density:
-            poolDD.add_constant(len(self._unknown_data))
         # create pool to find pairs DD
         poolDR = ThreadHelper(
             self.n_regions, threads=min(self._threads, self.n_regions))
@@ -185,15 +183,41 @@ class PairMaker(BaseClass):
         poolDR.add_constant(comoving)
         poolDR.add_constant(self.cosmology)
         poolDR.add_constant(inv_distance_weight)
-        if global_density:
-            poolDR.add_constant(len(self._random_data))
+        # set data to random ratio
+        if D_R_ratio == "global":
+            D_R_ratio = np.full(
+                self.n_regions,
+                len(self.getUnknown()) / len(self.getRandoms()))
+        elif D_R_ratio == "local":
+            n_D = np.asarray([
+                len(d) for s, d in self.getUnknown().groupby("stomp_region")])
+            n_R = np.asarray([
+                len(d) for s, d in self.getRandoms().groupby("stomp_region")])
+            D_R_ratio = n_D / n_R
+        else:
+            try:
+                assert(D_R_ratio > 0.0)
+                D_R_ratio = np.full(self.n_regions, D_R_ratio)
+            except Exception:
+                self._throwException(
+                    "D_R_ratio must be either of 'local', 'global' or a "
+                    "positive number", ValueError)
         # find DD pairs in regions running parallel threads
         self._printMessage("finding data-data pairs\n")
-        DD = pd.concat(poolDD.map(count_pairs))
-        DD.rename(columns={"pairs": "DD"}, inplace=True)
+        try:
+            DD = pd.concat(poolDD.map(count_pairs))
+            DD.rename(columns={"pairs": "DD"}, inplace=True)
+        except ValueError:
+            DD = pd.DataFrame({"DD": []})
         self._printMessage("finding data-random pairs\n")
-        DR = pd.concat(poolDR.map(count_pairs))
-        DR.rename(columns={"pairs": "DR"}, inplace=True)
+        try:
+            DR = poolDR.map(count_pairs)
+            for i, D_R in enumerate(D_R_ratio):
+                DR[i].pairs *= D_R
+            DR = pd.concat(DR)
+            DR.rename(columns={"pairs": "DR"}, inplace=True)
+        except Exception:
+            DR = pd.DataFrame({"DR": []})
         # combine the pair counts with redshifts and region indices
         try:
             ref_data = self._reference_data[["z", "stomp_region", "weights"]]
