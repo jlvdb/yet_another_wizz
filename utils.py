@@ -120,7 +120,7 @@ def regionize_data(mask_path, n_regions, data):
             region_idx[i] = stomp_mask.FindRegion(ang)
         else:
             region_idx[i] = -1
-    del stomp_mask, ang
+    del stomp_mask
     return region_idx
 
 
