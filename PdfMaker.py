@@ -23,6 +23,10 @@ class PdfMaker(BaseClass):
             self._pair_counts = pair_counts
         try:
             self._pair_counts = pd.read_parquet(pair_counts)
+            assert(len(self._pair_counts) > 0)
+        except AssertionError:
+            self._throwException(
+                "the pair count file is empty", ValueError)
         except Exception:
             self._throwException(
                 "'pair_counts' must be either a valid parquet file or a "
@@ -181,4 +185,4 @@ class PdfMaker(BaseClass):
         header = "col 1 = mean redshift\n"
         header += "col 2 = correlation amplitude\n"
         header += "col 3 = amplitude error"
-        np.savetxt(path, nz_array)
+        np.savetxt(path, nz_array, header=header)
