@@ -353,7 +353,7 @@ def count_pairs(
                 item.RA, item.DEC, ang_min[n], ang_max[n])
             # compute DD pair count including optional weights
             try:
-                weight = data_other.weight[idx]
+                weight = data_other.weights[idx]
                 if inv_distance_weight:
                     pairs[n] = np.sum(weight / distance)
                 else:
@@ -363,6 +363,8 @@ def count_pairs(
                     pairs[n] = np.sum(1.0 / distance)
                 else:
                     pairs[n] = len(idx)
+            if "weights" in item:
+                pairs[n] *= item.weights
     else:
         pairs = np.zeros(len(data_reference))
     pair_counts = pd.DataFrame({"pairs": pairs}, index=data_reference.index)
