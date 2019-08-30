@@ -333,6 +333,10 @@ def count_pairs(
     # unpack the pandas groups and dictionary
     region_idx, data_reference = group_reference
     region_idx, data_other = group_other
+    try:
+        weights_other = data_other.weights.to_numpy()
+    except Exception:
+        weights_other = np.ones(len(data_other))
     # initialize fast angular diameter distance calculator
     get_angle = FastSeparation2Angle()
     get_angle.set_cosmology(cosmology)
@@ -352,19 +356,16 @@ def count_pairs(
             idx, distance = tree.query_shell(
                 item.RA, item.DEC, ang_min[n], ang_max[n])
             # compute DD pair count including optional weights
-            try:
-                weight = data_other.weights[idx]
+            if len(idx) > 0:
+                weight = weights_other[idx]
                 if inv_distance_weight:
                     pairs[n] = np.sum(weight / distance)
                 else:
                     pairs[n] = np.sum(weight)
-            except AttributeError:
-                if inv_distance_weight:
-                    pairs[n] = np.sum(1.0 / distance)
-                else:
-                    pairs[n] = len(idx)
-            if "weights" in item:
-                pairs[n] *= item.weights
+                if "weights" in item:
+                    pairs[n] *= item.weights
+            else:
+                pairs[n] = 0.0
     else:
         pairs = np.zeros(len(data_reference))
     pair_counts = pd.DataFrame({"pairs": pairs}, index=data_reference.index)
