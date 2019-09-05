@@ -174,7 +174,9 @@ class PairMaker(BaseClass):
         if regionize_unknown:
             poolDD.add_iterable(self.getUnknown().groupby("stomp_region"))
         else:
-            poolDD.add_constant([self.n_regions, self.getUnknown()])
+            poolDD.add_iterable([
+                (r, self.getUnknown())
+                for r in sorted(pd.unique(self.getReference().stomp_region))])
         poolDD.add_constant((rmin, rmax))
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
@@ -186,7 +188,9 @@ class PairMaker(BaseClass):
         if regionize_unknown:
             poolDR.add_iterable(self.getRandoms().groupby("stomp_region"))
         else:
-            poolDR.add_constant([self.n_regions, self.getRandoms()])
+            poolDR.add_iterable([
+                (r, self.getRandoms())
+                for r in sorted(pd.unique(self.getReference().stomp_region))])
         poolDR.add_constant((rmin, rmax))
         poolDR.add_constant(comoving)
         poolDR.add_constant(self.cosmology)
