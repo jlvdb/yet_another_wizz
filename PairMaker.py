@@ -158,6 +158,8 @@ class PairMaker(BaseClass):
     def countPairs(
             self, rmin, rmax, comoving=False, inv_distance_weight=True,
             D_R_ratio="global", regionize_unknown=True):
+        if regionize_unknown and D_R_ratio == "local":
+            D_R_ratio = "global"
         self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
         self._dist_weight = inv_distance_weight
         # check if all data is present
@@ -170,11 +172,9 @@ class PairMaker(BaseClass):
             self.n_regions, threads=min(self._threads, self.n_regions))
         poolDD.add_iterable(self.getReference().groupby("stomp_region"))
         if regionize_unknown:
-            if D_R_ratio == "local":
-                D_R_ratio = "global"
             poolDD.add_iterable(self.getUnknown().groupby("stomp_region"))
         else:
-            poolDD.add_iterable([self.n_regions, self.getUnknown()])
+            poolDD.add_constant([self.n_regions, self.getUnknown()])
         poolDD.add_constant((rmin, rmax))
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
@@ -186,7 +186,7 @@ class PairMaker(BaseClass):
         if regionize_unknown:
             poolDR.add_iterable(self.getRandoms().groupby("stomp_region"))
         else:
-            poolDR.add_iterable([self.n_regions, self.getRandoms()])
+            poolDR.add_constant([self.n_regions, self.getRandoms()])
         poolDR.add_constant((rmin, rmax))
         poolDR.add_constant(comoving)
         poolDR.add_constant(self.cosmology)
