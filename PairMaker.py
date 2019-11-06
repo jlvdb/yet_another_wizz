@@ -87,6 +87,16 @@ class PairMaker(BaseClass):
         with open(pickle_path, "wb") as f:
             pickle.dump(self.getMeta(), f)
 
+    def _inputGood(*args):
+        n_data = None
+        for arg in args:
+            if arg is not None:
+                if n_data is None:
+                    n_data = len(arg)
+                if len(args) != n_data:
+                    return False
+        return n_data > 0  # otherwise this is also bad
+
     def getReference(self):
         if self._reference_data is None:
             self._throwException(
@@ -94,6 +104,9 @@ class PairMaker(BaseClass):
         return self._reference_data
 
     def setReference(self, RA, DEC, Z, weights=None):
+        if not self._inputGood(RA, DEC, Z, weights):
+            self._throwException(
+                "input data empty or data length does not match", ValueError)
         self._printMessage("regionizing %d objects\n" % len(RA))
         self._reference_data = self._regionizeData(RA, DEC, Z, weights=weights)
         self._printMessage("kept %d objects\n" % len(self._reference_data))
@@ -109,6 +122,9 @@ class PairMaker(BaseClass):
         return self._unknown_data
 
     def setUnknown(self, RA, DEC, Z=None, weights=None):
+        if not self._inputGood(RA, DEC, Z, weights):
+            self._throwException(
+                "input data empty or data length does not match", ValueError)
         self._printMessage("regionizing %d objects\n" % len(RA))
         self._unknown_data = self._regionizeData(RA, DEC, Z, weights=weights)
         self._printMessage("kept %d objects\n" % len(self._unknown_data))
@@ -124,6 +140,9 @@ class PairMaker(BaseClass):
         return self._random_data
 
     def setRandoms(self, RA, DEC, Z=None, weights=None):
+        if not self._inputGood(RA, DEC, Z, weights):
+            self._throwException(
+                "input data empty or data length does not match", ValueError)
         self._printMessage("regionizing %d objects\n" % len(RA))
         self._random_data = self._regionizeData(RA, DEC, Z, weights=weights)
         self._printMessage("kept %d objects\n" % len(self._random_data))
