@@ -258,6 +258,16 @@ class PairMaker(BaseClass):
             ref_data = self._reference_data[["z", "stomp_region"]]
         self._pair_counts = pd.concat([ref_data, DD, DR], axis=1)
 
+    def getDummyCounts(
+            self, rmin, rmax, comoving=False, inv_distance_weight=True,
+            reference_weights=False):
+        self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
+        self._dist_weight = inv_distance_weight
+        if reference_weights:
+            return pd.DataFrame(columns=["z", "stomp", "weights", "DD", "DR"])
+        else:
+            return pd.DataFrame(columns=["z", "stomp", "DD", "DR"])
+
     def getCounts(self):
         if self._pair_counts is None:
             self.countPairs()
