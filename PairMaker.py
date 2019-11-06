@@ -87,13 +87,14 @@ class PairMaker(BaseClass):
         with open(pickle_path, "wb") as f:
             pickle.dump(self.getMeta(), f)
 
+    @staticmethod
     def _inputGood(*args):
         n_data = None
         for arg in args:
             if arg is not None:
                 if n_data is None:
                     n_data = len(arg)
-                if len(args) != n_data:
+                if len(arg) != n_data:
                     return False
         return n_data > 0  # otherwise this is also bad
 
