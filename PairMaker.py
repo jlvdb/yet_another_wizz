@@ -265,9 +265,11 @@ class PairMaker(BaseClass):
         self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
         self._dist_weight = inv_distance_weight
         if reference_weights:
-            return pd.DataFrame(columns=["z", "stomp", "weights", "DD", "DR"])
+            return pd.DataFrame(
+                columns=["z", "stomp_region", "weights", "DD", "DR"])
         else:
-            return pd.DataFrame(columns=["z", "stomp", "DD", "DR"])
+            return pd.DataFrame(
+                columns=["z", "stomp_region", "DD", "DR"])
 
     def getCounts(self):
         if self._pair_counts is None:
