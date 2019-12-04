@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import pickle
+import re
+from functools import partial
+
+import numpy as np
+from scipy.optimize import curve_fit
+
+from Nz_Fitting import RedshiftData, BinnedRedshiftData, PowerLawBias
+
+
+def nz_model(z, *params, bias_model=None, nz_bins=None, weights=None):
+    assert(bias_model is not None)
+    assert(nz_bins is not None)
+    assert(weights is not None)
+    bias = bias_model(z, params[0])
+    # compute the normalizations of each bin such that we can renormalize to
+    # this after dividing out the bias model
+    norms = [np.trapz(nz.n, x=nz.z) for nz in nz_bins]
+    # compute the weighted sum of the bins while applying the bias model
+    nz_sum = np.zeros_like(z)
+    for weight, nz, norm in zip(weights, nz_bins, norms):
+        nz_bin = weight * nz.n / bias  # weighted, bias corrected bin n(z)
+        #nz_bin *= norm / np.trapz(nz_bin, x=z)  # restore original norm
+        nz_bin = weight * nz.n / np.trapz(nz.n, x=nz.z)
+        nz_sum += nz_bin
+    # on the other side, the full sample, we would need to compute the
+    # re-normalized n_tot / bias as well, therefore multiply weighted sum by
+    # bias and the free normalization fit parameter
+    nz_full_model = nz_sum * bias * params[1]
+    return nz_full_model
+
+
+def fit_bias(bin_container, weights):
+    bias_model = PowerLawBias()
+    # unpack the n(z) bin container
+    nzs = bin_container.split()
+    nz_bins = nzs[:-1]
+    nz_full = nzs[-1]
+    full_norm = np.trapz(nz_full.n, x=nz_full.z)
+    fit_model = partial(
+        nz_model, bias_model=bias_model, nz_bins=nz_bins, weights=weights)
+    popt, pcov = curve_fit(
+        fit_model, nz_full.z, nz_full.n / full_norm,
+        sigma=nz_full.dn / full_norm,
+        p0=[0.0, 1.0])  # alpha, normalisation full sample rel. to weighted sum
+    return popt, pcov
+
+
+parser = argparse.ArgumentParser(
+    description='Estimate the cross-correlation bias by fitting the weighted '
+                'sum of redshift bins to the full data sample.')
+parser.add_argument(
+    'wdir', metavar='DATAFOLDER',
+    help='an output folder of yet_another_wizz')
+parser.add_argument(
+    '--i-ext', default='yaw',
+    help='file extension name of the input files (default: %(default)s)')
+parser.add_argument(
+    '--use-cov', action='store_true',
+    help='whether or not the covariance matrices should be used (if existing)')
+parser.add_argument(
+    '--cov-order', nargs='*',
+    help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
+         'correlation files are inserted into the global covariance matrix, '
+         'if not given no global covariance is computed')
+parser.add_argument(
+    '--o-ext', default='bias',
+    help='file extension name of the output files (default: %(default)s)')
+parser.add_argument(
+    '-o', '--output',
+    help='folder in which the output is stored (optional)')
+
+
+if __name__ == "__main__":
+
+    args = parser.parse_args()
+
+    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
+    if not os.path.exists(args.wdir):
+        raise OSError("input folder does not exist")
+    print("==> processing data in: %s" % args.wdir)
+
+    # check if a weights file and which scale dirs exits
+    weights_pickle = os.path.join(args.wdir, "bin_weights.pickle")
+    if not os.path.exists(weights_pickle):
+        raise ValueError("input folder does not contain valid output")
+    with open(weights_pickle, "rb") as f:
+        weights_dict = pickle.load(f)
+
+    print("finding correlation scales")
+    scale_pattern = re.compile("kpc\d*t\d*")
+    scales = set()
+    for path in os.listdir(args.wdir):
+        if scale_pattern.fullmatch(path):
+            scales.add(os.path.join(args.wdir, path))
+    if len(scales) == 0:
+        raise ValueError("input folder contains no scales")
+    print("found scales: %s" % set(os.path.basename(s) for s in scales))
+
+    # find the n(z)-files
+    print("finding n(z) files")
+    nz_files = {scale: set() for scale in scales}
+    nz_pattern = re.compile("crosscorr_\d*.\d*z\d*.\d*.%s" % args.i_ext)
+    have_covar = True
+    for scale in scales:
+        for path in os.listdir(scale):
+            if nz_pattern.fullmatch(path):
+                nz_files[scale].add(os.path.join(scale, path))
+                have_covar = os.path.exists(
+                    os.path.join(scale, os.path.splitext(path)[0] + ".cov"))
+    use_covar = args.use_cov and have_covar
+    if sum(len(v) for v in nz_files.values()) == 0:
+        raise ValueError("no region n(z) files found")
+
+    # define the optional output folder
+    if args.output is None:
+        setattr(args, "output", args.wdir)
+    setattr(args, "output", os.path.abspath(os.path.expanduser(args.output)))
+
+    for scale in scales:
+        # get the order of the n(z) files, if not specified
+        if args.cov_order is None:
+            order_file = os.path.join(
+                args.wdir, scale, "crosscorr_global.order")
+            # try to read the .order file
+            if not os.path.exists(order_file):
+                raise OSError(
+                    "redshift bin order is not defined and could not be "
+                    "specified")
+            order = []
+            with open(order_file) as f:
+                setattr(
+                    args, "cov_order",
+                    [line.strip() for line in f.readlines() if len(line) > 1])
+
+        # collect the weights in the correct order
+        weight_list = []
+        for key in args.cov_order:
+            try:
+                weight_list.append(weights_dict[key])
+            except KeyError:
+                raise KeyError(
+                    ("redshift key %s in --cov-order has no " % key) +
+                    "matching data file")
+        # drop the last weight since this is the full sample
+        if not np.isclose(sum(weight_list[:-1]), weight_list[-1]):
+            raise ValueError(
+                "the last redshift keys seems not to be the full data sample")
+        weight_list = np.array(weight_list[:-1]) / weight_list[-1]
+
+        # read the n(z) files in the correct order into RedshiftData containers
+        bin_data = []
+        for key in args.cov_order:
+            fpath = None
+            for path in nz_files[scale]:
+                if key in os.path.basename(path):
+                    fpath = path
+            if fpath is None:
+                raise OSError("could not find n(z)-file for key '%s'" % key)
+            data = np.loadtxt(fpath)
+            bin_data.append(RedshiftData(*data.T))
+        # create a multi-bin redshift container assuming the full data sample
+        # is in the last position of --cov-order
+        joint_data = BinnedRedshiftData(bin_data[:-1], bin_data[-1])
+        # this container allows easy resampling for which we can try to use
+        # the global covariance matrix
+        joint_cov_file = os.path.join(scale, "crosscorr_global.cov")
+        if os.path.exists(joint_cov_file) and args.use_cov:
+            print("loading global covarince matrix for data resampling")
+            joint_data.setCovariance(np.loadtxt(joint_cov_file))
+
+        # fit the weighted sum of the bins to the full sample
+        popt, pcov = fit_bias(joint_data, weight_list)
+        print(popt)
+        print(np.sqrt(np.diag(pcov)))

@@ -1,0 +1,448 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import pickle
+import shutil
+import subprocess
+import sys
+from multiprocessing import cpu_count
+
+import numpy as np
+import pandas as pd
+from astropy.cosmology import default_cosmology
+from astropy.io import fits as pyfits
+
+from yet_another_wizz.utils import write_argparse_summary
+from yet_another_wizz.PairMaker import PairMaker
+from yet_another_wizz.PdfMaker import PdfMaker
+
+
+# input data
+parser = argparse.ArgumentParser(
+    description='Wrapper for pair_maker.py provided by the-wizz to mask the '
+                'data and compute the cross-correlation between the '
+                'photometric and the spectroscopic samples.')
+parser.add_argument(
+    'wdir', metavar='OUTPUT', help='folder in which all output is stored')
+parser.add_argument(
+    '--exit-on-warning', action='store_true',
+    help='handle warnings as exceptions')
+parser.add_argument(
+    '--threads', type=int, default=cpu_count(),
+    help='number of threads to use (default: %(default)s)')
+
+ref_cat = parser.add_argument_group(
+    title="reference sample catalogue file",
+    description="defining FITS file and table data columns")
+ref_cat.add_argument(
+    '--ref-file', metavar='FILE', required=True,
+    help='spectroscopic catalogue file path')
+ref_cat.add_argument(
+    '--ref-file-ext', metavar='INT', type=int, default=1,
+    help='fits extesion containg data (default: %(default)s)')
+ref_cat.add_argument(
+    '--ref-ra', metavar='FIELD', default='ALPHA_J2000',
+    help='right ascension column name (default: %(default)s)')
+ref_cat.add_argument(
+    '--ref-dec', metavar='FIELD', default='DELTA_J2000',
+    help='declination column name (default: %(default)s)')
+ref_cat.add_argument(
+    '--ref-z', metavar='FIELD', default='z_spec',
+    help='spectroscopic (known) redshift column name (default: %(default)s)')
+ref_cat.add_argument(
+    '--ref-idx', metavar='FIELD', help='object index column name')
+
+test_cat = parser.add_argument_group(
+    title="test sample catalogue file",
+    description="defining FITS file and table data columns")
+test_cat.add_argument(
+    '--test-file', metavar='FILE', required=True,
+    help='photometric catalogue file path')
+test_cat.add_argument(
+    '--test-file-ext', metavar='INT', type=int, default=1,
+    help='fits extesion containg data (default: %(default)s)')
+test_cat.add_argument(
+    '--test-ra', metavar='FIELD', default='ALPHA_J2000',
+    help='right ascension column name (default: %(default)s)')
+test_cat.add_argument(
+    '--test-dec', metavar='FIELD', default='DELTA_J2000',
+    help='declination column name (default: %(default)s)')
+test_cat.add_argument(
+    '--test-z', metavar='FIELD', default='Z_B',
+    help='photometric (estimated) redshift column name (default: %(default)s)')
+test_cat.add_argument(
+    '--test-weight', metavar='FIELD', help='object weight column name')
+
+rand_cat = parser.add_argument_group(
+    title="random sample catalogue file",
+    description="defining FITS file and table data columns")
+rand_cat.add_argument(
+    '--rand-file', metavar='FILE', required=True,
+    help='random catalogue file path')
+rand_cat.add_argument(
+    '--rand-file-ext', metavar='INT', type=int, default=1,
+    help='fits extesion containg data (default: %(default)s)')
+rand_cat.add_argument(
+    '--rand-ra', metavar='FIELD', default='ALPHA_J2000',
+    help='right ascension column name (default: %(default)s)')
+rand_cat.add_argument(
+    '--rand-dec', metavar='FIELD', default='DELTA_J2000',
+    help='declination column name (default: %(default)s)')
+rand_cat.add_argument(
+    '--rand-z', metavar='FIELD', default='Z_B',
+    help='photometric (estimated) redshift column name (default: %(default)s)')
+rand_cat.add_argument(
+    '--rand-weight', metavar='FIELD', help='object weight column name')
+
+stomp_map = parser.add_argument_group(
+    title='stomp map',
+    description='defining the mask and regions for spatial bootstrapping')
+stomp_map.add_argument(
+    '--map-file', metavar='FILE', required=True, help='stomp map file path')
+
+regionization = stomp_map.add_mutually_exclusive_group()
+regionization.add_argument(
+    '--map-region-no', metavar='INT', type=int, default=7,
+    help='number of regions for bootstrapping (default: %(default)s)')
+regionization.add_argument(
+    '--map-region-size', metavar='FLOAT', type=float, default=-1,
+    help='approximate region size for bootstrapping in sq. deg')
+
+analysis_parameters = parser.add_argument_group(
+    title='analysis parameters',
+    description='controlling the autocorrelation computation')
+analysis_parameters.add_argument(
+    '--scales-min', metavar='LIST', default='100',
+    help='comma separated list of inner radii of analysis annulus '
+         'on sky in kpc (default: %(default)s)')
+analysis_parameters.add_argument(
+    '--scales-max', metavar='LIST', default='1000',
+    help='comma separated list of outer radii of analysis annulus '
+         'on sky in kpc (default: %(default)s)')
+analysis_parameters.add_argument(
+    '--across-regions', metavar='Y/N', default='N',
+    help='wether to include pairs with galaxies from neighboring spatial '
+         'regions')
+analysis_parameters.add_argument(
+    '--z-min', metavar='FLOAT', type=float, default=0.01,
+    help='minimum analysis redshift (default: %(default)s)')
+analysis_parameters.add_argument(
+    '--z-max', metavar='FLOAT', type=float, default=5.01,
+    help='maximum analysis redshift (default: %(default)s)')
+analysis_parameters.add_argument(
+    '--resampling', metavar='INT', type=int, default=10,
+    help='number of random galaxy realizations created (default: %(default)s)')
+analysis_parameters.add_argument(
+    '--ref-source-limit', metavar='INT', type=int, default=10,
+    help='minimum number of sources in the reference catalogue after masking')
+analysis_parameters.add_argument(
+    '--ref-bin-no', metavar='INT', type=int, default=20,
+    help='number of spectroscopic bins (default: %(default)s)')
+analysis_parameters.add_argument(
+    '--ref-bin-type', default="comoving", nargs='*',
+    # choices=["linear", "adapt", "comoving", "logspace"],
+    help='spacing of the spectroscopic bins (default: %(default)s)')
+analysis_parameters.add_argument(
+    '--test-bin-edges', metavar='LIST',
+    help='bin edges of the photometric redshift preselection (default: '
+         'disabled), comma seaprated values define contiguous bins edges, '
+         'colon separated values define non-contiguous bin edges -- '
+         'e.g.: "0.1,0.3,0.5;0.1,0.5" creates bins 0.1 to 0.3, 0.3 to 0.5 and '
+         '0.1 to 0.5')
+analysis_parameters.add_argument(
+    '--pair-weighting', metavar='Y/N', default='Y',
+    help='wether to weight pairs by the inverse separation')
+analysis_parameters.add_argument(
+    '--R-D-ratio', default="local",
+    help='ratio of random to data objects (default: local)')
+
+
+def bin_table(
+        bindir, filepath, ra_name, dec_name, z_name, weightname=None,
+        zbins=None):
+    # read input catalogue
+    with pyfits.open(filepath) as fits:
+        head = fits[1].header
+        data = fits[1].data
+    print("loaded %d objects" % len(data))
+    # make catalogue for each selected bin
+    framelist = []
+    filelist = []
+    if zbins is None:
+        try:
+            zmin, zmax = data[z_name].min(), data[z_name].max()
+            filename = "bin_{:.3f}z{:.3f}.fits".format(zmin, zmax)
+            filename = os.path.join(bindir, os.path.basename(filename))
+            os.symlink(filepath, filename)
+            frame = pd.DataFrame({
+                "RA": data[ra_name].byteswap().newbyteorder(),
+                "DEC": data[dec_name].byteswap().newbyteorder(),
+                "z": data[z_name].byteswap().newbyteorder()})
+        except KeyError:
+            filename = "bin_all.fits"
+            filename = os.path.join(bindir, os.path.basename(filename))
+            os.symlink(filepath, filename)
+            frame = pd.DataFrame({
+                "RA": data[ra_name].byteswap().newbyteorder(),
+                "DEC": data[dec_name].byteswap().newbyteorder()})
+        if weightname is not None:
+            frame["weight"] = data[weightname].byteswap().newbyteorder()
+        framelist.append(frame)
+        filelist.append(filename)
+    else:
+        for zmin, zmax in zbins:
+            print("creating redshift slice %.3f <= z < %.3f" % (zmin, zmax))
+            filename = "bin_{:.3f}z{:.3f}.fits".format(zmin, zmax)
+            filename = os.path.join(bindir, os.path.basename(filename))
+            mask = (data[z_name] > zmin) & (data[z_name] <= zmax)
+            print(
+                "selected %d out of %d objects" % (
+                    np.count_nonzero(mask), len(mask)))
+            bindata = data[mask]
+            # write the bin data to a new fits file
+            hdu = pyfits.BinTableHDU(header=head, data=bindata)
+            hdu.writeto(filename)
+            # keep the bin data as pandas DataFrame
+            frame = pd.DataFrame({
+                "RA": bindata[ra_name].byteswap().newbyteorder(),
+                "DEC": bindata[dec_name].byteswap().newbyteorder(),
+                "z": bindata[z_name].byteswap().newbyteorder()})
+            if weightname is not None:
+                frame["weight"] = bindata[weightname].byteswap().newbyteorder()
+            framelist.append(frame)
+            filelist.append(filename)
+    return framelist, filelist
+
+
+def get_bin_weights(framelist, filelist):
+    weight_dict = {}
+    for frame, path in zip(framelist, filelist):
+        try:
+            weight = frame.weight.sum()
+        except AttributeError:  # assume uniform weights
+            weight = len(frame)
+        key = os.path.basename(path)  # bin_{:.3f}z{:.3f}.fits
+        key = os.path.splitext(key)[0]  # bin_{:.3f}z{:.3f}
+        key = key.strip("bin_")  # {:.3f}z{:.3f}
+        weight_dict[key] = weight
+    return weight_dict
+
+
+if __name__ == '__main__':
+
+    import stomp
+
+    args = parser.parse_args()
+
+    # check z_min:
+    if args.z_min <= 0.0:
+        raise ValueError("--z-min must be larger than zero")
+
+    # make working dir if not existing
+    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
+    sys.stdout.write("set output folder to %s\n" % args.wdir)
+    sys.stdout.flush()
+    try:
+        os.makedirs(args.wdir)
+    except FileExistsError:
+        pass
+
+    # compute region number or size
+    Map = stomp.Map(os.path.abspath(os.path.realpath(args.map_file)))
+    area = Map.Area()
+    if args.map_region_size < 0:
+        setattr(args, "map_region_size", area / args.map_region_no)
+    else:
+        setattr(
+            args, "map_region_no", max(1, int(area / args.map_region_size)))
+
+    # write input parameter summary
+    for arg in ("ref_file", "test_file", "rand_file", "map_file"):
+        path = getattr(args, arg)
+        if path is not None:
+            setattr(args, arg, os.path.abspath(os.path.expanduser(path)))
+    write_argparse_summary(
+        args, os.path.join(args.wdir, "yet_another_wizz.param"))
+
+    # load the reference sample
+    print("==> loading unknown objects")
+    with pyfits.open(args.ref_file) as fits:
+        refdata = pd.DataFrame({
+            "RA": fits[1].data[args.ref_ra].byteswap().newbyteorder(),
+            "DEC": fits[1].data[args.ref_dec].byteswap().newbyteorder(),
+            "z": fits[1].data[args.ref_z].byteswap().newbyteorder()})
+    if len(refdata) < args.ref_source_limit:
+        if args.exit_on_warning:
+            print(
+                "ERROR: there are less then %d" % args.ref_source_limit +
+                " reference sources after masking")
+            print("remove all output")
+            shutil.rmtree(args.wdir)
+            sys.exit(1)
+        else:
+            sys.stdout.write(
+                "WARNING: there are less then %d" % args.ref_source_limit +
+                " reference sources after masking\n")
+        sys.stdout.flush()
+
+    # create tomographic bins
+    testbindir = os.path.join(args.wdir, "test_sample_bins")
+    if os.path.exists(testbindir):
+        shutil.rmtree(testbindir)
+    os.mkdir(testbindir)
+    randbindir = os.path.join(args.wdir, "random_sample_bins")
+    if os.path.exists(randbindir):
+        shutil.rmtree(randbindir)
+    os.mkdir(randbindir)
+    if args.test_bin_edges is not None:
+        # construct tomographic bins
+        zbins = []
+        for zlist in args.test_bin_edges.split(";"):
+            edges = zlist.split(",")
+            if len(edges) < 2:
+                raise ValueError(
+                    "invalid format in bin edges: " + args.test_bin_edges)
+            for i in range(len(edges) - 1):
+                zbins.append([float(edges[i]), float(edges[i + 1])])
+        # load and bin the test and random data
+        print("==> loading unknown objects")
+        testdata, testfiles = bin_table(
+            testbindir, args.test_file, args.test_ra, args.test_dec,
+            args.test_z, args.test_weight, zbins=zbins)
+        print("==> loading random objects")
+        randdata, randfiles = bin_table(
+            randbindir, args.rand_file, args.rand_ra, args.rand_dec,
+            args.rand_z, args.rand_weight, zbins=zbins)
+        with open(os.path.join(args.wdir, "bin_weights.pickle"), "wb") as f:
+            pickle.dump(get_bin_weights(testdata, testfiles), f)
+    else:
+        testdata, testfiles = bin_table(
+            testbindir, args.test_file, args.test_ra, args.test_dec,
+            args.test_z, args.test_weight, zbins=None)
+        randdata, randfiles = bin_table(
+            randbindir, args.rand_file, args.rand_ra, args.rand_dec,
+            args.rand_z, args.rand_weight, zbins=None)
+
+    try:
+        D_R_ratio = 1.0 / float(args.R_D_ratio)
+    except ValueError:
+        D_R_ratio = args.R_D_ratio
+
+    binnigfile = os.path.join(args.wdir, "binning.yaw")
+    if os.path.exists(binnigfile):
+        os.remove(binnigfile)
+
+    scales = []
+    rlimits = []
+    for rmin, rmax in zip(
+            str(args.scales_min).split(","), str(args.scales_max).split(",")):
+        rlimits.append((float(rmin), float(rmax)))
+        scales.append("kpc%st%s" % (rmin, rmax))
+
+    sys.stdout.write("==> run yet another wizz\n")
+    sys.stdout.flush()
+
+    # iterate the binned test data and randoms
+    for i in range(len(testdata)):
+
+        redshift = os.path.splitext(os.path.basename(testfiles[i]))[0]
+        redshift = redshift.rsplit("_", 1)[-1]
+        sys.stdout.write("\n==> processing redshift slice %s\n" % redshift)
+        sys.stdout.flush()
+
+        # run YAW
+        est = PairMaker(
+            args.map_file, args.map_region_no,
+            threads=args.threads, verbose=True)
+        try:
+            est.setUnknown(
+                testdata[i].RA, testdata[i].DEC, testdata[i].z,
+                testdata[i].weight)
+        except AttributeError:
+            try:
+                est.setUnknown(
+                    testdata[i].RA, testdata[i].DEC, testdata[i].z)
+            except AttributeError:
+                    est.setUnknown(testdata[i].RA, testdata[i].DEC)
+        try:
+            est.setRandoms(
+                randdata[i].RA, randdata[i].DEC, randdata[i].z,
+                randdata[i].weight)
+        except AttributeError:
+            try:
+                est.setRandoms(
+                    randdata[i].RA, randdata[i].DEC, randdata[i].z)
+            except AttributeError:
+                est.setRandoms(randdata[i].RA, randdata[i].DEC)
+        est.setReference(refdata.RA, refdata.DEC, refdata.z)
+
+        for scale, (rmin, rmax) in zip(scales, rlimits):
+            sys.stdout.write("==> running scale %s\n" % scale)
+            sys.stdout.flush()
+
+            paircoutdir = os.path.join(
+                args.wdir, "paircounts_" + scale)
+            if not os.path.exists(paircoutdir):
+                os.mkdir(paircoutdir)
+            # file names of intermediate products
+            if args.test_bin_edges is None:
+                meta_file = os.path.join(
+                    paircoutdir, "CC_meta.pickle")
+                paircount_file = os.path.join(paircoutdir, "CC.pqt")
+            else:
+                meta_file = os.path.join(
+                    paircoutdir, "CC_%s_meta.pickle" % redshift)
+                paircount_file = os.path.join(
+                    paircoutdir, "CC_%s.pqt" % redshift)
+            if os.path.exists(meta_file):
+                os.remove(meta_file)
+            if os.path.exists(paircount_file):
+                os.remove(paircount_file)
+            # count pairs
+            est.countPairs(
+                rmin=rmin, rmax=rmax, comoving=False,
+                inv_distance_weight=(args.pair_weighting == "Y"),
+                D_R_ratio=D_R_ratio,
+                regionize_unknown=(args.across_regions == "N"))
+            est.writeMeta(meta_file)
+            est.writeCounts(paircount_file)
+
+            scaledir = os.path.join(args.wdir, scale)
+            if not os.path.exists(scaledir):
+                os.mkdir(scaledir)
+            if args.test_bin_edges is None:
+                regionpicklefile = os.path.join(
+                    scaledir, "crosscorr.pickle")
+            else:
+                regionpicklefile = os.path.join(
+                    scaledir, "crosscorr_%s.pickle" % redshift)
+            # delete existing output
+            if os.path.exists(regionpicklefile):
+                os.remove(regionpicklefile)
+            # create region pickle
+            try:
+                pdf = PdfMaker(paircount_file, autocorr=False)
+                if args.ref_bin_type[0] == "adapt":
+                    raise NotImplementedError()
+                else:
+                    pdf.generateBinning(
+                        args.ref_bin_no, args.z_min, args.z_max,
+                        args.ref_bin_type[0])
+                pdf.writeBinning(binnigfile)
+                pdf.writeRegionPickle(regionpicklefile)
+            except ValueError:  # empty pair counts file
+                print(
+                    "WARNING: the pair count file was empty, create dummy "
+                    "output instead")
+                array_shape = (args.ref_bin_no, args.map_region_no)
+                region_pickle = {
+                    "n_reference": np.zeros(array_shape, dtype=np.int_),
+                    "redshift": np.zeros(array_shape, dtype=np.float_),
+                    "unknown": np.zeros(array_shape, dtype=np.float_),
+                    "rand": np.zeros(array_shape, dtype=np.float_),
+                    "n_regions": args.map_region_no}
+                print(
+                    "writing dummy region pickle to:\n    %s" %
+                    regionpicklefile)
+                with open(regionpicklefile, "wb") as f:
+                    pickle.dump(region_pickle, f)

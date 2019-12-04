@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+import argparse
+import copy
+import os
+import pickle
+import shutil
+import sys
+from multiprocessing import cpu_count
+
+import numpy as np
+import pandas as pd
+from astropy.io import fits as pyfits
+from astropy.cosmology import default_cosmology
+
+from yet_another_wizz.utils import load_argparse_summary
+from yet_another_wizz.PairMaker import PairMaker
+from yet_another_wizz.PdfMaker import PdfMaker
+from yet_another_wizz.utils import ThreadHelper
+
+
+def TypeNone(type):
+    """Test input value for being 'type', but also accepts None as default
+
+    Arguments:
+        type [type]:
+            specifies the type (int or float) the input argument has to obey
+    Returns:
+        type_text [function]:
+            function that takes 'value' as argument and tests, if it is either
+            None or of type 'type'
+    """
+    def type_test(value):
+        if value is None:
+            return value
+        else:
+            strtype = "float" if type == float else "int"
+            try:
+                return type(value)
+            except ValueError:
+                raise argparse.ArgumentTypeError(
+                    "invalid %s value: '%s'" % (strtype, value))
+    return type_test  # closure being of fixed type
+
+
+parser = argparse.ArgumentParser(
+    description='Compute an estimate for the galaxy bias of a spectroscopic '
+                'data sample by measuring the autocorrelation amplitude at '
+                'the same comoving projected radii used for the cross-'
+                'correlation measurement with the-wizz.'
+                '(Rahman et. al. 2016)')
+
+parser.add_argument(
+    'wdir', metavar='DATAFOLDER',
+    help='folder in which the output is stored')
+parser.add_argument(
+    '--binning-file', metavar='FILE', required=True,
+    help='path to a custom file defining the redshift bin edges')
+parser.add_argument(
+    '--which', choices=("ref", "test"), required=True,
+    help='which type of autocorrelation to compute')
+parser.add_argument(
+    '--param-file', metavar='FILE',
+    help='file with parameters from a yet_another_wizz run to complete '
+         'omitted input')
+parser.add_argument(
+    '--threads', metavar='INT', type=int)
+parser.add_argument(
+    '--output-suffix', metavar='str',
+    help='suffix to append to the auto-correlation and region pickle files')
+
+ref_cat = parser.add_argument_group(
+    title="data sample catalogue file",
+    description="defining FITS file and table data columns")
+ref_cat.add_argument(
+    '--cat-file', metavar='FILE', help='data catalogue file path')
+ref_cat.add_argument(
+    '--cat-file-ext', metavar='INT', type=TypeNone(int),
+    help='fits extesion containg data')
+ref_cat.add_argument(
+    '--cat-ra', metavar='FIELD',
+    help='right ascension column name')
+ref_cat.add_argument(
+    '--cat-dec', metavar='FIELD', help='declination column name')
+ref_cat.add_argument(
+    '--cat-z', metavar='FIELD', help='redshift column name')
+ref_cat.add_argument(
+    '--cat-weight', metavar='FIELD',
+    help='object weight column name')
+
+rand_cat = parser.add_argument_group(
+    title="random sample catalogue file",
+    description="defining FITS file and table data columns")
+rand_cat.add_argument(
+    '--rand-file', metavar='FILE',
+    help='random catalogue file path')
+rand_cat.add_argument(
+    '--rand-file-ext', metavar='INT', type=TypeNone(int),
+    help='fits extesion containg data (default: 1)')
+rand_cat.add_argument(
+    '--rand-ra', metavar='FIELD',
+    help='right ascension column name')
+rand_cat.add_argument(
+    '--rand-dec', metavar='FIELD',
+    help='declination column name')
+rand_cat.add_argument(
+    '--rand-z', metavar='FIELD',
+    help='photometric (estimated) redshift column name')
+rand_cat.add_argument(
+    '--rand-weight', metavar='FIELD',
+    help='object weight column name, WARNING: these are not passed on '
+         'automatically')
+
+stomp_map = parser.add_argument_group(
+    title='stomp map',
+    description='defining the mask and regions for spatial bootstrapping')
+stomp_map.add_argument(
+    '--map-file', metavar='FILE', help='stomp map file path')
+
+regionization = stomp_map.add_mutually_exclusive_group()
+regionization.add_argument(
+    '--map-region-no', metavar='INT', type=TypeNone(int),
+    help='number of regions for bootstrapping (default: 7)')
+regionization.add_argument(
+    '--map-region-size', metavar='FLOAT', type=TypeNone(float),
+    help='approximate region size for bootstrapping in sq. deg')
+
+analysis_parameters = parser.add_argument_group(
+    title='analysis parameters',
+    description='controlling the autocorrelation computation')
+analysis_parameters.add_argument(
+    '--scales-min', metavar='LIST',
+    help='comma separated list of inner radii of analysis annulus '
+         'on sky in kpc')
+analysis_parameters.add_argument(
+    '--scales-max', metavar='LIST',
+    help='comma separated list of outer radii of analysis annulus '
+         'on sky in kpc')
+analysis_parameters.add_argument(
+    '--across-regions', metavar='Y/N', default='N',
+    help='wether to include pairs with galaxies from neighboring spatial '
+         'regions')
+analysis_parameters.add_argument(
+    '--resampling', metavar='INT', type=TypeNone(int),
+    help='number of random galaxy realizations created (default: 10)')
+analysis_parameters.add_argument(
+    '--pair-weighting', metavar='Y/N', type=TypeNone(str),
+    help='wether to weight pairs by the inverse separation (default: Y)')
+analysis_parameters.add_argument(
+    '--R-D-ratio', default="local",
+    help='ratio of random to data objects (default: local)')
+
+
+def run_ac_single_bin(
+        datapack, randpack, stompfile, rlims, R_D_ratio, regionize_unknown,
+        pm_instance):
+    try:
+        D_R_ratio = 1.0 / float(R_D_ratio)
+    except ValueError:
+        D_R_ratio = R_D_ratio
+    zd, bindata = datapack
+    zr, binrand = randpack
+    est = pm_instance
+    est._verbose = False
+    est._threads = 1
+    if len(bindata) == 0 or len(binrand) == 0:
+        dummy_counts = est.getDummyCounts(
+            rmin=rlims[0], rmax=rlims[1], comoving=False,
+            reference_weights=("weights" in bindata))
+        return [est.getMeta(), dummy_counts]
+    else:
+        try:
+            est.setUnknown(bindata.RA, bindata.DEC, bindata.z, bindata.weight)
+        except AttributeError:
+            est.setUnknown(bindata.RA, bindata.DEC, bindata.z)
+        try:
+            est.setRandoms(binrand.RA, binrand.DEC, binrand.z, binrand.weight)
+        except AttributeError:
+            est.setRandoms(binrand.RA, binrand.DEC, binrand.z)
+        est.setReference(bindata.RA, bindata.DEC, bindata.z)
+        est.countPairs(
+            rmin=rlims[0], rmax=rlims[1], comoving=False,
+            D_R_ratio=D_R_ratio, regionize_unknown=regionize_unknown)
+        print("processed data in z ∈", zd)
+        return [est.getMeta(), est.getCounts()]
+
+
+if __name__ == "__main__":
+
+    args = parser.parse_args()
+
+    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
+    if args.threads is not None:
+        setattr(args, "threads", max(1, min(cpu_count(), args.threads)))
+
+    # load the binning
+    try:
+        binning = np.loadtxt(args.binning_file)
+        assert(np.all(np.diff(binning) > 0.0))
+    except Exception:
+        raise ValueError("is not a valid binning file: " + args.binning_file)
+
+    # load parameters from the-wizz
+    if args.param_file is None:
+        for arg in ("cat_file", "cat_ra", "cat_dec", "cat_z",
+                    "rand_file", "rand_ra", "rand_dec", "rand_z"
+                    "map_file", "scales_min", "scales_max"):
+            if getattr(args, arg) is None:
+                raise ValueError(
+                    "without --param-file, the argument '%s' is required" %
+                    ("--" + arg.replace("_", "-")))
+        if args.map_region_no is None and args.map_region_size is None:
+            args.map_region_no = 7
+        if args.resampling is None:
+            args.resampling = 10
+        if args.pair_weighting is None:
+            args.pair_weighting = "Y"
+    else:
+        wizz_params = load_argparse_summary(args.param_file)
+        # populate argument parser namespace with original argument names
+        argnames = list(vars(args))
+        for arg in argnames:
+            if arg in ("wdir", "binning_file", "which",
+                       "yaw_param", "rand_weight"):
+                continue
+            key = arg.replace("cat", args.which)
+            try:
+                if getattr(args, arg) is None:
+                    setattr(args, arg, wizz_params[key])
+            except KeyError:
+                pass
+    if args.threads is None:
+        setattr(args, "threads", cpu_count())
+
+    # make working dir if not existing
+    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
+    sys.stdout.write("set output folder to %s\n" % args.wdir)
+    sys.stdout.flush()
+    try:
+        os.makedirs(args.wdir)
+    except FileExistsError:
+        pass
+    shutil.copyfile(
+        args.binning_file, os.path.join(args.wdir, "binning.yaw"))
+
+    # load the samples
+    print("==> loading data objects")
+    with pyfits.open(args.cat_file) as fits:
+        data = pd.DataFrame({
+            "RA": fits[1].data[args.cat_ra].byteswap().newbyteorder(),
+            "DEC": fits[1].data[args.cat_dec].byteswap().newbyteorder(),
+            "z": fits[1].data[args.cat_z].byteswap().newbyteorder()})
+        if args.cat_weight is not None:
+            data["weight"] = \
+                fits[1].data[args.cat_weight].byteswap().newbyteorder()
+    print("==> loading random objects")
+    with pyfits.open(args.rand_file) as fits:
+        rand = pd.DataFrame({
+            "RA": fits[1].data[args.rand_ra].byteswap().newbyteorder(),
+            "DEC": fits[1].data[args.rand_dec].byteswap().newbyteorder(),
+            "z": fits[1].data[args.rand_z].byteswap().newbyteorder()})
+        if args.rand_weight is not None:
+            rand["weight"] = \
+                fits[1].data[args.rand_weight].byteswap().newbyteorder()
+
+    scales = []
+    rlimits = []
+    for rmin, rmax in zip(
+            str(args.scales_min).split(","), str(args.scales_max).split(",")):
+        rlimits.append((float(rmin), float(rmax)))
+        scales.append("kpc%st%s" % (rmin, rmax))
+
+    sys.stdout.write("==> run yet another wizz\n")
+    sys.stdout.flush()
+
+    for scale, (rmin, rmax) in zip(scales, rlimits):
+        sys.stdout.write("==> running scale %s\n" % scale)
+        sys.stdout.flush()
+        paircoutdir = os.path.join(
+            args.wdir, "paircounts_" + scale)
+        if not os.path.exists(paircoutdir):
+            os.mkdir(paircoutdir)
+
+        # create copies of PairMaker for each redshift bin
+        est = PairMaker(
+            args.map_file, args.map_region_no, threads=args.threads)
+        instances = [copy.deepcopy(est) for n in range(len(binning) - 1)]
+        # iterate the bins in parallel
+        pool = ThreadHelper(len(instances), threads=args.threads)
+        pool.add_iterable(data.groupby(pd.cut(data.z, bins=binning)))
+        pool.add_iterable(rand.groupby(pd.cut(rand.z, bins=binning)))
+        pool.add_constant(args.map_file)
+        pool.add_constant((rmin, rmax))
+        pool.add_constant(args.R_D_ratio)
+        pool.add_constant(args.across_regions == "N")
+        pool.add_iterable(instances)
+        dataframes = pool.map(run_ac_single_bin)
+        # file names of intermediate products
+        meta_file = os.path.join(
+            paircoutdir, "AC_meta.pickle")
+        paircount_file = os.path.join(paircoutdir, "AC.pqt")
+        if os.path.exists(meta_file):
+            os.remove(meta_file)
+        if os.path.exists(paircount_file):
+            os.remove(paircount_file)
+        # write pair count data
+        with open(meta_file, "wb") as f:
+            pickle.dump(dataframes[0][0], f)
+        pd.concat([frames[1] for frames in dataframes]).to_parquet(
+            paircount_file)
+
+        scaledir = os.path.join(args.wdir, scale)
+        if not os.path.exists(scaledir):
+            os.mkdir(scaledir)
+        if args.output_suffix is None:
+            regionpicklefile = os.path.join(scaledir, "autocorr.pickle")
+        else:
+            regionpicklefile = os.path.join(
+                scaledir, "autocorr_%s.pickle" % args.output_suffix)
+        # delete existing output
+        if os.path.exists(regionpicklefile):
+            os.remove(regionpicklefile)
+        # create region pickle
+        try:
+            pdf = PdfMaker(paircount_file, autocorr=True)
+            pdf.setBinning(binning)
+            pdf.writeRegionPickle(regionpicklefile)
+        except ValueError:  # empty pair counts file
+            print(
+                "WARNING: the pair count file was empty, create dummy "
+                "output instead")
+            array_shape = (args.ref_bin_no, args.map_region_no)
+            pickle_dict = {
+                "n_reference": np.zeros(array_shape, dtype=np.int_),
+                "redshift": np.zeros(array_shape, dtype=np.float_),
+                "unknown": np.zeros(array_shape, dtype=np.float_),
+                "rand": np.zeros(array_shape, dtype=np.float_),
+                "n_regions": args.map_region_no}
+            try:
+                zbins = np.diff(
+                    getattr(PdfMaker, args.ref_bin_type[0] + "Bins")(
+                        args.ref_bin_no, args.z_min, args.z_max))
+            except TypeError:
+                zbins = np.diff(
+                    getattr(PdfMaker, args.ref_bin_type[0] + "Bins")(
+                        args.ref_bin_no, args.z_min, args.z_max,
+                        default_cosmology.get()))
+            pickle_dict["amplitude_factor"] = np.diff(zbins)
+            print(
+                "writing dummy region pickle to:\n    %s" %
+                regionpicklefile)
+            with open(regionpicklefile, "wb") as f:
+                pickle.dump(pickle_dict, f)

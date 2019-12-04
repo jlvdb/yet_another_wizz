@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import re
+import shutil
+import warnings
+from hashlib import md5
+
+import numpy as np
+from numpy import ma
+from yaw_tools.pickles import AutoCorrelationPickle, CrossCorrelationPickle
+
+
+def nancov(bootstraps):
+    # mask infinite values
+    mask = np.logical_not(np.isfinite(bootstraps))
+    masked_boots = ma.array(bootstraps, mask=mask)
+    # compute covariance
+    covar = ma.cov(masked_boots, ddof=0)
+    # find rows/columns with NaNs
+    diag = np.diag(covar)
+    idx = np.arange(len(diag))
+    idx = idx[np.isnan(diag)]
+    # set the diag. element to infinity and the off-diag elements to 0
+    for i in idx:
+        covar[i, :] = 0.0
+        covar[:, i] = 0.0
+        covar[i, i] = np.inf
+    return covar
+
+
+parser = argparse.ArgumentParser(
+    description='Unpickles yet_another_wizz region pickle files, optionally '
+                'applying bias corrections.')
+parser.add_argument(
+    'wdir', metavar='DATAFOLDER',
+    help='an output folder of yet_another_wizz')
+parser.add_argument(
+    '--bias-spec',
+    help='suffix of the auto-correlation files to apply for correcting the '
+         'spectroscopic bias (optional)')
+parser.add_argument(
+    '--bias-phot',
+    help='suffix of the auto-correlation files to apply for correcting the '
+         'photometric bias (optional)')
+parser.add_argument(
+    '--seed',
+    help='string from which a seed for the random generator is computed')
+parser.add_argument(
+    '--extension', default="yaw",
+    help='file extension name of the output files (default: %(default)s)')
+parser.add_argument(
+    '--cov-order', nargs='*',
+    help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
+         'correlation files are inserted into the global covariance matrix, '
+         'if not given no global covariance is computed (default: try to '
+         'locate ".order" file)')
+parser.add_argument(
+    '-o', '--output',
+    help='folder in which the output is stored (optional)')
+
+
+if __name__ == "__main__":
+
+    args = parser.parse_args()
+
+    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
+    if not os.path.exists(args.wdir):
+        raise OSError("input folder does not exist")
+    print("==> processing data in: %s" % args.wdir)
+
+    # check if a binning file and which scale dirs exits
+    if not os.path.exists(os.path.join(args.wdir, "binning.yaw")):
+        raise ValueError("input folder does not contain valid output")
+
+    print("finding correlation scales")
+    scale_pattern = re.compile("kpc\d*t\d*")
+    scales = set()
+    for path in os.listdir(args.wdir):
+        if scale_pattern.fullmatch(path):
+            scales.add(os.path.join(args.wdir, path))
+    if len(scales) == 0:
+        raise ValueError("input folder contains no scales")
+    print("found scales: %s" % set(os.path.basename(s) for s in scales))
+
+    # check if all scales contain any requested auto-correlation pickles
+    if args.bias_spec is not None:
+        spec_ac_pickle = {
+            scale: os.path.join(scale, "autocorr_%s.pickle" % args.bias_spec)
+            for scale in scales}
+        for ac_file in spec_ac_pickle:
+            if not os.path.exists(ac_file):
+                raise ValueError(
+                    "requested auto-correlation pickle does not exist: %s" %
+                    ac_file)
+        print("found spec. auto-correlation file")
+    if args.bias_phot is not None:
+        phot_ac_pickle = {
+            scale: os.path.join(scale, "autocorr_%s.pickle" % args.bias_phot)
+            for scale in scales}
+        for ac_file in phot_ac_pickle:
+            if not os.path.exists(ac_file):
+                raise ValueError(
+                    "requested auto-correlation pickle does not exist: %s" %
+                    ac_file)
+        print("found phot. auto-correlation file")
+
+    # find the cross-correlation files
+    print("finding region pickles")
+    cc_files = {scale: set() for scale in scales}
+    cc_pattern = re.compile("crosscorr_\d*.\d*z\d*.\d*.pickle")
+    for scale in scales:
+        for path in os.listdir(scale):
+            if cc_pattern.fullmatch(path):
+                cc_files[scale].add(os.path.join(scale, path))
+    if sum(len(v) for v in cc_files.values()) == 0:
+        raise ValueError("no region pickle files found")
+
+    # now everything should be good and we can produce output
+    if args.output is None:
+        setattr(args, "output", args.wdir)
+    setattr(args, "output", os.path.abspath(os.path.expanduser(args.output)))
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+    print("==> writing all output to: %s" % args.output)
+    binning_file = os.path.join(args.output, "binning.yaw")
+    if not os.path.exists(binning_file):
+        shutil.copy(os.path.join(args.wdir, "binning.yaw"), binning_file)
+    weights_in = os.path.join(args.wdir, "bin_weights.pickle")
+    weights_out = os.path.join(args.output, "bin_weights.pickle")
+    if os.path.exists(weights_in) and not os.path.exists(weights_out):
+        shutil.copy(weights_in, weights_out)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for scale in scales:
+            # load the auto-correlation pickles
+            scaledir = os.path.basename(scale)
+            print(
+                "processing folder: %s" % os.path.join(args.output, scaledir))
+            idx = None
+            if args.bias_spec:
+                ac_spec = AutoCorrelationPickle(spec_ac_pickle[scale])
+            if args.bias_phot:
+                ac_phot = AutoCorrelationPickle(phot_ac_pickle[scale])
+            y_samples_global = {}
+            # process the cross-correlation pickles
+            hasher = md5(bytes(args.seed, "utf-8"))
+            hashval = bytes(hasher.hexdigest(), "utf-8")
+            np.random.seed(np.frombuffer(hashval, dtype=np.uint32))
+            for path in cc_files[scale]:
+                cc = CrossCorrelationPickle(path)
+                key = "w_sp"
+                if idx is None:  # generate bootstrap samples
+                    cc.generate_sampling_idx(n_bootstraps=1000)
+                    idx = cc.get_sampling_idx()
+                    if args.bias_spec:
+                        ac_spec.set_sampling_idx(idx)
+                    if args.bias_phot:
+                        ac_phot.set_sampling_idx(idx)
+                cc.set_sampling_idx(idx)  # apply the same sampling everywhere
+                # compute the cross-correlation redshifts
+                z = cc.get_redshifts()
+                y = cc.get_amplitudes()
+                y_samples = cc.get_samples()
+                bias = np.ones_like(y)
+                bias_samples = np.ones_like(y_samples)
+                if args.bias_spec:
+                    key += " / bias_spec"
+                    bias *= ac_spec.get_amplitudes()
+                    bias_samples *= ac_spec.get_samples()
+                if args.bias_phot:
+                    key += " / bias_phot"
+                    bias *= ac_phot.get_amplitudes()
+                    bias_samples *= ac_phot.get_samples()
+                y /= np.sqrt(bias)
+                y_samples /= np.sqrt(bias_samples)
+                y_samples_global[os.path.basename(path)] = y_samples.copy()
+                err = np.nanstd(y_samples, axis=1)
+                nz_array = np.stack([z, y, err]).T
+                cov = nancov(y_samples)
+                # write data to file
+                outbase = os.path.splitext(
+                    os.path.basename(path))[0] + ".%s" % args.extension
+                outdir = os.path.join(args.output, scaledir)
+                if not os.path.exists(outdir):
+                    os.mkdir(outdir)
+                outpath = os.path.join(outdir, outbase)
+                print(
+                    "writing redshift distribution to: %s" %
+                    os.path.basename(outpath))
+                header = "col 1 = mean redshift\n"
+                header += "col 2 = correlation amplitude (%s)\n" % key
+                header += "col 3 = amplitude error"
+                np.savetxt(outpath, nz_array, header=header)
+                # write covariance matrix
+                outbase = os.path.splitext(
+                    os.path.basename(path))[0] + ".cov"
+                outpath = os.path.join(outdir, outbase)
+                print(
+                    "writing covariance matrix to:     %s" %
+                    os.path.basename(outpath))
+                header = "correlation amplitude (%s) covariance matrix" % key
+                np.savetxt(outpath, cov, header=header)
+            # process auto-correlation pickles
+            if args.bias_spec:
+                wz_array = np.stack([
+                    ac_spec.get_redshifts(),
+                    ac_spec.get_amplitudes(),
+                    ac_spec.get_errors()]).T
+                outbase = os.path.splitext(
+                    os.path.basename(spec_ac_pickle[scale]))[0] + ".wss"
+                outdir = os.path.join(args.output, scaledir)
+                if not os.path.exists(outdir):
+                    os.mkdir(outdir)
+                outpath = os.path.join(outdir, outbase)
+                print(
+                    "writing auto-correlation to:      %s" %
+                    os.path.basename(outpath))
+                header = "col 1 = mean redshift\n"
+                header += "col 2 = correlation amplitude (w_ss)\n"
+                header += "col 3 = amplitude error"
+                np.savetxt(outpath, wz_array, header=header)
+            if args.bias_phot:
+                wz_array = np.stack([
+                    ac_phot.get_redshifts(),
+                    ac_phot.get_amplitudes(),
+                    ac_phot.get_errors()]).T
+                outbase = os.path.splitext(
+                    os.path.basename(phot_ac_pickle[scale]))[0] + ".wpp"
+                outdir = os.path.join(args.output, scaledir)
+                if not os.path.exists(outdir):
+                    os.mkdir(outdir)
+                outpath = os.path.join(outdir, outbase)
+                print(
+                    "writing auto-correlation to:      %s" %
+                    os.path.basename(outpath))
+                header = "col 1 = mean redshift\n"
+                header += "col 2 = correlation amplitude (w_pp)\n"
+                header += "col 3 = amplitude error"
+                np.savetxt(outpath, wz_array, header=header)
+            # compute global covariance matrix
+            if args.cov_order is None:
+                print("omitting global covariance estimation")
+            else:
+                data_keys = y_samples_global.keys()
+                y_global = None
+                for key in args.cov_order:
+                    dkey = "#####"
+                    for data_key in data_keys:
+                        if key in data_key:
+                            dkey = data_key
+                            break
+                    if dkey not in data_keys:
+                        raise ValueError(
+                            "redshift key '%s' not in data" % dkey)
+                    y_samples = y_samples_global[dkey]
+                    if y_global is None:
+                        y_global = y_samples.copy()
+                    else:
+                        y_global = np.concatenate([y_global, y_samples])
+                cov_global = nancov(y_global)
+                # write global covariance matrix
+                outbase = os.path.basename(path).split("_", maxsplit=1)[0]
+                outbase += "_global.cov"
+                outpath = os.path.join(outdir, outbase)
+                print(
+                    "writing covariance matrix to:     %s" %
+                    os.path.basename(outpath))
+                header = "correlation amplitude (%s) covariance matrix" % key
+                np.savetxt(outpath, cov_global, header=header)
+                # write the order for later use
+                with open(os.path.splitext(outpath)[0] + ".order") as f:
+                    for zkey in args.order:
+                        f.write("%s\n" % zkey)

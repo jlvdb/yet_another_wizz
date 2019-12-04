@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy.integrate import cumtrapz
+from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
+
+from Nz_Fitting.models import gaussian
+
+
+class model_from_n_z(object):
+
+    def __init__(self, z, y):
+        self.p_z = y / np.trapz(y, x=z)
+        self.pdf = interp1d(z, self.p_z, fill_value="extrapolate")
+        self.c_z = cumtrapz(self.p_z, x=z, initial=0.0)
+        self.cdf = interp1d(z, self.c_z, fill_value="extrapolate")
+
+    def rebin(self, z_edges):
+        P_edges = self.cdf(z_edges)
+        return np.diff(P_edges) / np.diff(z_edges)
+
+
+m = model_from_n_z(z_true, y_true)
+fit = lambda bins, *params: params[1] * m.rebin(bins - params[0])
+popt, pcov = curve_fit(fit, bins_meas, y_meas, sigma=err_meas, p0=[0.0, 1.0])
+perr = np.sqrt(np.diag(pcov))

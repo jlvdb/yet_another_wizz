@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import pickle
+
+from Nz_Fitting import (RedshiftData, BinnedRedshiftData,
+                        GaussianComb, BinnedRedshiftModel,
+                        CurveFit)
+
+
+parser = argparse.ArgumentParser(
+    description='Unpickles yet_another_wizz region pickle files, optionally '
+                'applying bias corrections.')
+parser.add_argument(
+    'wdir', metavar='DATAFOLDER',
+    help='a folder with (bias corrected) cross-correlation measurements')
+parser.add_argument(
+    '--extension', default="pz",
+    help='file extension name of the output files (default: %(default)s)')
+parser.add_argument(
+    '--master-bin', required=True,
+    help='redshift key (e.g. 0.101z1.201) of the full data sample')
+parser.add_argument(
+    '--covariance', choices=('none', 'bin', 'global'),
+    help='redshift key (e.g. 0.101z1.201) of the full data sample')
+parser.add_argument(
+    '--cov-order', nargs='*',
+    help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
+         'correlation files are inserted into the global covariance matrix, '
+         'if not given no global covariance is computed')
+parser.add_argument(
+    '-o', '--output',
+    help='folder in which the output is stored (optional)')
+
+
+if __name__ == "__main__":
+
+    args = parser.parse_args()
