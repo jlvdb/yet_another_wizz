@@ -5,9 +5,10 @@ from multiprocessing import cpu_count
 import numpy as np
 import pandas as pd
 
+from stomp_tools import generate_randoms, measure_region_area, regionize_data
+
 from .spatial import FastSeparation2Angle, SphericalKDTree, count_pairs
-from .utils import (BaseClass, ThreadHelper, generate_randoms,
-                    measure_region_area, regionize_data)
+from .utils import BaseClass, ThreadHelper
 
 
 class PairMaker(BaseClass):
