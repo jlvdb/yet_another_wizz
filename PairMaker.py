@@ -88,6 +88,17 @@ class PairMaker(BaseClass):
         with open(pickle_path, "wb") as f:
             pickle.dump(self.getMeta(), f)
 
+    @staticmethod
+    def _inputGood(*args):
+        n_data = None
+        for arg in args:
+            if arg is not None:
+                if n_data is None:
+                    n_data = len(arg)
+                if len(arg) != n_data:
+                    return False
+        return n_data > 0  # otherwise this is also bad
+
     def getReference(self):
         if self._reference_data is None:
             self._throwException(
@@ -95,6 +106,9 @@ class PairMaker(BaseClass):
         return self._reference_data
 
     def setReference(self, RA, DEC, Z, weights=None):
+        if not self._inputGood(RA, DEC, Z, weights):
+            self._throwException(
+                "input data empty or data length does not match", ValueError)
         self._printMessage("regionizing %d objects\n" % len(RA))
         self._reference_data = self._regionizeData(RA, DEC, Z, weights=weights)
         self._printMessage("kept %d objects\n" % len(self._reference_data))
@@ -110,6 +124,9 @@ class PairMaker(BaseClass):
         return self._unknown_data
 
     def setUnknown(self, RA, DEC, Z=None, weights=None):
+        if not self._inputGood(RA, DEC, Z, weights):
+            self._throwException(
+                "input data empty or data length does not match", ValueError)
         self._printMessage("regionizing %d objects\n" % len(RA))
         self._unknown_data = self._regionizeData(RA, DEC, Z, weights=weights)
         self._printMessage("kept %d objects\n" % len(self._unknown_data))
@@ -125,6 +142,9 @@ class PairMaker(BaseClass):
         return self._random_data
 
     def setRandoms(self, RA, DEC, Z=None, weights=None):
+        if not self._inputGood(RA, DEC, Z, weights):
+            self._throwException(
+                "input data empty or data length does not match", ValueError)
         self._printMessage("regionizing %d objects\n" % len(RA))
         self._random_data = self._regionizeData(RA, DEC, Z, weights=weights)
         self._printMessage("kept %d objects\n" % len(self._random_data))
@@ -158,7 +178,9 @@ class PairMaker(BaseClass):
 
     def countPairs(
             self, rmin, rmax, comoving=False, inv_distance_weight=True,
-            D_R_ratio="global"):
+            D_R_ratio="global", regionize_unknown=True):
+        if regionize_unknown and D_R_ratio == "local":
+            D_R_ratio = "global"
         self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
         self._dist_weight = inv_distance_weight
         # check if all data is present
@@ -170,7 +192,12 @@ class PairMaker(BaseClass):
         poolDD = ThreadHelper(
             self.n_regions, threads=min(self._threads, self.n_regions))
         poolDD.add_iterable(self.getReference().groupby("stomp_region"))
-        poolDD.add_iterable(self.getUnknown().groupby("stomp_region"))
+        if regionize_unknown:
+            poolDD.add_iterable(self.getUnknown().groupby("stomp_region"))
+        else:
+            poolDD.add_iterable([
+                (r, self.getUnknown())
+                for r in sorted(pd.unique(self.getReference().stomp_region))])
         poolDD.add_constant((rmin, rmax))
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
@@ -179,7 +206,12 @@ class PairMaker(BaseClass):
         poolDR = ThreadHelper(
             self.n_regions, threads=min(self._threads, self.n_regions))
         poolDR.add_iterable(self.getReference().groupby("stomp_region"))
-        poolDR.add_iterable(self.getRandoms().groupby("stomp_region"))
+        if regionize_unknown:
+            poolDR.add_iterable(self.getRandoms().groupby("stomp_region"))
+        else:
+            poolDR.add_iterable([
+                (r, self.getRandoms())
+                for r in sorted(pd.unique(self.getReference().stomp_region))])
         poolDR.add_constant((rmin, rmax))
         poolDR.add_constant(comoving)
         poolDR.add_constant(self.cosmology)
@@ -227,6 +259,18 @@ class PairMaker(BaseClass):
         except KeyError:
             ref_data = self._reference_data[["z", "stomp_region"]]
         self._pair_counts = pd.concat([ref_data, DD, DR], axis=1)
+
+    def getDummyCounts(
+            self, rmin, rmax, comoving=False, inv_distance_weight=True,
+            reference_weights=False):
+        self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
+        self._dist_weight = inv_distance_weight
+        if reference_weights:
+            return pd.DataFrame(
+                columns=["z", "stomp_region", "weights", "DD", "DR"])
+        else:
+            return pd.DataFrame(
+                columns=["z", "stomp_region", "DD", "DR"])
 
     def getCounts(self):
         if self._pair_counts is None:
