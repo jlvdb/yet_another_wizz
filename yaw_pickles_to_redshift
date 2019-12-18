@@ -270,6 +270,6 @@ if __name__ == "__main__":
                 header = "correlation amplitude (%s) covariance matrix" % key
                 np.savetxt(outpath, cov_global, header=header)
                 # write the order for later use
-                with open(os.path.splitext(outpath)[0] + ".order") as f:
-                    for zkey in args.order:
+                with open(os.path.splitext(outpath)[0] + ".order", "w") as f:
+                    for zkey in args.cov_order:
                         f.write("%s\n" % zkey)
