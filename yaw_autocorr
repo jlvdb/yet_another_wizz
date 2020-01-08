@@ -12,6 +12,7 @@ import pandas as pd
 from astropy.io import fits as pyfits
 from astropy.cosmology import default_cosmology
 
+from yaw_tools.folders import Folder, CCFolder
 from yet_another_wizz.utils import load_argparse_summary
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
@@ -41,6 +42,12 @@ def TypeNone(type):
                     "invalid %s value: '%s'" % (strtype, value))
     return type_test  # closure being of fixed type
 
+
+DEFAULT_CAT_EXT = 1
+DEFAULT_RAND_EXT = 1
+DEFAULT_REGION_NO = 7
+DEFAULT_RESAMPLING = 10
+DEFALUT_PAIR_WEIGHTING = "Y"
 
 parser = argparse.ArgumentParser(
     description='Compute an estimate for the galaxy bias of a spectroscopic '
@@ -75,7 +82,7 @@ ref_cat.add_argument(
     '--cat-file', metavar='FILE', help='data catalogue file path')
 ref_cat.add_argument(
     '--cat-file-ext', metavar='INT', type=TypeNone(int),
-    help='fits extesion containg data')
+    help='fits extesion containg data (default: %d)' % DEFAULT_CAT_EXT)
 ref_cat.add_argument(
     '--cat-ra', metavar='FIELD',
     help='right ascension column name')
@@ -95,7 +102,7 @@ rand_cat.add_argument(
     help='random catalogue file path')
 rand_cat.add_argument(
     '--rand-file-ext', metavar='INT', type=TypeNone(int),
-    help='fits extesion containg data (default: 1)')
+    help='fits extesion containg data (default: %d)' % DEFAULT_RAND_EXT)
 rand_cat.add_argument(
     '--rand-ra', metavar='FIELD',
     help='right ascension column name')
@@ -119,7 +126,8 @@ stomp_map.add_argument(
 regionization = stomp_map.add_mutually_exclusive_group()
 regionization.add_argument(
     '--map-region-no', metavar='INT', type=TypeNone(int),
-    help='number of regions for bootstrapping (default: 7)')
+    help='number of regions for bootstrapping (default: %d)' %
+    DEFAULT_REGION_NO)
 regionization.add_argument(
     '--map-region-size', metavar='FLOAT', type=TypeNone(float),
     help='approximate region size for bootstrapping in sq. deg')
@@ -141,10 +149,12 @@ analysis_parameters.add_argument(
          'regions')
 analysis_parameters.add_argument(
     '--resampling', metavar='INT', type=TypeNone(int),
-    help='number of random galaxy realizations created (default: 10)')
+    help='number of random galaxy realizations created (default: %d)' %
+    DEFAULT_RESAMPLING)
 analysis_parameters.add_argument(
     '--pair-weighting', metavar='Y/N', type=TypeNone(str),
-    help='wether to weight pairs by the inverse separation (default: Y)')
+    help='wether to weight pairs by the inverse separation (default: %s)' %
+    DEFALUT_PAIR_WEIGHTING)
 analysis_parameters.add_argument(
     '--R-D-ratio', default="local",
     help='ratio of random to data objects (default: local)')
@@ -188,7 +198,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
     if args.threads is not None:
         setattr(args, "threads", max(1, min(cpu_count(), args.threads)))
 
@@ -208,12 +217,16 @@ if __name__ == "__main__":
                 raise ValueError(
                     "without --param-file, the argument '%s' is required" %
                     ("--" + arg.replace("_", "-")))
+        if args.cat_file_ext is None:
+            args.cat_file_ext = DEFAULT_CAT_EXT
+        if args.rand_file_ext is None:
+            args.rand_file_ext = DEFAULT_RAND_EXT
         if args.map_region_no is None and args.map_region_size is None:
-            args.map_region_no = 7
+            args.map_region_no = DEFAULT_REGION_NO
         if args.resampling is None:
-            args.resampling = 10
+            args.resampling = DEFAULT_RESAMPLING
         if args.pair_weighting is None:
-            args.pair_weighting = "Y"
+            args.pair_weighting = DEFALUT_PAIR_WEIGHTING
     else:
         wizz_params = load_argparse_summary(args.param_file)
         # populate argument parser namespace with original argument names
@@ -235,12 +248,8 @@ if __name__ == "__main__":
     setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
     sys.stdout.write("set output folder to %s\n" % args.wdir)
     sys.stdout.flush()
-    try:
-        os.makedirs(args.wdir)
-    except FileExistsError:
-        pass
-    shutil.copyfile(
-        args.binning_file, os.path.join(args.wdir, "binning.yaw"))
+    outdir = CCFolder(args.wdir)
+    shutil.copyfile(args.binning_file, outdir.path_binning_file())
 
     # load the samples
     print("==> loading data objects")
@@ -262,24 +271,18 @@ if __name__ == "__main__":
             rand["weight"] = \
                 fits[1].data[args.rand_weight].byteswap().newbyteorder()
 
-    scales = []
-    rlimits = []
-    for rmin, rmax in zip(
-            str(args.scales_min).split(","), str(args.scales_max).split(",")):
-        rlimits.append((float(rmin), float(rmax)))
-        scales.append("kpc%st%s" % (rmin, rmax))
+    rlimits = [
+        (float(rmin), float(rmax)) for rmin, rmax in
+        zip(args.scales_min.split(","), args.scales_max.split(","))]
+    scale_names = [outdir.add_scale(rlim) for rlim in rlimits]
 
     sys.stdout.write("==> run yet another wizz\n")
     sys.stdout.flush()
 
-    for scale, (rmin, rmax) in zip(scales, rlimits):
-        sys.stdout.write("==> running scale %s\n" % scale)
+    for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
+        scaledir = outdir[scale_name]
+        sys.stdout.write("==> running scale %s\n" % scale_name)
         sys.stdout.flush()
-        paircoutdir = os.path.join(
-            args.wdir, "paircounts_" + scale)
-        if not os.path.exists(paircoutdir):
-            os.mkdir(paircoutdir)
-
         # create copies of PairMaker for each redshift bin
         est = PairMaker(
             args.map_file, args.map_region_no, threads=args.threads)
@@ -295,31 +298,17 @@ if __name__ == "__main__":
         pool.add_iterable(instances)
         dataframes = pool.map(run_ac_single_bin)
         # file names of intermediate products
-        meta_file = os.path.join(
-            paircoutdir, "AC_meta.pickle")
-        paircount_file = os.path.join(paircoutdir, "AC.pqt")
-        if os.path.exists(meta_file):
-            os.remove(meta_file)
-        if os.path.exists(paircount_file):
-            os.remove(paircount_file)
+        paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
+        meta_file = paircoutdir.join("AC_meta.pickle")
+        paircount_file = paircoutdir.join("AC.pqt")
         # write pair count data
         with open(meta_file, "wb") as f:
             pickle.dump(dataframes[0][0], f)
         pd.concat([frames[1] for frames in dataframes]).to_parquet(
             paircount_file)
-
-        scaledir = os.path.join(args.wdir, scale)
-        if not os.path.exists(scaledir):
-            os.mkdir(scaledir)
-        if args.output_suffix is None:
-            regionpicklefile = os.path.join(scaledir, "autocorr.pickle")
-        else:
-            regionpicklefile = os.path.join(
-                scaledir, "autocorr_%s.pickle" % args.output_suffix)
-        # delete existing output
-        if os.path.exists(regionpicklefile):
-            os.remove(regionpicklefile)
         # create region pickle
+        regionpicklefile = scaledir.path_autocorr_file(
+            ".pickle", suffix=args.output_suffix)
         try:
             pdf = PdfMaker(paircount_file, autocorr=True)
             pdf.setBinning(binning)

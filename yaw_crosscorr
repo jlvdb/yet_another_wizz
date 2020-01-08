@@ -12,6 +12,7 @@ import pandas as pd
 from astropy.cosmology import default_cosmology
 from astropy.io import fits as pyfits
 
+from yaw_tools.folders import Folder, CCFolder
 from yet_another_wizz.utils import write_argparse_summary
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
@@ -171,16 +172,14 @@ def bin_table(
     if zbins is None:
         try:
             zmin, zmax = data[z_name].min(), data[z_name].max()
-            filename = "bin_{:.3f}z{:.3f}.fits".format(zmin, zmax)
-            filename = os.path.join(bindir, os.path.basename(filename))
+            filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
             os.symlink(filepath, filename)
             frame = pd.DataFrame({
                 "RA": data[ra_name].byteswap().newbyteorder(),
                 "DEC": data[dec_name].byteswap().newbyteorder(),
                 "z": data[z_name].byteswap().newbyteorder()})
         except KeyError:
-            filename = "bin_all.fits"
-            filename = os.path.join(bindir, os.path.basename(filename))
+            filename = bindir.join("bin_all.fits")
             os.symlink(filepath, filename)
             frame = pd.DataFrame({
                 "RA": data[ra_name].byteswap().newbyteorder(),
@@ -192,8 +191,7 @@ def bin_table(
     else:
         for zmin, zmax in zbins:
             print("creating redshift slice %.3f <= z < %.3f" % (zmin, zmax))
-            filename = "bin_{:.3f}z{:.3f}.fits".format(zmin, zmax)
-            filename = os.path.join(bindir, os.path.basename(filename))
+            filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
             mask = (data[z_name] > zmin) & (data[z_name] <= zmax)
             print(
                 "selected %d out of %d objects" % (
@@ -242,10 +240,7 @@ if __name__ == '__main__':
     setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
     sys.stdout.write("set output folder to %s\n" % args.wdir)
     sys.stdout.flush()
-    try:
-        os.makedirs(args.wdir)
-    except FileExistsError:
-        pass
+    outdir = CCFolder(args.wdir)
 
     # compute region number or size
     Map = stomp.Map(os.path.abspath(os.path.realpath(args.map_file)))
@@ -261,8 +256,7 @@ if __name__ == '__main__':
         path = getattr(args, arg)
         if path is not None:
             setattr(args, arg, os.path.abspath(os.path.expanduser(path)))
-    write_argparse_summary(
-        args, os.path.join(args.wdir, "yet_another_wizz.param"))
+    write_argparse_summary(args, outdir.path_params_file())
 
     # load the reference sample
     print("==> loading unknown objects")
@@ -277,7 +271,7 @@ if __name__ == '__main__':
                 "ERROR: there are less then %d" % args.ref_source_limit +
                 " reference sources after masking")
             print("remove all output")
-            shutil.rmtree(args.wdir)
+            shutil.rmtree(outdir.root)
             sys.exit(1)
         else:
             sys.stdout.write(
@@ -286,14 +280,8 @@ if __name__ == '__main__':
         sys.stdout.flush()
 
     # create tomographic bins
-    testbindir = os.path.join(args.wdir, "test_sample_bins")
-    if os.path.exists(testbindir):
-        shutil.rmtree(testbindir)
-    os.mkdir(testbindir)
-    randbindir = os.path.join(args.wdir, "random_sample_bins")
-    if os.path.exists(randbindir):
-        shutil.rmtree(randbindir)
-    os.mkdir(randbindir)
+    testbindir = Folder(outdir.join("test_sample_bins"))
+    randbindir = Folder(outdir.join("random_sample_bins"))
     if args.test_bin_edges is not None:
         # construct tomographic bins
         zbins = []
@@ -313,8 +301,7 @@ if __name__ == '__main__':
         randdata, randfiles = bin_table(
             randbindir, args.rand_file, args.rand_ra, args.rand_dec,
             args.rand_z, args.rand_weight, zbins=zbins)
-        with open(os.path.join(args.wdir, "bin_weights.pickle"), "wb") as f:
-            pickle.dump(get_bin_weights(testdata, testfiles), f)
+        bin_weights_dict = get_bin_weights(testdata, testfiles)
     else:
         testdata, testfiles = bin_table(
             testbindir, args.test_file, args.test_ra, args.test_dec,
@@ -322,22 +309,22 @@ if __name__ == '__main__':
         randdata, randfiles = bin_table(
             randbindir, args.rand_file, args.rand_ra, args.rand_dec,
             args.rand_z, args.rand_weight, zbins=None)
+        bin_weights_dict = None
 
     try:
         D_R_ratio = 1.0 / float(args.R_D_ratio)
     except ValueError:
         D_R_ratio = args.R_D_ratio
 
-    binnigfile = os.path.join(args.wdir, "binning.yaw")
-    if os.path.exists(binnigfile):
-        os.remove(binnigfile)
+    rlimits = [
+        (float(rmin), float(rmax)) for rmin, rmax in
+        zip(args.scales_min.split(","), args.scales_max.split(","))]
+    scale_names = [outdir.add_scale(rlim) for rlim in rlimits]
+    # write bin weight pickles for each scale
+    for scale in scale_names:
+        with open(outdir[scale].path_weights_file(), "wb") as f:
+            pickle.dump(bin_weights_dict, f)
 
-    scales = []
-    rlimits = []
-    for rmin, rmax in zip(
-            str(args.scales_min).split(","), str(args.scales_max).split(",")):
-        rlimits.append((float(rmin), float(rmax)))
-        scales.append("kpc%st%s" % (rmin, rmax))
 
     sys.stdout.write("==> run yet another wizz\n")
     sys.stdout.flush()
@@ -376,28 +363,18 @@ if __name__ == '__main__':
                 est.setRandoms(randdata[i].RA, randdata[i].DEC)
         est.setReference(refdata.RA, refdata.DEC, refdata.z)
 
-        for scale, (rmin, rmax) in zip(scales, rlimits):
-            sys.stdout.write("==> running scale %s\n" % scale)
+        for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
+            scaledir = outdir[scale_name]
+            sys.stdout.write("==> running scale %s\n" % scale_name)
             sys.stdout.flush()
-
-            paircoutdir = os.path.join(
-                args.wdir, "paircounts_" + scale)
-            if not os.path.exists(paircoutdir):
-                os.mkdir(paircoutdir)
             # file names of intermediate products
+            paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
             if args.test_bin_edges is None:
-                meta_file = os.path.join(
-                    paircoutdir, "CC_meta.pickle")
-                paircount_file = os.path.join(paircoutdir, "CC.pqt")
+                meta_file = paircoutdir.join("CC_meta.pickle")
+                paircount_file = paircoutdir.join("CC.pqt")
             else:
-                meta_file = os.path.join(
-                    paircoutdir, "CC_%s_meta.pickle" % redshift)
-                paircount_file = os.path.join(
-                    paircoutdir, "CC_%s.pqt" % redshift)
-            if os.path.exists(meta_file):
-                os.remove(meta_file)
-            if os.path.exists(paircount_file):
-                os.remove(paircount_file)
+                meta_file = paircoutdir.join("CC_%s_meta.pickle" % redshift)
+                paircount_file = paircoutdir.join("CC_%s.pqt" % redshift)
             # count pairs
             est.countPairs(
                 rmin=rmin, rmax=rmax, comoving=False,
@@ -406,20 +383,9 @@ if __name__ == '__main__':
                 regionize_unknown=(args.across_regions == "N"))
             est.writeMeta(meta_file)
             est.writeCounts(paircount_file)
-
-            scaledir = os.path.join(args.wdir, scale)
-            if not os.path.exists(scaledir):
-                os.mkdir(scaledir)
-            if args.test_bin_edges is None:
-                regionpicklefile = os.path.join(
-                    scaledir, "crosscorr.pickle")
-            else:
-                regionpicklefile = os.path.join(
-                    scaledir, "crosscorr_%s.pickle" % redshift)
-            # delete existing output
-            if os.path.exists(regionpicklefile):
-                os.remove(regionpicklefile)
             # create region pickle
+            regionpicklefile = scaledir.path_crosscorr_file(
+                ".pickle", zlims=None if redshift == "all" else redshift)
             try:
                 pdf = PdfMaker(paircount_file, autocorr=False)
                 if args.ref_bin_type[0] == "adapt":
@@ -428,7 +394,7 @@ if __name__ == '__main__':
                     pdf.generateBinning(
                         args.ref_bin_no, args.z_min, args.z_max,
                         args.ref_bin_type[0])
-                pdf.writeBinning(binnigfile)
+                pdf.writeBinning(outdir.path_binning_file())
                 pdf.writeRegionPickle(regionpicklefile)
             except ValueError:  # empty pair counts file
                 print(

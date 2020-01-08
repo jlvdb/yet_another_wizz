@@ -4,8 +4,12 @@ import os
 import pickle
 import shutil
 import sys
+from collections import Counter
+from functools import reduce
 
 import numpy as np
+
+from yaw_tools.folders import CCFolder
 
 
 parser = argparse.ArgumentParser(
@@ -48,34 +52,48 @@ if __name__ == "__main__":
         abspath = os.path.abspath(os.path.expanduser(folder))
         if not os.path.exists(abspath):
             raise OSError("input folder not found: %s" % abspath)
-        folders.append(abspath)
+        folders.append(CCFolder(abspath))
     print("==> processing %d input folders" % len(folders))
 
     print("checking binning")
+    binning = None
     for folder in folders:
         try:
-            binning_file = os.path.join(folder, "binning.yaw")
-            next_binning = np.loadtxt(binning_file)
-            assert(np.all(binning == next_binning))
-        except NameError:
-            binning = next_binning
-        except AssertionError:
-            raise ValueError("binning does not match: %s" % binning_file)
+            next_binning = np.loadtxt(folder.path_binning_file())
         except OSError:
             raise ValueError(
-                "folder does not contain yet_another_wizz output: %s" % folder)
+                "folder does not contain yet_another_wizz output: %s" %
+                folder.root)
+        if binning is None:
+            binning = next_binning
+        elif not np.all(binning == next_binning):
+            raise ValueError(
+                "binning does not match: %s" % folder.path_binning_file())
+
+    # create the output folder and copy over one of the binning files
+    outdir = CCFolder(args.output)
+    if not os.path.exists(outdir.path_binning_file()):
+        shutil.copy(
+            folder.path_binning_file(),  # all the same in each folder
+            outdir.path_binning_file())
+    # check if any existing binning matches the input data
+    if os.path.exists(outdir.path_binning_file()):
+        old_binning = np.loadtxt(folder.path_binning_file())
+        new_binning = np.loadtxt(outdir.path_binning_file())
+        if not np.all(old_binning == new_binning):
+            raise ValueError(
+                "data in output folder exists but has different redshift " +
+                "binning: " + outdir.path_binning_file())
 
     # check which scales coexist
     print("finding correlation scales")
+    scale_counter = Counter()
     for folder in folders:
-        next_scales = set(
-            f for f in os.listdir(folder) if f.startswith("kpc"))
-        try:
-            common_scales &= next_scales
-            all_scales |= next_scales
-        except NameError:
-            common_scales = set(s for s in next_scales)
-            all_scales = set(s for s in next_scales)
+        scale_counter.update(folder.list_scalenames())
+    all_scales = set(scale_counter.keys())
+    common_scales = set(
+        scale for scale, count in scale_counter.items()
+        if count == len(folders))
     print("found scales: %s" % str(all_scales))
     if args.scale is None:
         print("selecting:    %s" % str(common_scales))
@@ -87,178 +105,106 @@ if __name__ == "__main__":
         if args.scale not in common_scales:
             print(
                 "WARNING: scale '%s' is not common to all input" % args.scale)
-        scales = [args.scales]
+        scales = [args.scale]
+    if len(scales) == 0:
+        sys.exit("WARNING: there is nothing to do")
+    # create the required scale folders at the output destination
+    for scale in scales:
+        outdir.add_scale(scale)
 
-    # list folders that have the requested scale
+    # remove scale folders that were not selected
     scale_folders = {}
     for scale in scales:
         scale_folders[scale] = []
         for folder in folders:
-            scale_folder = os.path.join(folder, scale)
-            if os.path.exists(scale_folder):
-                scale_folders[scale].append(scale_folder)
+            if scale in folder:
+                scale_folders[scale].append(folder[scale])
 
-    # check which pickle types are to be merged
-    merge_autocorr = {}
-    merge_crosscorr = {}
-    for scale, in_folders in scale_folders.items():
-        autocorr = np.full(len(in_folders), False, dtype="bool")
-        crosscorr = np.full(len(in_folders), False, dtype="bool")
-        # check which pickle types exist
-        for i, folder in enumerate(in_folders):
-            for path in os.listdir(folder):
-                if path.startswith("autocorr") and path.endswith(".pickle"):
-                    autocorr[i] = True
-                if path.startswith("crosscorr") and path.endswith(".pickle"):
-                    crosscorr[i] = True
-        # check that all folders have auto-correlations
-        if np.all(autocorr):
-            merge_autocorr[scale] = True
-        elif np.any(autocorr):
-            raise ValueError(
-                "missing autocorrelation pickles in %d / %d input folders" %
-                (np.count_nonzero(~autocorr), len(autocorr)))
-        else:
-            merge_autocorr[scale] = False
-        # check that all folders have cross-correlations
-        if np.all(crosscorr):
-            merge_crosscorr[scale] = True
-        elif np.any(crosscorr):
-            raise ValueError(
-                "missing autocorrelation pickles in %d / %d input folders" %
-                (np.count_nonzero(~crosscorr), len(crosscorr)))
-        else:
-            merge_crosscorr[scale] = False
-
-    if all(not cc for cc in merge_crosscorr.values()) and \
-            all(not ac for ac in merge_autocorr.values()):
-        sys.exit("WARNING: there is nothing to do")
-
-    outdir = os.path.abspath(os.path.expanduser(args.output))
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-    binning_copy = os.path.join(outdir, "binning.yaw")
-    if not os.path.exists(binning_copy):
-        shutil.copy(binning_file, binning_copy)
-    else:
-        old_binning = np.loadtxt(binning_copy)
-        new_binning = np.loadtxt(binning_file)
-        if not np.all(old_binning == new_binning):
-            raise ValueError(
-                "data in output folder exists but has different redshift " +
-                "binning: " + outdir)
-    # merge the pickles
     for scale in scales:
         print("==> processing scale: %s" % scale)
-        scaledir = os.path.join(outdir, scale)
-        if not os.path.exists(scaledir):
-            os.makedirs(scaledir)
+        N_folders = len(scale_folders[scale])
 
-        if merge_autocorr[scale]:
+        # check which correlation pickles exist
+        zbin_counter = Counter()
+        suffix_counter = Counter()
+        for folder in scale_folders[scale]:
+            zbin_dict = folder.list_crosscorr_files(".pickle")
+            zbin_counter.update(zbin_dict.keys())
+            suffix_dict = folder.list_autocorr_files(".pickle")
+            suffix_counter.update(suffix_dict.keys())
+        zbins = set(zbin_counter.keys())
+        suffixes = set(suffix_counter.keys())
+        # check that each folder contains all cross-correlation redshift bin
+        for zbin, count in zbin_counter.items():
+            if count != N_folders:
+                string = "missing cross-correlation pickles for "
+                string += "bin '%s' " % zbin
+                string += "in %d / %d input folders" % (
+                    N_folders - count, N_folders)
+                raise ValueError(string)
+        # check that each folder contains all auto-correlation suffixes
+        for suffix, count in suffix_counter.items():
+            if count != N_folders:
+                string = "missing auto-correlation pickles for "
+                string += "suffix '%s' " % suffix
+                string += "in %d / %d input folders" % (
+                    N_folders - count, N_folders)
+                raise ValueError(string)
+
+        # merge the pickles
+        if len(zbins) == 0 and len(suffixes) == 0:
+            sys.exit("WARNING: there is nothing to do")
+ 
+        if len(suffixes) > 0:
             print("merging auto-correlation pickles")
-            pickle_paths = {}
-            for folder in scale_folders[scale]:
-                pickles = [
-                    os.path.join(folder, path) for path in os.listdir(folder)
-                    if path.startswith("autocorr") and
-                    path.endswith(".pickle")]
-                for path in pickles:
-                    try:
-                        base = os.path.basename(path)
-                        name = os.path.splitext(base)[0]
-                        typename = name.split("_")[1]
-                    except IndexError:
-                        typename = "[none]"
-                    if typename not in pickle_paths:
-                        pickle_paths[typename] = []
-                    pickle_paths[typename].append(path)
-            print(
-                "found auto-correlation type: %s" %
-                str(sorted(pickle_paths.keys())))
-            for typename, paths in pickle_paths.items():
-                try:
-                    assert(len(scale_folders[scale]) == len(paths))
-                except AssertionError:
-                    raise ValueError(
-                        "expected %d input files for type '%s' but got %d" %
-                        (len(scale_folders[scale]), typename, len(paths)))
-            for typename, paths in pickle_paths.items():
+            print("found auto-correlation types: %s" % str(sorted(suffixes)))
+            for suffix in suffixes:
+                paths = [
+                    folder.path_autocorr_file(".pickle", suffix=suffix)
+                    for folder in scale_folders[scale]]
                 master_pickle = merge_pickles(paths)
-                if typename == "[none]":
-                    outpath = os.path.join(scaledir, "autocorr.pickle")
-                else:
-                    outpath = os.path.join(
-                        scaledir, "autocorr_%s.pickle" % typename)
+                outpath = outdir[scale].path_autocorr_file(
+                    ".pickle", suffix=suffix)
                 print("writing merged pickle pickle: %s" % outpath)
                 with open(outpath, "wb") as f:
                     pickle.dump(master_pickle, f)
 
-        if merge_crosscorr[scale]:
+        if len(zbins) > 0:
             print("merging cross-correlation pickles")
-            pickle_paths = {}
-            for folder in scale_folders[scale]:
-                pickles = [
-                    os.path.join(folder, path) for path in os.listdir(folder)
-                    if path.startswith("crosscorr") and
-                    path.endswith(".pickle")]
-                for path in pickles:
-                    try:
-                        base = os.path.basename(path)
-                        name = os.path.splitext(base)[0]
-                        binname = name.split("_")[1]
-                    except IndexError:
-                        binname = "ALL"
-                    if binname not in pickle_paths:
-                        pickle_paths[binname] = []
-                    pickle_paths[binname].append(path)
-            print(
-                "found tomographic bins: %s" %
-                str(sorted(pickle_paths.keys())))
-            for binname, paths in pickle_paths.items():
-                try:
-                    assert(len(scale_folders[scale]) == len(paths))
-                except AssertionError:
-                    raise ValueError(
-                        "expected %d input files for bin '%s' but got %d" %
-                        (len(scale_folders[scale]), binname, len(paths)))
-            for binname, paths in pickle_paths.items():
+            print("found tomographic bins: %s" % str(sorted(zbins)))
+            for zbins in zbins:
+                paths = [
+                    folder.path_crosscorr_file(".pickle", zlims=zbin)
+                    for folder in scale_folders[scale]]
                 master_pickle = merge_pickles(paths)
-                if binname == "ALL":
-                    outpath = os.path.join(scaledir, "crosscorr.pickle")
-                else:
-                    outpath = os.path.join(
-                        scaledir, "crosscorr_%s.pickle" % binname)
+                outpath = outdir[scale].path_crosscorr_file(
+                    ".pickle", zlims=zbin)
                 print("writing merged pickle pickle: %s" % outpath)
                 with open(outpath, "wb") as f:
                     pickle.dump(master_pickle, f)
 
-    # sum the bin weights together
-    weights_exist = [os.path.exists(
-        os.path.join(folder, "bin_weights.pickle")) for folder in folders]
-    if not any(weights_exist):
-        print("found no tomographic bin weights to sum")
-    elif not all(weights_exist):
-        raise ValueError("not all input folders have bin weight files")
-    else:
-        print("compute the combined tomographic bin weights")
-        weight_pickles = []
-        for folder in folders:
-            with open(os.path.join(folder, "bin_weights.pickle"), "rb") as f:
-                data = pickle.load(f)
-                weight_pickles.append(data)
-                try:
-                    assert(bin_keys == set(data.keys()))
-                except NameError:
-                    bin_keys = set(data.keys())
-                except AssertionError:
-                    raise ValueError(
-                        "cannot combine weights of differing tomographic bins")
-        master_weight = {key: 0.0 for key in bin_keys}
-        for weights in weight_pickles:
-            for key in bin_keys:
-                master_weight[key] += weights[key]
-        print(
-            "weight sum:   %s" % {
-                k: "%.2e" % v for k, v in master_weight.items()})
-        with open(os.path.join(outdir, "bin_weights.pickle"), "wb") as f:
-            pickle.dump(master_weight, f)
+        # sum the bin weights together
+        weights_exist = [
+            os.path.exists(folder.path_weights_file())
+            for folder in scale_folders[scale]]
+        if not any(weights_exist):
+            print("found no tomographic bin weights to sum")
+        elif not all(weights_exist):
+            raise ValueError("not all input folders have bin weight files")
+        else:
+            print("compute the combined tomographic bin weights")
+            weights = []
+            for folder in scale_folders[scale]:
+                with open(folder.path_weights_file(), "rb") as f:
+                    data = Counter(pickle.load(f))  # dict with zbins as keys
+                    if set(data.keys()) == zbins:
+                        raise ValueError(
+                    "not all bins have an associated weight")
+                    # Counters are like dicts but can be summed
+                    weights.append(Counter(data))
+            weight_sum = dict(reduce(lambda x, y : x + y, weights))
+            print(
+                "weight sum:   %s" % {
+                    k: "%.2e" % v for k, v in weight_sum.items()})
+            with open(outdir[scale].path_weights_file(), "wb") as f:
+                pickle.dump(weight_sum, f)
