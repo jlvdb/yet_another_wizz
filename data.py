@@ -187,7 +187,7 @@ class zhistogram(object):
             else:
                 self.weights = np.ones(np.count_nonzero(bin_mask))
         else:
-            self.data = datanp.histogram
+            self.data = zdata
             if weights is not None:
                 self.weights = weights
             else:
