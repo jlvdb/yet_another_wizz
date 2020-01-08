@@ -7,10 +7,6 @@
 - Add a custom implementation for Nz_Fitting.RedshiftData and
   Nz_Fitting.BinnedRedshiftData that resamples directly from pickles.
 
-## io.py
-- New file that implements a methods to find or create data files in the
-  typical YAW folder structure.
-
 ## yaw_pickles_to_redshift
 - Selecte error estimation method (bootstrap/jackknife).
 
