@@ -7,7 +7,7 @@ from hashlib import md5
 
 import numpy as np
 from numpy import ma
-from yaw_tools.folders import binname, CCFolder
+from yaw_tools.folders import CCFolder, binname
 from yaw_tools.pickles import AutoCorrelationPickle, CrossCorrelationPickle
 
 

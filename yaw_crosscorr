@@ -11,11 +11,11 @@ import numpy as np
 import pandas as pd
 from astropy.cosmology import default_cosmology
 from astropy.io import fits as pyfits
+from yaw_tools.folders import CCFolder, Folder
 
-from yaw_tools.folders import Folder, CCFolder
-from yet_another_wizz.utils import write_argparse_summary
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
+from yet_another_wizz.utils import write_argparse_summary
 
 
 # input data
