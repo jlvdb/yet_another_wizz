@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import re
-import shutil
 import warnings
+from collections import Counter
 from hashlib import md5
 
 import numpy as np
 from numpy import ma
+from yaw_tools.folders import binname, CCFolder
 from yaw_tools.pickles import AutoCorrelationPickle, CrossCorrelationPickle
 
 
@@ -68,87 +68,67 @@ if __name__ == "__main__":
     if not os.path.exists(args.wdir):
         raise OSError("input folder does not exist")
     print("==> processing data in: %s" % args.wdir)
+    indir = CCFolder(args.wdir)
 
     # check if a binning file and which scale dirs exits
-    if not os.path.exists(os.path.join(args.wdir, "binning.yaw")):
+    if not os.path.exists(indir.path_binning_file()):
         raise ValueError("input folder does not contain valid output")
 
     print("finding correlation scales")
-    scale_pattern = re.compile("kpc\d*t\d*")
-    scales = set()
-    for path in os.listdir(args.wdir):
-        if scale_pattern.fullmatch(path):
-            scales.add(os.path.join(args.wdir, path))
+    scales = set(indir.list_scalenames())
     if len(scales) == 0:
         raise ValueError("input folder contains no scales")
     print("found scales: %s" % set(os.path.basename(s) for s in scales))
 
-    # check if all scales contain any requested auto-correlation pickles
-    if args.bias_spec is not None:
-        spec_ac_pickle = {
-            scale: os.path.join(scale, "autocorr_%s.pickle" % args.bias_spec)
-            for scale in scales}
-        for ac_file in spec_ac_pickle:
-            if not os.path.exists(ac_file):
-                raise ValueError(
-                    "requested auto-correlation pickle does not exist: %s" %
-                    ac_file)
-        print("found spec. auto-correlation file")
-    if args.bias_phot is not None:
-        phot_ac_pickle = {
-            scale: os.path.join(scale, "autocorr_%s.pickle" % args.bias_phot)
-            for scale in scales}
-        for ac_file in phot_ac_pickle:
-            if not os.path.exists(ac_file):
-                raise ValueError(
-                    "requested auto-correlation pickle does not exist: %s" %
-                    ac_file)
-        print("found phot. auto-correlation file")
+    # convert the pickles
+    for scale, scaledir in indir.iter_scales():
+        print("==> processing scale: %s" % scale)
 
-    # find the cross-correlation files
-    print("finding region pickles")
-    cc_files = {scale: set() for scale in scales}
-    cc_pattern = re.compile("crosscorr_\d*.\d*z\d*.\d*.pickle")
-    for scale in scales:
-        for path in os.listdir(scale):
-            if cc_pattern.fullmatch(path):
-                cc_files[scale].add(os.path.join(scale, path))
-    if sum(len(v) for v in cc_files.values()) == 0:
-        raise ValueError("no region pickle files found")
+        # check which correlation pickles exist
+        cc_files = scaledir.list_crosscorr_files(".pickle").values()
+        if len(cc_files) == 0:
+            raise ValueError("no cross-correlation pickles found")
+        ac_dict = scaledir.list_autocorr_files(".pickle")
+        if args.bias_spec is not None:
+            try:
+                spec_ac_pickle = ac_dict[args.bias_spec]
+                print("found spec. auto-correlation pickle")
+            except KeyError:
+                raise ValueError("spec. auto-correlation pickle not found")
+        else:
+            spec_ac_pickle = None
+        if args.bias_phot is not None:
+            try:
+                phot_ac_pickle = ac_dict[args.bias_phot]
+                print("found phot. auto-correlation pickle")
+            except KeyError:
+                raise ValueError("phot. auto-correlation pickle not found")
+        else:
+            phot_ac_pickle = None
 
-    # now everything should be good and we can produce output
-    if args.output is None:
-        setattr(args, "output", args.wdir)
-    setattr(args, "output", os.path.abspath(os.path.expanduser(args.output)))
-    if not os.path.exists(args.output):
-        os.makedirs(args.output)
-    print("==> writing all output to: %s" % args.output)
-    binning_file = os.path.join(args.output, "binning.yaw")
-    if not os.path.exists(binning_file):
-        shutil.copy(os.path.join(args.wdir, "binning.yaw"), binning_file)
-    weights_in = os.path.join(args.wdir, "bin_weights.pickle")
-    weights_out = os.path.join(args.output, "bin_weights.pickle")
-    if os.path.exists(weights_in) and not os.path.exists(weights_out):
-        shutil.copy(weights_in, weights_out)
+        print(scaledir.root)
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        for scale in scales:
+        # now everything should be good and we can produce output
+        if args.output is None:
+            outdir = indir
+        else:
+            outdir = indir.copy_meta_to(args.output)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
             # load the auto-correlation pickles
-            scaledir = os.path.basename(scale)
-            print(
-                "processing folder: %s" % os.path.join(args.output, scaledir))
             idx = None
-            if args.bias_spec:
-                ac_spec = AutoCorrelationPickle(spec_ac_pickle[scale])
-            if args.bias_phot:
-                ac_phot = AutoCorrelationPickle(phot_ac_pickle[scale])
+            if spec_ac_pickle is not None:
+                ac_spec = AutoCorrelationPickle(spec_ac_pickle)
+            if phot_ac_pickle is not None:
+                ac_phot = AutoCorrelationPickle(phot_ac_pickle)
             y_samples_global = {}
             # process the cross-correlation pickles
             hasher = md5(bytes(args.seed, "utf-8"))
             hashval = bytes(hasher.hexdigest(), "utf-8")
             np.random.seed(np.frombuffer(hashval, dtype=np.uint32))
-            for path in cc_files[scale]:
+            print(cc_files)
+            for path in cc_files:
                 cc = CrossCorrelationPickle(path)
                 key = "w_sp"
                 if idx is None:  # generate bootstrap samples
@@ -175,17 +155,12 @@ if __name__ == "__main__":
                     bias_samples *= ac_phot.get_samples()
                 y /= np.sqrt(bias)
                 y_samples /= np.sqrt(bias_samples)
-                y_samples_global[os.path.basename(path)] = y_samples.copy()
+                y_samples_global[binname(path)] = y_samples.copy()
                 err = np.nanstd(y_samples, axis=1)
                 nz_array = np.stack([z, y, err]).T
                 cov = nancov(y_samples)
                 # write data to file
-                outbase = os.path.splitext(
-                    os.path.basename(path))[0] + ".%s" % args.extension
-                outdir = os.path.join(args.output, scaledir)
-                if not os.path.exists(outdir):
-                    os.mkdir(outdir)
-                outpath = os.path.join(outdir, outbase)
+                outpath = outdir[scale].incorporate(path, args.extension)
                 print(
                     "writing redshift distribution to: %s" %
                     os.path.basename(outpath))
@@ -194,26 +169,20 @@ if __name__ == "__main__":
                 header += "col 3 = amplitude error"
                 np.savetxt(outpath, nz_array, header=header)
                 # write covariance matrix
-                outbase = os.path.splitext(
-                    os.path.basename(path))[0] + ".cov"
-                outpath = os.path.join(outdir, outbase)
+                outpath = outdir[scale].incorporate(path, ".cov")
                 print(
                     "writing covariance matrix to:     %s" %
                     os.path.basename(outpath))
                 header = "correlation amplitude (%s) covariance matrix" % key
                 np.savetxt(outpath, cov, header=header)
             # process auto-correlation pickles
-            if args.bias_spec:
+            if spec_ac_pickle is not None:
                 wz_array = np.stack([
                     ac_spec.get_redshifts(),
                     ac_spec.get_amplitudes(),
                     ac_spec.get_errors()]).T
-                outbase = os.path.splitext(
-                    os.path.basename(spec_ac_pickle[scale]))[0] + ".wss"
-                outdir = os.path.join(args.output, scaledir)
-                if not os.path.exists(outdir):
-                    os.mkdir(outdir)
-                outpath = os.path.join(outdir, outbase)
+                outpath = outdir[scale].incorporate(
+                    spec_ac_pickle, args.extension)
                 print(
                     "writing auto-correlation to:      %s" %
                     os.path.basename(outpath))
@@ -221,17 +190,13 @@ if __name__ == "__main__":
                 header += "col 2 = correlation amplitude (w_ss)\n"
                 header += "col 3 = amplitude error"
                 np.savetxt(outpath, wz_array, header=header)
-            if args.bias_phot:
+            if phot_ac_pickle is not None:
                 wz_array = np.stack([
                     ac_phot.get_redshifts(),
                     ac_phot.get_amplitudes(),
                     ac_phot.get_errors()]).T
-                outbase = os.path.splitext(
-                    os.path.basename(phot_ac_pickle[scale]))[0] + ".wpp"
-                outdir = os.path.join(args.output, scaledir)
-                if not os.path.exists(outdir):
-                    os.mkdir(outdir)
-                outpath = os.path.join(outdir, outbase)
+                outpath = outdir[scale].incorporate(
+                    phot_ac_pickle, args.extension)
                 print(
                     "writing auto-correlation to:      %s" %
                     os.path.basename(outpath))
@@ -244,6 +209,7 @@ if __name__ == "__main__":
                 print("omitting global covariance estimation")
             else:
                 data_keys = y_samples_global.keys()
+                print(args.cov_order, data_keys)
                 y_global = None
                 for key in args.cov_order:
                     dkey = "#####"
@@ -261,9 +227,9 @@ if __name__ == "__main__":
                         y_global = np.concatenate([y_global, y_samples])
                 cov_global = nancov(y_global)
                 # write global covariance matrix
-                outbase = os.path.basename(path).split("_", maxsplit=1)[0]
-                outbase += "_global.cov"
-                outpath = os.path.join(outdir, outbase)
+                outpath = outdir[scale].incorporate(
+                    os.path.basename(path).split("_", maxsplit=1)[0] +
+                    "_global.cov")
                 print(
                     "writing covariance matrix to:     %s" %
                     os.path.basename(outpath))

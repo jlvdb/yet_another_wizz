@@ -172,7 +172,7 @@ if __name__ == "__main__":
         if len(zbins) > 0:
             print("merging cross-correlation pickles")
             print("found tomographic bins: %s" % str(sorted(zbins)))
-            for zbins in zbins:
+            for zbin in zbins:
                 paths = [
                     folder.path_crosscorr_file(".pickle", zlims=zbin)
                     for folder in scale_folders[scale]]
@@ -197,9 +197,9 @@ if __name__ == "__main__":
             for folder in scale_folders[scale]:
                 with open(folder.path_weights_file(), "rb") as f:
                     data = Counter(pickle.load(f))  # dict with zbins as keys
-                    if set(data.keys()) == zbins:
+                    if set(data.keys()) != zbins:
                         raise ValueError(
-                    "not all bins have an associated weight")
+                            "not all bins have an associated weight")
                     # Counters are like dicts but can be summed
                     weights.append(Counter(data))
             weight_sum = dict(reduce(lambda x, y : x + y, weights))
