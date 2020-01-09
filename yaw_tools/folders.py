@@ -4,6 +4,10 @@ import shutil
 from collections import OrderedDict
 
 
+DEFAULT_EXT_DATA = ".dat"
+DEFAULT_EXT_BOOT = ".boot"
+
+
 def getext(path):
     try:
         base, ext = os.path.splitext(path)
@@ -153,7 +157,8 @@ class CCFolder(Folder):
 
     def __getitem__(self, key):
         if key not in self.list_scalenames():
-            raise KeyError("scale '%s' does not exist in '%s'" % (key, self.root))
+            raise KeyError(
+                "scale '%s' does not exist in '%s'" % (key, self.root))
         else:
             return self.scales[key]
 
@@ -161,7 +166,7 @@ class CCFolder(Folder):
         return scale in self.scales
 
     def path_binning_file(self):
-        return self.join("binning.yaw")
+        return self.join("binning%s" % DEFAULT_EXT_DATA)
 
     def path_params_file(self):
         return self.join("yet_another_wizz.param")
@@ -238,14 +243,14 @@ if __name__ == "__main__":
     print("# file path proposals")
     pprint(sf.path_autocorr_file(".pickle"))
     pprint(sf.path_autocorr_file(".pickle", suffix="spec"))
-    pprint(sf.path_crosscorr_file(".yaw"))
-    pprint(sf.path_crosscorr_file(".yaw", [0.101, 0.301]))
+    pprint(sf.path_crosscorr_file(DEFAULT_EXT_DATA))
+    pprint(sf.path_crosscorr_file(DEFAULT_EXT_DATA, [0.101, 0.301]))
     pprint(sf.path_weights_file())
     print("# listing files")
-    pprint(sf.list_autocorr_files(".wss"))
-    pprint(sf.list_autocorr_files(".wpp"))
-    pprint(sf.list_crosscorr_files(".yaw"))
-    pprint(sf.list_crosscorr_files(".cov"))
+    pprint(sf.list_autocorr_files(DEFAULT_EXT_DATA))
+    pprint(sf.list_autocorr_files(DEFAULT_EXT_DATA))
+    pprint(sf.list_crosscorr_files(DEFAULT_EXT_DATA))
+    pprint(sf.list_crosscorr_files(DEFAULT_EXT_DATA))
 
     print()
 
@@ -258,9 +263,9 @@ if __name__ == "__main__":
     pprint(cf.list_scalepaths())
     pprint(tuple(cf.iter_scales()))
     print("# finding files")
-    pprint(cf.find_autocorr_files(".wpp"))
-    pprint(cf.find_autocorr_files(".wss"))
-    pprint(cf.find_crosscorr_files(".yaw"))
+    pprint(cf.find_autocorr_files(DEFAULT_EXT_DATA))
+    pprint(cf.find_autocorr_files(DEFAULT_EXT_DATA))
+    pprint(cf.find_crosscorr_files(DEFAULT_EXT_DATA))
     print("# keyword lookup and membership tests")
     pprint(cf["kpc100t1000"].root)
     pprint("kpc100t1000" in cf)

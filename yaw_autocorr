@@ -298,7 +298,7 @@ if __name__ == "__main__":
         dataframes = pool.map(run_ac_single_bin)
         # file names of intermediate products
         paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
-        meta_file = paircoutdir.join("AC_meta.pickle")
+        meta_file = paircoutdir.join("AC_meta.pkl")
         paircount_file = paircoutdir.join("AC.pqt")
         # write pair count data
         with open(meta_file, "wb") as f:
@@ -307,7 +307,7 @@ if __name__ == "__main__":
             paircount_file)
         # create region pickle
         regionpicklefile = scaledir.path_autocorr_file(
-            ".pickle", suffix=args.output_suffix)
+            ".pkl", suffix=args.output_suffix)
         try:
             pdf = PdfMaker(paircount_file, autocorr=True)
             pdf.setBinning(binning)

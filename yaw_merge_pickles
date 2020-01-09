@@ -127,9 +127,9 @@ if __name__ == "__main__":
         zbin_counter = Counter()
         suffix_counter = Counter()
         for folder in scale_folders[scale]:
-            zbin_dict = folder.list_crosscorr_files(".pickle")
+            zbin_dict = folder.list_crosscorr_files(".pkl")
             zbin_counter.update(zbin_dict.keys())
-            suffix_dict = folder.list_autocorr_files(".pickle")
+            suffix_dict = folder.list_autocorr_files(".pkl")
             suffix_counter.update(suffix_dict.keys())
         zbins = set(zbin_counter.keys())
         suffixes = set(suffix_counter.keys())
@@ -159,12 +159,12 @@ if __name__ == "__main__":
             print("found auto-correlation types: %s" % str(sorted(suffixes)))
             for suffix in suffixes:
                 paths = [
-                    folder.path_autocorr_file(".pickle", suffix=suffix)
+                    folder.path_autocorr_file(".pkl", suffix=suffix)
                     for folder in scale_folders[scale]]
                 master_pickle = merge_pickles(paths)
                 outpath = outdir[scale].path_autocorr_file(
-                    ".pickle", suffix=suffix)
-                print("writing merged pickle pickle: %s" % outpath)
+                    ".pkl", suffix=suffix)
+                print("writing merged pickle: %s" % outpath)
                 with open(outpath, "wb") as f:
                     pickle.dump(master_pickle, f)
 
@@ -173,12 +173,12 @@ if __name__ == "__main__":
             print("found tomographic bins: %s" % str(sorted(zbins)))
             for zbin in zbins:
                 paths = [
-                    folder.path_crosscorr_file(".pickle", zlims=zbin)
+                    folder.path_crosscorr_file(".pkl", zlims=zbin)
                     for folder in scale_folders[scale]]
                 master_pickle = merge_pickles(paths)
                 outpath = outdir[scale].path_crosscorr_file(
                     ".pickle", zlims=zbin)
-                print("writing merged pickle pickle: %s" % outpath)
+                print("writing merged pickle: %s" % outpath)
                 with open(outpath, "wb") as f:
                     pickle.dump(master_pickle, f)
 
