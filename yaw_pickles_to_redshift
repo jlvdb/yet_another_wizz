@@ -8,8 +8,22 @@ from hashlib import md5
 import numpy as np
 from numpy import ma
 from yaw_tools.folders import (
-    binname, CCFolder, DEFAULT_EXT_DATA, DEFAULT_EXT_BOOT)
+    binname, CCFolder, DEFAULT_EXT_DATA, DEFAULT_EXT_BOOT, DEFAULT_EXT_COV)
 from yaw_tools.pickles import AutoCorrelationPickle, CrossCorrelationPickle
+
+
+def check_autocorrelation(scaledir, suffix_name, name):
+    ac_dict = scaledir.list_autocorr_files(".pkl")
+    if suffix_name is not None:
+        try:
+            pickle_path = ac_dict[suffix_name]
+            print("found %s auto-correlation pickle" % name)
+        except KeyError:
+            raise ValueError("%s auto-correlation pickle not found" % name)
+    else:
+        pickle_path = None
+    use_corr = pickle_path is not None
+    return pickle_path, use_corr
 
 
 def nancov(bootstraps):
@@ -28,6 +42,51 @@ def nancov(bootstraps):
         covar[:, i] = 0.0
         covar[i, i] = np.inf
     return covar
+
+
+def convert_pickle(
+        scaledir, pickle_path, header_key, bias=None, bias_samples=None):
+    pickler = AutoCorrelationPickle(pickle_path)
+    # initialize the bootstrap resampling indices
+    global boot_idx
+    if boot_idx is None:
+        pickler.generate_sampling_idx(n_bootstraps=args.n_boot)
+        boot_idx = cc.get_sampling_idx()
+    else:
+        pickler.set_sampling_idx(boot_idx)
+    # create the realisations
+    redshifts = pickler.get_redshifts()
+    amplitudes = pickler.get_amplitudes()
+    samples = pickler.get_samples()
+    if bias is None:
+        errors = pickler.get_errors()
+    else:
+        # compute errors of bias corrected correlation amplitudes
+        errors = np.nanstd(samples[zbin], axis=1)
+    # create correlation amplitude file
+    outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_DATA)
+    print(
+        "writing data to: %s.*" %
+        os.path.basename(os.path.splitext(outpath)[0]))
+    nz_array = np.transpose([redshifts, amplitudes, errors])
+    header = "col 1 = mean redshift\n"
+    header += "col 2 = correlation amplitude (%s)\n" % key
+    header += "col 3 = amplitude error"
+    np.savetxt(outpath, nz_array, header=header)
+    # store optional bootstrap samples
+    if args.store_boot:
+        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_DATA)
+        np.savetxt(
+            outpath, samples,
+            header="correlation amplitude (%s) realisations" % header_key)
+    # store covariance matrix
+    if args.store_cov:
+        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_COV)
+        np.savetxt(
+            outpath, nancov(samples),
+            header="correlation amplitude (%s) covariance matrix" % header_key)
+    # return data needed for CC bias mitigation
+    return amplitudes, samples
 
 
 parser = argparse.ArgumentParser(
@@ -86,33 +145,27 @@ if __name__ == "__main__":
         raise ValueError("input folder contains no scales")
     print("found scales: %s" % set(os.path.basename(s) for s in scales))
 
+    # initialize the random state
+    hasher = md5(bytes(args.seed, "utf-8"))
+    hashval = bytes(hasher.hexdigest(), "utf-8")
+    np.random.seed(np.frombuffer(hashval, dtype=np.uint32))
+    # global should be always the same once initialized
+    boot_idx = None
+
     # convert the pickles
     for scale, scaledir in indir.iter_scales():
         print("==> processing scale: %s" % scale)
 
         # check which correlation pickles exist
-        cc_files = scaledir.list_crosscorr_files(".pkl").values()
+        cc_pickles = scaledir.list_crosscorr_files(".pkl")
         if len(cc_files) == 0:
             raise ValueError("no cross-correlation pickles found")
-        ac_dict = scaledir.list_autocorr_files(".pkl")
-        if args.bias_spec is not None:
-            try:
-                spec_ac_pickle = ac_dict[args.bias_spec]
-                print("found spec. auto-correlation pickle")
-            except KeyError:
-                raise ValueError("spec. auto-correlation pickle not found")
-        else:
-            spec_ac_pickle = None
-        if args.bias_phot is not None:
-            try:
-                phot_ac_pickle = ac_dict[args.bias_phot]
-                print("found phot. auto-correlation pickle")
-            except KeyError:
-                raise ValueError("phot. auto-correlation pickle not found")
-        else:
-            phot_ac_pickle = None
-
-        print(scaledir.root)
+        # figure out whether to use spectroscopic auto-correlation
+        ac_spec_pickle, use_wss = check_autocorrelation(
+            scaledir, args.bias_spec, "spec.")
+        # figure out whether to use photometric auto-correlation
+        ac_phot_pickle, use_wpp = check_autocorrelation(
+            scaledir, args.bias_phot, "phot.")
 
         # now everything should be good and we can produce output
         if args.output is None:
@@ -120,178 +173,66 @@ if __name__ == "__main__":
         else:
             outdir = indir.copy_meta_to(args.output)
 
+        # NaNs are to be expected so we ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            # load the auto-correlation pickles
-            idx = None
-            if spec_ac_pickle is not None:
-                ac_spec = AutoCorrelationPickle(spec_ac_pickle)
-            if phot_ac_pickle is not None:
-                ac_phot = AutoCorrelationPickle(phot_ac_pickle)
-            y_samples_global = {}
+
+            # process auto-correlation pickles and compute the bias correction
+            amp_product = np.ones_like(amplitudes)
+            amp_product_samples = np.ones_like(y_samples)
+            header_key = "w_sp"
+            if use_wss:
+                amplitudes, samples = convert_pickle(
+                    scaledir, ac_spec_pickle, "w_ss")
+                amp_product *= amplitudes
+                amp_product_samples *= samples
+                key += " / bias_spec"
+            if use_wpp:
+                amplitudes, samples = convert_pickle(
+                    scaledir, ac_phot_pickle, "w_pp")
+                amp_product *= amplitudes
+                amp_product_samples *= samples
+                key += " / bias_phot"
+            # apply the bias correction
+            bias = np.sqrt(amp_product)
+            bias_samples = np.sqrt(amp_product_samples)
+            
+
             # process the cross-correlation pickles
-            hasher = md5(bytes(args.seed, "utf-8"))
-            hashval = bytes(hasher.hexdigest(), "utf-8")
-            np.random.seed(np.frombuffer(hashval, dtype=np.uint32))
-
-            for path in cc_files:
-                cc = CrossCorrelationPickle(path)
-                key = "w_sp"
-                if idx is None:  # generate bootstrap samples
-                    cc.generate_sampling_idx(n_bootstraps=args.n_boot)
-                    idx = cc.get_sampling_idx()
-                    if args.bias_spec:
-                        ac_spec.set_sampling_idx(idx)
-                    if args.bias_phot:
-                        ac_phot.set_sampling_idx(idx)
-                cc.set_sampling_idx(idx)  # apply the same sampling everywhere
-                # compute the cross-correlation redshifts
-                z = cc.get_redshifts()
-                y = cc.get_amplitudes()
-                y_samples = cc.get_samples()
-                bias = np.ones_like(y)
-                bias_samples = np.ones_like(y_samples)
-                if args.bias_spec:
-                    key += " / bias_spec"
-                    bias *= ac_spec.get_amplitudes()
-                    bias_samples *= ac_spec.get_samples()
-                if args.bias_phot:
-                    key += " / bias_phot"
-                    bias *= ac_phot.get_amplitudes()
-                    bias_samples *= ac_phot.get_samples()
-                y /= np.sqrt(bias)
-                y_samples /= np.sqrt(bias_samples)
-                y_samples_global[binname(path)] = y_samples.copy()
-                err = np.nanstd(y_samples, axis=1)
-                nz_array = np.stack([z, y, err]).T
-                # write data to file
-                outpath = outdir[scale].incorporate(path, DEFAULT_EXT_DATA)
-                print(
-                    "writing redshift distribution to:  %s" %
-                    os.path.basename(outpath))
-                header = "col 1 = mean redshift\n"
-                header += "col 2 = correlation amplitude (%s)\n" % key
-                header += "col 3 = amplitude error"
-                np.savetxt(outpath, nz_array, header=header)
-                # write bootstrap realisations
-                if args.store_boot:
-                    outpath = outdir[scale].incorporate(path, DEFAULT_EXT_BOOT)
-                    print(
-                        "writing bootstrap realisations to: %s" %
-                        os.path.basename(outpath))
-                    header = "correlation amplitude (%s) realisations" % key
-                    np.savetxt(outpath, y_samples, header=header)
-                # write covariance matrix
-                if args.store_cov:
-                    cov = nancov(y_samples)
-                    outpath = outdir[scale].incorporate(path, ".cov")
-                    print(
-                        "writing covariance matrix to:      %s" %
-                        os.path.basename(outpath))
-                    header = (
-                        "correlation amplitude (%s) covariance matrix" % key)
-                    np.savetxt(outpath, cov, header=header)
-
-            if spec_ac_pickle is not None:
-                wz_array = np.stack([
-                    ac_spec.get_redshifts(),
-                    ac_spec.get_amplitudes(),
-                    ac_spec.get_errors()]).T
-                outpath = outdir[scale].incorporate(
-                    spec_ac_pickle, DEFAULT_EXT_DATA)
-                print(
-                    "writing auto-correlation to:      %s" %
-                    os.path.basename(outpath))
-                header = "col 1 = mean redshift\n"
-                header += "col 2 = correlation amplitude (w_ss)\n"
-                header += "col 3 = amplitude error"
-                np.savetxt(outpath, wz_array, header=header)
-                # write bootstrap realisations
-                if args.store_boot:
-                    outpath = outdir[scale].incorporate(
-                        spec_ac_pickle, DEFAULT_EXT_BOOT)
-                    print(
-                        "writing bootstrap realisations to: %s" %
-                        os.path.basename(outpath))
-                    header = "correlation amplitude (w_ss) realisations"
-                    np.savetxt(outpath, ac_spec.get_samples(), header=header)
-                # write covariance matrix
-                if args.store_cov:
-                    cov = nancov(ac_spec.get_samples())
-                    outpath = outdir[scale].incorporate(
-                        spec_ac_pickle, ".cov")
-                    print(
-                        "writing covariance matrix to:      %s" %
-                        os.path.basename(outpath))
-                    header = "correlation amplitude (w_ss) covariance matrix"
-                    np.savetxt(outpath, cov, header=header)
-
-            if phot_ac_pickle is not None:
-                wz_array = np.stack([
-                    ac_phot.get_redshifts(),
-                    ac_phot.get_amplitudes(),
-                    ac_phot.get_errors()]).T
-                outpath = outdir[scale].incorporate(
-                    phot_ac_pickle, DEFAULT_EXT_DATA)
-                print(
-                    "writing auto-correlation to:      %s" %
-                    os.path.basename(outpath))
-                header = "col 1 = mean redshift\n"
-                header += "col 2 = correlation amplitude (w_pp)\n"
-                header += "col 3 = amplitude error"
-                np.savetxt(outpath, wz_array, header=header)
-                # write bootstrap realisations
-                if args.store_boot:
-                    outpath = outdir[scale].incorporate(
-                        phot_ac_pickle, DEFAULT_EXT_BOOT)
-                    print(
-                        "writing bootstrap realisations to: %s" %
-                        os.path.basename(outpath))
-                    header = "correlation amplitude (w_pp) realisations"
-                    np.savetxt(outpath, ac_phot.get_samples(), header=header)
-                # write covariance matrix
-                if args.store_cov:
-                    cov = nancov(ac_phot.get_samples())
-                    outpath = outdir[scale].incorporate(
-                        phot_ac_pickle, ".cov")
-                    print(
-                        "writing covariance matrix to:      %s" %
-                        os.path.basename(outpath))
-                    header = "correlation amplitude (w_pp) covariance matrix"
-                    np.savetxt(outpath, cov, header=header)
+            samples = {}  # needed for correlation between bins
+            for zbin, pickle_path in cc_pickles.items():
+                amplitudes, samples[zbin] convert_pickle(
+                    scaledir, pickle_path, header_key,
+                    bias=bias, bias_samples=bias_samples)
 
             # compute global covariance matrix
             if args.cov_order is not None and args.store_cov:
-                data_keys = y_samples_global.keys()
-                print(args.cov_order, data_keys)
-                y_global = None
-                for key in args.cov_order:
-                    dkey = "#####"
-                    for data_key in data_keys:
-                        if key in data_key:
-                            dkey = data_key
-                            break
-                    if dkey not in data_keys:
-                        raise ValueError(
-                            "redshift key '%s' not in data" % dkey)
-                    y_samples = y_samples_global[dkey]
-                    if y_global is None:
-                        y_global = y_samples.copy()
-                    else:
-                        y_global = np.concatenate([y_global, y_samples])
-                cov_global = nancov(y_global)
-                # write global covariance matrix
-                outpath = outdir[scale].incorporate(
-                    os.path.basename(path).split("_", maxsplit=1)[0] +
-                    "_global.cov")
+                data_keys = samples.keys()
+                global_samples = None
+                for zbin in args.cov_order:
+                    try:
+                        if global_samples is None:
+                            global_samples = samples[zbin]
+                        else:
+                            global_samples = np.concatenate([
+                                global_samples, samples[zbin]])
+                    except KeyError:
+                        string = "redshift bin '%s' from --cov-order " % zbin
+                        string += "not found"
+                        raise KeyError(string)
+                # store global covariance matrix
+                outpath = scaledir.incorporate(
+                    os.path.basename(pickle_path).split("_")[0] +
+                    "_global%s" % DEFAULT_EXT_COV)
                 print(
-                    "writing covariance matrix to:     %s" %
+                    "writing global covariance matrix to: %s" %
                     os.path.basename(outpath))
-                header = "correlation amplitude (%s) covariance matrix" % key
-                np.savetxt(outpath, cov_global, header=header)
-                # write the order for later use
+                header = "global correlation amplitude "
+                header += "(%s) covariance matrix" % header_key
+                np.savetxt(outpath, nancov(global_samples), header=header)
+                # store the order for later use
                 with open(os.path.splitext(outpath)[0] + ".order", "w") as f:
-                    for zkey in args.cov_order:
+                    for zbin in args.cov_order:
                         f.write("%s\n" % zkey)
-            else:
+            elif args.cov_order is None and args.store_cov:
                 print("omitting global covariance estimation")

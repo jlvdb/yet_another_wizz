@@ -6,6 +6,7 @@ from collections import OrderedDict
 
 DEFAULT_EXT_DATA = ".dat"
 DEFAULT_EXT_BOOT = ".boot"
+DEFAULT_EXT_COV = ".cov"
 
 
 def getext(path):
