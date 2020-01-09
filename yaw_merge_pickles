@@ -53,6 +53,7 @@ if __name__ == "__main__":
             raise OSError("input folder not found: %s" % abspath)
         folders.append(CCFolder(abspath))
     print("==> processing %d input folders" % len(folders))
+    print("output folder: %s" % args.output)
 
     print("checking binning")
     binning = None
@@ -164,7 +165,7 @@ if __name__ == "__main__":
                 master_pickle = merge_pickles(paths)
                 outpath = outdir[scale].path_autocorr_file(
                     ".pkl", suffix=suffix)
-                print("writing merged pickle: %s" % outpath)
+                print("writing merged pickle: %s" % os.path.basename(outpath))
                 with open(outpath, "wb") as f:
                     pickle.dump(master_pickle, f)
 
@@ -177,8 +178,8 @@ if __name__ == "__main__":
                     for folder in scale_folders[scale]]
                 master_pickle = merge_pickles(paths)
                 outpath = outdir[scale].path_crosscorr_file(
-                    ".pickle", zlims=zbin)
-                print("writing merged pickle: %s" % outpath)
+                    ".pkl", zlims=zbin)
+                print("writing merged pickle: %s" % os.path.basename(outpath))
                 with open(outpath, "wb") as f:
                     pickle.dump(master_pickle, f)
 

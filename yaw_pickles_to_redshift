@@ -45,13 +45,14 @@ def nancov(bootstraps):
 
 
 def convert_pickle(
-        scaledir, pickle_path, header_key, bias=None, bias_samples=None):
-    pickler = AutoCorrelationPickle(pickle_path)
+        scaledir, pickle_path, pickle_class, header_key,
+        bias=None, bias_samples=None):
+    pickler = pickle_class(pickle_path)
     # initialize the bootstrap resampling indices
     global boot_idx
     if boot_idx is None:
         pickler.generate_sampling_idx(n_bootstraps=args.n_boot)
-        boot_idx = cc.get_sampling_idx()
+        boot_idx = pickler.get_sampling_idx()
     else:
         pickler.set_sampling_idx(boot_idx)
     # create the realisations
@@ -62,7 +63,7 @@ def convert_pickle(
         errors = pickler.get_errors()
     else:
         # compute errors of bias corrected correlation amplitudes
-        errors = np.nanstd(samples[zbin], axis=1)
+        errors = np.nanstd(samples, axis=1)
     # create correlation amplitude file
     outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_DATA)
     print(
@@ -70,12 +71,12 @@ def convert_pickle(
         os.path.basename(os.path.splitext(outpath)[0]))
     nz_array = np.transpose([redshifts, amplitudes, errors])
     header = "col 1 = mean redshift\n"
-    header += "col 2 = correlation amplitude (%s)\n" % key
+    header += "col 2 = correlation amplitude (%s)\n" % header_key
     header += "col 3 = amplitude error"
     np.savetxt(outpath, nz_array, header=header)
     # store optional bootstrap samples
     if args.store_boot:
-        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_DATA)
+        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_BOOT)
         np.savetxt(
             outpath, samples,
             header="correlation amplitude (%s) realisations" % header_key)
@@ -135,6 +136,21 @@ if __name__ == "__main__":
     print("==> processing data in: %s" % args.wdir)
     indir = CCFolder(args.wdir)
 
+    if args.output is None:
+        outdir = indir
+    else:
+        outdir = indir.copy_meta_to(args.output)
+    print("output folder: %s" % outdir.root)
+
+    output_types = ["redshift distributions"]
+    if args.store_boot:
+        output_types.append("bootstrap samples")
+    if args.store_cov:
+        output_types.append("covariance matrices")
+        if args.cov_order is not None:
+            output_types.append("global covariance")
+    print("producing output: %s" % ", ".join(output_types))
+
     # check if a binning file and which scale dirs exits
     if not os.path.exists(indir.path_binning_file()):
         raise ValueError("input folder does not contain valid output")
@@ -158,7 +174,7 @@ if __name__ == "__main__":
 
         # check which correlation pickles exist
         cc_pickles = scaledir.list_crosscorr_files(".pkl")
-        if len(cc_files) == 0:
+        if len(cc_pickles) == 0:
             raise ValueError("no cross-correlation pickles found")
         # figure out whether to use spectroscopic auto-correlation
         ac_spec_pickle, use_wss = check_autocorrelation(
@@ -167,42 +183,41 @@ if __name__ == "__main__":
         ac_phot_pickle, use_wpp = check_autocorrelation(
             scaledir, args.bias_phot, "phot.")
 
-        # now everything should be good and we can produce output
-        if args.output is None:
-            outdir = indir
-        else:
-            outdir = indir.copy_meta_to(args.output)
-
         # NaNs are to be expected so we ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
             # process auto-correlation pickles and compute the bias correction
-            amp_product = np.ones_like(amplitudes)
-            amp_product_samples = np.ones_like(y_samples)
             header_key = "w_sp"
             if use_wss:
-                amplitudes, samples = convert_pickle(
-                    scaledir, ac_spec_pickle, "w_ss")
-                amp_product *= amplitudes
-                amp_product_samples *= samples
-                key += " / bias_spec"
+                amp_product, amp_product_samples = convert_pickle(
+                    outdir[scale], ac_spec_pickle,
+                    AutoCorrelationPickle, "w_ss")
+                header_key += " / bias_spec"
             if use_wpp:
                 amplitudes, samples = convert_pickle(
-                    scaledir, ac_phot_pickle, "w_pp")
-                amp_product *= amplitudes
-                amp_product_samples *= samples
-                key += " / bias_phot"
+                    outdir[scale], ac_phot_pickle,
+                    AutoCorrelationPickle, "w_pp")
+                try:
+                    amp_product *= amplitudes
+                    amp_product_samples *= samples
+                except NameError:
+                    amp_product = amplitudes
+                    amp_product_samples = samples
+                header_key += " / bias_phot"
             # apply the bias correction
-            bias = np.sqrt(amp_product)
-            bias_samples = np.sqrt(amp_product_samples)
-            
+            try:
+                bias = np.sqrt(amp_product)
+                bias_samples = np.sqrt(amp_product_samples)
+            except NameError:
+                bias, bias_samples = 1, 1            
 
             # process the cross-correlation pickles
             samples = {}  # needed for correlation between bins
             for zbin, pickle_path in cc_pickles.items():
-                amplitudes, samples[zbin] convert_pickle(
-                    scaledir, pickle_path, header_key,
+                amplitudes, samples[zbin] = convert_pickle(
+                    outdir[scale], pickle_path,
+                    CrossCorrelationPickle, header_key,
                     bias=bias, bias_samples=bias_samples)
 
             # compute global covariance matrix
@@ -233,6 +248,6 @@ if __name__ == "__main__":
                 # store the order for later use
                 with open(os.path.splitext(outpath)[0] + ".order", "w") as f:
                     for zbin in args.cov_order:
-                        f.write("%s\n" % zkey)
+                        f.write("%s\n" % zbin)
             elif args.cov_order is None and args.store_cov:
                 print("omitting global covariance estimation")
