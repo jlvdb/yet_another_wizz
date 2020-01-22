@@ -59,9 +59,11 @@ def convert_pickle(
     redshifts = pickler.get_redshifts()
     amplitudes = pickler.get_amplitudes()
     samples = pickler.get_samples()
-    if bias is None:
+    if bias is None and bias_samples is None:
         errors = pickler.get_errors()
     else:
+        amplitudes /= bias
+        samples /= bias_samples
         # compute errors of bias corrected correlation amplitudes
         errors = np.nanstd(samples, axis=1)
     # create correlation amplitude file
@@ -210,7 +212,7 @@ if __name__ == "__main__":
                 bias = np.sqrt(amp_product)
                 bias_samples = np.sqrt(amp_product_samples)
             except NameError:
-                bias, bias_samples = 1, 1            
+                bias, bias_samples = None, None
 
             # process the cross-correlation pickles
             samples = {}  # needed for correlation between bins
@@ -236,7 +238,7 @@ if __name__ == "__main__":
                         string += "not found"
                         raise KeyError(string)
                 # store global covariance matrix
-                outpath = scaledir.incorporate(
+                outpath = outdir[scale].incorporate(
                     os.path.basename(pickle_path).split("_")[0] +
                     "_global%s" % DEFAULT_EXT_COV)
                 print(
