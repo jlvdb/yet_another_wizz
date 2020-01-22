@@ -84,7 +84,7 @@ class PairMaker(BaseClass):
 
     def writeMeta(self, path):
         self._printMessage("writing meta data to pickle:\n    %s\n" % path)
-        pickle_path = os.path.splitext(path)[0] + ".pickle"
+        pickle_path = os.path.splitext(path)[0] + ".pkl"
         with open(pickle_path, "wb") as f:
             pickle.dump(self.getMeta(), f)
 
