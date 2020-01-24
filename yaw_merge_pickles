@@ -9,6 +9,7 @@ from functools import reduce
 
 import numpy as np
 from yaw_tools.folders import CCFolder
+from yaw_tools.pickles import merge_pickles
 
 
 parser = argparse.ArgumentParser(
@@ -21,25 +22,6 @@ parser.add_argument(
 parser.add_argument(
     '-o', '--output', required=True,
     help='path to folder where merged output is stored')
-
-
-def merge_pickles(pickle_list):
-    pickles = []
-    for path in pickle_list:
-        with open(path, "rb") as f:
-            pickles.append(pickle.load(f))
-    # create the master pickle
-    master_pickle = {"n_regions": 0}
-    for key in pickles[0]:
-        try:
-            master_pickle[key] = np.concatenate(
-                [data[key] for data in pickles], axis=1)
-        except ValueError:
-            if key == "n_regions":  # sum the region counters
-                master_pickle[key] = sum(data[key] for data in pickles)
-            else:  # just copy first from first element
-                master_pickle[key] = pickles[0][key]
-    return master_pickle
 
 
 if __name__ == "__main__":

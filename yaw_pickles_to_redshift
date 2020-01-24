@@ -6,90 +6,13 @@ from collections import Counter
 from hashlib import md5
 
 import numpy as np
-from numpy import ma
-from yaw_tools.folders import (
-    binname, CCFolder, DEFAULT_EXT_DATA, DEFAULT_EXT_BOOT, DEFAULT_EXT_COV)
-from yaw_tools.pickles import AutoCorrelationPickle, CrossCorrelationPickle
-
-
-def check_autocorrelation(scaledir, suffix_name, name):
-    ac_dict = scaledir.list_autocorr_files(".pkl")
-    if suffix_name is not None:
-        try:
-            pickle_path = ac_dict[suffix_name]
-            print("found %s auto-correlation pickle" % name)
-        except KeyError:
-            raise ValueError("%s auto-correlation pickle not found" % name)
-    else:
-        pickle_path = None
-    use_corr = pickle_path is not None
-    return pickle_path, use_corr
-
-
-def nancov(bootstraps):
-    # mask infinite values
-    mask = np.logical_not(np.isfinite(bootstraps))
-    masked_boots = ma.array(bootstraps, mask=mask)
-    # compute covariance
-    covar = ma.cov(masked_boots, ddof=0)
-    # find rows/columns with NaNs
-    diag = np.diag(covar)
-    idx = np.arange(len(diag))
-    idx = idx[np.isnan(diag)]
-    # set the diag. element to infinity and the off-diag elements to 0
-    for i in idx:
-        covar[i, :] = 0.0
-        covar[:, i] = 0.0
-        covar[i, i] = np.inf
-    return covar
-
-
-def convert_pickle(
-        scaledir, pickle_path, pickle_class, header_key,
-        bias=None, bias_samples=None):
-    pickler = pickle_class(pickle_path)
-    # initialize the bootstrap resampling indices
-    global boot_idx
-    if boot_idx is None:
-        pickler.generate_sampling_idx(n_bootstraps=args.n_boot)
-        boot_idx = pickler.get_sampling_idx()
-    else:
-        pickler.set_sampling_idx(boot_idx)
-    # create the realisations
-    redshifts = pickler.get_redshifts()
-    amplitudes = pickler.get_amplitudes()
-    samples = pickler.get_samples()
-    if bias is None and bias_samples is None:
-        errors = pickler.get_errors()
-    else:
-        amplitudes /= bias
-        samples /= bias_samples
-        # compute errors of bias corrected correlation amplitudes
-        errors = np.nanstd(samples, axis=1)
-    # create correlation amplitude file
-    outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_DATA)
-    print(
-        "writing data to: %s.*" %
-        os.path.basename(os.path.splitext(outpath)[0]))
-    nz_array = np.transpose([redshifts, amplitudes, errors])
-    header = "col 1 = mean redshift\n"
-    header += "col 2 = correlation amplitude (%s)\n" % header_key
-    header += "col 3 = amplitude error"
-    np.savetxt(outpath, nz_array, header=header)
-    # store optional bootstrap samples
-    if args.store_boot:
-        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_BOOT)
-        np.savetxt(
-            outpath, samples,
-            header="correlation amplitude (%s) realisations" % header_key)
-    # store covariance matrix
-    if args.store_cov:
-        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_COV)
-        np.savetxt(
-            outpath, nancov(samples),
-            header="correlation amplitude (%s) covariance matrix" % header_key)
-    # return data needed for CC bias mitigation
-    return amplitudes, samples
+from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
+                               DEFAULT_EXT_DATA, CCFolder,
+                               check_autocorrelation, find_cc_scales,
+                               init_input_folder, init_output_folder)
+from yaw_tools.pickles import (AutoCorrelationPickle, CrossCorrelationPickle,
+                               convert_pickle)
+from yaw_tools.utils import nancov
 
 
 parser = argparse.ArgumentParser(
@@ -106,9 +29,9 @@ parser.add_argument(
     '--bias-phot',
     help='suffix of the auto-correlation files to apply for correcting the '
          'photometric bias (optional)')
-parser.add_argument(
-    '--seed',
-    help='string from which a seed for the random generator is computed')
+params_group.add_argument(
+    '--seed', default='KV450',
+    help='string to seed the random generator (default: %(default)s)')
 parser.add_argument(
     '--n-boot', type=int, default=1000,
     help='number of bootstrap realisations for covariance estimation')
@@ -116,13 +39,13 @@ parser.add_argument(
     '--store-boot', action='store_true',
     help='save the bootstrap realisations in separate files')
 parser.add_argument(
+    '--store-cov', action='store_true',
+    help='save covariance matrices in separate files')
+parser.add_argument(
     '--cov-order', nargs='*',
     help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
          'correlation files are inserted into the global covariance matrix, '
          'if not given no global covariance is computed')
-parser.add_argument(
-    '--store-cov', action='store_true',
-    help='save covariance matrices in separate files')
 parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
@@ -131,18 +54,9 @@ parser.add_argument(
 if __name__ == "__main__":
 
     args = parser.parse_args()
-
-    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
-    if not os.path.exists(args.wdir):
-        raise OSError("input folder does not exist")
-    print("==> processing data in: %s" % args.wdir)
-    indir = CCFolder(args.wdir)
-
-    if args.output is None:
-        outdir = indir
-    else:
-        outdir = indir.copy_meta_to(args.output)
-    print("output folder: %s" % outdir.root)
+    indir = init_input_folder(args)
+    outidr = init_output_folder(args, indir)
+    scales = find_cc_scales(indir)
 
     output_types = ["redshift distributions"]
     if args.store_boot:
@@ -152,16 +66,6 @@ if __name__ == "__main__":
         if args.cov_order is not None:
             output_types.append("global covariance")
     print("producing output: %s" % ", ".join(output_types))
-
-    # check if a binning file and which scale dirs exits
-    if not os.path.exists(indir.path_binning_file()):
-        raise ValueError("input folder does not contain valid output")
-
-    print("finding correlation scales")
-    scales = set(indir.list_scalenames())
-    if len(scales) == 0:
-        raise ValueError("input folder contains no scales")
-    print("found scales: %s" % set(os.path.basename(s) for s in scales))
 
     # initialize the random state
     hasher = md5(bytes(args.seed, "utf-8"))

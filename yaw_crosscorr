@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
 import argparse
-import os
 import pickle
 import shutil
-import subprocess
 import sys
 from multiprocessing import cpu_count
 
 import numpy as np
 import pandas as pd
-from astropy.cosmology import default_cosmology
 from astropy.io import fits as pyfits
+from yaw_tools.correlation import bin_table, get_bin_weights
 from yaw_tools.folders import CCFolder, Folder
+from yaw_tools.utils import (DEFALUT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
+                             DEFAULT_REGION_NO, DEFAULT_RESAMPLING)
 
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
 from yet_another_wizz.utils import write_argparse_summary
-
 
 # input data
 parser = argparse.ArgumentParser(
@@ -39,7 +38,7 @@ ref_cat.add_argument(
     '--ref-file', metavar='FILE', required=True,
     help='spectroscopic catalogue file path')
 ref_cat.add_argument(
-    '--ref-file-ext', metavar='INT', type=int, default=1,
+    '--ref-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
     help='fits extesion containg data (default: %(default)s)')
 ref_cat.add_argument(
     '--ref-ra', metavar='FIELD', default='ALPHA_J2000',
@@ -60,7 +59,7 @@ test_cat.add_argument(
     '--test-file', metavar='FILE', required=True,
     help='photometric catalogue file path')
 test_cat.add_argument(
-    '--test-file-ext', metavar='INT', type=int, default=1,
+    '--test-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
     help='fits extesion containg data (default: %(default)s)')
 test_cat.add_argument(
     '--test-ra', metavar='FIELD', default='ALPHA_J2000',
@@ -81,7 +80,7 @@ rand_cat.add_argument(
     '--rand-file', metavar='FILE', required=True,
     help='random catalogue file path')
 rand_cat.add_argument(
-    '--rand-file-ext', metavar='INT', type=int, default=1,
+    '--rand-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
     help='fits extesion containg data (default: %(default)s)')
 rand_cat.add_argument(
     '--rand-ra', metavar='FIELD', default='ALPHA_J2000',
@@ -103,7 +102,7 @@ stomp_map.add_argument(
 
 regionization = stomp_map.add_mutually_exclusive_group()
 regionization.add_argument(
-    '--map-region-no', metavar='INT', type=int, default=7,
+    '--map-region-no', metavar='INT', type=int, default=DEFAULT_REGION_NO,
     help='number of regions for bootstrapping (default: %(default)s)')
 regionization.add_argument(
     '--map-region-size', metavar='FLOAT', type=float, default=-1,
@@ -131,7 +130,7 @@ analysis_parameters.add_argument(
     '--z-max', metavar='FLOAT', type=float, default=5.01,
     help='maximum analysis redshift (default: %(default)s)')
 analysis_parameters.add_argument(
-    '--resampling', metavar='INT', type=int, default=10,
+    '--resampling', metavar='INT', type=int, default=DEFAULT_RESAMPLING,
     help='number of random galaxy realizations created (default: %(default)s)')
 analysis_parameters.add_argument(
     '--ref-source-limit', metavar='INT', type=int, default=10,
@@ -151,79 +150,11 @@ analysis_parameters.add_argument(
          'e.g.: "0.1,0.3,0.5;0.1,0.5" creates bins 0.1 to 0.3, 0.3 to 0.5 and '
          '0.1 to 0.5')
 analysis_parameters.add_argument(
-    '--pair-weighting', metavar='Y/N', default='Y',
+    '--pair-weighting', metavar='Y/N', default=DEFALUT_PAIR_WEIGHTING,
     help='wether to weight pairs by the inverse separation')
 analysis_parameters.add_argument(
     '--R-D-ratio', default="local",
     help='ratio of random to data objects (default: local)')
-
-
-def bin_table(
-        bindir, filepath, ra_name, dec_name, z_name, weightname=None,
-        zbins=None):
-    # read input catalogue
-    with pyfits.open(filepath) as fits:
-        head = fits[1].header
-        data = fits[1].data
-    print("loaded %d objects" % len(data))
-    # make catalogue for each selected bin
-    framelist = []
-    filelist = []
-    if zbins is None:
-        try:
-            zmin, zmax = data[z_name].min(), data[z_name].max()
-            filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
-            os.symlink(filepath, filename)
-            frame = pd.DataFrame({
-                "RA": data[ra_name].byteswap().newbyteorder(),
-                "DEC": data[dec_name].byteswap().newbyteorder(),
-                "z": data[z_name].byteswap().newbyteorder()})
-        except KeyError:
-            filename = bindir.join("bin_all.fits")
-            os.symlink(filepath, filename)
-            frame = pd.DataFrame({
-                "RA": data[ra_name].byteswap().newbyteorder(),
-                "DEC": data[dec_name].byteswap().newbyteorder()})
-        if weightname is not None:
-            frame["weight"] = data[weightname].byteswap().newbyteorder()
-        framelist.append(frame)
-        filelist.append(filename)
-    else:
-        for zmin, zmax in zbins:
-            print("creating redshift slice %.3f <= z < %.3f" % (zmin, zmax))
-            filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
-            mask = (data[z_name] > zmin) & (data[z_name] <= zmax)
-            print(
-                "selected %d out of %d objects" % (
-                    np.count_nonzero(mask), len(mask)))
-            bindata = data[mask]
-            # write the bin data to a new fits file
-            hdu = pyfits.BinTableHDU(header=head, data=bindata)
-            hdu.writeto(filename)
-            # keep the bin data as pandas DataFrame
-            frame = pd.DataFrame({
-                "RA": bindata[ra_name].byteswap().newbyteorder(),
-                "DEC": bindata[dec_name].byteswap().newbyteorder(),
-                "z": bindata[z_name].byteswap().newbyteorder()})
-            if weightname is not None:
-                frame["weight"] = bindata[weightname].byteswap().newbyteorder()
-            framelist.append(frame)
-            filelist.append(filename)
-    return framelist, filelist
-
-
-def get_bin_weights(framelist, filelist):
-    weight_dict = {}
-    for frame, path in zip(framelist, filelist):
-        try:
-            weight = frame.weight.sum()
-        except AttributeError:  # assume uniform weights
-            weight = len(frame)
-        key = os.path.basename(path)  # bin_{:.3f}z{:.3f}.fits
-        key = os.path.splitext(key)[0]  # bin_{:.3f}z{:.3f}
-        key = key.strip("bin_")  # {:.3f}z{:.3f}
-        weight_dict[key] = weight
-    return weight_dict
 
 
 if __name__ == '__main__':

@@ -218,6 +218,50 @@ class CCFolder(Folder):
         return other
 
 
+def init_input_folder(args):
+    setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
+    if not os.path.exists(args.wdir):
+        raise OSError("input folder does not exist")
+    print("==> processing data in: %s" % args.wdir)
+    indir = CCFolder(args.wdir)
+    # check if a binning file and which scale dirs exits
+    if not os.path.exists(indir.path_binning_file()):
+        raise ValueError("input folder does not contain valid output")
+    return indir
+
+
+def init_output_folder(args, input_folder):
+    if args.output is None:
+        outdir = input_folder
+    else:
+        outdir = input_folder.copy_meta_to(args.output)
+    print("output folder: %s" % outdir.root)
+    return outdir
+
+
+def find_cc_scales(input_folder)
+    print("finding correlation scales")
+    scales = set(input_folder.list_scalenames())
+    if len(scales) == 0:
+        raise ValueError("input folder contains no scales")
+    print("found scales: %s" % set(os.path.basename(s) for s in scales))
+    return scales
+
+
+def check_autocorrelation(scaledir, suffix_name, name):
+    ac_dict = scaledir.list_autocorr_files(".pkl")
+    if suffix_name is not None:
+        try:
+            pickle_path = ac_dict[suffix_name]
+            print("found %s auto-correlation pickle" % name)
+        except KeyError:
+            raise ValueError("%s auto-correlation pickle not found" % name)
+    else:
+        pickle_path = None
+    use_corr = pickle_path is not None
+    return pickle_path, use_corr
+
+
 if __name__ == "__main__":
     from pprint import pprint
 

@@ -1,4 +1,5 @@
 import copy
+import os
 import pickle
 
 import numpy as np
@@ -413,3 +414,70 @@ class BinnedClusteringRedshifts(object):
         fig.tight_layout(h_pad=0.0, w_pad=0.0)
         fig.subplots_adjust(hspace=0.0, wspace=0.0)
         return fig
+
+
+def merge_pickles(pickle_list):
+    pickles = []
+    for path in pickle_list:
+        with open(path, "rb") as f:
+            pickles.append(pickle.load(f))
+    # create the master pickle
+    master_pickle = {"n_regions": 0}
+    for key in pickles[0]:
+        try:
+            master_pickle[key] = np.concatenate(
+                [data[key] for data in pickles], axis=1)
+        except ValueError:
+            if key == "n_regions":  # sum the region counters
+                master_pickle[key] = sum(data[key] for data in pickles)
+            else:  # just copy first from first element
+                master_pickle[key] = pickles[0][key]
+    return master_pickle
+
+
+def convert_pickle(
+        scaledir, pickle_path, pickle_class, header_key,
+        bias=None, bias_samples=None):
+    pickler = pickle_class(pickle_path)
+    # initialize the bootstrap resampling indices
+    global boot_idx
+    if boot_idx is None:
+        pickler.generate_sampling_idx(n_bootstraps=args.n_boot)
+        boot_idx = pickler.get_sampling_idx()
+    else:
+        pickler.set_sampling_idx(boot_idx)
+    # create the realisations
+    redshifts = pickler.get_redshifts()
+    amplitudes = pickler.get_amplitudes()
+    samples = pickler.get_samples()
+    if bias is None and bias_samples is None:
+        errors = pickler.get_errors()
+    else:
+        amplitudes /= bias
+        samples /= bias_samples
+        # compute errors of bias corrected correlation amplitudes
+        errors = np.nanstd(samples, axis=1)
+    # create correlation amplitude file
+    outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_DATA)
+    print(
+        "writing data to: %s.*" %
+        os.path.basename(os.path.splitext(outpath)[0]))
+    nz_array = np.transpose([redshifts, amplitudes, errors])
+    header = "col 1 = mean redshift\n"
+    header += "col 2 = correlation amplitude (%s)\n" % header_key
+    header += "col 3 = amplitude error"
+    np.savetxt(outpath, nz_array, header=header)
+    # store optional bootstrap samples
+    if args.store_boot:
+        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_BOOT)
+        np.savetxt(
+            outpath, samples,
+            header="correlation amplitude (%s) realisations" % header_key)
+    # store covariance matrix
+    if args.store_cov:
+        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_COV)
+        np.savetxt(
+            outpath, nancov(samples),
+            header="correlation amplitude (%s) covariance matrix" % header_key)
+    # return data needed for CC bias mitigation
+    return amplitudes, samples

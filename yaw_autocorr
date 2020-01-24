@@ -11,42 +11,14 @@ import numpy as np
 import pandas as pd
 from astropy.cosmology import default_cosmology
 from astropy.io import fits as pyfits
+from yaw_tools.correlation import run_ac_single_bin
 from yaw_tools.folders import CCFolder, Folder
+from yaw_tools.utils import (DEFALUT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
+                             DEFAULT_REGION_NO, DEFAULT_RESAMPLING, TypeNone)
 
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
 from yet_another_wizz.utils import ThreadHelper, load_argparse_summary
-
-
-def TypeNone(type):
-    """Test input value for being 'type', but also accepts None as default
-
-    Arguments:
-        type [type]:
-            specifies the type (int or float) the input argument has to obey
-    Returns:
-        type_text [function]:
-            function that takes 'value' as argument and tests, if it is either
-            None or of type 'type'
-    """
-    def type_test(value):
-        if value is None:
-            return value
-        else:
-            strtype = "float" if type == float else "int"
-            try:
-                return type(value)
-            except ValueError:
-                raise argparse.ArgumentTypeError(
-                    "invalid %s value: '%s'" % (strtype, value))
-    return type_test  # closure being of fixed type
-
-
-DEFAULT_CAT_EXT = 1
-DEFAULT_RAND_EXT = 1
-DEFAULT_REGION_NO = 7
-DEFAULT_RESAMPLING = 10
-DEFALUT_PAIR_WEIGHTING = "Y"
 
 parser = argparse.ArgumentParser(
     description='Compute an estimate for the galaxy bias of a spectroscopic '
@@ -101,7 +73,7 @@ rand_cat.add_argument(
     help='random catalogue file path')
 rand_cat.add_argument(
     '--rand-file-ext', metavar='INT', type=TypeNone(int),
-    help='fits extesion containg data (default: %d)' % DEFAULT_RAND_EXT)
+    help='fits extesion containg data (default: %d)' % DEFAULT_CAT_EXT)
 rand_cat.add_argument(
     '--rand-ra', metavar='FIELD',
     help='right ascension column name')
@@ -157,40 +129,6 @@ analysis_parameters.add_argument(
 analysis_parameters.add_argument(
     '--R-D-ratio', default="local",
     help='ratio of random to data objects (default: local)')
-
-
-def run_ac_single_bin(
-        datapack, randpack, stompfile, rlims, R_D_ratio, regionize_unknown,
-        pm_instance):
-    try:
-        D_R_ratio = 1.0 / float(R_D_ratio)
-    except ValueError:
-        D_R_ratio = R_D_ratio
-    zd, bindata = datapack
-    zr, binrand = randpack
-    est = pm_instance
-    est._verbose = False
-    est._threads = 1
-    if len(bindata) == 0 or len(binrand) == 0:
-        dummy_counts = est.getDummyCounts(
-            rmin=rlims[0], rmax=rlims[1], comoving=False,
-            reference_weights=("weights" in bindata))
-        return [est.getMeta(), dummy_counts]
-    else:
-        try:
-            est.setUnknown(bindata.RA, bindata.DEC, bindata.z, bindata.weight)
-        except AttributeError:
-            est.setUnknown(bindata.RA, bindata.DEC, bindata.z)
-        try:
-            est.setRandoms(binrand.RA, binrand.DEC, binrand.z, binrand.weight)
-        except AttributeError:
-            est.setRandoms(binrand.RA, binrand.DEC, binrand.z)
-        est.setReference(bindata.RA, bindata.DEC, bindata.z)
-        est.countPairs(
-            rmin=rlims[0], rmax=rlims[1], comoving=False,
-            D_R_ratio=D_R_ratio, regionize_unknown=regionize_unknown)
-        print("processed data in z ∈", zd)
-        return [est.getMeta(), est.getCounts()]
 
 
 if __name__ == "__main__":
