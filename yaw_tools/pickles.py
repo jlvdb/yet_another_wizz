@@ -6,7 +6,10 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.integrate import cumtrapz
 from yaw_tools.data import CCdata
+from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
+                               DEFAULT_EXT_DATA)
 from yaw_tools.plots import subplot_grid
+from yaw_tools.utils import nancov
 
 
 class Pickle(object):
@@ -435,49 +438,67 @@ def merge_pickles(pickle_list):
     return master_pickle
 
 
-def convert_pickle(
-        scaledir, pickle_path, pickle_class, header_key,
-        bias=None, bias_samples=None):
-    pickler = pickle_class(pickle_path)
-    # initialize the bootstrap resampling indices
-    global boot_idx
-    if boot_idx is None:
-        pickler.generate_sampling_idx(n_bootstraps=args.n_boot)
-        boot_idx = pickler.get_sampling_idx()
-    else:
-        pickler.set_sampling_idx(boot_idx)
-    # create the realisations
-    redshifts = pickler.get_redshifts()
-    amplitudes = pickler.get_amplitudes()
-    samples = pickler.get_samples()
-    if bias is None and bias_samples is None:
-        errors = pickler.get_errors()
-    else:
-        amplitudes /= bias
-        samples /= bias_samples
-        # compute errors of bias corrected correlation amplitudes
-        errors = np.nanstd(samples, axis=1)
-    # create correlation amplitude file
-    outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_DATA)
-    print(
-        "writing data to: %s.*" %
-        os.path.basename(os.path.splitext(outpath)[0]))
-    nz_array = np.transpose([redshifts, amplitudes, errors])
-    header = "col 1 = mean redshift\n"
-    header += "col 2 = correlation amplitude (%s)\n" % header_key
-    header += "col 3 = amplitude error"
-    np.savetxt(outpath, nz_array, header=header)
-    # store optional bootstrap samples
-    if args.store_boot:
-        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_BOOT)
+class PickleConverter(object):
+
+    bias = None
+    bias_samples = None
+
+    def __init__(self, n_boot=1000, boot_idx=None):
+        if boot_idx is None:
+            self.n_boot = n_boot
+        else:
+            self.n_boot = len(boot_idx)
+        self.boot_idx = boot_idx
+
+    def set_bias(self, bias, bias_samples):
+        self.bias = bias
+        self.bias_samples = bias_samples
+
+    def load_pickle(self, pickle_path, pickle_class):
+        self.pickle_path = pickle_path
+        self.pickler = pickle_class(pickle_path)
+        # initialize the bootstrap resampling indices
+        if self.boot_idx is None:
+            self.pickler.generate_sampling_idx(n_bootstraps=self.n_boot)
+            self.boot_idx = self.pickler.get_sampling_idx()
+        else:
+            self.pickler.set_sampling_idx(self.boot_idx)
+        # create the realisations
+        self.redshifts = self.pickler.get_redshifts()
+        self.amplitudes = self.pickler.get_amplitudes()
+        self.samples = self.pickler.get_samples()
+        if self.bias is None and self.bias_samples is None:
+            self.errors = self.pickler.get_errors()
+        else:
+            self.amplitudes /= self.bias
+            self.samples /= self.bias_samples
+            # compute errors of bias corrected correlation amplitudes
+            self.errors = np.nanstd(self.samples, axis=1)
+
+    def get_amplitudes(self):
+        return self.amplitudes.copy()
+
+    def get_samples(self):
+        return self.samples.copy()
+
+    def write_output(self, scaledir, header_key):
+        # create correlation amplitude file
+        outpath = scaledir.incorporate(self.pickle_path, DEFAULT_EXT_DATA)
+        print(
+            "writing data to: %s.*" %
+            os.path.basename(os.path.splitext(outpath)[0]))
+        nz_array = np.transpose([self.redshifts, self.amplitudes, self.errors])
+        header = "col 1 = mean redshift\n"
+        header += "col 2 = correlation amplitude (%s)\n" % header_key
+        header += "col 3 = amplitude error"
+        np.savetxt(outpath, nz_array, header=header)
+        # store optional bootstrap samples
+        outpath = scaledir.incorporate(self.pickle_path, DEFAULT_EXT_BOOT)
         np.savetxt(
-            outpath, samples,
+            outpath, self.samples.T,
             header="correlation amplitude (%s) realisations" % header_key)
-    # store covariance matrix
-    if args.store_cov:
-        outpath = scaledir.incorporate(pickle_path, DEFAULT_EXT_COV)
+        # store covariance matrix
+        outpath = scaledir.incorporate(self.pickle_path, DEFAULT_EXT_COV)
         np.savetxt(
-            outpath, nancov(samples),
+            outpath, nancov(self.samples),
             header="correlation amplitude (%s) covariance matrix" % header_key)
-    # return data needed for CC bias mitigation
-    return amplitudes, samples

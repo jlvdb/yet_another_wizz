@@ -70,17 +70,28 @@ if __name__ == "__main__":
     for scale, scaledir in indir.iter_scales():
         print("==> processing scale: %s" % scale)
 
-        # check which cross-correlation data files exist
-        cc_data = scaledir.list_crosscorr_files(DEFAULT_EXT_DATA)
-        if len(cc_data) == 0:
-            raise ValueError("no cross-correlation data files found")
-        # check which cross-correlation bootstrap files exist
-        cc_boot = scaledir.list_crosscorr_files(DEFAULT_EXT_BOOT)
-        if len(cc_data) == 0:
-            raise ValueError("no cross-correlation bootstraps found")
         # check the covariance matrices
-        raise NotImplementedError
-
-        # check if the master key exists
-        if args.master_key is not None:
-            if args.master_key not in cc_data:
+        if args.use_cov_global:
+            # load the bin order to interpret the global covariance matrix
+            if not os.path.exist(scaledir.path_bin_order_file()):
+                raise OSError("missing bin order file for global covariance")
+            with open(scaledir.path_bin_order_file()) as f:
+                cov_order = tuple(line.strip() for line in f.readlines())
+            # load the global covariance matrix
+            cov_path = scaledir.path_global_cov_file("crosscorr")
+            if not os.path.exist(cov_path):
+                raise OSError(
+                    "no global cross-correlation covariance matrix found")
+            cc_cov = np.loadtxt(cov_path)
+        elif: args.use_cov:
+            # load the covariance matrices for each bin
+            cc_cov = scaledir.list_crosscorr_files(DEFAULT_EXT_COV)
+            if len(cc_data) == 0:
+                raise ValueError(
+                    "no cross-correlation covariance matrices found")
+            if cc_data.keys() != cc_cov.keys():
+                raise KeyError(
+                    "redshift bins of covariance matrices do not match "
+                    "data files")
+        else:
+            cc_cov = None

@@ -51,8 +51,11 @@ class Folder(object):
         os.mkdir(path)
         return path
 
-    def listdir(self):
-        return [self.join(f) for f in os.listdir(self.root)]
+    def listdir(self, basename=False):
+        if basename:
+            return [f for f in os.listdir(self.root)]
+        else:
+            return [self.join(f) for f in os.listdir(self.root)]
 
     def zbin_filename(self, zmin, zmax, ext, prefix=None, suffix=None):
         parts = ["%.3fz%.3f" % (zmin, zmax)]
@@ -92,22 +95,40 @@ class ScaleFolder(Folder):
             fname = "autocorr_%s.%s" % (suffix, ext.lstrip("."))
         return self.join(fname)
 
-    def path_crosscorr_file(self, ext, zlims=None):
+    def _path_zbin_file(self, prefix, ext, zlims=None):
         if zlims is None:
-            fname = self.join("crosscorr.%s" % ext.lstrip("."))
+            fname = self.join("%s.%s" % (prefix, ext.lstrip(".")))
         elif type(zlims) is str:
-            fname = self.join("crosscorr_%s.%s" % (zlims, ext.lstrip(".")))
+            fname = self.join("%s_%s.%s" % (prefix, zlims, ext.lstrip(".")))
         else:
             zmin, zmax = zlims
-            fname = self.zbin_filename(zmin, zmax, ext, prefix="crosscorr")
+            fname = self.zbin_filename(zmin, zmax, ext, prefix=prefix)
         return self.join(fname)
+
+    def path_crosscorr_file(self, ext, zlims=None):
+        return self._path_zbin_file("crosscorr", ext, zlims)
+
+    def path_combfit_file(self, ext, zlims=None):
+        return self._path_zbin_file("combfit", ext, zlims)
+
+    def path_shiftfit_file(self, ext, zlims=None):
+        return self._path_zbin_file("shiftfit", ext, zlims)
+
+    def path_weights_file(self):
+        return self.join("bin_weights.pkl")
+
+    def path_global_cov_file(self, prefix):
+        return self.join("%s_global.cov" % prefix)
+
+    def path_bin_order_file(self):
+        return self.join("covariance_bin_order.txt")
 
     def path_weights_file(self):
         return self.join("bin_weights.pkl")
 
     def list_autocorr_files(self, ext):
         suffixes = OrderedDict()
-        for file in os.listdir(self.root):
+        for file in self.listdir(basename=True):
             # check if the file name has the correct prefix
             if not file.startswith("autocorr"):
                 continue
@@ -124,11 +145,11 @@ class ScaleFolder(Folder):
                 suffixes[None] = self.join(file)
         return suffixes
 
-    def list_crosscorr_files(self, ext):
+    def _list_zbin_files(self, prefix, ext):
         zbins = OrderedDict()
-        for file in os.listdir(self.root):
+        for file in self.listdir(basename=True):
             # check if the file name has the correct prefix
-            if not file.startswith("crosscorr"):
+            if not file.startswith(prefix):
                 continue
             try:
                 # check if the type of file is correct
@@ -142,6 +163,15 @@ class ScaleFolder(Folder):
             except IndexError:
                 zbins[None] = self.join(file)
         return zbins
+
+    def list_crosscorr_files(self, ext):
+        return self._list_zbin_files("crosscorr", ext)
+
+    def list_combfit_file(self, ext, zlims=None):
+        return self._list_zbin_files("combfit", ext)
+
+    def list_shiftfit_file(self, ext, zlims=None):
+        return self._list_zbin_files("shiftfit", ext)
 
 
 class CCFolder(Folder):
@@ -200,6 +230,12 @@ class CCFolder(Folder):
     def find_crosscorr_files(self, ext):
         return self.find("crosscorr.*%s" % ext.lstrip("."))
 
+    def find_combfit_files(self, ext):
+        return self.find("combfit.*%s" % ext.lstrip("."))
+
+    def find_shiftfit_files(self, ext):
+        return self.find("shiftfit.*%s" % ext.lstrip("."))
+
     def copy_meta_to(self, path):
         other = CCFolder(path)
         # copy meta files
@@ -239,7 +275,7 @@ def init_output_folder(args, input_folder):
     return outdir
 
 
-def find_cc_scales(input_folder)
+def find_cc_scales(input_folder):
     print("finding correlation scales")
     scales = set(input_folder.list_scalenames())
     if len(scales) == 0:

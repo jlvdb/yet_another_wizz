@@ -6,12 +6,11 @@ from collections import Counter
 from hashlib import md5
 
 import numpy as np
-from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
-                               DEFAULT_EXT_DATA, CCFolder,
+from yaw_tools.folders import (DEFAULT_EXT_COV, CCFolder,
                                check_autocorrelation, find_cc_scales,
                                init_input_folder, init_output_folder)
 from yaw_tools.pickles import (AutoCorrelationPickle, CrossCorrelationPickle,
-                               convert_pickle)
+                               PickleConverter)
 from yaw_tools.utils import nancov
 
 
@@ -29,18 +28,12 @@ parser.add_argument(
     '--bias-phot',
     help='suffix of the auto-correlation files to apply for correcting the '
          'photometric bias (optional)')
-params_group.add_argument(
+parser.add_argument(
     '--seed', default='KV450',
     help='string to seed the random generator (default: %(default)s)')
 parser.add_argument(
     '--n-boot', type=int, default=1000,
     help='number of bootstrap realisations for covariance estimation')
-parser.add_argument(
-    '--store-boot', action='store_true',
-    help='save the bootstrap realisations in separate files')
-parser.add_argument(
-    '--store-cov', action='store_true',
-    help='save covariance matrices in separate files')
 parser.add_argument(
     '--cov-order', nargs='*',
     help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
@@ -55,24 +48,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     indir = init_input_folder(args)
-    outidr = init_output_folder(args, indir)
+    outdir = init_output_folder(args, indir)
     scales = find_cc_scales(indir)
-
-    output_types = ["redshift distributions"]
-    if args.store_boot:
-        output_types.append("bootstrap samples")
-    if args.store_cov:
-        output_types.append("covariance matrices")
-        if args.cov_order is not None:
-            output_types.append("global covariance")
-    print("producing output: %s" % ", ".join(output_types))
 
     # initialize the random state
     hasher = md5(bytes(args.seed, "utf-8"))
     hashval = bytes(hasher.hexdigest(), "utf-8")
     np.random.seed(np.frombuffer(hashval, dtype=np.uint32))
-    # global should be always the same once initialized
-    boot_idx = None
+    # initialize region bootstrapping of pickle converter, all data output
+    # will be based on the same region realizations
+    pkl2data = PickleConverter(args.n_boot)
 
     # convert the pickles
     for scale, scaledir in indir.iter_scales():
@@ -96,20 +81,22 @@ if __name__ == "__main__":
             # process auto-correlation pickles and compute the bias correction
             header_key = "w_sp"
             if use_wss:
-                amp_product, amp_product_samples = convert_pickle(
-                    outdir[scale], ac_spec_pickle,
-                    AutoCorrelationPickle, "w_ss")
+                pkl2data.set_bias(None, None)  # clear bias arrays
+                pkl2data.load_pickle(ac_spec_pickle, AutoCorrelationPickle)
+                pkl2data.write_output(outdir[scale], "w_ss")
+                amp_product = pkl2data.get_amplitudes()
+                amp_product_samples = pkl2data.get_samples()
                 header_key += " / bias_spec"
             if use_wpp:
-                amplitudes, samples = convert_pickle(
-                    outdir[scale], ac_phot_pickle,
-                    AutoCorrelationPickle, "w_pp")
+                pkl2data.set_bias(None, None)  # clear bias arrays
+                pkl2data.load_pickle(ac_phot_pickle, AutoCorrelationPickle)
+                pkl2data.write_output(outdir[scale], "w_pp")
                 try:
-                    amp_product *= amplitudes
-                    amp_product_samples *= samples
+                    amp_product *= pkl2data.get_amplitudes()
+                    amp_product_samples *= pkl2data.get_samples()
                 except NameError:
-                    amp_product = amplitudes
-                    amp_product_samples = samples
+                    amp_product = pkl2data.get_amplitudes()
+                    amp_product_samples = pkl2data.get_samples()
                 header_key += " / bias_phot"
             # apply the bias correction
             try:
@@ -121,13 +108,15 @@ if __name__ == "__main__":
             # process the cross-correlation pickles
             samples = {}  # needed for correlation between bins
             for zbin, pickle_path in cc_pickles.items():
-                amplitudes, samples[zbin] = convert_pickle(
-                    outdir[scale], pickle_path,
-                    CrossCorrelationPickle, header_key,
-                    bias=bias, bias_samples=bias_samples)
+                pkl2data.set_bias(bias, bias_samples)
+                pkl2data.load_pickle(pickle_path, CrossCorrelationPickle)
+                pkl2data.write_output(outdir[scale], header_key)
+                samples[zbin] = pkl2data.get_samples()
 
             # compute global covariance matrix
-            if args.cov_order is not None and args.store_cov:
+            if args.cov_order is None:
+                print("omitting global covariance estimation")
+            else:
                 data_keys = samples.keys()
                 global_samples = None
                 for zbin in args.cov_order:
@@ -152,8 +141,7 @@ if __name__ == "__main__":
                 header += "(%s) covariance matrix" % header_key
                 np.savetxt(outpath, nancov(global_samples), header=header)
                 # store the order for later use
-                with open(os.path.splitext(outpath)[0] + ".order", "w") as f:
+                outpath = outdir[scale].path_bin_order_file()
+                with open(outpath, "w") as f:
                     for zbin in args.cov_order:
                         f.write("%s\n" % zbin)
-            elif args.cov_order is None and args.store_cov:
-                print("omitting global covariance estimation")
