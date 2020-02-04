@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+import argparse
+import os
+
+import numpy as np
+from astropy.io import fits as pyfits
+
+from yaw_tools.utils import DEFAULT_CAT_EXT
+from yet_another_wizz.PdfMaker import PdfMaker
+
+
+parser = argparse.ArgumentParser(
+    description='SURPRISE!')
+parser.add_argument(
+    'nz_file', metavar='NZ_FILE',
+    help='FITS table with list of data redshifts')
+parser.add_argument(
+    '--cat-file-ext', metavar='INT', default=DEFAULT_CAT_EXT,
+    help='fits extesion containg data (default: %d)' % DEFAULT_CAT_EXT)
+parser.add_argument(
+    '--col-spec', metavar='FIELD', required=True,
+    help='spectroscopic redshift column name')
+parser.add_argument(
+    '--col-phot', metavar='FIELD', required=True,
+    help='photometric redshift column name')
+parser.add_argument(
+    '--col-weight', metavar='FIELD',
+    help='weight column name')
+parser.add_argument(
+    '--zbin-keys', nargs="*", required=True,
+    help='redshift keys (e.g. 0.101z1.201) used to bin the sample and '
+         'name the output files')
+parser.add_argument(
+    '--n-bins', type=int, default=200,
+    help='number of bins to use for the histogram (default: %(default)s)')
+parser.add_argument(
+    '-o', '--output',
+    help='folder in which the output is stored (optional)')
+
+
+if __name__ == '__main__':
+
+    args = parser.parse_args()
+
+    setattr(args, "output", os.path.abspath(args.output))
+    print("set output folder to %s" % args.output)
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+
+    # load the reference sample
+    print("==> loading unknown objects")
+    with pyfits.open(args.nz_file) as fits:
+        z_spec = fits[args.cat_file_ext].data[args.col_spec]
+        z_phot = fits[args.cat_file_ext].data[args.col_phot]
+        if args.col_weight is not None:
+            weights = fits[args.cat_file_ext].data[args.col_weight]
+        else:
+            weights = None
+    # compute the binning
+    binning = PdfMaker.adaptiveBins(
+        args.n_bins, z_spec.min(), z_spec.max(), z_spec)
+    bin_centers = (binning[:-1] + binning[1:]) / 2.0
+
+    for zbin in args.zbin_keys:
+        # bin the data
+        zmin, zmax = [float(f) for f in zbin.split("z")]
+        mask = (z_phot >= zmin) & (z_phot < zmax)
+        kwargs = {"bins": binning, "density": True}
+        if weights is not None:
+            kwargs["weights"] = weights[mask]
+        nz_hist = np.histogram(z_spec[mask], **kwargs)[0]
+        # write the histogram
+        outfile = os.path.join(
+            args.output,
+            os.path.basename(os.path.splitext(args.nz_file)[0]) +
+            "_%s.dat" % zbin)
+        print("writing output file: %s" % os.path.basename(outfile))
+        np.savetxt(outfile, np.stack([bin_centers, nz_hist]).T)
