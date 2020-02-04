@@ -10,6 +10,33 @@ DEFAULT_RESAMPLING = 10
 DEFALUT_PAIR_WEIGHTING = "Y"
 
 
+def guess_bin_order(bin_keys):
+
+    def get_zmin(key):
+        zmin, zmax = [float(z) for z in key.split("z")]
+        return zmin
+
+    def get_zmax(key):
+        zmin, zmax = [float(z) for z in key.split("z")]
+        return zmax
+
+    keys_sorted = sorted(bin_keys, key=get_zmin)
+    # one bin could be the master sample
+    zmin = np.inf
+    zmax = 0.0
+    for key in keys_sorted:
+        zmin = min(zmin, get_zmin(key))
+        zmax = max(zmax, get_zmax(key))
+    master_key = None
+    for i, key in enumerate(keys_sorted):
+        if zmin == get_zmin(key) and zmax == get_zmax(key):
+            master_key = keys_sorted.pop(i)
+            break
+    if master_key is not None:
+        keys_sorted.append(master_key)
+    return keys_sorted
+
+
 def TypeNone(type):
     """Test input value for being 'type', but also accepts None as default
 

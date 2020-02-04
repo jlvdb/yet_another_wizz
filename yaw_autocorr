@@ -20,6 +20,7 @@ from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
 from yet_another_wizz.utils import ThreadHelper, load_argparse_summary
 
+
 parser = argparse.ArgumentParser(
     description='Compute an estimate for the galaxy bias of a spectroscopic '
                 'data sample by measuring the autocorrelation amplitude at '
