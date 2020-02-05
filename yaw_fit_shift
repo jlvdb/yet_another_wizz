@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import pickle
 
 import numpy as np
-from scipy.optimize import curve_fit
-from yaw_tools.fitting import bias_model, model_from_n_z
-from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from yaw_tools.folders import (binname, DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
-                               init_input_folder, init_output_folder)
+                               Folder, init_input_folder, init_output_folder)
+from yaw_tools.utils import guess_bin_order
 
-from Nz_Fitting import BinnedRedshiftData, PowerLawBias, RedshiftData
-
-
-# m = model_from_n_z(z_true, y_true)
-# fit = lambda bins, *params: params[1] * m.rebin(bins - params[0])
-# popt, pcov = curve_fit(fit, bins_meas, y_meas, sigma=err_meas, p0=[0.0, 1.0])
-# perr = np.sqrt(np.diag(pcov))
+from Nz_Fitting import (CurveFit, PowerLawBias, RedshiftData,
+                        RedshiftDataBinned, RedshiftHistogram, ShiftModel,
+                        ShiftModelBinned)
 
 
 parser = argparse.ArgumentParser(
@@ -24,23 +22,19 @@ parser.add_argument(
     'wdir', metavar='DATAFOLDER',
     help='an output folder of yet_another_wizz')
 parser.add_argument(
-    '--fit-bias', action='store_true',
-    help='correct the cross-correlation measurements by fitting a bias model '
-         'prior to fitting the shift relative to the redshift model')
+    'models', metavar='MODELFOLDER',
+    help='a folder containing redshift distribution files with redshift keys '
+         '(e.g. 0.101z1.201) matching those in the input data folder')
 parser.add_argument(
-    '--master-key',
+    '--master-key', required=False,
     help='redshift keys (e.g. 0.101z1.201) that identifies the measurement '
          'on the full data sample (only used, if bias is fitted)')
 parser.add_argument(
+    '--fit-bias', action='store_true',
+    help='additinally try to fit the galaxy bias')
+parser.add_argument(
     '--use-cov', action='store_true',
-    help='use data correlation matrices for the parameter estimation if they '
-         'exist')
-parser.add_argument(
-    '--store-cov', action='store_true',
-    help='save covariance matrices in separate files')
-parser.add_argument(
-    '--store-boot', action='store_true',
-    help='save the parameter bootstrap realisations in separate files')
+    help='use the covariance matrix instead of the standard errors')
 parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
@@ -49,49 +43,126 @@ parser.add_argument(
 if __name__ == "__main__":
 
     args = parser.parse_args()
-    if args.fit_bias and args.master_key is None:
-        parser.error("--master-key is required with --fit-bias")
-    elif not args.fit_bias:
-        args.master_key = None
     indir = init_input_folder(args)
-    outidr = init_output_folder(args, indir)
+    outdir = init_output_folder(args, indir)
     scales = find_cc_scales(indir)
 
-    # output_types = ["redshift distributions"]
-    # if args.store_boot:
-    #     output_types.append("bootstrap samples")
-    # if args.store_cov:
-    #     output_types.append("covariance matrices")
-    #     if args.cov_order is not None:
-    #         output_types.append("global covariance")
-    # print("producing output: %s" % ", ".join(output_types))
+    # global cc binning
+    global_binning = np.loadtxt(indir.path_binning_file())
 
-    # fit the clustering code output
+    # open the model directory
+    model_dir = Folder(args.models)
+    # find any models by matching contents against the redshift key pattern
+    models = {}
+    for path in model_dir.find(".*\d\.\d*z\d\.\d.*"):
+        zbin = binname(path)
+        if zbin in models:
+            raise ValueError(
+                "found multiple occurences of redshift key '%s'" % zbin)
+        models[zbin] = path
+    if len(models) == 0:
+        raise ValueError("no redshift models found")
+
+    # fit the redshift bias
     for scale, scaledir in indir.iter_scales():
         print("==> processing scale: %s" % scale)
 
+        # check which cross-correlation data files exist
+        cc_data = scaledir.list_crosscorr_files(DEFAULT_EXT_DATA)
+        if len(cc_data) == 0:
+            raise ValueError("no cross-correlation data files found")
+        elif args.master_key not in cc_data:
+            raise KeyError("master key '%s' data not found" % args.master_key)
+        # check which cross-correlation bootstrap files exist
+        cc_boot = scaledir.list_crosscorr_files(DEFAULT_EXT_BOOT)
+        if len(cc_boot) == 0:
+            raise ValueError("no cross-correlation bootstraps found")
+        if cc_data.keys() != cc_boot.keys():
+            raise KeyError(
+                "redshift bins of bootstraps do not match data files")
         # check the covariance matrices
-        if args.use_cov_global:
-            # load the bin order to interpret the global covariance matrix
-            if not os.path.exist(scaledir.path_bin_order_file()):
-                raise OSError("missing bin order file for global covariance")
-            with open(scaledir.path_bin_order_file()) as f:
-                cov_order = tuple(line.strip() for line in f.readlines())
-            # load the global covariance matrix
-            cov_path = scaledir.path_global_cov_file("crosscorr")
-            if not os.path.exist(cov_path):
-                raise OSError(
-                    "no global cross-correlation covariance matrix found")
-            cc_cov = np.loadtxt(cov_path)
-        elif: args.use_cov:
-            # load the covariance matrices for each bin
+        if args.use_cov:
             cc_cov = scaledir.list_crosscorr_files(DEFAULT_EXT_COV)
-            if len(cc_data) == 0:
+            if len(cc_cov) == 0:
                 raise ValueError(
                     "no cross-correlation covariance matrices found")
-            if cc_data.keys() != cc_cov.keys():
+            elif args.master_key not in cc_cov:
                 raise KeyError(
-                    "redshift bins of covariance matrices do not match "
-                    "data files")
+                    "master key '%s' covariance matrix not found" %
+                    args.master_key)
         else:
             cc_cov = None
+        # check the models
+        if cc_data.keys() != models.keys():
+            raise KeyError(
+                "redshift bins of redshift models do not match data files")
+
+        # try using the global bin order
+        order_file = scaledir.path_bin_order_file()
+        if os.path.exists(order_file):
+            bin_order = []
+            with open(order_file) as f:
+                for line in f.readlines():
+                    zbin = line.strip("\n")
+                    if len(zbin) > 0:
+                        bin_order.append(zbin)
+        else:
+            bin_order = guess_bin_order(cc_data.keys())
+
+        # load the data files
+        master_data = None
+        bins_data = []
+        master_model = None
+        bins_models = []
+        for zbin in bin_order:
+            data = RedshiftData(*np.loadtxt(cc_data[zbin]).T)
+            data.setRealisations(np.loadtxt(cc_boot[zbin])) 
+            model = RedshiftHistogram(*np.loadtxt(models[zbin]).T[:2])
+            if cc_cov is not None:
+                data.setCovariance(np.loadtxt(cc_cov[zbin]))
+            if zbin == args.master_key:
+                master_data = data
+                master_model = model
+            else:
+                bins_data.append(data)
+                bins_models.append(model)
+        if master_data is None:
+            master_data = bins_data.pop()
+            master_model = bins_models.pop()
+        joint_data = RedshiftDataBinned(bins_data, master_data)
+        # load global covariance
+        global_cov_file = scaledir.path_global_cov_file("crosscorr")
+        if args.use_cov and os.path.exists(global_cov_file):
+            joint_data.setCovariance(
+                np.loadtxt(scaledir.path_global_cov_file(global_cov_file)))
+
+        # construct models for each bin
+        bins_models = [
+            ShiftModel(bins_models[i], global_binning)
+            for i in range(len(bins_data))]
+        master_model = ShiftModel(master_model, global_binning)
+
+        # construct the fit model
+        if args.fit_bias:
+            bias = PowerLawBias()
+        else:
+            bias = None
+        model = ShiftModelBinned([*bins_models, master_model], bias)
+
+        # fit the bias model
+        optimizer = CurveFit(joint_data, model)
+        fitparams = optimizer.optimize()
+        print(fitparams)
+
+        # plot the data and best-fit model
+        fig = joint_data.plot()
+        model.plot(fitparams, [d.z for d in joint_data.split()], fig=fig)
+        for ax in fig.axes:
+            ax.grid(alpha=0.25)
+        plt.show()
+        plt.close()
+
+        fitparams.plotSamples([
+            "dz_%d" % (i + 1) for i in range(len(bins_models) + 1)])
+        plt.show()
+        plt.close()

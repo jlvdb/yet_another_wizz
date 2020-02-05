@@ -3,36 +3,142 @@ import argparse
 import os
 import pickle
 
-from Nz_Fitting import (RedshiftData, BinnedRedshiftData,
-                        GaussianComb, BinnedRedshiftModel,
-                        CurveFit)
+import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
+from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
+                               DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
+                               init_input_folder, init_output_folder)
+
+from Nz_Fitting import (CurveFit, GaussianComb, PowerLawBias, RedshiftData,
+                        RedshiftDataBinned, RedshiftModelBinned)
 
 
 parser = argparse.ArgumentParser(
-    description='Unpickles yet_another_wizz region pickle files, optionally '
-                'applying bias corrections.')
+    description='SURPRISE!')
 parser.add_argument(
     'wdir', metavar='DATAFOLDER',
-    help='a folder with (bias corrected) cross-correlation measurements')
+    help='an output folder of yet_another_wizz')
 parser.add_argument(
-    '--extension', default="pz",
-    help='file extension name of the output files (default: %(default)s)')
+    '--master-key', required=True,
+    help='redshift keys (e.g. 0.101z1.201) that identifies the measurement '
+         'on the full data sample (only used, if bias is fitted)')
 parser.add_argument(
-    '--master-bin', required=True,
-    help='redshift key (e.g. 0.101z1.201) of the full data sample')
+    '--n-comp', type=int, required=True,
+    help='number of Gaussian components for each bin')
 parser.add_argument(
-    '--covariance', choices=('none', 'bin', 'global'),
-    help='redshift key (e.g. 0.101z1.201) of the full data sample')
+    '--fit-bias', action='store_true',
+    help='additinally try to fit the galaxy bias')
 parser.add_argument(
-    '--cov-order', nargs='*',
-    help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
-         'correlation files are inserted into the global covariance matrix, '
-         'if not given no global covariance is computed')
+    '--use-cov', action='store_true',
+    help='use the covariance matrix instead of the standard errors')
 parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
 
 
 if __name__ == "__main__":
+    from matplotlib import pyplot as plt
 
     args = parser.parse_args()
+    indir = init_input_folder(args)
+    outdir = init_output_folder(args, indir)
+    scales = find_cc_scales(indir)
+
+    # fit the redshift bias
+    for scale, scaledir in indir.iter_scales():
+        print("==> processing scale: %s" % scale)
+
+        # check which cross-correlation data files exist
+        cc_data = scaledir.list_crosscorr_files(DEFAULT_EXT_DATA)
+        if len(cc_data) == 0:
+            raise ValueError("no cross-correlation data files found")
+        elif args.master_key not in cc_data:
+            raise KeyError("master key '%s' data not found" % args.master_key)
+        # check which cross-correlation bootstrap files exist
+        cc_boot = scaledir.list_crosscorr_files(DEFAULT_EXT_BOOT)
+        if len(cc_boot) == 0:
+            raise ValueError("no cross-correlation bootstraps found")
+        if cc_data.keys() != cc_boot.keys():
+            raise KeyError(
+                "redshift bins of bootstraps do not match data files")
+        # check the covariance matrices
+        if args.use_cov:
+            cc_cov = scaledir.list_crosscorr_files(DEFAULT_EXT_COV)
+            if len(cc_cov) == 0:
+                raise ValueError(
+                    "no cross-correlation covariance matrices found")
+            elif args.master_key not in cc_cov:
+                raise KeyError(
+                    "master key '%s' covariance matrix not found" %
+                    args.master_key)
+        else:
+            cc_cov = None
+
+        # try using the global bin order
+        order_file = scaledir.path_bin_order_file()
+        if os.path.exists(order_file):
+            bin_order = []
+            with open(order_file) as f:
+                for line in f.readlines():
+                    zbin = line.strip("\n")
+                    if len(zbin) > 0:
+                        bin_order.append(zbin)
+        else:
+            bin_order = guess_bin_order(cc_data.keys())
+
+        # load the bin weights
+        weight_file = scaledir.path_weights_file()
+        if not os.path.exists(weight_file):
+            raise OSError("bin weights file not found")
+        with open(weight_file, "rb") as f:
+            weight_dict = pickle.load(f)
+        # normalize the weights
+        weight_dict.pop(args.master_key)
+        norm = sum(weight_dict.values())
+
+        # load the data files
+        master_data = None
+        bins_data = []
+        weights = []
+        for zbin in bin_order:
+            data = RedshiftData(*np.loadtxt(cc_data[zbin]).T)
+            data.setRealisations(np.loadtxt(cc_boot[zbin])) 
+            if zbin == args.master_key:
+                master_data = data
+                if cc_cov is not None:
+                    data.setCovariance(np.loadtxt(cc_cov[args.master_key]))
+            else:
+                weights.append(weight_dict[zbin] / norm)
+                bins_data.append(data)
+        joint_data = RedshiftDataBinned(bins_data, master_data)
+
+        # construct models for each bin
+        zmin, zmax = 0.07, 1.41  # redshift range of mocks
+        bins_models = [
+            GaussianComb(args.n_comp, zmin, (zmax - zmin) / args.n_comp)
+            for i in range(len(bins_data))]
+
+        # construct the fit model
+        if args.fit_bias:
+            bias = PowerLawBias()
+        else:
+            bias = None
+        model = RedshiftModelBinned(bins_models, weights, bias=bias)
+
+        # fit the bias model
+        optimizer = CurveFit(joint_data, model)
+        fitparams = optimizer.optimize(threads=6)
+        print(fitparams)
+
+        # plot the data and best-fit model
+        data_master.plot()
+        model.plot(fitparams)
+        plt.xlabel(r"$z$", fontsize=13)
+        plt.ylabel(r"$p(z)$", fontsize=13)
+        plt.grid(alpha=0.25)
+        plt.show()
+        plt.close()
+
+        # fitparams.plotSamples()
+        # plt.show()
+        # plt.close()
