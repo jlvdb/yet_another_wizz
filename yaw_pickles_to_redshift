@@ -80,13 +80,14 @@ if __name__ == "__main__":
 
             # process auto-correlation pickles and compute the bias correction
             header_key = "w_sp"
+            correction_key = []
             if use_wss:
                 pkl2data.set_bias(None, None)  # clear bias arrays
                 pkl2data.load_pickle(ac_spec_pickle, AutoCorrelationPickle)
                 pkl2data.write_output(outdir[scale], "w_ss")
                 amp_product = pkl2data.get_amplitudes()
                 amp_product_samples = pkl2data.get_samples()
-                header_key += " / bias_spec"
+                correction_key.append("w_ss")
             if use_wpp:
                 pkl2data.set_bias(None, None)  # clear bias arrays
                 pkl2data.load_pickle(ac_phot_pickle, AutoCorrelationPickle)
@@ -97,7 +98,9 @@ if __name__ == "__main__":
                 except NameError:
                     amp_product = pkl2data.get_amplitudes()
                     amp_product_samples = pkl2data.get_samples()
-                header_key += " / bias_phot"
+                correction_key.append("w_pp")
+            if len(correction_key) > 0:
+                header_key += " / sqrt(" + " / ".join(correction_key) + ")"
             # apply the bias correction
             try:
                 bias = np.sqrt(amp_product)
@@ -131,9 +134,7 @@ if __name__ == "__main__":
                         string += "not found"
                         raise KeyError(string)
                 # store global covariance matrix
-                outpath = outdir[scale].incorporate(
-                    os.path.basename(pickle_path).split("_")[0] +
-                    "_global%s" % DEFAULT_EXT_COV)
+                outpath = outdir[scale].path_global_cov_file("crosscorr")
                 print(
                     "writing global covariance matrix to: %s" %
                     os.path.basename(outpath))
