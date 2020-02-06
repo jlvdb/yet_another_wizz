@@ -209,17 +209,10 @@ if __name__ == "__main__":
 
         # make check plots
         plot_file = outdir[scale].path_bias_file(".pdf")
-        print("writing fit check plots to: %s" % os.path.basename(plot_file))
-        with PdfPages(plot_file) as pdf:
-            # plot the data and best-fit model
-            fig = master_data.plot()
-            model.plot(fitparams, ax=fig.axes[0])
-            fig.set_xlabel(r"$z$", fontsize=13)
-            fig.set_ylabel(r"$w(z)$", fontsize=13)
-            fig.no_gaps()
-            pdf.savefig(fig.fig)
-            plt.close(fig.fig)
-            # plot the fit parameter samples
-            fig = fitparams.plotSamples()
-            pdf.savefig(fig)
-            plt.close(fig)
+        print("writing fit check plot to: %s" % os.path.basename(plot_file))
+        fig = master_data.plot()
+        model.plot(fitparams, ax=fig.axes[0])
+        fig.set_xlabel(r"$z$", fontsize=13)
+        fig.no_gaps()
+        fig.savefig(plot_file)
+        plt.close(fig.fig)
