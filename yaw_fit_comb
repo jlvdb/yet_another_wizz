@@ -3,14 +3,20 @@ import argparse
 import os
 import pickle
 
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
                                init_input_folder, init_output_folder)
+from yaw_tools.utils import (guess_bin_order, nancov, pack_model_redshifts,
+                             write_parameters)
 
-from Nz_Fitting import (CurveFit, GaussianComb, PowerLawBias, RedshiftData,
-                        RedshiftDataBinned, RedshiftModelBinned)
+from Nz_Fitting import (CurveFit, CombModelBinned, GaussianComb, PowerLawBias,
+                        RedshiftData, RedshiftDataBinned)
 
 
 parser = argparse.ArgumentParser(
@@ -37,7 +43,6 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
-    from matplotlib import pyplot as plt
 
     args = parser.parse_args()
     indir = init_input_folder(args)
@@ -102,15 +107,20 @@ if __name__ == "__main__":
         weights = []
         for zbin in bin_order:
             data = RedshiftData(*np.loadtxt(cc_data[zbin]).T)
-            data.setRealisations(np.loadtxt(cc_boot[zbin])) 
+            data.setRealisations(np.loadtxt(cc_boot[zbin]))
+            if cc_cov is not None:
+                data.setCovariance(np.loadtxt(cc_cov[zbin]))
             if zbin == args.master_key:
                 master_data = data
-                if cc_cov is not None:
-                    data.setCovariance(np.loadtxt(cc_cov[args.master_key]))
             else:
                 weights.append(weight_dict[zbin] / norm)
                 bins_data.append(data)
         joint_data = RedshiftDataBinned(bins_data, master_data)
+        # load global covariance
+        global_cov_file = scaledir.path_global_cov_file("crosscorr")
+        if args.use_cov and os.path.exists(global_cov_file):
+            joint_data.setCovariance(
+                np.loadtxt(scaledir.path_global_cov_file(global_cov_file)))
 
         # construct models for each bin
         zmin, zmax = 0.07, 1.41  # redshift range of mocks
@@ -123,22 +133,33 @@ if __name__ == "__main__":
             bias = PowerLawBias()
         else:
             bias = None
-        model = RedshiftModelBinned(bins_models, weights, bias=bias)
+        model = CombModelBinned(bins_models, weights, bias=bias)
 
         # fit the bias model
         optimizer = CurveFit(joint_data, model)
-        fitparams = optimizer.optimize(threads=6)
+        fitparams = optimizer.optimize()
         print(fitparams)
+        paramdir = outdir[scale].join("comb_parameters")
+        print("writing fit parameters to: %s/" % os.path.basename(paramdir))
+        write_parameters(fitparams, paramdir, precision=3, notation="exp")
 
-        # plot the data and best-fit model
-        data_master.plot()
-        model.plot(fitparams)
-        plt.xlabel(r"$z$", fontsize=13)
-        plt.ylabel(r"$p(z)$", fontsize=13)
-        plt.grid(alpha=0.25)
-        plt.show()
-        plt.close()
+        # compute the output redshift distributions
+        model_containers = pack_model_redshifts(
+            model, fitparams, model.autoSampling())
+        joint_models = RedshiftDataBinned(
+            model_containers[:-1], model_containers[-1])
 
-        # fitparams.plotSamples()
-        # plt.show()
-        # plt.close()
+        # write the shifted redshift histograms
+        for zbin, data in zip(bin_order, model_containers):
+            outpath = outdir[scale].path_combfit_file(".*", zbin)
+            print("writing model data to: %s" % os.path.basename(outpath))
+            header = "col 1 = mean redshift\n"
+            header += "col 2 = comb fit (%d components)\n" % args.n_comp
+            header += "col 3 = error"
+            np.savetxt(
+                outpath.replace(".*", DEFAULT_EXT_DATA),
+                np.stack([data.z, data.n, data.dn]).T, header=header)
+            np.savetxt(
+                outpath.replace(".*", DEFAULT_EXT_BOOT),
+                data.getRealisations(),
+                header="comb fit realisations (%d components)\n" % args.n_comp)
