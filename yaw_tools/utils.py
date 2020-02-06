@@ -84,6 +84,23 @@ def nancov(bootstraps):
     return covar
 
 
+def write_parameters(fitparams, folder, precision=3, notation="auto"):
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+    for name in fitparams.names:
+        with open(os.path.join(folder, "%s.tex" % name), "w") as f:
+            f.write("%s\n" % fitparams.paramAsTEX(
+                name, precision=precision, notation=notation))
+    header = " ".join(fitparams.names)
+    np.savetxt(
+        os.path.join(folder, "parameters" + DEFAULT_EXT_BOOT),
+        fitparams.paramSamples(), header=header)
+    header = " ".join(fitparams.names)
+    np.savetxt(
+        os.path.join(folder, "parameters" + DEFAULT_EXT_COV),
+        fitparams.paramCovar(), header=header)
+
+
 def apply_bias(data, bias, renorm_bias=False):
     data_corrected = data.n / bias.n
     # compute the renormalisation to not alter the amplitude of the 
@@ -109,18 +126,18 @@ def apply_bias(data, bias, renorm_bias=False):
     return container
 
 
-def write_parameters(fitparams, folder, precision=3, notation="auto"):
-    if not os.path.exists(folder):
-        os.mkdir(folder)
-    for name in fitparams.names:
-        with open(os.path.join(folder, "%s.tex" % name), "w") as f:
-            f.write("%s\n" % fitparams.paramAsTEX(
-                name, precision=precision, notation=notation))
-    header = " ".join(fitparams.names)
-    np.savetxt(
-        os.path.join(folder, "parameters" + DEFAULT_EXT_BOOT),
-        fitparams.paramSamples(), header=header)
-    header = " ".join(fitparams.names)
-    np.savetxt(
-        os.path.join(folder, "parameters" + DEFAULT_EXT_COV),
-        fitparams.paramCovar(), header=header)
+def pack_model_redshifts(model, fitparams, z_list):
+    # compute the best fit model realisations
+    model_realisations = np.empty((
+        len(z_list), len(fitparams), len(z_list[-1])))
+    for i, params in enumerate(fitparams.paramSamples()):
+        for j, n in enumerate(model.modelBest(params, z_list)[1]):
+            model_realisations[j, i] = n
+    # pack the results in containers
+    model_containers = []
+    for z, n in zip(*model.modelBest(fitparams, z_list)):
+        model_containers.append(RedshiftData(z, n, np.zeros_like(z)))
+    for i, realisations in enumerate(model_realisations):
+        model_containers[i].dn = np.std(realisations, axis=0)
+        model_containers[i].setRealisations(realisations)
+    return model_containers

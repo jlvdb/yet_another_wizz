@@ -4,13 +4,13 @@ import os
 import pickle
 
 import numpy as np
-from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, Folder, binname,
                                find_cc_scales, init_input_folder,
                                init_output_folder)
-from yaw_tools.utils import guess_bin_order, nancov, write_parameters
+from yaw_tools.utils import (guess_bin_order, nancov, pack_model_redshifts,
+                             write_parameters)
 
 from Nz_Fitting import (CurveFit, PowerLawBias, RedshiftData,
                         RedshiftDataBinned, RedshiftHistogram, ShiftModel,
@@ -113,8 +113,8 @@ if __name__ == "__main__":
         # load the data files
         master_data = None
         bins_data = []
-        master_model = None
-        bins_models = []
+        master_model_data = None
+        bins_models_data = []
         for zbin in bin_order:
             data = RedshiftData(*np.loadtxt(cc_data[zbin]).T)
             data.setRealisations(np.loadtxt(cc_boot[zbin])) 
@@ -123,13 +123,13 @@ if __name__ == "__main__":
                 data.setCovariance(np.loadtxt(cc_cov[zbin]))
             if zbin == args.master_key:
                 master_data = data
-                master_model = model
+                master_model_data = model
             else:
                 bins_data.append(data)
-                bins_models.append(model)
+                bins_models_data.append(model)
         if master_data is None:
             master_data = bins_data.pop()
-            master_model = bins_models.pop()
+            master_model_data = bins_models_data.pop()
         joint_data = RedshiftDataBinned(bins_data, master_data)
         # load global covariance
         global_cov_file = scaledir.path_global_cov_file("crosscorr")
@@ -139,9 +139,9 @@ if __name__ == "__main__":
 
         # construct models for each bin
         bins_models = [
-            ShiftModel(bins_models[i], global_binning)
+            ShiftModel(bins_models_data[i], global_binning)
             for i in range(len(bins_data))]
-        master_model = ShiftModel(master_model, global_binning)
+        master_model = ShiftModel(master_model_data, global_binning)
 
         # construct the fit model
         if args.fit_bias:
@@ -158,28 +158,17 @@ if __name__ == "__main__":
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
         write_parameters(fitparams, paramdir, precision=4, notation="decimal")
 
-        # compute the best fit model realisations
-        model_realisations = np.empty((
-            model.n_models, len(fitparams), len(master_data)))
-        z_list = [d.z for d in [*bins_data, master_data]]
-        for i, params in enumerate(fitparams.paramSamples()):
-            for j, n in enumerate(model.modelBest(params, z_list)[1]):
-                model_realisations[j, i] = n
-        # pack the results in containers
-        model_containers = []
-        for z, n in zip(*model.modelBest(fitparams, z_list)):
-            model_containers.append(RedshiftData(z, n, np.zeros_like(z)))
-        for i, realisations in enumerate(model_realisations):
-            model_containers[i].dn = np.std(realisations, axis=0)
-            model_containers[i].setRealisations(realisations)
-            model_containers[i].setCovariance(nancov(realisations.T))
+        # compute the output redshift distributions
+        model_containers = pack_model_redshifts(
+            model, fitparams, [
+                m.z for m in [*bins_models_data, master_model_data]])
         joint_models = RedshiftDataBinned(
             model_containers[:-1], model_containers[-1])
 
         # write the shifted redshift histograms
         for zbin, data in zip(bin_order, model_containers):
             outpath = outdir[scale].path_shiftfit_file(".*", zbin)
-            print("writing corrected data to: %s" % os.path.basename(outpath))
+            print("writing model data to: %s" % os.path.basename(outpath))
             header = "col 1 = mean redshift\n"
             header += "col 2 = shifted n(z) (from %s)\n" % models[zbin]
             header += "col 3 = error"
@@ -190,33 +179,3 @@ if __name__ == "__main__":
                 outpath.replace(".*", DEFAULT_EXT_BOOT),
                 data.getRealisations(),
                 header="shifted n(z) realisations (from %s)" % models[zbin])
-            np.savetxt(
-                outpath.replace(".*", DEFAULT_EXT_COV),
-                data.getCovariance(),
-                header=(
-                    "shifted n(z) covariance matrix (from %s)" %
-                    models[zbin]))
-
-        # store global covariance matrix
-        outpath = outdir[scale].path_global_cov_file("shiftfit")
-        print(
-            "writing global covariance matrix to: %s" %
-            os.path.basename(outpath))
-        header = "global shifted n(z) "
-        header += "covariance matrix (from %s)" % model_dir.root
-        np.savetxt(
-            outpath, nancov(joint_models.getRealisations().T),
-            header=header)
-        # store the order for later use
-        outpath = outdir[scale].path_bin_order_file()
-        with open(outpath, "w") as f:
-            for zbin in bin_order:
-                f.write("%s\n" % zbin)
-
-        # plot the fit parameter samples
-        plot_file = outdir[scale].path_shiftfit_file(".pdf")
-        print("writing fit check plots to: %s" % os.path.basename(plot_file))
-        fig = fitparams.plotSamples([
-            "dz_%d" % (i + 1) for i in range(len(bins_models) + 1)])
-        fig.savefig(plot_file)
-        plt.close(fig)
