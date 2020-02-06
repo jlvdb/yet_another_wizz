@@ -1,7 +1,12 @@
 import argparse
+import os
 
 import numpy as np
 from numpy import ma
+
+from Nz_Fitting import RedshiftData
+
+from .folders import DEFAULT_EXT_BOOT, DEFAULT_EXT_COV, DEFAULT_EXT_DATA
 
 
 DEFAULT_CAT_EXT = 1
