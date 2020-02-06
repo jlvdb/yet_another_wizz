@@ -108,6 +108,9 @@ class ScaleFolder(Folder):
     def path_crosscorr_file(self, ext, zlims=None):
         return self._path_zbin_file("crosscorr", ext, zlims)
 
+    def path_bias_file(self, ext):
+        return self._path_zbin_file("bias", ext)
+
     def path_combfit_file(self, ext, zlims=None):
         return self._path_zbin_file("combfit", ext, zlims)
 
@@ -118,7 +121,7 @@ class ScaleFolder(Folder):
         return self.join("bin_weights.pkl")
 
     def path_global_cov_file(self, prefix):
-        return self.join("%s_global.cov" % prefix)
+        return self.join("%s_global%s" % (prefix, DEFAULT_EXT_COV))
 
     def path_bin_order_file(self):
         return self.join("covariance_bin_order.txt")
@@ -166,6 +169,9 @@ class ScaleFolder(Folder):
 
     def list_crosscorr_files(self, ext):
         return self._list_zbin_files("crosscorr", ext)
+
+    def list_bias_file(self, ext):
+        return self._list_zbin_files("bias", ext)
 
     def list_combfit_file(self, ext, zlims=None):
         return self._list_zbin_files("combfit", ext)

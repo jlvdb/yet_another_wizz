@@ -12,7 +12,7 @@ from Nz_Fitting import (BiasFitModel, CurveFit, PowerLawBias, RedshiftData,
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
                                init_input_folder, init_output_folder)
-from yaw_tools.utils import guess_bin_order
+from yaw_tools.utils import guess_bin_order, nancov, write_parameters
 
 
 parser = argparse.ArgumentParser(
@@ -103,80 +103,121 @@ if __name__ == "__main__":
                 data.setCovariance(np.loadtxt(cc_cov[args.master_key]))
             if zbin == args.master_key:
                 master_data = data
+                # load the header key
+                with open(cc_data[zbin]) as f:
+                    for line in f.readlines():
+                        if "col 2 = correlation amplitude" in line:
+                            header_line = line.strip("\n")
+                            break
             else:
                 weights.append(weight_dict[zbin] / norm)
                 bins_data.append(data)
 
-        bias = PowerLawBias()
+        bias_model = PowerLawBias()
         # construct the fit model
-        model = BiasFitModel(bias, bins_data, master_data, weights)
+        model = BiasFitModel(bias_model, bins_data, master_data, weights)
 
         # fit the bias model
         optimizer = CurveFit(master_data, model)
         fitparams = optimizer.optimize()
         print(fitparams)
+        paramdir = outdir[scale].join("bias_parameters")
+        print("writing fit parameters to: %s/" % os.path.basename(paramdir))
+        write_parameters(fitparams, paramdir, precision=2, notation="decimal")
 
-        # plot the data and best-fit model
-        master_data.plot()
-        model.plot(fitparams)
-        plt.xlabel(r"$z$", fontsize=13)
-        plt.ylabel(r"$p(z)$", fontsize=13)
-        plt.grid(alpha=0.25)
-        plt.show()
-        plt.close()
+        # evaluate the bias model for each parameter realisation
+        bias_data = bias_model.modelBest(fitparams, master_data.z)[1]
+        bias_realisations = np.empty((len(fitparams), len(master_data)))
+        for i, params in enumerate(fitparams.paramSamples()):
+            bias_realisations[i] = bias_model.modelBest(
+                params, master_data.z)[1]
+        # collect them as a container
+        bias_data = RedshiftData(
+            master_data.z, bias_data,
+            np.zeros_like(master_data.z))  # compute the correct errors later
+        bias_data.setRealisations(bias_realisations)
 
-        fitparams.plotSamples()
-        plt.show()
-        plt.close()
+        # apply the bias correction to the input data
+        bins_corrected = [
+            apply_bias(data, bias_data) for data in bins_data]
+        # finally apply the renormalisation to the bias to get the correct
+        # bias model error estimate
+        master_corrected = apply_bias(master_data, bias_data, renorm_bias=True)
+        joint_corrected = RedshiftDataBinned(bins_corrected, master_corrected)
 
-        # compute bias corrected redshift distributions
-        joint_original = RedshiftDataBinned(bins_data, master_data)
-        data_corrected = []
-        for data in joint_original.data:
-            norm_original = np.trapz(data.n, x=data.z)
-            # apply bias correction
-            bias_eval = bias.modelBest(fitparams, data.z)[1]
-            data_reals = np.empty_like(data.reals)
-            for i, params in enumerate(fitparams.paramSamples()):
-                bias_real = bias.modelBest(params, data.z)[1]
-                data_real = data.reals[i] / bias_real
-                norm = np.trapz(data_real, x=data.z)
-                data_reals[i] = data_real * norm_original / norm
-            norm = np.trapz(data.n / bias_eval, x=data.z)
-            new_data = RedshiftData(
-                data.z, data.n / bias_eval * norm_original / norm,
-                np.std(data_reals, axis=0))
-            data_corrected.append(new_data)
-        joint_corrected = RedshiftDataBinned(
-            data_corrected[:-1], data_corrected[-1])
-        # make the plot
-        fig = joint_original.plot(color="C3")
-        joint_corrected.plot(fig=fig, color="C0")
-        plt.show()
-        plt.close()
+        # compute the missing covariances
+        bias_data.dn = np.std(bias_data.getRealisations(), axis=0)
+        bias_data.setCovariance(nancov(bias_data.getRealisations().T))
+        joint_corrected.setCovariance(
+            nancov(joint_corrected.getRealisations().T))
 
-        # plot the bias model against the photometric autocorrelation function
-        autocorr = scaledir.list_autocorr_files(".dat")
-        if "phot" in autocorr:
-            ax = plt.gca()
-            autocorr_data = np.loadtxt(autocorr["phot"])
-            ax.errorbar(
-                *autocorr_data.T, color="k", marker=".", ls="none")
-            # evluate the bias model and take it's square root
-            zmax = master_data.z.max() + 0.1
-            z = np.linspace(0.0, zmax, 200)
-            sqrt_bias = np.sqrt(bias.modelBest(fitparams, z)[1])
-            sqrt_bias_err = np.sqrt(bias.modelError(fitparams, z)[1:])
-            # compute the normalisation
-            bias_norm = bias.modelBest(fitparams, autocorr_data[:, 0])[0]
-            norm = curve_fit(
-                lambda z, *args: args[0] * bias_norm,
-                z, autocorr_data[:, 1], p0=[1.0])[0][0]
-            line = ax.plot(z, sqrt_bias * norm)[0]
-            ax.fill_between(
-                z, sqrt_bias_err[0] * norm, sqrt_bias_err[1] * norm,
-                alpha=0.3, color=line.get_color())
-            # finalize plot
-            ax.set_xlim(0.0, zmax)
-            plt.show()
-            plt.close()
+        # write the bias model files
+        outpath = outdir[scale].path_bias_file(".*")
+        print("writing bias data to: %s" % os.path.basename(outpath))
+        header = "col 1 = mean redshift\n"
+        header += "col 2 = bias model\n"
+        header += "col 3 = bias error"
+        np.savetxt(
+            outdir[scale].path_bias_file(DEFAULT_EXT_DATA),
+            np.stack([bias_data.z, bias_data.n, bias_data.dn]).T,
+            header=header)
+        np.savetxt(
+            outdir[scale].path_bias_file(DEFAULT_EXT_BOOT),
+            bias_data.getRealisations(), header="bias realisations")
+        np.savetxt(
+            outdir[scale].path_bias_file(DEFAULT_EXT_COV),
+            bias_data.getCovariance(), header="bias covariance matrix")
+
+        # write the corrected redshift distributions
+        header_key = "%s / bias model" % header_line.strip(")")
+        header_key = header_key.split("(")[-1]
+        for zbin, data in zip(bin_order, [*bins_corrected, master_corrected]):
+            outpath = outdir[scale].path_crosscorr_file(".*", zbin)
+            print("writing corrected data to: %s" % os.path.basename(outpath))
+            header = "col 1 = mean redshift\n"
+            header += "col 2 = correlation amplitude (%s)\n" % header_key
+            header += "col 3 = amplitude error"
+            np.savetxt(
+                outpath.replace(".*", DEFAULT_EXT_DATA),
+                np.stack([data.z, data.n, data.dn]).T, header=header)
+            np.savetxt(
+                outpath.replace(".*", DEFAULT_EXT_BOOT),
+                data.getRealisations(),
+                header="correlation amplitude (%s) realisations" % header_key)
+            np.savetxt(
+                outpath.replace(".*", DEFAULT_EXT_COV),
+                bias_data.getCovariance(),
+                header=(
+                    "correlation amplitude (%s) covariance matrix" %
+                    header_key))
+
+        # store global covariance matrix
+        outpath = outdir[scale].path_global_cov_file("crosscorr")
+        print(
+            "writing global covariance matrix to: %s" %
+            os.path.basename(outpath))
+        header = "global correlation amplitude "
+        header += "(%s) covariance matrix" % header_key
+        np.savetxt(outpath, joint_corrected.getCovariance(), header=header)
+        # store the order for later use
+        outpath = outdir[scale].path_bin_order_file()
+        with open(outpath, "w") as f:
+            for zbin in bin_order:
+                f.write("%s\n" % zbin)
+
+        # make check plots
+        plot_file = outdir[scale].path_bias_file(".pdf")
+        print("plotting model to: %s" % plot_file)
+        with PdfPages(plot_file) as pdf:
+            # plot the data and best-fit model
+            fig = master_data.plot()
+            model.plot(fitparams, ax=fig.axes[0])
+            fig.set_xlabel(r"$z$", fontsize=13)
+            fig.set_ylabel(r"$w(z)$", fontsize=13)
+            fig.no_gaps()
+            pdf.savefig(fig.fig)
+            plt.close(fig.fig)
+            # plot the fit parameter samples
+            fig = fitparams.plotSamples()
+            pdf.savefig(fig)
+            plt.close(fig)

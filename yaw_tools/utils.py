@@ -77,3 +77,45 @@ def nancov(bootstraps):
         covar[:, i] = 0.0
         covar[i, i] = np.inf
     return covar
+
+
+def apply_bias(data, bias, renorm_bias=False):
+    data_corrected = data.n / bias.n
+    # compute the renormalisation to not alter the amplitude of the 
+    norm_original = np.trapz(data.n, x=data.z)
+    norm_corrected = np.trapz(data_corrected, x=data.z)
+    renorm = norm_original / norm_corrected
+    data_corrected *= renorm
+    # apply also to the realisations
+    real_corrected = data.getRealisations() / bias.getRealisations()
+    norm_original = np.trapz(data.getRealisations(), x=data.z)
+    norm_corrected = np.trapz(real_corrected, x=data.z)
+    renorms = norm_original / norm_corrected
+    real_corrected *= renorms[:, np.newaxis]
+    # renormalize the bias data in place
+    if renorm_bias:
+        bias.n *= renorm
+        bias.reals *= renorms[:, np.newaxis]
+    # create a container with corrected redshift data
+    container = RedshiftData(
+        data.z, data_corrected, np.std(real_corrected, axis=0))
+    container.setRealisations(real_corrected)
+    container.setCovariance(nancov(real_corrected.T))
+    return container
+
+
+def write_parameters(fitparams, folder, precision=3, notation="auto"):
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+    for name in fitparams.names:
+        with open(os.path.join(folder, "%s.tex" % name), "w") as f:
+            f.write("%s\n" % fitparams.paramAsTEX(
+                name, precision=precision, notation=notation))
+    header = " ".join(fitparams.names)
+    np.savetxt(
+        os.path.join(folder, "parameters" + DEFAULT_EXT_BOOT),
+        fitparams.paramSamples(), header=header)
+    header = " ".join(fitparams.names)
+    np.savetxt(
+        os.path.join(folder, "parameters" + DEFAULT_EXT_COV),
+        fitparams.paramCovar(), header=header)
