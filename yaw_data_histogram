@@ -57,8 +57,9 @@ if __name__ == '__main__':
         else:
             weights = None
     # compute the binning
-    binning = PdfMaker.adaptiveBins(
-        args.n_bins, z_spec.min(), z_spec.max(), z_spec)
+    binning = PdfMaker.adaptiveBins(args.n_bins + 2, None, None, z_spec)
+    binning = np.append(0.0, binning)
+    binning = np.append(binning, z_spec.max() + 0.1)
     bin_centers = (binning[:-1] + binning[1:]) / 2.0
 
     for zbin in args.zbin_keys:
