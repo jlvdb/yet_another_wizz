@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import subprocess
+import sys
+from shutil import rmtree
+
+
+parser = argparse.ArgumentParser(
+    description='Convert a valid TEX string from an inpt file to a PNG image '
+                'with the same file name and minimal size.')
+parser.add_argument(
+    '-i', '--input', metavar='TEXfile', required=True, help='input TEX file')
+parser.add_argument(
+    '--dpi', type=int, default=600,
+    help='output PNG resolution in DPI (default: %(default)s')
+parser.add_argument(
+    '-o', '--output', metavar='PNGfile', required=False,
+    help='output PNG file (default: as input file)')
+
+
+if __name__ == "__main__":
+
+    args = parser.parse_args()
+    print("==> converting TEX to PNG")
+    print("reading input TEX file: %s" % args.input)
+    if args.output is None:
+        outfile = os.path.splitext(args.input)[0]
+    else:
+        outfile = os.path.splitext(args.output)[0]
+
+    # format the latex template string
+    latex_string = r"\documentclass[border=2pt]{standalone}" + "\n"
+    latex_string += r"\usepackage{amsmath}" + "\n"
+    latex_string += r"\usepackage[separate-uncertainty]{siunitx}" + "\n"
+    latex_string += r"\begin{document}" + "\n"
+    with open(args.input) as f:
+        latex_string += "\n".join(f.readlines())
+    latex_string += r"\end{document}" + "\n"
+
+    tmpdir = "math2png_%s" % os.urandom(6).hex()
+    os.mkdir(tmpdir)
+    try:
+        basename = os.path.splitext(os.path.basename(args.input))[0]
+        basepath = os.path.join(tmpdir, basename)
+        with open(basepath + ".tex", "w") as f:
+            f.write(latex_string)
+        # run pdflatex
+        with open(os.devnull, "w") as pipe:
+            returncode = subprocess.call([
+                "pdflatex", "-interaction=batchmode",
+                "-jobname=%s" % basepath, basepath,],
+                stdout=pipe, stderr=pipe)
+        # report errors if exited unexpected
+        if returncode:
+            # display the first error reported in the log
+            print("#" * 40)
+            with open(basepath + ".log") as f:
+                lines = f.readlines()
+                for start, line in enumerate(lines):
+                    if "!" in line:
+                        end = start
+                        while end < len(lines):
+                            if "!" not in lines[end]:
+                                break
+                            end += 1
+                        break
+            for i in range(max(start - 5, 0), min(end + 5, len(lines))):
+                print(lines[i].strip("\n"))
+            print("#" * 40)
+            sys.exit("ERROR:something went wrong during conversion to PDF")
+        # run pdftocairo
+        with open(basepath + ".log", "w") as pipe:
+            returncode = subprocess.call([
+                "pdftocairo", "-singlefile", "-png", "-r", str(args.dpi),
+                basepath + ".pdf", outfile], stdout=pipe, stderr=pipe)
+        # report errors if exited unexpected
+        if returncode:
+            # display the log
+            print("#" * 40)
+            with open(basepath + ".log") as f:
+                lines = f.readlines()
+                for line in lines:
+                    print(line.strip("\n"))
+            print("#" * 40)
+            sys.exit("ERROR:something went wrong during conversion to PNG")
+        print("created output PNG: %s.png" % outfile)
+    finally:
+        rmtree(tmpdir)
