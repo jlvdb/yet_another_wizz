@@ -170,13 +170,13 @@ class ScaleFolder(Folder):
     def list_crosscorr_files(self, ext):
         return self._list_zbin_files("crosscorr", ext)
 
-    def list_bias_file(self, ext):
+    def list_bias_files(self, ext):
         return self._list_zbin_files("bias", ext)
 
-    def list_combfit_file(self, ext, zlims=None):
+    def list_combfit_files(self, ext, zlims=None):
         return self._list_zbin_files("combfit", ext)
 
-    def list_shiftfit_file(self, ext, zlims=None):
+    def list_shiftfit_files(self, ext, zlims=None):
         return self._list_zbin_files("shiftfit", ext)
 
 

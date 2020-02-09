@@ -208,11 +208,12 @@ if __name__ == "__main__":
                 f.write("%s\n" % zbin)
 
         # make check plots
-        plot_file = outdir[scale].path_bias_file(".pdf")
+        plot_file = outdir[scale].path_bias_file(".*")
         print("writing fit check plot to: %s" % os.path.basename(plot_file))
         fig = master_data.plot()
         model.plot(fitparams, ax=fig.axes[0])
         fig.set_xlabel(r"$z$", fontsize=13)
         fig.no_gaps()
-        fig.savefig(plot_file)
+        fig.savefig(plot_file.replace(".*", ".pdf"))
+        fig.savefig(plot_file.replace(".*", ".png"))
         plt.close(fig.fig)

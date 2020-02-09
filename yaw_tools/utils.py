@@ -87,14 +87,17 @@ def nancov(bootstraps):
 def write_parameters(fitparams, folder, precision=3, notation="auto"):
     if not os.path.exists(folder):
         os.mkdir(folder)
+    # write tex files for each parameter
     for name in fitparams.names:
         with open(os.path.join(folder, "%s.tex" % name), "w") as f:
             f.write("%s\n" % fitparams.paramAsTEX(
                 name, precision=precision, notation=notation))
+    # write a list of bootstrap realisations
     header = " ".join(fitparams.names)
     np.savetxt(
         os.path.join(folder, "parameters" + DEFAULT_EXT_BOOT),
         fitparams.paramSamples(), header=header)
+    # write the parameter covariance
     header = " ".join(fitparams.names)
     np.savetxt(
         os.path.join(folder, "parameters" + DEFAULT_EXT_COV),
