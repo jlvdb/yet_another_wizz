@@ -4,8 +4,9 @@ import os
 import pickle
 
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
