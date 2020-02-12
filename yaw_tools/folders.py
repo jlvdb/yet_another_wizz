@@ -260,15 +260,16 @@ class CCFolder(Folder):
         return other
 
 
-def init_input_folder(args):
+def init_input_folder(args, sloppy=False):
     setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
     if not os.path.exists(args.wdir):
         raise OSError("input folder does not exist")
     print("==> processing data in: %s" % args.wdir)
     indir = CCFolder(args.wdir)
-    # check if a binning file and which scale dirs exits
-    if not os.path.exists(indir.path_binning_file()):
-        raise ValueError("input folder does not contain valid output")
+    if not sloppy:
+        # check if a binning file and which scale dirs exits
+        if not os.path.exists(indir.path_binning_file()):
+            raise ValueError("input folder does not contain valid output")
     return indir
 
 

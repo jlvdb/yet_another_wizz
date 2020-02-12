@@ -84,6 +84,6 @@ if __name__ == "__main__":
                     print(line.strip("\n"))
             print("#" * 40)
             sys.exit("ERROR:something went wrong during conversion to PNG")
-        print("created output PNG: %s.png" % outfile)
+        print("created output PNG:     %s.png" % outfile)
     finally:
         rmtree(tmpdir)
