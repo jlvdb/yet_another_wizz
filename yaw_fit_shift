@@ -10,7 +10,7 @@ from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                find_cc_scales, init_input_folder,
                                init_output_folder)
 from yaw_tools.utils import (guess_bin_order, nancov, pack_model_redshifts,
-                             write_parameters)
+                             write_fit_stats, write_parameters)
 
 from Nz_Fitting import (CurveFit, PowerLawBias, RedshiftData,
                         RedshiftDataBinned, RedshiftHistogram, ShiftModel,
@@ -156,6 +156,7 @@ if __name__ == "__main__":
         print(fitparams)
         paramdir = outdir[scale].join("shift_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
+        write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
         write_parameters(fitparams, paramdir, precision=4, notation="decimal")
 
         # compute the output redshift distributions
@@ -164,6 +165,8 @@ if __name__ == "__main__":
                 m.z for m in [*bins_models_data, master_model_data]])
         joint_models = RedshiftDataBinned(
             model_containers[:-1], model_containers[-1])
+        joint_models.setCovariance(
+            nancov(joint_models.getRealisations().T))
 
         # write the shifted redshift histograms
         for zbin, data in zip(bin_order, model_containers):
@@ -179,3 +182,23 @@ if __name__ == "__main__":
                 outpath.replace(".*", DEFAULT_EXT_BOOT),
                 data.getRealisations(),
                 header="shifted n(z) realisations (from %s)" % models[zbin])
+            np.savetxt(
+                outpath.replace(".*", DEFAULT_EXT_COV),
+                data.getCovariance(),
+                header=(
+                    "shifted n(z) (from %s) covariance matrix" % models[zbin]))
+
+        # store global covariance matrix
+        outpath = outdir[scale].path_global_cov_file("shiftfit")
+        print(
+            "writing global covariance matrix to: %s" %
+            os.path.basename(outpath))
+        header = "global shifted n(z) "
+        header += "(from %s) covariance matrix" % os.path.dirname(models[zbin])
+        np.savetxt(outpath, joint_models.getCovariance(), header=header)
+        # store the order for later use
+        outpath = outdir[scale].path_bin_order_file()
+        with open(outpath, "w") as f:
+            for zbin in bin_order:
+                f.write("%s\n" % zbin)
+

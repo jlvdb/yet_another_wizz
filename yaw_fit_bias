@@ -4,15 +4,13 @@ import os
 import pickle
 
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
                                init_input_folder, init_output_folder)
 from yaw_tools.utils import (apply_bias, guess_bin_order, nancov,
-                             write_parameters)
+                             write_fit_stats, write_parameters)
 
 from Nz_Fitting import (BiasFitModel, CurveFit, PowerLawBias, RedshiftData,
                         RedshiftDataBinned)
@@ -122,10 +120,11 @@ if __name__ == "__main__":
 
         # fit the bias model
         optimizer = CurveFit(master_data, model)
-        fitparams = optimizer.optimize()
+        fitparams = optimizer.optimize(max_nfev=model.getParamNo() * 1000)
         print(fitparams)
         paramdir = outdir[scale].join("bias_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
+        write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
         write_parameters(fitparams, paramdir, precision=2, notation="decimal")
 
         # evaluate the bias model for each parameter realisation
@@ -149,7 +148,7 @@ if __name__ == "__main__":
         joint_corrected = RedshiftDataBinned(bins_corrected, master_corrected)
 
         # compute the missing covariances
-        bias_data.dn = np.std(bias_data.getRealisations(), axis=0)
+        bias_data.dn = np.nanstd(bias_data.getRealisations(), axis=0)
         bias_data.setCovariance(nancov(bias_data.getRealisations().T))
         joint_corrected.setCovariance(
             nancov(joint_corrected.getRealisations().T))

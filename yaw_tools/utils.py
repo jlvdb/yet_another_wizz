@@ -4,7 +4,7 @@ import os
 import numpy as np
 from numpy import ma
 
-from Nz_Fitting import RedshiftData
+from Nz_Fitting import format_variable, RedshiftData
 
 from .folders import DEFAULT_EXT_BOOT, DEFAULT_EXT_COV, DEFAULT_EXT_DATA
 
@@ -84,7 +84,29 @@ def nancov(bootstraps):
     return covar
 
 
+def write_fit_stats(fitparams, folder, precision=3, notation="decimal"):
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+    # write tex files
+    with open(os.path.join(folder, "chi_squared.tex"), "w") as f:
+        chisq = fitparams.chiSquare()
+        string = format_variable(
+            chisq, error=None, precision=precision, notation=notation)
+        f.write("$\\chi^2 = %s$\n" % string.strip("$"))
+    with open(os.path.join(folder, "chi_squared_ndof.tex"), "w") as f:
+        chisq /= fitparams.Ndof()
+        string = format_variable(
+            chisq, error=None, precision=precision, notation=notation)
+        f.write("$\\chi^2_{\\rm dof} = %s$\n" % string.strip("$"))
+
+
 def write_parameters(fitparams, folder, precision=3, notation="auto"):
+    # construct the header
+    name_header = "# name"
+    header = " ".join(fitparams.names)
+    maxwidth = max(len(name) for name in fitparams.names)
+    maxwidth = max(len(name_header), maxwidth)
+    # create the output directory
     if not os.path.exists(folder):
         os.mkdir(folder)
     # write tex files for each parameter
@@ -92,13 +114,21 @@ def write_parameters(fitparams, folder, precision=3, notation="auto"):
         with open(os.path.join(folder, "%s.tex" % name), "w") as f:
             f.write("%s\n" % fitparams.paramAsTEX(
                 name, precision=precision, notation=notation))
+    # write a list of best fit parameters
+    with open(os.path.join(folder, "parameters" + DEFAULT_EXT_DATA), "w") as f:
+        f.write(
+            "{:<{w}}    {:<16}    {:<16}\n".format(
+                name_header, "value", "error", w=maxwidth))
+        for name in fitparams.names:
+            f.write(
+                "{:>{w}}    {: 16.9e}    {: 16.9e}\n".format(
+                    name, fitparams.paramBest(name),
+                    fitparams.paramError(name), w=maxwidth))
     # write a list of bootstrap realisations
-    header = " ".join(fitparams.names)
     np.savetxt(
         os.path.join(folder, "parameters" + DEFAULT_EXT_BOOT),
         fitparams.paramSamples(), header=header)
     # write the parameter covariance
-    header = " ".join(fitparams.names)
     np.savetxt(
         os.path.join(folder, "parameters" + DEFAULT_EXT_COV),
         fitparams.paramCovar(), header=header)
@@ -123,7 +153,7 @@ def apply_bias(data, bias, renorm_bias=False):
         bias.reals *= renorms[:, np.newaxis]
     # create a container with corrected redshift data
     container = RedshiftData(
-        data.z, data_corrected, np.std(real_corrected, axis=0))
+        data.z, data_corrected, np.nanstd(real_corrected, axis=0))
     container.setRealisations(real_corrected)
     container.setCovariance(nancov(real_corrected.T))
     return container
@@ -141,6 +171,7 @@ def pack_model_redshifts(model, fitparams, z_list):
     for z, n in zip(*model.modelBest(fitparams, z_list)):
         model_containers.append(RedshiftData(z, n, np.zeros_like(z)))
     for i, realisations in enumerate(model_realisations):
-        model_containers[i].dn = np.std(realisations, axis=0)
+        model_containers[i].dn = np.nanstd(realisations, axis=0)
         model_containers[i].setRealisations(realisations)
+        model_containers[i].setCovariance(nancov(realisations.T))
     return model_containers
