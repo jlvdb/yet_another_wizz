@@ -174,7 +174,13 @@ if __name__ == "__main__":
                 ref_data[~np.isfinite(ref_data)] = 0.0
                 # fit the data amplitude to the reference, weight by reference
                 # data amplitude to give the best match
-                weights = ref_data**-1
+                good_mask = ref_data > 0.0
+                good_weights = ref_data[good_mask]**-1
+                bad_weights = good_weights.min()
+                # negative data points receive a minimum weight > 0.0
+                weights = np.empty_like(ref_data)
+                weights[good_mask] = good_weights
+                weights[~good_mask] = bad_weights
                 # supress NaNs
                 norm = curve_fit(
                     lambda z, *params: data[mask_dat, 1] / params[0],
