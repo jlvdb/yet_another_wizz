@@ -23,6 +23,10 @@ parser.add_argument(
     '--bin-marker', choices=("shade", "text", "both"),
     help='indicate tomographic bins in the plots (default: no indication)')
 parser.add_argument(
+    '--auto-offset', action='store_true',
+    help='automatically offset error bar plots to improve visibility with '
+         'multiple layers')
+parser.add_argument(
     '--z-max', type=float, help='maximum of x (redshift) axes')
 parser.add_argument(
     '-o', '--output',
@@ -67,6 +71,7 @@ if __name__ == "__main__":
     bin_order = None
     norm_idx = None
     draw_legend = False
+    n_ebars = 0
     for i, arg_dict in enumerate(arg_list):
         if not os.path.exists(arg_dict["data"]):
             raise OSError("input folder '%s' not found" % arg_dict["data"])
@@ -118,21 +123,30 @@ if __name__ == "__main__":
                 norm_idx = i
             else:
                 arg_dict["style"] = "ebar"
+        n_ebars += int(arg_dict["style"] == "ebar")
         # set the default label
         if "label" not in arg_dict:
             arg_dict["label"] = None
         else:
             draw_legend = True
+    # set the remaining defaults
+    auto_offsets = np.arange(n_ebars) * 0.0075
+    auto_offsets -= auto_offsets.max() / 2.0
+    for i, arg_dict in enumerate(arg_list):
         # figure out the color
         if "color" not in arg_dict:
-            if arg_dict["style"] == "ebar":
+            if arg_dict["style"] == "ebar" and n_ebars == 0:
                 arg_dict["color"] = "k"
             elif arg_dict["style"] == "hist":
                 arg_dict["color"] = "0.5"
             else:
                 arg_dict["color"] = None
+        # set offsets
         if "offset" not in arg_dict:
-            arg_dict["offset"] = 0.0
+            if args.auto_offset and n_ebars > 1:
+                arg_dict["offset"] = auto_offsets[i]
+            else:
+                arg_dict["offset"] = 0.0
         else:
             arg_dict["offset"] = float(arg_dict["offset"])
     # unpack the bin limits
@@ -153,17 +167,18 @@ if __name__ == "__main__":
                 # interpolate the reference data on the current data x-values
                 reference = norm_reference["data"][i]
                 # supress NaNs
-                mask = np.isfinite(norm_reference["data"][i][:, 1])
+                mask_ref = np.isfinite(norm_reference["data"][i][:, 1])
+                mask_dat = np.isfinite(data[:, 1])
                 ref_data = np.interp(
-                    data[:, 0], reference[:, 0][mask], reference[:, 1][mask])
+                    data[mask_dat, 0], *reference[mask_ref, :2].T)
+                ref_data[~np.isfinite(ref_data)] = 0.0
                 # fit the data amplitude to the reference, weight by reference
                 # data amplitude to give the best match
                 weights = ref_data**-1
                 # supress NaNs
-                mask = np.isfinite(data[:, 1])
                 norm = curve_fit(
-                    lambda z, *params: data[:, 1][mask] / params[0],
-                    data[:, 0][mask], ref_data, p0=1.0, sigma=weights)[0][0]
+                    lambda z, *params: data[mask_dat, 1] / params[0],
+                    data[mask_dat, 0], ref_data, p0=1.0, sigma=weights)[0][0]
                 data[:, 1:] /= norm
 
     # make the plot
