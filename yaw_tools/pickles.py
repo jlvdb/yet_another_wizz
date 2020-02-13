@@ -5,11 +5,11 @@ import pickle
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.integrate import cumtrapz
-from yaw_tools.data import CCdata
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA)
-from yaw_tools.plots import subplot_grid
 from yaw_tools.utils import nancov
+
+from Nz_Fitting import RedshiftData
 
 
 class Pickle(object):
@@ -256,7 +256,7 @@ class Pickle(object):
         return errors
 
     def get_data(self):
-        data = CCdata(
+        data = RedshiftData(
             self._z, self.get_amplitudes(), self.get_errors())
         return data
 
