@@ -38,7 +38,7 @@ if __name__ == "__main__":
         latex_string += "\n".join(f.readlines())
     latex_string += r"\end{document}" + "\n"
 
-    tmpdir = "math2png_%s" % os.urandom(6).hex()
+    tmpdir = "tex2png_%s" % os.urandom(6).hex()
     os.mkdir(tmpdir)
     try:
         basename = os.path.splitext(os.path.basename(args.input))[0]
