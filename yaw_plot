@@ -8,7 +8,7 @@ from scipy.optimize import curve_fit
 from yaw_tools.folders import ScaleFolder, DEFAULT_EXT_DATA, binname
 from yaw_tools.utils import guess_bin_order
 
-from Nz_Fitting.plotting import Figure
+from Nz_Fitting.utils import Figure
 
 
 parser = argparse.ArgumentParser(
@@ -36,6 +36,7 @@ key_map = {
 if __name__ == "__main__":
     
     args = parser.parse_args()
+    print("==> make n(z) check plot")
 
     # check and autofill omitted arguments
     arg_list = []
@@ -69,6 +70,7 @@ if __name__ == "__main__":
     for i, arg_dict in enumerate(arg_list):
         if not os.path.exists(arg_dict["data"]):
             raise OSError("input folder '%s' not found" % arg_dict["data"])
+        print("loading from: %s" % arg_dict["data"])
         # parse the input files using optional type argument
         folder = ScaleFolder(arg_dict["data"])
         if "type" in arg_dict:
@@ -101,7 +103,9 @@ if __name__ == "__main__":
         n_data = None
         for zbin in bin_order:
             data = np.loadtxt(files[zbin])
-            zmax = max(data[:, 0].max(), zmax)
+            xmax = np.nanmax(data[:, 0])
+            if np.isfinite(xmax):  # ignore INFs
+                zmax = max(xmax + 0.1, zmax)
             data_list.append(data)
         arg_dict["data"] = data_list
         # figure out the correct style
@@ -148,14 +152,18 @@ if __name__ == "__main__":
             if arg_dict["style"] == "ebar":
                 # interpolate the reference data on the current data x-values
                 reference = norm_reference["data"][i]
+                # supress NaNs
+                mask = np.isfinite(norm_reference["data"][i][:, 1])
                 ref_data = np.interp(
-                    data[:, 0], reference[:, 0], reference[:, 1])
+                    data[:, 0], reference[:, 0][mask], reference[:, 1][mask])
                 # fit the data amplitude to the reference, weight by reference
                 # data amplitude to give the best match
                 weights = ref_data**-1
+                # supress NaNs
+                mask = np.isfinite(data[:, 1])
                 norm = curve_fit(
-                    lambda z, *params: data[:, 1] / params[0],
-                    data[:, 0], ref_data, p0=1.0, sigma=weights)[0][0]
+                    lambda z, *params: data[:, 1][mask] / params[0],
+                    data[:, 0][mask], ref_data, p0=1.0, sigma=weights)[0][0]
                 data[:, 1:] /= norm
 
     # make the plot
@@ -219,4 +227,5 @@ if __name__ == "__main__":
     if args.output is None:
         plt.show()
     else:
+        print("writing plot: %s" % args.output)
         fig.savefig(args.output)
