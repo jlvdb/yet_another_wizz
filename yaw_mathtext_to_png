@@ -17,13 +17,16 @@ parser.add_argument(
 parser.add_argument(
     '-o', '--output', metavar='PNGfile', required=False,
     help='output PNG file (default: as input file)')
+parser.add_argument(
+    '-v', '--verbose', action='store_true')
 
 
 if __name__ == "__main__":
 
     args = parser.parse_args()
-    print("==> converting TEX to PNG")
-    print("reading input TEX file: %s" % args.input)
+    if args.verbose:
+        print("==> converting TEX to PNG")
+        print("reading input TEX file: %s" % args.input)
     if args.output is None:
         outfile = os.path.splitext(args.input)[0]
     else:
@@ -84,6 +87,7 @@ if __name__ == "__main__":
                     print(line.strip("\n"))
             print("#" * 40)
             sys.exit("ERROR:something went wrong during conversion to PNG")
-        print("created output PNG:     %s.png" % outfile)
+        if args.verbose:
+            print("created output PNG:     %s.png" % outfile)
     finally:
         rmtree(tmpdir)
