@@ -67,22 +67,21 @@ def TypeNone(type):
     return type_test  # closure being of fixed type
 
 
-def nancov(bootstraps):
+def nancov(bootstraps, ddof=0, rowvar=False):
     # mask infinite values
-    mask = np.logical_not(np.isfinite(bootstraps))
+    mask = np.isnan(bootstraps)
     masked_boots = ma.array(bootstraps, mask=mask)
     # compute covariance
-    covar = ma.cov(masked_boots, ddof=0)
-    # find rows/columns with NaNs
-    diag = np.diag(covar)
-    idx = np.arange(len(diag))
-    idx = idx[np.isnan(diag)]
+    covar = ma.cov(masked_boots, ddof=ddof, rowvar=rowvar)
     # set the diag. element to infinity and the off-diag elements to 0
-    for i in idx:
-        covar[i, :] = 0.0
-        covar[:, i] = 0.0
-        covar[i, i] = np.inf
-    return covar
+    for i, is_masked in enumerate(np.diag(covar.mask)):
+        if is_masked:
+            covar.mask[i, :] = False
+            covar.mask[:, i] = False
+            covar[i, :] = 0.0
+            covar[:, i] = 0.0
+            covar[i, i] = np.inf
+    return np.asarray(covar)
 
 
 def write_fit_stats(fitparams, folder, precision=3, notation="decimal"):
