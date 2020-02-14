@@ -92,7 +92,8 @@ if __name__ == "__main__":
                 zbin = binname(match)
                 if zbin in files:
                     raise KeyError(
-                        ("found multiple matches for key '%s'" % zbin) +
+                        ("found multiple matches for key '%s' " % zbin) +
+                        ("in '%s' " % folder.root) +
                         "specify type argument accordingly")
                 else:
                     files[zbin] = match
@@ -204,16 +205,16 @@ if __name__ == "__main__":
                     zorder=zorder)
             elif arg_dict["style"] == "line":
                 z, p = data.T[:2]
-                hanle = ax.plot(
+                handle = ax.plot(
                     z + arg_dict["offset"], p,
-                    color=arg_dict["color"], zorder=zorder)
+                    color=arg_dict["color"], zorder=zorder)[0]
                 try:
                     dp = data[:, 2]
                     lower = data[:, 1] - data[:, 2] / 2.0
                     upper = data[:, 1] + data[:, 2] / 2.0
                     ax.fill_between(
                         z + arg_dict["offset"], p - dp / 2.0, p + dp / 2.0,
-                        color=hanle[0].get_color(), alpha=0.3, zorder=zorder)
+                        color=handle.get_color(), alpha=0.3, zorder=zorder)
                 except ValueError:
                     pass
             else:
