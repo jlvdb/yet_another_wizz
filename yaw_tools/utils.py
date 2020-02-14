@@ -4,9 +4,10 @@ import os
 import numpy as np
 from numpy import ma
 
-from Nz_Fitting import format_variable, RedshiftData
+from Nz_Fitting import format_variable, RedshiftData, RedshiftDataBinned
 
-from .folders import DEFAULT_EXT_BOOT, DEFAULT_EXT_COV, DEFAULT_EXT_DATA
+from .folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV, DEFAULT_EXT_DATA,
+                      binname, ScaleFolder)
 
 
 DEFAULT_CAT_EXT = 1
@@ -155,7 +156,7 @@ def apply_bias(data, bias, renorm_bias=False):
     container = RedshiftData(
         data.z, data_corrected, np.nanstd(real_corrected, axis=0))
     container.setRealisations(real_corrected)
-    container.setCovariance(nancov(real_corrected.T))
+    container.setCovariance(nancov(real_corrected))
     return container
 
 
@@ -173,5 +174,53 @@ def pack_model_redshifts(model, fitparams, z_list):
     for i, realisations in enumerate(model_realisations):
         model_containers[i].dn = np.nanstd(realisations, axis=0)
         model_containers[i].setRealisations(realisations)
-        model_containers[i].setCovariance(nancov(realisations.T))
+        model_containers[i].setCovariance(nancov(realisations))
     return model_containers
+
+
+def write_nz_data(path, data, hdata=None, hboot=None, hcov=None, stats=False):
+    assert(type(data) is RedshiftData)
+    basepath = os.path.splitext(path)[0]
+    print("writing n(z) data to: %s.*" % os.path.basename(basepath))
+    if hdata is not None:
+        nz = np.stack([data.z, data.n, data.dn]).T
+        np.savetxt(basepath + DEFAULT_EXT_DATA, nz, header=hdata)
+    if hboot is not None:
+        np.savetxt(
+            basepath + DEFAULT_EXT_BOOT, data.getRealisations(), header=hboot)
+    if hcov is not None:
+        np.savetxt(
+            basepath + DEFAULT_EXT_COV, data.getCovariance(), header=hcov)
+    # write mean and median redshifts
+    if stats:
+        statdir = os.path.join(os.path.dirname(path), "stats")
+        if not os.path.exists(statdir):
+            os.mkdir(statdir)
+        # write tex files
+        iterator = zip(
+            ("mean", "median"), ("\\langle z \\rangle", "z_{\\rm med}"))
+        for stat, TEX in iterator:
+            try:
+                zkey = "_" + binname(basepath)
+            except ValueError:
+                zkey = ""
+            statfile = os.path.join(statdir, "%s%s.tex" % (stat, zkey))
+            val = getattr(data, stat)()
+            err = getattr(data, stat + "Error")()
+            with open(statfile, "w") as f:
+                string = format_variable(
+                    val, error=err, precision=3, notation="decimal")
+                f.write("$%s = %s$\n" % (TEX, string.strip(" $")))
+
+
+def write_global_cov(folder, data, order, header, prefix):
+    assert(isinstance(folder, ScaleFolder))
+    assert(type(data) is RedshiftDataBinned)
+    print("writing global covariance matrix to: %s" % folder.basename())
+    np.savetxt(
+        folder.path_global_cov_file(prefix),
+        data.getCovariance(), header=header)
+    # store the order for later use
+    with open(folder.path_bin_order_file(), "w") as f:
+        for zbin in order:
+            f.write("%s\n" % zbin)

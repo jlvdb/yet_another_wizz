@@ -74,6 +74,7 @@ if __name__ == "__main__":
         ac_phot_pickle, use_wpp = check_autocorrelation(
             scaledir, args.bias_phot, "phot.")
 
+        print("writing n(z) statistics to: stats/")
         # NaNs are to be expected so we ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -113,7 +114,7 @@ if __name__ == "__main__":
             for zbin, pickle_path in cc_pickles.items():
                 pkl2data.set_bias(bias, bias_samples)
                 pkl2data.load_pickle(pickle_path, CrossCorrelationPickle)
-                pkl2data.write_output(outdir[scale], header_key)
+                pkl2data.write_output(outdir[scale], header_key, stats=True)
                 samples[zbin] = pkl2data.get_samples()
 
             # compute global covariance matrix

@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from scipy.integrate import cumtrapz
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA)
-from yaw_tools.utils import nancov
+from yaw_tools.utils import nancov, write_nz_data
 
 from Nz_Fitting import RedshiftData
 
@@ -108,9 +108,11 @@ class Pickle(object):
     @staticmethod
     def _correlation_estimator(DD, DR, RR=None):
         if RR is None:  # use Peebles-Davis estimator
-            return DD / DR - 1.0
+            est = DD / DR - 1.0
         else:  # use Landy-Szalay estimator
-            return (DD - 2.0 * DR + RR) / RR
+            est = (DD - 2.0 * DR + RR) / RR
+        est[np.isinf(est)] = np.nan  # we cannot handle infs properly
+        return est
 
     def join(self, other):
         if type(self) != type(other):
@@ -352,14 +354,14 @@ class PickleConverter(object):
         # create the realisations
         self.redshifts = self.pickler.get_redshifts()
         self.amplitudes = self.pickler.get_amplitudes()
-        self.samples = self.pickler.get_samples()
+        self.samples = self.pickler.get_samples().T
         if self.bias is None and self.bias_samples is None:
             self.errors = self.pickler.get_errors()
         else:
             self.amplitudes /= self.bias
             self.samples /= self.bias_samples
             # compute errors of bias corrected correlation amplitudes
-            self.errors = np.nanstd(self.samples, axis=1)
+            self.errors = np.nanstd(self.samples, axis=0)
 
     def get_amplitudes(self):
         return self.amplitudes.copy()
@@ -367,24 +369,25 @@ class PickleConverter(object):
     def get_samples(self):
         return self.samples.copy()
 
-    def write_output(self, scaledir, header_key):
-        # create correlation amplitude file
-        outpath = scaledir.incorporate(self.pickle_path, DEFAULT_EXT_DATA)
-        print(
-            "writing data to: %s.*" %
-            os.path.basename(os.path.splitext(outpath)[0]))
-        nz_array = np.transpose([self.redshifts, self.amplitudes, self.errors])
+    def get_all(self):
+        data = RedshiftData(self.redshifts, self.amplitudes, self.errors)
+        data.setRealisations(self.samples)
+        try:
+            data.setCovariance(nancov(self.samples))
+        except ValueError:
+            with open("/net/fohlen12/home/jlvdb/samples.pkl", "wb") as f:
+                pickle.dump(self.samples, f)
+            exit()
+        return data
+
+    def write_output(self, scaledir, header_key, stats=False):
+        path = scaledir.incorporate(self.pickle_path, ".*")
         header = "col 1 = mean redshift\n"
         header += "col 2 = correlation amplitude (%s)\n" % header_key
         header += "col 3 = amplitude error"
-        np.savetxt(outpath, nz_array, header=header)
-        # store optional bootstrap samples
-        outpath = scaledir.incorporate(self.pickle_path, DEFAULT_EXT_BOOT)
-        np.savetxt(
-            outpath, self.samples.T,
-            header="correlation amplitude (%s) realisations" % header_key)
-        # store covariance matrix
-        outpath = scaledir.incorporate(self.pickle_path, DEFAULT_EXT_COV)
-        np.savetxt(
-            outpath, nancov(self.samples),
-            header="correlation amplitude (%s) covariance matrix" % header_key)
+        write_nz_data(
+            scaledir.incorporate(self.pickle_path, ".*"), self.get_all(),
+            hdata=header,
+            hboot="correlation amplitude (%s) realisations" % header_key,
+            hcov="correlation amplitude (%s) covariance matrix" % header_key,
+            stats=stats)

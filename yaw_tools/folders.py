@@ -41,6 +41,12 @@ class Folder(object):
         shutil.copytree(self.root, os.path.expanduser(path))
         return CCFolder(path)
 
+    def basename(self):
+        return os.path.basename(self.root)
+
+    def dirname(self):
+        return os.path.dirname(self.root)
+
     def join(self, *args):
         return os.path.join(self.root, *args)
 

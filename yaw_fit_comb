@@ -13,7 +13,8 @@ from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
                                init_input_folder, init_output_folder)
 from yaw_tools.utils import (guess_bin_order, nancov, pack_model_redshifts,
-                             write_fit_stats, write_parameters)
+                             write_fit_stats, write_global_cov, write_nz_data,
+                             write_parameters)
 
 from Nz_Fitting import (CurveFit, CombModelBinned, GaussianComb, PowerLawBias,
                         RedshiftData, RedshiftDataBinned)
@@ -150,39 +151,23 @@ if __name__ == "__main__":
         joint_models = RedshiftDataBinned(
             model_containers[:-1], model_containers[-1])
         joint_models.setCovariance(
-            nancov(joint_models.getRealisations().T))
+            nancov(joint_models.getRealisations()))
 
         # write the shifted redshift histograms
+        N = args.n_comp
+        header = "col 1 = mean redshift\n"
+        header += "col 2 = comb fit (%d components)\n" % N
+        header += "col 3 = error"
+        print("writing n(z) statistics to: stats/")
         for zbin, data in zip(bin_order, model_containers):
-            outpath = outdir[scale].path_combfit_file(".*", zbin)
-            print("writing model data to: %s" % os.path.basename(outpath))
-            header = "col 1 = mean redshift\n"
-            header += "col 2 = comb fit (%d components)\n" % args.n_comp
-            header += "col 3 = error"
-            np.savetxt(
-                outpath.replace(".*", DEFAULT_EXT_DATA),
-                np.stack([data.z, data.n, data.dn]).T, header=header)
-            np.savetxt(
-                outpath.replace(".*", DEFAULT_EXT_BOOT),
-                data.getRealisations(),
-                header="comb fit realisations (%d components)\n" % args.n_comp)
-            np.savetxt(
-                outpath.replace(".*", DEFAULT_EXT_COV),
-                data.getCovariance(),
-                header=(
-                    "comb fit (%d components) covariance matrix" %
-                    args.n_comp))
-
+            write_nz_data(
+                outdir[scale].path_combfit_file("", zbin), data,
+                hdata=header,
+                hboot="comb fit realisations (%d components)\n" % N,
+                hcov="comb fit (%d components) covariance matrix" % N,
+                stats=True)
         # store global covariance matrix
-        outpath = outdir[scale].path_global_cov_file("combfit")
-        print(
-            "writing global covariance matrix to: %s" %
-            os.path.basename(outpath))
-        header = "global shifted n(z) "
-        header += "(from %s) covariance matrix" % os.path.dirname(models[zbin])
-        np.savetxt(outpath, joint_models.getCovariance(), header=header)
-        # store the order for later use
-        outpath = outdir[scale].path_bin_order_file()
-        with open(outpath, "w") as f:
-            for zbin in bin_order:
-                f.write("%s\n" % zbin)
+        header = "global comb fit (%d components) " % N
+        header += "covariance matrix"
+        write_global_cov(
+            outdir[scale], joint_models, bin_order, header, "combfit")
