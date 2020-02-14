@@ -92,12 +92,12 @@ def write_fit_stats(fitparams, folder, precision=3, notation="decimal"):
         chisq = fitparams.chiSquare()
         string = format_variable(
             chisq, error=None, precision=precision, notation=notation)
-        f.write("$\\chi^2 = %s$\n" % string.strip("$"))
+        f.write("$\\chi^2 = %s$\n" % string.strip(" $"))
     with open(os.path.join(folder, "chi_squared_ndof.tex"), "w") as f:
         chisq /= fitparams.Ndof()
         string = format_variable(
             chisq, error=None, precision=precision, notation=notation)
-        f.write("$\\chi^2_{\\rm dof} = %s$\n" % string.strip("$"))
+        f.write("$\\chi^2_{\\rm dof} = %s$\n" % string.strip(" $"))
 
 
 def write_parameters(fitparams, folder, precision=3, notation="auto"):
@@ -208,8 +208,9 @@ def write_nz_data(path, data, hdata=None, hboot=None, hcov=None, stats=False):
             err = getattr(data, stat + "Error")()
             with open(statfile, "w") as f:
                 string = format_variable(
-                    val, error=err, precision=3, notation="decimal")
-                f.write("$%s = %s$\n" % (TEX, string.strip(" $")))
+                    val, error=err, TEX=True, precision=3, notation="decimal",
+                    use_siunitx=True)
+                f.write("$%s = %s$\n" % (TEX, string.strip("$")))
 
 
 def write_global_cov(folder, data, order, header, prefix):
