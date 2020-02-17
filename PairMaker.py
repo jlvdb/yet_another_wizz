@@ -42,7 +42,7 @@ class PairMaker(BaseClass):
         if weights is not None:
             data["weights"] = weights
             data["weights"] /= weights.mean()
-        data["stomp_region"] = np.ones_like(RA, dtype=np.int8)
+        data["stomp_region"] = np.zeros(len(RA), dtype=np.int8)
         return data
 
     def getMeta(self):
