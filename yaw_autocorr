@@ -14,7 +14,7 @@ from astropy.io import fits as pyfits
 from yaw_tools.correlation import run_ac_single_bin
 from yaw_tools.folders import CCFolder, Folder
 from yaw_tools.utils import (DEFALUT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
-                             DEFAULT_REGION_NO, DEFAULT_RESAMPLING, TypeNone)
+                             DEFAULT_RESAMPLING, TypeNone)
 
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
@@ -89,21 +89,6 @@ rand_cat.add_argument(
     help='object weight column name, WARNING: these are not passed on '
          'automatically')
 
-stomp_map = parser.add_argument_group(
-    title='stomp map',
-    description='defining the mask and regions for spatial bootstrapping')
-stomp_map.add_argument(
-    '--map-file', metavar='FILE', help='stomp map file path')
-
-regionization = stomp_map.add_mutually_exclusive_group()
-regionization.add_argument(
-    '--map-region-no', metavar='INT', type=TypeNone(int),
-    help='number of regions for bootstrapping (default: %d)' %
-    DEFAULT_REGION_NO)
-regionization.add_argument(
-    '--map-region-size', metavar='FLOAT', type=TypeNone(float),
-    help='approximate region size for bootstrapping in sq. deg')
-
 analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
     description='controlling the autocorrelation computation')
@@ -150,7 +135,7 @@ if __name__ == "__main__":
     if args.param_file is None:
         for arg in ("cat_file", "cat_ra", "cat_dec", "cat_z",
                     "rand_file", "rand_ra", "rand_dec", "rand_z"
-                    "map_file", "scales_min", "scales_max"):
+                    "scales_min", "scales_max"):
             if getattr(args, arg) is None:
                 raise ValueError(
                     "without --param-file, the argument '%s' is required" %
@@ -159,8 +144,7 @@ if __name__ == "__main__":
             args.cat_file_ext = DEFAULT_CAT_EXT
         if args.rand_file_ext is None:
             args.rand_file_ext = DEFAULT_RAND_EXT
-        if args.map_region_no is None and args.map_region_size is None:
-            args.map_region_no = DEFAULT_REGION_NO
+        args.map_region_no = 1  # compatibilty
         if args.resampling is None:
             args.resampling = DEFAULT_RESAMPLING
         if args.pair_weighting is None:
@@ -222,14 +206,12 @@ if __name__ == "__main__":
         sys.stdout.write("==> running scale %s\n" % scale_name)
         sys.stdout.flush()
         # create copies of PairMaker for each redshift bin
-        est = PairMaker(
-            args.map_file, args.map_region_no, threads=args.threads)
+        est = PairMaker(threads=args.threads)
         instances = [copy.deepcopy(est) for n in range(len(binning) - 1)]
         # iterate the bins in parallel
         pool = ThreadHelper(len(instances), threads=args.threads)
         pool.add_iterable(data.groupby(pd.cut(data.z, bins=binning)))
         pool.add_iterable(rand.groupby(pd.cut(rand.z, bins=binning)))
-        pool.add_constant(args.map_file)
         pool.add_constant((rmin, rmax))
         pool.add_constant(args.R_D_ratio)
         pool.add_constant(args.across_regions == "N")

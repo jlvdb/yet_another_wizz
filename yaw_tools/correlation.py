@@ -74,7 +74,7 @@ def get_bin_weights(framelist, filelist):
 
 
 def run_ac_single_bin(
-        datapack, randpack, stompfile, rlims, R_D_ratio, regionize_unknown,
+        datapack, randpack, rlims, R_D_ratio, regionize_unknown,
         pm_instance):
     try:
         D_R_ratio = 1.0 / float(R_D_ratio)
