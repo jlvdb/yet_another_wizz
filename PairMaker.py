@@ -5,8 +5,6 @@ from multiprocessing import cpu_count
 import numpy as np
 import pandas as pd
 
-from stomp_tools import generate_randoms, measure_region_area, regionize_data
-
 from .spatial import FastSeparation2Angle, SphericalKDTree, count_pairs
 from .utils import BaseClass, ThreadHelper
 
@@ -22,7 +20,7 @@ class PairMaker(BaseClass):
     _pair_counts = None
 
     def __init__(
-            self, map_path, n_regions, cosmology=None, threads=None,
+            self, region_weight=1.0, cosmology=None, threads=None,
             verbose=True):
         self._verbose = verbose
         self._printMessage("initializing correlator\n")
@@ -32,32 +30,11 @@ class PairMaker(BaseClass):
                 self._throwException(
                     "'threads' must be a positive integer", ValueError)
             self._threads = min(max(threads, 1), cpu_count())
-        # initialize the stomp map and the jackknife regions
-        self._printMessage("initializing stomp mask:\n    %s\n" % map_path)
-        if not os.path.exists(map_path):
-            self._throwException(
-                "stomp mask not found: %s" % map_path, OSError)
-        if type(n_regions) is not int and n_regions < 1:
-            self._throwException(
-                "'n_regions' must be a positive integer", ValueError)
-        self.n_regions = n_regions
-        self._mask_path = os.path.abspath(map_path)
-        self._printMessage(
-            "initializing %d jackknife regions\n" % self.n_regions)
-        self._initializeMask()
+        # legacy code
+        self.n_regions = 1
+        self.region_weights = np.ones(1)
 
-    def _initializeMask(self):
-        # measure the area of all regions
-        pool = ThreadHelper(self.n_regions, threads=self._threads)
-        pool.add_constant(self._mask_path)
-        pool.add_constant(self.n_regions)
-        pool.add_iterable(range(self.n_regions))
-        region_areas = pool.map(measure_region_area)
-        # normalize the areas to get the weight of the region
-        region_areas = np.asarray(region_areas)
-        self.region_weights = region_areas / region_areas.sum()
-
-    def _regionizeData(self, RA, DEC, Z=None, weights=None):
+    def _packData(self, RA, DEC, Z=None, weights=None):
         # compare the input data vector lengths
         data = pd.DataFrame({"RA": RA, "DEC": DEC})
         if Z is not None:
@@ -65,15 +42,8 @@ class PairMaker(BaseClass):
         if weights is not None:
             data["weights"] = weights
             data["weights"] /= weights.mean()
-        # identify the stomp region each object belongs to in parallel threads
-        pool = ThreadHelper(self._threads, threads=self._threads)
-        pool.add_constant(self._mask_path)
-        pool.add_constant(self.n_regions)
-        pool.add_iterable(np.array_split(data, self._threads))
-        region_idx = pool.map(regionize_data)
-        # remove objects that lie outside the map
-        data["stomp_region"] = np.concatenate(region_idx)
-        return data[data.stomp_region != -1]
+        data["stomp_region"] = np.ones_like(RA, dtype=np.int8)
+        return data
 
     def getMeta(self):
         meta_dict = {
@@ -109,9 +79,8 @@ class PairMaker(BaseClass):
         if not self._inputGood(RA, DEC, Z, weights):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
-        self._printMessage("regionizing %d objects\n" % len(RA))
-        self._reference_data = self._regionizeData(RA, DEC, Z, weights=weights)
-        self._printMessage("kept %d objects\n" % len(self._reference_data))
+        self._printMessage("loading %d objects\n" % len(RA))
+        self._reference_data = self._packData(RA, DEC, Z, weights=weights)
 
     def writeReference(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -127,9 +96,8 @@ class PairMaker(BaseClass):
         if not self._inputGood(RA, DEC, Z, weights):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
-        self._printMessage("regionizing %d objects\n" % len(RA))
-        self._unknown_data = self._regionizeData(RA, DEC, Z, weights=weights)
-        self._printMessage("kept %d objects\n" % len(self._unknown_data))
+        self._printMessage("loading %d objects\n" % len(RA))
+        self._unknown_data = self._packData(RA, DEC, Z, weights=weights)
 
     def writeUnknown(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -145,32 +113,8 @@ class PairMaker(BaseClass):
         if not self._inputGood(RA, DEC, Z, weights):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
-        self._printMessage("regionizing %d objects\n" % len(RA))
-        self._random_data = self._regionizeData(RA, DEC, Z, weights=weights)
-        self._printMessage("kept %d objects\n" % len(self._random_data))
-
-    def generateRandoms(self, randoms_factor=10):
-        unknown_data = self.getUnknown()
-        # compute the number of randoms per region
-        n_random = len(unknown_data) * randoms_factor
-        randoms_per_thread = np.diff(
-            np.linspace(0, n_random, self._threads + 1, dtype=int))
-        self._printMessage("generating %d uniform random points\n" % n_random)
-        # generate randoms in each region map in parallel threads
-        pool = ThreadHelper(self._threads, threads=self._threads)
-        pool.add_constant(self._mask_path)
-        pool.add_iterable(randoms_per_thread)
-        randoms_threads = pool.map(generate_randoms)
-        # stack data from threads
-        randoms = pd.concat(randoms_threads)
-        # add redshifts by resampling values from the unknown data which will
-        # allow redshift binning for auto-correlation measurements
-        if "z" in unknown_data:
-            random_z = np.random.choice(
-                unknown_data.z, len(randoms), replace=True)
-            self.setRandoms(randoms.RA, randoms.DEC, random_z)
-        else:
-            self.setRandoms(randoms.RA, randoms.DEC)
+        self._printMessage("lading %d objects\n" % len(RA))
+        self._random_data = self._packData(RA, DEC, Z, weights=weights)
 
     def writeRandoms(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -186,8 +130,7 @@ class PairMaker(BaseClass):
         # check if all data is present
         self.getReference()
         self.getUnknown()
-        if self._random_data is None:
-            self.generateRandoms()
+        self.getRandoms()
         # create pool to find pairs DD
         poolDD = ThreadHelper(
             self.n_regions, threads=min(self._threads, self.n_regions))
