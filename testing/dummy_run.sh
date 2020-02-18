@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/bin/bash
 
 DATADIR=/net/fohlen12/home/jlvdb/CC/POINTINGS/MICE2_KV450_magnification_on/idealized
 OUTPUTDIR=${HOME}/EXPORT/Hendrik/cc_pipe_test
