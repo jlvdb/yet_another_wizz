@@ -1,5 +1,8 @@
 import argparse
 import os
+import subprocess
+import sys
+from shutil import rmtree
 
 import numpy as np
 from numpy import ma
@@ -7,13 +10,19 @@ from numpy import ma
 from Nz_Fitting import format_variable, RedshiftData, RedshiftDataBinned
 
 from .folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV, DEFAULT_EXT_DATA,
-                      binname, ScaleFolder)
+                      get_bin_key, ScaleFolder)
 
 
 DEFAULT_CAT_EXT = 1
 DEFAULT_REGION_NO = 7
 DEFAULT_RESAMPLING = 10
 DEFALUT_PAIR_WEIGHTING = "Y"
+
+DEFAULT_HDATA = "col 1 = mean redshift\n"
+DEFAULT_HDATA += "col 2 = correlation amplitude ({:})\n"
+DEFAULT_HDATA += "col 3 = correlation amplitude error"
+DEFAULT_HBOOT = "correlation amplitude ({:}) realisations"
+DEFAULT_HCOV = "correlation amplitude ({:}) covariance matrix"
 
 
 def guess_bin_order(bin_keys):
@@ -67,21 +76,72 @@ def TypeNone(type):
     return type_test  # closure being of fixed type
 
 
-def nancov(bootstraps, ddof=0, rowvar=False):
-    # mask infinite values
-    mask = np.isnan(bootstraps)
-    masked_boots = ma.array(bootstraps, mask=mask)
-    # compute covariance
-    covar = ma.cov(masked_boots, ddof=ddof, rowvar=rowvar)
-    # set the diag. element to infinity and the off-diag elements to 0
-    for i, is_masked in enumerate(np.diag(covar.mask)):
-        if is_masked:
-            covar.mask[i, :] = False
-            covar.mask[:, i] = False
-            covar[i, :] = 0.0
-            covar[:, i] = 0.0
-            covar[i, i] = np.inf
-    return np.asarray(covar)
+def tex2png(texfile, pngfile=None, dpi=600, verbose=False):
+    # format the latex template string
+    latex_string = r"\documentclass[border=2pt]{standalone}" + "\n"
+    latex_string += r"\usepackage{amsmath}" + "\n"
+    latex_string += r"\usepackage[separate-uncertainty]{siunitx}" + "\n"
+    latex_string += r"\begin{document}" + "\n"
+    with open(texfile) as f:
+        latex_string += "\n".join(f.readlines())
+    latex_string += r"\end{document}" + "\n"
+
+    if pngfile is None:
+        pngfile = texfile
+    pngfile = os.path.splitext(pngfile)[0]
+
+    tmpdir = "tex2png_%s" % os.urandom(6).hex()
+    os.mkdir(tmpdir)
+    try:
+        basename = os.path.splitext(os.path.basename(texfile))[0]
+        basepath = os.path.join(tmpdir, basename)
+        if verbose:
+            print("reading input TEX file: %s" % texfile)
+        with open(basepath + ".tex", "w") as f:
+            f.write(latex_string)
+        # run pdflatex
+        with open(os.devnull, "w") as pipe:
+            returncode = subprocess.call([
+                "pdflatex", "-interaction=batchmode",
+                "-jobname=%s" % basepath, basepath,],
+                stdout=pipe, stderr=pipe)
+        # report errors if exited unexpected
+        if returncode:
+            # display the first error reported in the log
+            print("#" * 40)
+            with open(basepath + ".log") as f:
+                lines = f.readlines()
+                for start, line in enumerate(lines):
+                    if "!" in line:
+                        end = start
+                        while end < len(lines):
+                            if "!" not in lines[end]:
+                                break
+                            end += 1
+                        break
+            for i in range(max(start - 5, 0), min(end + 5, len(lines))):
+                print(lines[i].strip("\n"))
+            print("#" * 40)
+            sys.exit("ERROR:something went wrong during conversion to PDF")
+        # run pdftocairo
+        with open(basepath + ".log", "w") as pipe:
+            returncode = subprocess.call([
+                "pdftocairo", "-singlefile", "-png", "-r", str(dpi),
+                basepath + ".pdf", pngfile], stdout=pipe, stderr=pipe)
+        # report errors if exited unexpected
+        if returncode:
+            # display the log
+            print("#" * 40)
+            with open(basepath + ".log") as f:
+                lines = f.readlines()
+                for line in lines:
+                    print(line.strip("\n"))
+            print("#" * 40)
+            sys.exit("ERROR:something went wrong during conversion to PNG")
+        if verbose:
+            print("created output PNG:     %s.png" % pngfile)
+    finally:
+        rmtree(tmpdir)
 
 
 def write_fit_stats(fitparams, folder, precision=3, notation="decimal"):
@@ -100,7 +160,8 @@ def write_fit_stats(fitparams, folder, precision=3, notation="decimal"):
         f.write("$\\chi^2_{\\rm dof} = %s$\n" % string.strip(" $"))
 
 
-def write_parameters(fitparams, folder, precision=3, notation="auto"):
+def write_parameters(
+        fitparams, folder, precision=3, notation="auto", to_png=True):
     # construct the header
     name_header = "# name"
     header = " ".join(fitparams.names)
@@ -111,9 +172,13 @@ def write_parameters(fitparams, folder, precision=3, notation="auto"):
         os.mkdir(folder)
     # write tex files for each parameter
     for name in fitparams.names:
-        with open(os.path.join(folder, "%s.tex" % name), "w") as f:
+        texfile = os.path.join(folder, "%s.tex" % name)
+        with open(texfile, "w") as f:
             f.write("%s\n" % fitparams.paramAsTEX(
                 name, precision=precision, notation=notation))
+        # convert to PNG
+        if to_png:
+            tex2png(texfile)
     # write a list of best fit parameters
     with open(os.path.join(folder, "parameters" + DEFAULT_EXT_DATA), "w") as f:
         f.write(
@@ -134,92 +199,56 @@ def write_parameters(fitparams, folder, precision=3, notation="auto"):
         fitparams.paramCovar(), header=header)
 
 
-def apply_bias(data, bias, renorm_bias=False):
-    data_corrected = data.n / bias.n
-    # compute the renormalisation to not alter the amplitude of the 
-    norm_original = np.trapz(data.n, x=data.z)
-    norm_corrected = np.trapz(data_corrected, x=data.z)
-    renorm = norm_original / norm_corrected
-    data_corrected *= renorm
-    # apply also to the realisations
-    real_corrected = data.getRealisations() / bias.getRealisations()
-    norm_original = np.trapz(data.getRealisations(), x=data.z)
-    norm_corrected = np.trapz(real_corrected, x=data.z)
-    renorms = norm_original / norm_corrected
-    real_corrected *= renorms[:, np.newaxis]
-    # renormalize the bias data in place
-    if renorm_bias:
-        bias.n *= renorm
-        bias.reals *= renorms[:, np.newaxis]
-    # create a container with corrected redshift data
-    container = RedshiftData(
-        data.z, data_corrected, np.nanstd(real_corrected, axis=0))
-    container.setRealisations(real_corrected)
-    container.setCovariance(nancov(real_corrected))
-    return container
+def write_nz_stats(statdir, redshift_data, zkey=None):
+    # write mean and median redshifts
+    if not os.path.exists(statdir):
+        os.mkdir(statdir)
+    # write tex files
+    iterator = zip(
+        ("mean", "median"), ("\\langle z \\rangle", "z_{\\rm med}"))
+    for stat, TEX in iterator:
+        if zkey is None:
+            statfile = os.path.join(statdir, "%s.tex" % stat)
+        else:
+            statfile = os.path.join(statdir, "%s_%s.tex" % (stat, zkey))
+        try:
+            val, err = getattr(redshift_data, stat)(error=True)
+        except TypeError:  # RedshiftHistogram does not support errors
+            val = getattr(redshift_data, stat)()
+            err = None
+        with open(statfile, "w") as f:
+            string = format_variable(
+                val, error=err, TEX=True, precision=3, notation="decimal",
+                use_siunitx=True)
+            f.write("$%s = %s$\n" % (TEX, string.strip("$")))
+        # convert to PNG
+        tex2png(statfile)
 
 
-def pack_model_redshifts(model, fitparams, z_list):
-    # compute the best fit model realisations
-    model_realisations = np.empty((
-        len(z_list), len(fitparams), len(z_list[-1])))
-    for i, params in enumerate(fitparams.paramSamples()):
-        for j, n in enumerate(model.modelBest(params, z_list)[1]):
-            model_realisations[j, i] = n
-    # pack the results in containers
-    model_containers = []
-    for z, n in zip(*model.modelBest(fitparams, z_list)):
-        model_containers.append(RedshiftData(z, n, np.zeros_like(z)))
-    for i, realisations in enumerate(model_realisations):
-        model_containers[i].dn = np.nanstd(realisations, axis=0)
-        model_containers[i].setRealisations(realisations)
-        model_containers[i].setCovariance(nancov(realisations))
-    return model_containers
-
-
-def write_nz_data(path, data, hdata=None, hboot=None, hcov=None, stats=False):
+def write_nz_data(
+        path, data, hdata=None, hboot=None, hcov=None, stats=False,
+        dtype_message="n(z)"):
     assert(type(data) is RedshiftData)
     basepath = os.path.splitext(path)[0]
-    print("writing n(z) data to: %s.*" % os.path.basename(basepath))
-    if hdata is not None:
-        nz = np.stack([data.z, data.n, data.dn]).T
-        np.savetxt(basepath + DEFAULT_EXT_DATA, nz, header=hdata)
-    if hboot is not None:
-        np.savetxt(
-            basepath + DEFAULT_EXT_BOOT, data.getRealisations(), header=hboot)
-    if hcov is not None:
-        np.savetxt(
-            basepath + DEFAULT_EXT_COV, data.getCovariance(), header=hcov)
-    # write mean and median redshifts
+    print(
+        "writing {:} data to: {:}.*".format(
+            dtype_message, os.path.basename(basepath)))
+    data.write(basepath, hdata, hboot, hcov)
     if stats:
         statdir = os.path.join(os.path.dirname(path), "stats")
-        if not os.path.exists(statdir):
-            os.mkdir(statdir)
-        # write tex files
-        iterator = zip(
-            ("mean", "median"), ("\\langle z \\rangle", "z_{\\rm med}"))
-        for stat, TEX in iterator:
-            try:
-                zkey = "_" + binname(basepath)
-            except ValueError:
-                zkey = ""
-            statfile = os.path.join(statdir, "%s%s.tex" % (stat, zkey))
-            val = getattr(data, stat)()
-            err = getattr(data, stat + "Error")()
-            with open(statfile, "w") as f:
-                string = format_variable(
-                    val, error=err, TEX=True, precision=3, notation="decimal",
-                    use_siunitx=True)
-                f.write("$%s = %s$\n" % (TEX, string.strip("$")))
+        try:
+            zkey = get_bin_key(basepath)
+        except ValueError:
+            zkey = None
+        write_nz_stats(statdir, data, zkey=zkey)
 
 
 def write_global_cov(folder, data, order, header, prefix):
     assert(isinstance(folder, ScaleFolder))
     assert(type(data) is RedshiftDataBinned)
     print("writing global covariance matrix to: %s" % folder.basename())
-    np.savetxt(
-        folder.path_global_cov_file(prefix),
-        data.getCovariance(), header=header)
+    path = folder.path_global_cov_file(prefix)
+    data.writeCovMat(os.path.splitext(path)[0], head=header)
     # store the order for later use
     with open(folder.path_bin_order_file(), "w") as f:
         for zbin in order:

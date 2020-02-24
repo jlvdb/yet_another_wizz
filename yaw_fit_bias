@@ -5,6 +5,8 @@ import pickle
 
 import numpy as np
 from matplotlib import pyplot as plt
+from Nz_Fitting import (BiasFitModel, CurveFit, PowerLawBias, RedshiftData,
+                        RedshiftDataBinned)
 from scipy.optimize import curve_fit
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
@@ -12,9 +14,6 @@ from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
 from yaw_tools.utils import (apply_bias, guess_bin_order, nancov,
                              write_fit_stats, write_global_cov, write_nz_data,
                              write_parameters)
-
-from Nz_Fitting import (BiasFitModel, CurveFit, PowerLawBias, RedshiftData,
-                        RedshiftDataBinned)
 
 
 parser = argparse.ArgumentParser(

@@ -2,22 +2,20 @@
 import argparse
 import os
 import pickle
-
 # disable threading in numpy
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
+
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from Nz_Fitting import (CombModelBinned, CurveFit, GaussianComb, PowerLawBias,
+                        RedshiftData, RedshiftDataBinned)
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
                                init_input_folder, init_output_folder)
-from yaw_tools.utils import (guess_bin_order, nancov, pack_model_redshifts,
-                             write_fit_stats, write_global_cov, write_nz_data,
-                             write_parameters)
-
-from Nz_Fitting import (CurveFit, CombModelBinned, GaussianComb, PowerLawBias,
-                        RedshiftData, RedshiftDataBinned)
+from yaw_tools.utils import (guess_bin_order, write_fit_stats,
+                             write_global_cov, write_nz_data, write_parameters)
 
 
 parser = argparse.ArgumentParser(
@@ -25,10 +23,6 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     'wdir', metavar='DATAFOLDER',
     help='an output folder of yet_another_wizz')
-parser.add_argument(
-    '--master-key', required=True,
-    help='redshift keys (e.g. 0.101z1.201) that identifies the measurement '
-         'on the full data sample (only used, if bias is fitted)')
 parser.add_argument(
     '--n-comp', type=int, required=True,
     help='number of Gaussian components for each bin')
@@ -50,7 +44,6 @@ if __name__ == "__main__":
     outdir = init_output_folder(args, indir)
     scales = find_cc_scales(indir)
 
-    # fit the redshift bias
     for scale, scaledir in indir.iter_scales():
         print("==> processing scale: %s" % scale)
 
@@ -58,29 +51,8 @@ if __name__ == "__main__":
         cc_data = scaledir.list_crosscorr_files(DEFAULT_EXT_DATA)
         if len(cc_data) == 0:
             raise ValueError("no cross-correlation data files found")
-        elif args.master_key not in cc_data:
-            raise KeyError("master key '%s' data not found" % args.master_key)
-        # check which cross-correlation bootstrap files exist
-        cc_boot = scaledir.list_crosscorr_files(DEFAULT_EXT_BOOT)
-        if len(cc_boot) == 0:
-            raise ValueError("no cross-correlation bootstraps found")
-        if cc_data.keys() != cc_boot.keys():
-            raise KeyError(
-                "redshift bins of bootstraps do not match data files")
-        # check the covariance matrices
-        if args.use_cov:
-            cc_cov = scaledir.list_crosscorr_files(DEFAULT_EXT_COV)
-            if len(cc_cov) == 0:
-                raise ValueError(
-                    "no cross-correlation covariance matrices found")
-            elif args.master_key not in cc_cov:
-                raise KeyError(
-                    "master key '%s' covariance matrix not found" %
-                    args.master_key)
-        else:
-            cc_cov = None
 
-        # try using the global bin order
+        # figure out the bin order
         order_file = scaledir.path_bin_order_file()
         if os.path.exists(order_file):
             bin_order = []
@@ -98,60 +70,46 @@ if __name__ == "__main__":
             raise OSError("bin weights file not found")
         with open(weight_file, "rb") as f:
             weight_dict = pickle.load(f)
-        # normalize the weights
-        weight_dict.pop(args.master_key)
-        norm = sum(weight_dict.values())
+        # sort and normalize the weights
+        weights = np.fromiter(
+            (weight_dict[zbin] for zbin in bin_order[:-1]), dtype=np.float32)
+        weights /= weight_dict[bin_order[-1]]
 
-        # load the data files
-        master_data = None
+        # load the data
         bins_data = []
-        weights = []
+        bins_model = []
         for zbin in bin_order:
-            data = RedshiftData(*np.loadtxt(cc_data[zbin]).T)
-            data.setRealisations(np.loadtxt(cc_boot[zbin]))
-            if cc_cov is not None:
-                data.setCovariance(np.loadtxt(cc_cov[zbin]))
-            if zbin == args.master_key:
-                master_data = data
-            else:
-                weights.append(weight_dict[zbin] / norm)
-                bins_data.append(data)
+            data_path = os.path.splitext(cc_data[zbin])[0]
+            bins_data.append(RedshiftData.read(data_path))
+            # construct models for each bin
+            zmin, zmax = 0.07, 1.41  # redshift range of mocks
+            bins_model.append(
+                GaussianComb(args.n_comp, zmin, (zmax - zmin) / args.n_comp)
+                for i in range(len(bins_data)))
+        master_data = bins_data.pop()
+        master_model = bins_model.pop()
+        # create a joint data container (automatically computes global covar.)
         joint_data = RedshiftDataBinned(bins_data, master_data)
-        # load global covariance
-        global_cov_file = scaledir.path_global_cov_file("crosscorr")
-        if args.use_cov and os.path.exists(global_cov_file):
-            joint_data.setCovariance(
-                np.loadtxt(scaledir.path_global_cov_file(global_cov_file)))
-
-        # construct models for each bin
-        zmin, zmax = 0.07, 1.41  # redshift range of mocks
-        bins_models = [
-            GaussianComb(args.n_comp, zmin, (zmax - zmin) / args.n_comp)
-            for i in range(len(bins_data))]
 
         # construct the fit model
         if args.fit_bias:
             bias = PowerLawBias()
         else:
             bias = None
-        model = CombModelBinned(bins_models, weights, bias=bias)
+        fit_model = CombModelBinned(bins_model, weights, bias=bias)
 
         # fit the bias model
-        optimizer = CurveFit(joint_data, model)
-        fitparams = optimizer.optimize()
+        optimizer = CurveFit(joint_data, fit_model)
+        fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 1000)
         print(fitparams)
         paramdir = outdir[scale].join("comb_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
         write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
         write_parameters(fitparams, paramdir, precision=3, notation="exp")
 
-        # compute the output redshift distributions
-        model_containers = pack_model_redshifts(
-            model, fitparams, model.autoSampling())
-        joint_models = RedshiftDataBinned(
-            model_containers[:-1], model_containers[-1])
-        joint_models.setCovariance(
-            nancov(joint_models.getRealisations()))
+        # evaluate the best fit result
+        comb_fit_data = fit_model.evaluate(
+            [np.linspace(0.0, zmax, 200)] * 6, fitparams)
 
         # write the shifted redshift histograms
         N = args.n_comp
@@ -159,15 +117,16 @@ if __name__ == "__main__":
         header += "col 2 = comb fit (%d components)\n" % N
         header += "col 3 = error"
         print("writing n(z) statistics to: stats/")
-        for zbin, data in zip(bin_order, model_containers):
+        for i, data in enumerate(comb_fit_data.iterData()):
             write_nz_data(
                 outdir[scale].path_combfit_file("", zbin), data,
                 hdata=header,
                 hboot="comb fit realisations (%d components)\n" % N,
                 hcov="comb fit (%d components) covariance matrix" % N,
                 stats=True)
+
         # store global covariance matrix
         header = "global comb fit (%d components) " % N
         header += "covariance matrix"
         write_global_cov(
-            outdir[scale], joint_models, bin_order, header, "combfit")
+            outdir[scale], comb_fit_data, bin_order, header, "combfit")

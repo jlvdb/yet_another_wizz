@@ -5,7 +5,9 @@ import os
 import numpy as np
 from astropy.io import fits as pyfits
 
-from yaw_tools.utils import DEFAULT_CAT_EXT
+from Nz_Fitting import format_variable, RedshiftHistogram
+from yaw_tools.utils import (DEFAULT_CAT_EXT, get_bin_key, tex2png,
+                             write_nz_stats)
 from yet_another_wizz.PdfMaker import PdfMaker
 
 
@@ -60,8 +62,11 @@ if __name__ == '__main__':
     binning = PdfMaker.adaptiveBins(args.n_bins + 2, None, None, z_spec)
     binning = np.append(0.0, binning)
     binning = np.append(binning, z_spec.max() + 0.1)
-    bin_centers = (binning[:-1] + binning[1:]) / 2.0
 
+    print("writing n(z) statistics to: stats/")
+    statdir = os.path.join(args.output, "stats")
+    if not os.path.exists(statdir):
+        os.mkdir(statdir)
     for zbin in args.zbin_keys:
         # bin the data
         zmin, zmax = [float(f) for f in zbin.split("z")]
@@ -69,11 +74,14 @@ if __name__ == '__main__':
         kwargs = {"bins": binning, "density": True}
         if weights is not None:
             kwargs["weights"] = weights[mask]
-        nz_hist = np.histogram(z_spec[mask], **kwargs)[0]
+        z_spec_binned = z_spec[mask]
+        counts = np.histogram(z_spec_binned, **kwargs)[0]
         # write the histogram
+        nz_hist = RedshiftHistogram(binning, counts)
         outfile = os.path.join(
             args.output,
             os.path.basename(os.path.splitext(args.nz_file)[0]) +
-            "_%s.dat" % zbin)
-        print("writing output file: %s" % os.path.basename(outfile))
-        np.savetxt(outfile, np.stack([bin_centers, nz_hist]).T)
+            "_%s" % zbin)
+        nz_hist.write(outfile)
+        # write statistics
+        write_nz_stats(statdir, nz_hist, zkey=zbin)

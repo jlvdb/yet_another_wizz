@@ -5,9 +5,6 @@ import pickle
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.integrate import cumtrapz
-from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
-                               DEFAULT_EXT_DATA)
-from yaw_tools.utils import nancov, write_nz_data
 
 from Nz_Fitting import RedshiftData
 
@@ -260,6 +257,7 @@ class Pickle(object):
     def get_data(self):
         data = RedshiftData(
             self._z, self.get_amplitudes(), self.get_errors())
+        data.setSamples(self.get_samples())
         return data
 
     def check_plot(self, z=None, dz=0.0, ax=None):
@@ -363,31 +361,7 @@ class PickleConverter(object):
             # compute errors of bias corrected correlation amplitudes
             self.errors = np.nanstd(self.samples, axis=0)
 
-    def get_amplitudes(self):
-        return self.amplitudes.copy()
-
-    def get_samples(self):
-        return self.samples.copy()
-
-    def get_all(self):
+    def get_data(self):
         data = RedshiftData(self.redshifts, self.amplitudes, self.errors)
-        data.setRealisations(self.samples)
-        try:
-            data.setCovariance(nancov(self.samples))
-        except ValueError:
-            with open("/net/fohlen12/home/jlvdb/samples.pkl", "wb") as f:
-                pickle.dump(self.samples, f)
-            exit()
+        data.setSamples(self.samples)  # internally sets covariance
         return data
-
-    def write_output(self, scaledir, header_key, stats=False):
-        path = scaledir.incorporate(self.pickle_path, ".*")
-        header = "col 1 = mean redshift\n"
-        header += "col 2 = correlation amplitude (%s)\n" % header_key
-        header += "col 3 = amplitude error"
-        write_nz_data(
-            scaledir.incorporate(self.pickle_path, ".*"), self.get_all(),
-            hdata=header,
-            hboot="correlation amplitude (%s) realisations" % header_key,
-            hcov="correlation amplitude (%s) covariance matrix" % header_key,
-            stats=stats)

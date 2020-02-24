@@ -2,16 +2,16 @@
 import argparse
 import os
 import warnings
-from collections import Counter
 from hashlib import md5
 
 import numpy as np
-from yaw_tools.folders import (DEFAULT_EXT_COV, CCFolder,
-                               check_autocorrelation, find_cc_scales,
+from Nz_Fitting import RedshiftDataBinned
+from yaw_tools.folders import (check_autocorrelation, find_cc_scales,
                                init_input_folder, init_output_folder)
 from yaw_tools.pickles import (AutoCorrelationPickle, CrossCorrelationPickle,
                                PickleConverter)
-from yaw_tools.utils import nancov
+from yaw_tools.utils import (DEFAULT_HBOOT, DEFAULT_HCOV, DEFAULT_HDATA,
+                             guess_bin_order, write_global_cov, write_nz_data)
 
 
 parser = argparse.ArgumentParser(
@@ -35,10 +35,10 @@ parser.add_argument(
     '--n-boot', type=int, default=1000,
     help='number of bootstrap realisations for covariance estimation')
 parser.add_argument(
-    '--cov-order', nargs='*',
+    '--bin-order', nargs='*',
     help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
          'correlation files are inserted into the global covariance matrix, '
-         'if not given no global covariance is computed')
+         'the full sample should come last (default: sorted automatically)')
 parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     # convert the pickles
     for scale, scaledir in indir.iter_scales():
-        print("==> processing scale: %s" % scale)
+        print("==> processing scale: {:}".format(scale))
 
         # check which correlation pickles exist
         cc_pickles = scaledir.list_crosscorr_files(".pkl")
@@ -74,76 +74,79 @@ if __name__ == "__main__":
         ac_phot_pickle, use_wpp = check_autocorrelation(
             scaledir, args.bias_phot, "phot.")
 
-        print("writing n(z) statistics to: stats/")
         # NaNs are to be expected so we ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
             # process auto-correlation pickles and compute the bias correction
             header_key = "w_sp"
-            correction_key = []
+            bias_key = []
+            autocorrs = 1.0
+            autocorr_samples = 1.0
             if use_wss:
                 pkl2data.set_bias(None, None)  # clear bias arrays
                 pkl2data.load_pickle(ac_spec_pickle, AutoCorrelationPickle)
-                pkl2data.write_output(outdir[scale], "w_ss")
-                amp_product = pkl2data.get_amplitudes()
-                amp_product_samples = pkl2data.get_samples()
-                correction_key.append("w_ss")
+                # get the data
+                w_ss_data = pkl2data.get_data()
+                autocorrs *= w_ss_data.n(all=True)
+                autocorr_samples *= w_ss_data.getSamples(all=True)
+                # write the data
+                path = outdir[scale].incorporate(pkl2data.pickle_path)
+                write_nz_data(
+                    path, w_ss_data, DEFAULT_HDATA.format("w_ss"),
+                    DEFAULT_HBOOT.format("w_ss"), DEFAULT_HCOV.format("w_ss"),
+                    stats=False, dtype_message="autocorrelation")
+                bias_key.append("w_ss")
             if use_wpp:
                 pkl2data.set_bias(None, None)  # clear bias arrays
                 pkl2data.load_pickle(ac_phot_pickle, AutoCorrelationPickle)
-                pkl2data.write_output(outdir[scale], "w_pp")
-                try:
-                    amp_product *= pkl2data.get_amplitudes()
-                    amp_product_samples *= pkl2data.get_samples()
-                except NameError:
-                    amp_product = pkl2data.get_amplitudes()
-                    amp_product_samples = pkl2data.get_samples()
-                correction_key.append("w_pp")
-            if len(correction_key) > 0:
-                header_key += " / sqrt(" + " / ".join(correction_key) + ")"
+                # get the data
+                w_pp_data = pkl2data.get_data()
+                autocorrs *= w_pp_data.n(all=True)
+                autocorr_samples *= w_pp_data.getSamples(all=True)
+                # write the data
+                path = outdir[scale].incorporate(pkl2data.pickle_path)
+                write_nz_data(
+                    path, w_pp_data, DEFAULT_HDATA.format("w_pp"),
+                    DEFAULT_HBOOT.format("w_pp"), DEFAULT_HCOV.format("w_pp"),
+                    stats=False, dtype_message="autocorrelation")
+                bias_key.append("w_pp")
+            if len(bias_key) > 0:
+                header_key += " / sqrt(" + " / ".join(bias_key) + ")"
             # apply the bias correction
-            try:
-                bias = np.sqrt(amp_product)
-                bias_samples = np.sqrt(amp_product_samples)
-            except NameError:
-                bias, bias_samples = None, None
+            if np.all(autocorrs == 1.0):
+                bias, bias_samples = None, None  # fallback values
+            else:
+                bias = np.sqrt(autocorrs)
+                bias_samples = np.sqrt(autocorr_samples)
+
+            # figure out the bin order
+            if args.bin_order is None:
+                args.bin_order = guess_bin_order(cc_pickles.keys())
 
             # process the cross-correlation pickles
-            samples = {}  # needed for correlation between bins
-            for zbin, pickle_path in cc_pickles.items():
+            w_sp_data = []  # collect for global covariance
+            print("writing n(z) statistics to: stats/")
+            for zbin in args.bin_order:
                 pkl2data.set_bias(bias, bias_samples)
-                pkl2data.load_pickle(pickle_path, CrossCorrelationPickle)
-                pkl2data.write_output(outdir[scale], header_key, stats=True)
-                samples[zbin] = pkl2data.get_samples()
+                try:
+                    pkl2data.load_pickle(
+                        cc_pickles[zbin], CrossCorrelationPickle)
+                except KeyError:
+                    raise KeyError(
+                        "invalid redshift bin '{:}' in --cov-order".format(
+                            zbin))
+                w_sp_data.append(pkl2data.get_data())
+                # write the data
+                path = outdir[scale].incorporate(pkl2data.pickle_path)
+                write_nz_data(
+                    path, w_sp_data[-1], DEFAULT_HDATA.format(header_key),
+                    DEFAULT_HBOOT.format(header_key),
+                    DEFAULT_HCOV.format(header_key), stats=False)
 
-            # compute global covariance matrix
-            if args.cov_order is None:
-                print("omitting global covariance estimation")
-            else:
-                data_keys = samples.keys()
-                global_samples = None
-                for zbin in args.cov_order:
-                    try:
-                        if global_samples is None:
-                            global_samples = samples[zbin]
-                        else:
-                            global_samples = np.concatenate([
-                                global_samples, samples[zbin]])
-                    except KeyError:
-                        string = "redshift bin '%s' from --cov-order " % zbin
-                        string += "not found"
-                        raise KeyError(string)
-                # store global covariance matrix
-                outpath = outdir[scale].path_global_cov_file("crosscorr")
-                print(
-                    "writing global covariance matrix to: %s" %
-                    os.path.basename(outpath))
-                header = "global correlation amplitude "
-                header += "(%s) covariance matrix" % header_key
-                np.savetxt(outpath, nancov(global_samples), header=header)
-                # store the order for later use
-                outpath = outdir[scale].path_bin_order_file()
-                with open(outpath, "w") as f:
-                    for zbin in args.cov_order:
-                        f.write("%s\n" % zbin)
+            # write the global covariance matrix
+            data_joint = RedshiftDataBinned(w_sp_data[:-1], w_sp_data[-1])
+            header = "global correlation amplitude "
+            header += "({:}) covariance matrix".format(header_key)
+            write_global_cov(
+                outdir[scale], data_joint, args.bin_order, header, "crosscorr")
