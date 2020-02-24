@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+import argparse
+import os
+
+from Nz_Fitting import RedshiftHistogram
+
+
+parser = argparse.ArgumentParser(
+    description='SURPRISE!')
+    '-n', '--nz-file', action='append', nargs='*', required=True,
+    help='spicify a tomographic bin n(z) file: input folder [s:suffix w:weight'
+         ']\nwhere suffix is of format #.###z#.###, specifying the '
+         'tomographic bin limits and weight (default: 1) is the relative '
+         'weight of the bin needed to compute the sum of the tomographic bins')
+parser.add_argument(
+    '--binning', required=True,
+    help='file that lists the bin edges used to compute --nz-file(s)')
+parser.add_argument(
+    '--sum-suffix', required=True,
+    help='suffix of format #.###z#.### to use for the sum of the bins')
+parser.add_argument(
+    '--prefix',
+    help='prefix for output files (default: derived from input file names)')
+parser.add_argument(
+    '-o', '--output', required=True,
+    help='folder in which the output is stored')
+
+key_map = {"s": "suffix", "w": "weight"}
+
+
+if __name__ == '__main__':
+
+    args = parser.parse_args()
+    if len(args.nz_file) < 2:
+        raise parser.error("at least two input --nz-file(s) are required")
+
+    setattr(args, "output", os.path.abspath(args.output))
+    print("set output folder to %s" % args.output)
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+
+    # load the binning file
+    if not os.path.exists(args.binning):
+        raise ValueError(
+            "input binning file '{:}' not found".format(args.binning))
+    else:
+        binning = np.loadtxt(args.binning)
+        if len(binning.shape) != 1:
+            raise ValueError("expected 1-dimensional data as bin edges")
+
+    # check and autofill omitted arguments
+    bin_data = []
+    bin_weights = []
+    arg_dicts = []
+    for pltargs in args.nz_file:
+        arg_str = "--nz-file " + " ".join(pltargs)
+        if len(pltargs) == 0:
+            raise parser.error("no input files supplied with '--nz-file'")
+        if len(pltargs) > (len(key_map) + 1):
+            raise parser.error(
+                "too many arguments in '%s'" % arg_str)
+        arg_dict = {"data": pltargs[0]}
+        for i, arg in enumerate(pltargs[1:], 2):
+            try:
+                key, value = arg.split(":")
+            except ValueError:
+                raise parser.error(
+                    "arguement %d in '%s' comes without an arguement key" %
+                        (i, arg_str))
+            try:
+                arg_dict[key_map[key]] = value
+            except KeyError:
+                raise parser.error(
+                    "invalid key '%s' in '%s'" % (key, arg_str))
+        arg_dicts.append(arg_dict)
+
+        # check that all parameters are supplied
+        if "weight" not in arg_dict:
+            bin_weights.append(1.0)
+        else:
+            bin_weights.append(float(arg_dict["weight"]))
+        if "suffix" not in arg_dict:
+            raise parser.error("suffix is required for each --nz-file")
+        arg_list.append(arg_dict)
+
+        # load the file
+        print("loading input: {:}".format(arg_dict["data"]))
+        data = np.loadtxt(arg_dict["data"])[:2]  # ignore any given errors
+        centers, counts = data.T
+        edges = binning
+        bin_data.append(RedshiftHistogram(edges, counts, centers))
+
+    # check the redshift centers and compute the weighted sum
+    weights = np.array(bin_weights) / np.sum(bin_weights)  # normalize
+    counts_sum = np.zeros_like(counts)  # use the last value from input parsing
+    for weight, data in zip(weights, bin_data):
+        if not np.isclose(data.centers(), centers).all():  # use the last value
+            raise ValueError(
+                "redshift bin centers must be always the same")
+        counts_sum += data.counts() * weight
+    bin_sum = RedshiftHistogram(edges, counts_sum, centers)
+
+    # write the output
+    if args.prefix is None:
+        auto_prefix = os.path.commonprefix([
+            arg_dict["data"] for arg_dict in arg_dicts])
+        args.prefix = os.path.basename(auto_prefix).strip("_")
+    # write the bins
+    for argdict, data in enumerate(arg_dicts, bin_data):
+        fpath = os.path.join(
+            args.output, "{:}_{:}".format(args.prefix, argdict["suffix"]))
+        header = (
+            "col 1 = bin edges\n" +
+            "col 2 = counts (from {:})\n".format(argdict["data"]) +
+            "col 3 = bin centers")
+        print("writing bin:     {:}".format(os.path.basename(fpath)))
+        data.write(fpath, head=header)
+    # write the summed data
+    fpath = os.path.join(
+        args.output, "{:}_{:}".format(args.prefix, args.sum_suffix))
+    header = (
+        "col 1 = bin edges\n" +
+        "col 2 = summed bin counts\n" +
+        "col 3 = bin centers")
+    print("writing bin sum: {:}".format(os.path.basename(fpath)))
+    bin_sum.write(fpath, head=header)
