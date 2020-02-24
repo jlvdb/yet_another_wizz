@@ -69,8 +69,8 @@ test_cat.add_argument(
     '--test-dec', metavar='FIELD', default='DELTA_J2000',
     help='declination column name (default: %(default)s)')
 test_cat.add_argument(
-    '--test-z', metavar='FIELD', default='Z_B',
-    help='photometric (estimated) redshift column name (default: %(default)s)')
+    '--test-z', metavar='FIELD',
+    help='photometric (estimated) redshift column name')
 test_cat.add_argument(
     '--test-weight', metavar='FIELD', help='object weight column name')
 
@@ -90,8 +90,8 @@ rand_cat.add_argument(
     '--rand-dec', metavar='FIELD', default='DELTA_J2000',
     help='declination column name (default: %(default)s)')
 rand_cat.add_argument(
-    '--rand-z', metavar='FIELD', default='Z_B',
-    help='photometric (estimated) redshift column name (default: %(default)s)')
+    '--rand-z', metavar='FIELD', default='',
+    help='photometric (estimated) redshift column name')
 rand_cat.add_argument(
     '--rand-weight', metavar='FIELD', help='object weight column name')
 
@@ -170,10 +170,11 @@ if __name__ == '__main__':
     # load the reference sample
     print("==> loading reference objects")
     with pyfits.open(args.ref_file) as fits:
+        ext = args.ref_file_ext
         refdata = pd.DataFrame({
-            "RA": fits[1].data[args.ref_ra].byteswap().newbyteorder(),
-            "DEC": fits[1].data[args.ref_dec].byteswap().newbyteorder(),
-            "z": fits[1].data[args.ref_z].byteswap().newbyteorder()})
+            "RA": fits[ext].data[args.ref_ra].byteswap().newbyteorder(),
+            "DEC": fits[ext].data[args.ref_dec].byteswap().newbyteorder(),
+            "z": fits[ext].data[args.ref_z].byteswap().newbyteorder()})
     if len(refdata) < args.ref_source_limit:
         if args.exit_on_warning:
             print(
@@ -205,19 +206,25 @@ if __name__ == '__main__':
         print("==> loading unknown objects")
         testdata, testfiles = bin_table(
             testbindir, args.test_file, args.test_ra, args.test_dec,
-            args.test_z, args.test_weight, zbins=zbins)
+            args.test_z, args.test_weight,
+            zbins=zbins, cat_ext=args.test_file_ext)
         print("==> loading random objects")
         randdata, randfiles = bin_table(
             randbindir, args.rand_file, args.rand_ra, args.rand_dec,
-            args.rand_z, args.rand_weight, zbins=zbins)
+            args.rand_z, args.rand_weight,
+            zbins=zbins, cat_ext=args.rand_file_ext)
         bin_weights_dict = get_bin_weights(testdata, testfiles)
     else:
+        print("==> loading unknown objects")
         testdata, testfiles = bin_table(
             testbindir, args.test_file, args.test_ra, args.test_dec,
-            args.test_z, args.test_weight, zbins=None)
+            args.test_z, args.test_weight,
+            zbins=None, cat_ext=args.test_file_ext)
+        print("==> loading random objects")
         randdata, randfiles = bin_table(
             randbindir, args.rand_file, args.rand_ra, args.rand_dec,
-            args.rand_z, args.rand_weight, zbins=None)
+            args.rand_z, args.rand_weight,
+            zbins=None, cat_ext=args.rand_file_ext)
         bin_weights_dict = None
 
     try:

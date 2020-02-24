@@ -7,17 +7,23 @@ from astropy.io import fits as pyfits
 
 def bin_table(
         bindir, filepath, ra_name, dec_name, z_name, weightname=None,
-        zbins=None):
+        zbins=None, cat_ext=1):
     # read input catalogue
     with pyfits.open(filepath) as fits:
-        head = fits[1].header
-        data = fits[1].data
+        head = fits[cat_ext].header
+        data = fits[cat_ext].data
     print("loaded %d objects" % len(data))
     # make catalogue for each selected bin
     framelist = []
     filelist = []
     if zbins is None:
-        try:
+        if z_name is None:
+            filename = bindir.join("bin_all.fits")
+            os.symlink(filepath, filename)
+            frame = pd.DataFrame({
+                "RA": data[ra_name].byteswap().newbyteorder(),
+                "DEC": data[dec_name].byteswap().newbyteorder()})
+        else:
             zmin, zmax = data[z_name].min(), data[z_name].max()
             filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
             os.symlink(filepath, filename)
@@ -25,35 +31,40 @@ def bin_table(
                 "RA": data[ra_name].byteswap().newbyteorder(),
                 "DEC": data[dec_name].byteswap().newbyteorder(),
                 "z": data[z_name].byteswap().newbyteorder()})
-        except KeyError:
-            filename = bindir.join("bin_all.fits")
-            os.symlink(filepath, filename)
-            frame = pd.DataFrame({
-                "RA": data[ra_name].byteswap().newbyteorder(),
-                "DEC": data[dec_name].byteswap().newbyteorder()})
         if weightname is not None:
             frame["weight"] = data[weightname].byteswap().newbyteorder()
         framelist.append(frame)
         filelist.append(filename)
     else:
         for zmin, zmax in zbins:
-            print("creating redshift slice %.3f <= z < %.3f" % (zmin, zmax))
-            filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
-            mask = (data[z_name] > zmin) & (data[z_name] <= zmax)
             print(
-                "selected %d out of %d objects" % (
-                    np.count_nonzero(mask), len(mask)))
-            bindata = data[mask]
-            # write the bin data to a new fits file
-            hdu = pyfits.BinTableHDU(header=head, data=bindata)
-            hdu.writeto(filename)
-            # keep the bin data as pandas DataFrame
-            frame = pd.DataFrame({
-                "RA": bindata[ra_name].byteswap().newbyteorder(),
-                "DEC": bindata[dec_name].byteswap().newbyteorder(),
-                "z": bindata[z_name].byteswap().newbyteorder()})
+                "creating redshift slice %.3f <= z < %.3f" % (zmin, zmax))
+            filename = bindir.zbin_filename(
+                zmin, zmax, ".fits", prefix="bin")
+            if z_name is None:
+                filename = bindir.zbin_filename(
+                    zmin, zmax, ".fits", prefix="bin")
+                os.symlink(filepath, filename)
+                frame = pd.DataFrame({
+                    "RA": data[ra_name].byteswap().newbyteorder(),
+                    "DEC": data[dec_name].byteswap().newbyteorder()})
+            else:
+                mask = (data[z_name] > zmin) & (data[z_name] <= zmax)
+                print(
+                    "selected %d out of %d objects" % (
+                        np.count_nonzero(mask), len(mask)))
+                bindata = data[mask]
+                # write the bin data to a new fits file
+                hdu = pyfits.BinTableHDU(header=head, data=bindata)
+                hdu.writeto(filename)
+                # keep the bin data as pandas DataFrame
+                frame = pd.DataFrame({
+                    "RA": bindata[ra_name].byteswap().newbyteorder(),
+                    "DEC": bindata[dec_name].byteswap().newbyteorder(),
+                    "z": bindata[z_name].byteswap().newbyteorder()})
             if weightname is not None:
-                frame["weight"] = bindata[weightname].byteswap().newbyteorder()
+                frame["weight"] = \
+                    bindata[weightname].byteswap().newbyteorder()
             framelist.append(frame)
             filelist.append(filename)
     return framelist, filelist
