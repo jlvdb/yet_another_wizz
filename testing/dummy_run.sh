@@ -59,7 +59,6 @@ do
         --test-z ${ZBname} --test-weight ${WEIGHTname} \
         --rand-file ${indir}/pointing_phot.rand \
         --rand-ra RA --rand-dec DEC \
-        --rand-z ${ZBname} --rand-weight ${WEIGHTname} \
         --scales-min ${SCALESmin} \
         --scales-max ${SCALESmax} \
         --z-min ${Zmin} --z-max ${Zmax} \

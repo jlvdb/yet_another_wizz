@@ -45,6 +45,7 @@ def bin_table(
                 filename = bindir.zbin_filename(
                     zmin, zmax, ".fits", prefix="bin")
                 os.symlink(filepath, filename)
+                bindata = data
                 frame = pd.DataFrame({
                     "RA": data[ra_name].byteswap().newbyteorder(),
                     "DEC": data[dec_name].byteswap().newbyteorder()})
