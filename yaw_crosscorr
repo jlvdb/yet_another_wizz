@@ -90,7 +90,7 @@ rand_cat.add_argument(
     '--rand-dec', metavar='FIELD', default='DELTA_J2000',
     help='declination column name (default: %(default)s)')
 rand_cat.add_argument(
-    '--rand-z', metavar='FIELD', default='',
+    '--rand-z', metavar='FIELD',
     help='photometric (estimated) redshift column name')
 rand_cat.add_argument(
     '--rand-weight', metavar='FIELD', help='object weight column name')
