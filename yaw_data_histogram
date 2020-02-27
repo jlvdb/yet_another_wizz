@@ -63,11 +63,18 @@ if __name__ == '__main__':
     binning = np.append(0.0, binning)
     binning = np.append(binning, z_spec.max() + 0.1)
 
-    print("writing n(z) statistics to: stats/")
+    print("writing histogram statistics to: stats/")
     statdir = os.path.join(args.output, "stats")
     if not os.path.exists(statdir):
         os.mkdir(statdir)
     for zbin in args.zbin_keys:
+        outfile = os.path.join(
+            args.output,
+            os.path.basename(os.path.splitext(args.nz_file)[0]) +
+            "_%s" % zbin)
+        print(
+            "writing histogram data to: {:}.*".format(
+                os.path.basename(outfile)))
         # bin the data
         zmin, zmax = [float(f) for f in zbin.split("z")]
         mask = (z_phot >= zmin) & (z_phot < zmax)
@@ -78,10 +85,6 @@ if __name__ == '__main__':
         counts = np.histogram(z_spec_binned, **kwargs)[0]
         # write the histogram
         nz_hist = RedshiftHistogram(binning, counts)
-        outfile = os.path.join(
-            args.output,
-            os.path.basename(os.path.splitext(args.nz_file)[0]) +
-            "_%s" % zbin)
         nz_hist.write(outfile)
         # write statistics
         write_nz_stats(statdir, nz_hist, zkey=zbin)
