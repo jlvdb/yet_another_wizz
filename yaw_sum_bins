@@ -2,11 +2,14 @@
 import argparse
 import os
 
+import numpy as np
+
 from Nz_Fitting import RedshiftHistogram
 
 
 parser = argparse.ArgumentParser(
     description='SURPRISE!')
+parser.add_argument(
     '-n', '--nz-file', action='append', nargs='*', required=True,
     help='spicify a tomographic bin n(z) file: input folder [s:suffix w:weight'
          ']\nwhere suffix is of format #.###z#.###, specifying the '
@@ -81,7 +84,6 @@ if __name__ == '__main__':
             bin_weights.append(float(arg_dict["weight"]))
         if "suffix" not in arg_dict:
             raise parser.error("suffix is required for each --nz-file")
-        arg_list.append(arg_dict)
 
         # load the file
         print("loading input: {:}".format(arg_dict["data"]))
