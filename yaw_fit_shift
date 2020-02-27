@@ -8,8 +8,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from Nz_Fitting import (CurveFit, PowerLawBias, RedshiftData,
                         RedshiftDataBinned, RedshiftHistogram,
                         RedshiftHistogramBinned, ShiftModel, ShiftModelBinned)
-from yaw_tools.folders import (DEFAULT_EXT_DATA, Folder, binname,
-                               find_cc_scales, init_input_folder,
+from yaw_tools.folders import (DEFAULT_EXT_DATA, Folder, find_cc_scales,
+                               get_bin_key, init_input_folder,
                                init_output_folder)
 from yaw_tools.utils import (guess_bin_order, write_fit_stats,
                              write_global_cov, write_nz_data, write_parameters)
@@ -47,13 +47,18 @@ if __name__ == "__main__":
     # find any models by matching contents against the redshift key pattern
     models = {}
     for path in model_dir.find(".*\d\.\d*z\d\.\d.*"):
-        zbin = binname(path)
+        if os.path.basename(os.path.dirname(path)) == "stats":
+            continue
+        zbin = get_bin_key(path)
         if zbin in models:
             raise ValueError(
                 "found multiple occurences of redshift key '%s'" % zbin)
         models[zbin] = path
     if len(models) == 0:
         raise ValueError("no redshift models found")
+
+    # load the binning
+    binning = np.loadtxt(indir.path_binning_file())
 
     for scale, scaledir in indir.iter_scales():
         print("==> processing scale: %s" % scale)
@@ -82,6 +87,7 @@ if __name__ == "__main__":
         for zbin in bin_order:
             data_path = os.path.splitext(cc_data[zbin])[0]
             bins_data.append(RedshiftData.read(data_path))
+            bins_data[-1].setEdges(binning)
             try:
                 model_path = os.path.splitext(models[zbin])[0]
                 model_hist = RedshiftHistogram.read(model_path)
@@ -95,7 +101,7 @@ if __name__ == "__main__":
         master_model = bins_model.pop()
         # create a joint data container (automatically computes global covar.)
         joint_data = RedshiftDataBinned(bins_data, master_data)
-        joint_hist = RedshiftHistogramBinned(bins_hist, master_model)
+        joint_hist = RedshiftHistogramBinned(bins_hist, master_hist)
 
         # construct the fit model
         if args.fit_bias:
@@ -124,7 +130,7 @@ if __name__ == "__main__":
             header += "col 2 = shifted n(z) (from %s)\n" % model_path
             header += "col 3 = error"
             write_nz_data(
-                outdir[scale].path_shiftfit_file("", zbin), data,
+                outdir[scale].path_shiftfit_file("", bin_order[i]), data,
                 hdata=header,
                 hboot="shifted n(z) realisations (from %s)" % model_path,
                 hcov="shifted n(z) (from %s) covariance matrix" % model_path,
