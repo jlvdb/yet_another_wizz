@@ -134,7 +134,7 @@ if __name__ == "__main__":
                         cc_pickles[zbin], CrossCorrelationPickle)
                 except KeyError:
                     raise KeyError(
-                        "invalid redshift bin '{:}' in --cov-order".format(
+                        "invalid redshift bin '{:}' in --bin-order".format(
                             zbin))
                 w_sp_data.append(pkl2data.get_data())
                 # write the data
@@ -142,7 +142,7 @@ if __name__ == "__main__":
                 write_nz_data(
                     path, w_sp_data[-1], DEFAULT_HDATA.format(header_key),
                     DEFAULT_HBOOT.format(header_key),
-                    DEFAULT_HCOV.format(header_key), stats=False)
+                    DEFAULT_HCOV.format(header_key), stats=True)
 
             # write the global covariance matrix
             data_joint = RedshiftDataBinned(w_sp_data[:-1], w_sp_data[-1])
