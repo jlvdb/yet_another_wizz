@@ -154,7 +154,7 @@ def write_fit_stats(fitparams, folder, precision=3, notation="decimal"):
             chisq, error=None, precision=precision, notation=notation)
         f.write("$\\chi^2 = %s$\n" % string.strip(" $"))
     with open(os.path.join(folder, "chi_squared_ndof.tex"), "w") as f:
-        chisq /= fitparams.Ndof()
+        chisq /= fitparams.nDoF()
         string = format_variable(
             chisq, error=None, precision=precision, notation=notation)
         f.write("$\\chi^2_{\\rm dof} = %s$\n" % string.strip(" $"))
@@ -199,7 +199,7 @@ def write_parameters(
         fitparams.paramCovar(), header=header)
 
 
-def write_nz_stats(statdir, redshift_data, zkey=None):
+def write_nz_stats(statdir, data, zkey=None):
     # write mean and median redshifts
     if not os.path.exists(statdir):
         os.mkdir(statdir)
@@ -212,9 +212,9 @@ def write_nz_stats(statdir, redshift_data, zkey=None):
         else:
             statfile = os.path.join(statdir, "%s_%s.tex" % (stat, zkey))
         try:
-            val, err = getattr(redshift_data, stat)(error=True)
+            val, err = getattr(data, stat)(error=True)
         except TypeError:  # RedshiftHistogram does not support errors
-            val = getattr(redshift_data, stat)()
+            val = getattr(data, stat)()
             err = None
         with open(statfile, "w") as f:
             string = format_variable(
