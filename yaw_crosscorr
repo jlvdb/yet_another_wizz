@@ -52,6 +52,8 @@ ref_cat.add_argument(
     help='spectroscopic (known) redshift column name (default: %(default)s)')
 ref_cat.add_argument(
     '--ref-idx', metavar='FIELD', help='object index column name')
+ref_cat.add_argument(
+    '--ref-weight', metavar='FIELD', help='object weight column name')
 
 test_cat = parser.add_argument_group(
     title="test sample catalogue file",
@@ -175,6 +177,9 @@ if __name__ == '__main__':
             "RA": fits[ext].data[args.ref_ra].byteswap().newbyteorder(),
             "DEC": fits[ext].data[args.ref_dec].byteswap().newbyteorder(),
             "z": fits[ext].data[args.ref_z].byteswap().newbyteorder()})
+        if args.ref_weight is not None:
+            refdata["weight"] = \
+                fits[1].data[args.ref_weight].byteswap().newbyteorder()
     if len(refdata) < args.ref_source_limit:
         if args.exit_on_warning:
             print(
@@ -275,7 +280,8 @@ if __name__ == '__main__':
                     randdata[i].RA, randdata[i].DEC, randdata[i].z)
             except AttributeError:
                 est.setRandoms(randdata[i].RA, randdata[i].DEC)
-        est.setReference(refdata.RA, refdata.DEC, refdata.z)
+        est.setReference(
+          refdata.RA, refdata.DEC, refdata.z, weight=refdata.weight)
 
         for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
             scaledir = outdir[scale_name]
