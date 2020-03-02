@@ -11,7 +11,7 @@ import pandas as pd
 from astropy.io import fits as pyfits
 from yaw_tools.correlation import bin_table, get_bin_weights
 from yaw_tools.folders import CCFolder, Folder
-from yaw_tools.utils import (DEFALUT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
+from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
                              DEFAULT_REGION_NO, DEFAULT_RESAMPLING)
 
 from yet_another_wizz.PairMaker import PairMaker
@@ -42,14 +42,14 @@ ref_cat.add_argument(
     '--ref-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
     help='fits extesion containg data (default: %(default)s)')
 ref_cat.add_argument(
-    '--ref-ra', metavar='FIELD', default='ALPHA_J2000',
-    help='right ascension column name (default: %(default)s)')
+    '--ref-ra', metavar='FIELD', required=True,
+    help='right ascension column name')
 ref_cat.add_argument(
-    '--ref-dec', metavar='FIELD', default='DELTA_J2000',
-    help='declination column name (default: %(default)s)')
+    '--ref-dec', metavar='FIELD', required=True,
+    help='declination column name')
 ref_cat.add_argument(
-    '--ref-z', metavar='FIELD', default='z_spec',
-    help='spectroscopic (known) redshift column name (default: %(default)s)')
+    '--ref-z', metavar='FIELD', required=True,
+    help='spectroscopic (known) redshift column name')
 ref_cat.add_argument(
     '--ref-idx', metavar='FIELD', help='object index column name')
 ref_cat.add_argument(
@@ -65,11 +65,11 @@ test_cat.add_argument(
     '--test-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
     help='fits extesion containg data (default: %(default)s)')
 test_cat.add_argument(
-    '--test-ra', metavar='FIELD', default='ALPHA_J2000',
-    help='right ascension column name (default: %(default)s)')
+    '--test-ra', metavar='FIELD', required=True,
+    help='right ascension column name')
 test_cat.add_argument(
-    '--test-dec', metavar='FIELD', default='DELTA_J2000',
-    help='declination column name (default: %(default)s)')
+    '--test-dec', metavar='FIELD', required=True,
+    help='declination column name')
 test_cat.add_argument(
     '--test-z', metavar='FIELD',
     help='photometric (estimated) redshift column name')
@@ -84,13 +84,13 @@ rand_cat.add_argument(
     help='random catalogue file path')
 rand_cat.add_argument(
     '--rand-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
-    help='fits extesion containg data (default: %(default)s)')
+    help='fits extesion containg data')
 rand_cat.add_argument(
-    '--rand-ra', metavar='FIELD', default='ALPHA_J2000',
-    help='right ascension column name (default: %(default)s)')
+    '--rand-ra', metavar='FIELD', required=True,
+    help='right ascension column name')
 rand_cat.add_argument(
-    '--rand-dec', metavar='FIELD', default='DELTA_J2000',
-    help='declination column name (default: %(default)s)')
+    '--rand-dec', metavar='FIELD', required=True,
+    help='declination column name')
 rand_cat.add_argument(
     '--rand-z', metavar='FIELD',
     help='photometric (estimated) redshift column name')
@@ -139,7 +139,7 @@ analysis_parameters.add_argument(
          'e.g.: "0.1,0.3,0.5;0.1,0.5" creates bins 0.1 to 0.3, 0.3 to 0.5 and '
          '0.1 to 0.5')
 analysis_parameters.add_argument(
-    '--pair-weighting', metavar='Y/N', default=DEFALUT_PAIR_WEIGHTING,
+    '--pair-weighting', metavar='Y/N', default=DEFAULT_PAIR_WEIGHTING,
     help='wether to weight pairs by the inverse separation')
 analysis_parameters.add_argument(
     '--R-D-ratio', default="local",
@@ -280,8 +280,11 @@ if __name__ == '__main__':
                     randdata[i].RA, randdata[i].DEC, randdata[i].z)
             except AttributeError:
                 est.setRandoms(randdata[i].RA, randdata[i].DEC)
-        est.setReference(
-          refdata.RA, refdata.DEC, refdata.z, weight=refdata.weight)
+        if "weight" in refdata:
+            est.setReference(
+                refdata.RA, refdata.DEC, refdata.z, refdata.weight)
+        else:
+            est.setReference(refdata.RA, refdata.DEC, refdata.z, None)
 
         for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
             scaledir = outdir[scale_name]
