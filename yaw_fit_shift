@@ -28,8 +28,8 @@ parser.add_argument(
     '--fit-bias', action='store_true',
     help='additinally try to fit the galaxy bias')
 parser.add_argument(
-    '--use-cov', action='store_true',
-    help='use the covariance matrix instead of the standard errors')
+    '--cov-type', default="global", choices=RedshiftDataBinned._covmat_types,
+    help='way in which the covariance information is used')
 parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
@@ -111,6 +111,7 @@ if __name__ == "__main__":
         fit_model = ShiftModelBinned([*bins_model, master_model], bias_model)
 
         # fit the bias model
+        joint_data.setCovMatType(args.cov_type)
         optimizer = CurveFit(fit_model, joint_data)
         fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 1000)
         print(fitparams)

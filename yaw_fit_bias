@@ -27,8 +27,8 @@ parser.add_argument(
     help='redshift keys (e.g. 0.101z1.201) that identifies the measurement '
          'on the full data sample (only used, if bias is fitted)')
 parser.add_argument(
-    '--use-cov', action='store_true',
-    help='use the covariance matrix instead of the standard errors')
+    '--cov-type', default="global", choices=RedshiftData._covmat_types,
+    help='way in which the covariance information is used')
 parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
@@ -119,6 +119,7 @@ if __name__ == "__main__":
         model = BiasFitModel(bias_model, bins_data, master_data, weights)
 
         # fit the bias model
+        master_data.setCovMatType(args.cov_type)
         optimizer = CurveFit(master_data, model)
         fitparams = optimizer.optimize(max_nfev=model.getParamNo() * 1000)
         print(fitparams)
