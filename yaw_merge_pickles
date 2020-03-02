@@ -183,7 +183,7 @@ if __name__ == "__main__":
                         raise ValueError(
                             "not all bins have an associated weight")
                     # Counters are like dicts but can be summed
-                    weights.append(Counter(data))
+                    weights.append(data)
             weight_sum = dict(reduce(lambda x, y : x + y, weights))
             print(
                 "weight sum:   %s" % {
