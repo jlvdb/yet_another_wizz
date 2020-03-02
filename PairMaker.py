@@ -29,6 +29,8 @@ class PairMaker(BaseClass):
                 self._throwException(
                     "'threads' must be a positive integer", ValueError)
             self._threads = min(max(threads, 1), cpu_count())
+        if cosmology is not None:
+            self.setCosmology(cosmology)
 
     def _packData(self, RA, DEC, Z=None, weights=None, region_idx=None):
         # compare the input data vector lengths
