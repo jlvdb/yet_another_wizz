@@ -104,14 +104,20 @@ def run_ac_single_bin(
         return [est.getMeta(), dummy_counts]
     else:
         try:
-            est.setUnknown(bindata.RA, bindata.DEC, bindata.z, bindata.weight)
+            est.setUnknown(
+                bindata.RA, bindata.DEC, bindata.z, bindata.weight)
         except AttributeError:
             est.setUnknown(bindata.RA, bindata.DEC, bindata.z)
         try:
-            est.setRandoms(binrand.RA, binrand.DEC, binrand.z, binrand.weight)
+            est.setRandoms(
+                binrand.RA, binrand.DEC, binrand.z, binrand.weight)
         except AttributeError:
             est.setRandoms(binrand.RA, binrand.DEC, binrand.z)
-        est.setReference(bindata.RA, bindata.DEC, bindata.z)
+        try:
+            est.setReference(
+                bindata.RA, bindata.DEC, bindata.z, bindata.weight)
+        except AttributeError:
+            est.setReference(bindata.RA, bindata.DEC, bindata.z)
         est.countPairs(
             rmin=rlims[0], rmax=rlims[1], comoving=False,
             D_R_ratio=D_R_ratio, regionize_unknown=regionize_unknown)
