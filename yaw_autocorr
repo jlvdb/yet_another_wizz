@@ -13,7 +13,7 @@ from astropy.cosmology import default_cosmology
 from astropy.io import fits as pyfits
 from yaw_tools.correlation import run_ac_single_bin
 from yaw_tools.folders import CCFolder, Folder
-from yaw_tools.utils import (DEFALUT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
+from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
                              DEFAULT_RESAMPLING, TypeNone)
 
 from yet_another_wizz.PairMaker import PairMaker
@@ -47,22 +47,22 @@ parser.add_argument(
     '--output-suffix', metavar='str',
     help='suffix to append to the auto-correlation and region pickle files')
 
-ref_cat = parser.add_argument_group(
+data_cat = parser.add_argument_group(
     title="data sample catalogue file",
     description="defining FITS file and table data columns")
-ref_cat.add_argument(
+data_cat.add_argument(
     '--cat-file', metavar='FILE', help='data catalogue file path')
-ref_cat.add_argument(
+data_cat.add_argument(
     '--cat-file-ext', metavar='INT', type=TypeNone(int),
     help='fits extesion containg data (default: %d)' % DEFAULT_CAT_EXT)
-ref_cat.add_argument(
+data_cat.add_argument(
     '--cat-ra', metavar='FIELD',
     help='right ascension column name')
-ref_cat.add_argument(
+data_cat.add_argument(
     '--cat-dec', metavar='FIELD', help='declination column name')
-ref_cat.add_argument(
+data_cat.add_argument(
     '--cat-z', metavar='FIELD', help='redshift column name')
-ref_cat.add_argument(
+data_cat.add_argument(
     '--cat-weight', metavar='FIELD',
     help='object weight column name')
 
@@ -70,24 +70,22 @@ rand_cat = parser.add_argument_group(
     title="random sample catalogue file",
     description="defining FITS file and table data columns")
 rand_cat.add_argument(
-    '--rand-file', metavar='FILE',
+    '--rand-file', metavar='FILE', required=True,
     help='random catalogue file path')
 rand_cat.add_argument(
-    '--rand-file-ext', metavar='INT', type=TypeNone(int),
-    help='fits extesion containg data (default: %d)' % DEFAULT_CAT_EXT)
+    '--rand-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
+    help='fits extesion containg data (default: %(default)s)')
 rand_cat.add_argument(
-    '--rand-ra', metavar='FIELD',
+    '--rand-ra', metavar='FIELD', required=True,
     help='right ascension column name')
 rand_cat.add_argument(
-    '--rand-dec', metavar='FIELD',
+    '--rand-dec', metavar='FIELD', required=True,
     help='declination column name')
 rand_cat.add_argument(
-    '--rand-z', metavar='FIELD',
+    '--rand-z', metavar='FIELD', required=True,
     help='photometric (estimated) redshift column name')
 rand_cat.add_argument(
-    '--rand-weight', metavar='FIELD',
-    help='object weight column name, WARNING: these are not passed on '
-         'automatically')
+    '--rand-weight', metavar='FIELD', help='object weight column name')
 
 analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
@@ -111,7 +109,7 @@ analysis_parameters.add_argument(
 analysis_parameters.add_argument(
     '--pair-weighting', metavar='Y/N', type=TypeNone(str),
     help='wether to weight pairs by the inverse separation (default: %s)' %
-    DEFALUT_PAIR_WEIGHTING)
+    DEFAULT_PAIR_WEIGHTING)
 analysis_parameters.add_argument(
     '--R-D-ratio', default="local",
     help='ratio of random to data objects (default: local)')
@@ -134,7 +132,6 @@ if __name__ == "__main__":
     # load parameters from the-wizz
     if args.param_file is None:
         for arg in ("cat_file", "cat_ra", "cat_dec", "cat_z",
-                    "rand_file", "rand_ra", "rand_dec", "rand_z"
                     "scales_min", "scales_max"):
             if getattr(args, arg) is None:
                 raise ValueError(
@@ -143,20 +140,21 @@ if __name__ == "__main__":
         if args.cat_file_ext is None:
             args.cat_file_ext = DEFAULT_CAT_EXT
         if args.rand_file_ext is None:
-            args.rand_file_ext = DEFAULT_RAND_EXT
+            args.rand_file_ext = DEFAULT_CAT_EXT
         args.map_region_no = 1  # compatibilty
         if args.resampling is None:
             args.resampling = DEFAULT_RESAMPLING
         if args.pair_weighting is None:
-            args.pair_weighting = DEFALUT_PAIR_WEIGHTING
+            args.pair_weighting = DEFAULT_PAIR_WEIGHTING
     else:
         wizz_params = load_argparse_summary(args.param_file)
         # populate argument parser namespace with original argument names
         argnames = list(vars(args))
         for arg in argnames:
-            if arg in ("wdir", "binning_file", "which",
-                       "yaw_param", "rand_weight"):
+            if arg in ("wdir", "binning_file", "which", "yaw_param"):
                 continue
+            elif arg.startswith("rand"):
+                continue  # depending on --which copying these might be wrong
             key = arg.replace("cat", args.which)
             try:
                 if getattr(args, arg) is None:
@@ -165,6 +163,12 @@ if __name__ == "__main__":
                 pass
     if args.threads is None:
         setattr(args, "threads", cpu_count())
+
+    # warning if one is used with and one without weights
+    if args.cat_weight is None and args.rand_weight is not None:
+        print("WARNING: running with data but without random weights")
+    if args.rand_weight is None and args.cat_weight is not None:
+        print("WARNING: running with random but without data weights")
 
     # make working dir if not existing
     setattr(args, "wdir", os.path.abspath(os.path.expanduser(args.wdir)))
