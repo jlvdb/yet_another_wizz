@@ -18,10 +18,9 @@ class PairMaker(BaseClass):
     _scales = None
     _dist_weight = True
     _pair_counts = None
+    _regions = None
 
-    def __init__(
-            self, region_weight=1.0, cosmology=None, threads=None,
-            verbose=True):
+    def __init__(self, cosmology=None, threads=None, verbose=True):
         self._verbose = verbose
         self._printMessage("initializing correlator\n")
         # initialize the number of parallel threads
@@ -30,11 +29,8 @@ class PairMaker(BaseClass):
                 self._throwException(
                     "'threads' must be a positive integer", ValueError)
             self._threads = min(max(threads, 1), cpu_count())
-        # legacy code
-        self.n_regions = 1
-        self.region_weights = np.ones(1)
 
-    def _packData(self, RA, DEC, Z=None, weights=None):
+    def _packData(self, RA, DEC, Z=None, weights=None, region_idx=None):
         # compare the input data vector lengths
         data = pd.DataFrame({"RA": RA, "DEC": DEC})
         if Z is not None:
@@ -42,14 +38,29 @@ class PairMaker(BaseClass):
         if weights is not None:
             data["weights"] = weights
             data["weights"] /= weights.mean()
-        data["stomp_region"] = np.zeros(len(RA), dtype=np.int8)
+        if region_idx is not None:
+            data["region_idx"] = region_idx.astype(np.uint8)
+            regions = np.unique(data["region_idx"])
+        else:
+            data["region_idx"] = np.zeros(len(RA), dtype=np.uint8)
+            regions = np.zeros(1, dtype=np.uint8)
+        if self._regions is None:
+            self._regions = regions
+        elif self._regions != regions:
+            raise ValueError("region indices do not align with existing ones")
         return data
+
+    def nRegions(self):
+        if self._regions is None:
+            return 1
+        else:
+            return len(self._regions)
 
     def getMeta(self):
         meta_dict = {
             "cosmology": self.cosmology, "scale": self._scales,
-            "inv_dist_weights": self._dist_weight, "n_regions": self.n_regions,
-            "region_weights": self.region_weights}
+            "inv_dist_weights": self._dist_weight,
+            "n_regions": self.nRegions()}
         return meta_dict
 
     def writeMeta(self, path):
@@ -75,12 +86,12 @@ class PairMaker(BaseClass):
                 "reference data not initialized", RuntimeError)
         return self._reference_data
 
-    def setReference(self, RA, DEC, Z, weights=None):
-        if not self._inputGood(RA, DEC, Z, weights):
+    def setReference(self, RA, DEC, Z, weights=None, region_idx=None):
+        if not self._inputGood(RA, DEC, Z, weights, region_idx):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
         self._printMessage("loading %d objects\n" % len(RA))
-        self._reference_data = self._packData(RA, DEC, Z, weights=weights)
+        self._reference_data = self._packData(RA, DEC, Z, weights, region_idx)
 
     def writeReference(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -92,12 +103,12 @@ class PairMaker(BaseClass):
                 "unknown data not initialized", RuntimeError)
         return self._unknown_data
 
-    def setUnknown(self, RA, DEC, Z=None, weights=None):
-        if not self._inputGood(RA, DEC, Z, weights):
+    def setUnknown(self, RA, DEC, Z=None, weights=None, region_idx=None):
+        if not self._inputGood(RA, DEC, Z, weights, region_idx):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
         self._printMessage("loading %d objects\n" % len(RA))
-        self._unknown_data = self._packData(RA, DEC, Z, weights=weights)
+        self._unknown_data = self._packData(RA, DEC, Z, weights, region_idx)
 
     def writeUnknown(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -109,12 +120,12 @@ class PairMaker(BaseClass):
                 "random data not initialized", RuntimeError)
         return self._random_data
 
-    def setRandoms(self, RA, DEC, Z=None, weights=None):
-        if not self._inputGood(RA, DEC, Z, weights):
+    def setRandoms(self, RA, DEC, Z=None, weights=None, region_idx=None):
+        if not self._inputGood(RA, DEC, Z, weights, region_idx):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
         self._printMessage("lading %d objects\n" % len(RA))
-        self._random_data = self._packData(RA, DEC, Z, weights=weights)
+        self._random_data = self._packData(RA, DEC, Z, weights, region_idx)
 
     def writeRandoms(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -133,28 +144,28 @@ class PairMaker(BaseClass):
         self.getRandoms()
         # create pool to find pairs DD
         poolDD = ThreadHelper(
-            self.n_regions, threads=min(self._threads, self.n_regions))
-        poolDD.add_iterable(self.getReference().groupby("stomp_region"))
+            self.nRegions(), threads=min(self._threads, self.nRegions()))
+        poolDD.add_iterable(self.getReference().groupby("region_idx"))
         if regionize_unknown:
-            poolDD.add_iterable(self.getUnknown().groupby("stomp_region"))
+            poolDD.add_iterable(self.getUnknown().groupby("region_idx"))
         else:
             poolDD.add_iterable([
                 (r, self.getUnknown())
-                for r in sorted(pd.unique(self.getReference().stomp_region))])
+                for r in sorted(pd.unique(self.getReference().region_idx))])
         poolDD.add_constant((rmin, rmax))
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
         poolDD.add_constant(inv_distance_weight)
         # create pool to find pairs DD
         poolDR = ThreadHelper(
-            self.n_regions, threads=min(self._threads, self.n_regions))
-        poolDR.add_iterable(self.getReference().groupby("stomp_region"))
+            self.nRegions(), threads=min(self._threads, self.nRegions()))
+        poolDR.add_iterable(self.getReference().groupby("region_idx"))
         if regionize_unknown:
-            poolDR.add_iterable(self.getRandoms().groupby("stomp_region"))
+            poolDR.add_iterable(self.getRandoms().groupby("region_idx"))
         else:
             poolDR.add_iterable([
                 (r, self.getRandoms())
-                for r in sorted(pd.unique(self.getReference().stomp_region))])
+                for r in sorted(pd.unique(self.getReference().region_idx))])
         poolDR.add_constant((rmin, rmax))
         poolDR.add_constant(comoving)
         poolDR.add_constant(self.cosmology)
@@ -162,20 +173,20 @@ class PairMaker(BaseClass):
         # set data to random ratio
         if D_R_ratio == "global":
             D_R_ratio = np.full(
-                self.n_regions,
+                self.nRegions(),
                 len(self.getUnknown()) / len(self.getRandoms()))
         elif D_R_ratio == "local":
             n_D = np.asarray([
-                np.count_nonzero(self._unknown_data.stomp_region == i)
-                for i in range(self.n_regions)])
+                np.count_nonzero(self._unknown_data.region_idx == i)
+                for i in range(self.nRegions())])
             n_R = np.asarray([
-                np.count_nonzero(self._random_data.stomp_region == i)
-                for i in range(self.n_regions)])
+                np.count_nonzero(self._random_data.region_idx == i)
+                for i in range(self.nRegions())])
             D_R_ratio = n_D / n_R
         else:
             try:
                 assert(D_R_ratio > 0.0)
-                D_R_ratio = np.full(self.n_regions, D_R_ratio)
+                D_R_ratio = np.full(self.nRegions(), D_R_ratio)
             except Exception:
                 self._throwException(
                     "D_R_ratio must be either of 'local', 'global' or a "
@@ -198,9 +209,9 @@ class PairMaker(BaseClass):
             DR = pd.DataFrame({"DR": []})
         # combine the pair counts with redshifts and region indices
         try:
-            ref_data = self._reference_data[["z", "stomp_region", "weights"]]
+            ref_data = self._reference_data[["z", "region_idx", "weights"]]
         except KeyError:
-            ref_data = self._reference_data[["z", "stomp_region"]]
+            ref_data = self._reference_data[["z", "region_idx"]]
         self._pair_counts = pd.concat([ref_data, DD, DR], axis=1)
 
     def getDummyCounts(
@@ -210,10 +221,10 @@ class PairMaker(BaseClass):
         self._dist_weight = inv_distance_weight
         if reference_weights:
             return pd.DataFrame(
-                columns=["z", "stomp_region", "weights", "DD", "DR"])
+                columns=["z", "region_idx", "weights", "DD", "DR"])
         else:
             return pd.DataFrame(
-                columns=["z", "stomp_region", "DD", "DR"])
+                columns=["z", "region_idx", "DD", "DR"])
 
     def getCounts(self):
         if self._pair_counts is None:

@@ -33,7 +33,7 @@ class PdfMaker(BaseClass):
                 "pandas DataFrame", ValueError)
         self._zmin = self._pair_counts.z.min()
         self._zmax = self._pair_counts.z.max()
-        self.n_regions = len(self._pair_counts.stomp_region.unique())
+        self.n_regions = len(self._pair_counts.region_idx.unique())
         self.autocorr = autocorr
 
     @staticmethod
@@ -106,7 +106,7 @@ class PdfMaker(BaseClass):
     def collapsePairCounts(self, pair_counts, zbins):
         self._printMessage("collapsing pair counts by bin and region\n")
         pair_counts_regionized = pair_counts.groupby(
-            pair_counts.stomp_region)
+            pair_counts.region_idx)
         n_bins = len(zbins) - 1
         # create output arrays
         n_ref = np.empty((n_bins, self.n_regions), dtype=np.int32)
