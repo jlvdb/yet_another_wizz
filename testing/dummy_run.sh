@@ -14,7 +14,9 @@ SCALESmax=1000,1500  # scales
 Zmin=0.07
 Zmax=1.42
 ZBname=Z_B
-WEIGHTname=recal_weight
+WEIGHTspec=dec_gal_mag  # NOTE: DON'T DO THIS AT HOME
+WEIGHTrand=DEC  # NOTE: DON'T DO THIS AT HOME
+WEIGHTphot=recal_weight
 NBINS=45
 BINtype=comoving
 ZBbins="0.101,0.301,0.501,0.701,0.901,1.201;0.101,1.201"
@@ -30,7 +32,7 @@ PAIRweighting=Y
 # Zmin=0.01
 # Zmax=4.01
 # ZBname=Z_B
-# WEIGHTname=recal_weight
+# WEIGHTphot=recal_weight
 # NBINS=40
 # BINtype=comoving
 # ZBbins="0.101,0.301,0.501,0.701,0.901,1.201;0.101,1.201"
@@ -56,9 +58,10 @@ do
         --ref-z ${Zname} \
         --test-file ${indir}/pointing_phot.cat \
         --test-ra ${RAname} --test-dec ${DECname} \
-        --test-z ${ZBname} --test-weight ${WEIGHTname} \
+        --test-z ${ZBname} --test-weight ${WEIGHTphot} \
         --rand-file ${indir}/pointing_phot.rand \
         --rand-ra RA --rand-dec DEC \
+        --rand-z ${ZBname} --rand-weight ${WEIGHTphot} \
         --scales-min ${SCALESmin} \
         --scales-max ${SCALESmax} \
         --z-min ${Zmin} --z-max ${Zmax} \
@@ -83,16 +86,14 @@ do
     # by yaw_crosscorr and defines the bin edges.
     param_file=${OUTPUTDIR}/pointings_w_sp/${pointing}/yet_another_wizz.param
     binning_file=${OUTPUTDIR}/pointings_w_sp/${pointing}/binning.dat
-    # You might not want to use --rand-z.
-    # I included these because my random catalogues have z_cgal_v cloned from
-    # the data.
     yaw_autocorr \
         ${outdir} \
         --output-suffix spec \
         --param-file ${param_file} \
         --binning-file ${binning_file} \
-        --cat-file ${indir}/pointing_spec.cat --cat-z ${Zname} \
-        --rand-file ${indir}/pointing_spec.rand --rand-z ${Zname} \
+        --rand-file ${indir}/pointing_spec.rand \
+        --rand-ra RA --rand-dec DEC \
+        --rand-z ${Zname} --rand-weight ${WEIGHTrand} \
         --which ref
     # You should specify --cat-file, --cat-z, --rand-file and --rand-z
     # explicitly, leave --output-suffix and --which as they are.
