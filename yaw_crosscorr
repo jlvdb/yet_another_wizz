@@ -12,7 +12,7 @@ from astropy.io import fits as pyfits
 from yaw_tools.correlation import bin_table, get_bin_weights
 from yaw_tools.folders import CCFolder, Folder
 from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
-                             DEFAULT_REGION_NO, DEFAULT_RESAMPLING)
+                             DEFAULT_RESAMPLING, get_region_number)
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
 from yet_another_wizz.utils import write_argparse_summary
@@ -234,6 +234,8 @@ if __name__ == '__main__':
         zbins=zbins, cat_ext=args.rand_file_ext)
     # figure out the bin weights
     bin_weights_dict = get_bin_weights(testdata, testfiles)
+    # get the number of spatial regions from the random data region indices
+    n_regions = get_region_number(*randdata)
 
     # configure the random normalisation
     try:
@@ -308,13 +310,13 @@ if __name__ == '__main__':
                 print(
                     "WARNING: the pair count file was empty, create dummy "
                     "output instead")
-                array_shape = (args.ref_bin_no, est.nRegions())
+                array_shape = (args.ref_bin_no, n_regions)
                 region_pickle = {
                     "n_reference": np.zeros(array_shape, dtype=np.int_),
                     "redshift": np.zeros(array_shape, dtype=np.float_),
                     "unknown": np.zeros(array_shape, dtype=np.float_),
                     "rand": np.zeros(array_shape, dtype=np.float_),
-                    "n_regions": est.nRegions()}
+                    "n_regions": n_regions}
                 print(
                     "writing dummy region pickle to:\n    %s" %
                     regionpicklefile)

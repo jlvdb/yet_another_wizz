@@ -14,7 +14,6 @@ from .folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV, DEFAULT_EXT_DATA,
 
 
 DEFAULT_CAT_EXT = 1
-DEFAULT_REGION_NO = 7
 DEFAULT_RESAMPLING = 10
 DEFAULT_PAIR_WEIGHTING = "Y"
 
@@ -23,6 +22,17 @@ DEFAULT_HDATA += "col 2 = correlation amplitude ({:})\n"
 DEFAULT_HDATA += "col 3 = correlation amplitude error"
 DEFAULT_HBOOT = "correlation amplitude ({:}) realisations"
 DEFAULT_HCOV = "correlation amplitude ({:}) covariance matrix"
+
+
+def get_region_number(*frames):
+    try:
+        # count the unique region indices in the data
+        regions_per_frame = [
+            np.unique(frame.region_idx) for frame in frame_list]
+        n_regions = len(np.unique(np.concatenate(regions_per_frame)))
+    except AttributeError:
+        n_regions = 1
+    return n_regions
 
 
 def guess_bin_order(bin_keys):
