@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import pickle
+import os
 import shutil
 import sys
 from multiprocessing import cpu_count
@@ -10,7 +11,7 @@ import pandas as pd
 from astropy.io import fits as pyfits
 from yaw_tools.correlation import bin_table, get_bin_weights
 from yaw_tools.folders import CCFolder, Folder
-from yaw_tools.utils import (DEFALUT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
+from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
                              DEFAULT_REGION_NO, DEFAULT_RESAMPLING)
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
@@ -40,16 +41,18 @@ ref_cat.add_argument(
     '--ref-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
     help='fits extesion containg data (default: %(default)s)')
 ref_cat.add_argument(
-    '--ref-ra', metavar='FIELD', default='ALPHA_J2000',
-    help='right ascension column name (default: %(default)s)')
+    '--ref-ra', metavar='FIELD', required=True,
+    help='right ascension column name')
 ref_cat.add_argument(
-    '--ref-dec', metavar='FIELD', default='DELTA_J2000',
-    help='declination column name (default: %(default)s)')
+    '--ref-dec', metavar='FIELD', required=True,
+    help='declination column name')
 ref_cat.add_argument(
-    '--ref-z', metavar='FIELD', default='z_spec',
-    help='spectroscopic (known) redshift column name (default: %(default)s)')
+    '--ref-z', metavar='FIELD', required=True,
+    help='spectroscopic (known) redshift column name')
 ref_cat.add_argument(
     '--ref-idx', metavar='FIELD', help='object index column name')
+ref_cat.add_argument(
+    '--ref-weight', metavar='FIELD', help='object weight column name')
 
 test_cat = parser.add_argument_group(
     title="test sample catalogue file",
@@ -61,14 +64,14 @@ test_cat.add_argument(
     '--test-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
     help='fits extesion containg data (default: %(default)s)')
 test_cat.add_argument(
-    '--test-ra', metavar='FIELD', default='ALPHA_J2000',
-    help='right ascension column name (default: %(default)s)')
+    '--test-ra', metavar='FIELD', required=True,
+    help='right ascension column name')
 test_cat.add_argument(
-    '--test-dec', metavar='FIELD', default='DELTA_J2000',
-    help='declination column name (default: %(default)s)')
+    '--test-dec', metavar='FIELD', required=True,
+    help='declination column name')
 test_cat.add_argument(
-    '--test-z', metavar='FIELD', default='Z_B',
-    help='photometric (estimated) redshift column name (default: %(default)s)')
+    '--test-z', metavar='FIELD',
+    help='photometric (estimated) redshift column name')
 test_cat.add_argument(
     '--test-weight', metavar='FIELD', help='object weight column name')
 
@@ -80,32 +83,18 @@ rand_cat.add_argument(
     help='random catalogue file path')
 rand_cat.add_argument(
     '--rand-file-ext', metavar='INT', type=int, default=DEFAULT_CAT_EXT,
-    help='fits extesion containg data (default: %(default)s)')
+    help='fits extesion containg data')
 rand_cat.add_argument(
-    '--rand-ra', metavar='FIELD', default='ALPHA_J2000',
-    help='right ascension column name (default: %(default)s)')
+    '--rand-ra', metavar='FIELD', required=True,
+    help='right ascension column name')
 rand_cat.add_argument(
-    '--rand-dec', metavar='FIELD', default='DELTA_J2000',
-    help='declination column name (default: %(default)s)')
+    '--rand-dec', metavar='FIELD', required=True,
+    help='declination column name')
 rand_cat.add_argument(
-    '--rand-z', metavar='FIELD', default='Z_B',
-    help='photometric (estimated) redshift column name (default: %(default)s)')
+    '--rand-z', metavar='FIELD',
+    help='photometric (estimated) redshift column name')
 rand_cat.add_argument(
     '--rand-weight', metavar='FIELD', help='object weight column name')
-
-stomp_map = parser.add_argument_group(
-    title='stomp map',
-    description='defining the mask and regions for spatial bootstrapping')
-stomp_map.add_argument(
-    '--map-file', metavar='FILE', required=True, help='stomp map file path')
-
-regionization = stomp_map.add_mutually_exclusive_group()
-regionization.add_argument(
-    '--map-region-no', metavar='INT', type=int, default=DEFAULT_REGION_NO,
-    help='number of regions for bootstrapping (default: %(default)s)')
-regionization.add_argument(
-    '--map-region-size', metavar='FLOAT', type=float, default=-1,
-    help='approximate region size for bootstrapping in sq. deg')
 
 analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
@@ -149,7 +138,7 @@ analysis_parameters.add_argument(
          'e.g.: "0.1,0.3,0.5;0.1,0.5" creates bins 0.1 to 0.3, 0.3 to 0.5 and '
          '0.1 to 0.5')
 analysis_parameters.add_argument(
-    '--pair-weighting', metavar='Y/N', default=DEFALUT_PAIR_WEIGHTING,
+    '--pair-weighting', metavar='Y/N', default=DEFAULT_PAIR_WEIGHTING,
     help='wether to weight pairs by the inverse separation')
 analysis_parameters.add_argument(
     '--R-D-ratio', default="local",
@@ -158,9 +147,9 @@ analysis_parameters.add_argument(
 
 if __name__ == '__main__':
 
-    import stomp
-
     args = parser.parse_args()
+
+    args.map_region_no = 1  # compatibilty
 
     # check z_min:
     if args.z_min <= 0.0:
@@ -172,29 +161,24 @@ if __name__ == '__main__':
     sys.stdout.flush()
     outdir = CCFolder(args.wdir)
 
-    # compute region number or size
-    Map = stomp.Map(os.path.abspath(os.path.realpath(args.map_file)))
-    area = Map.Area()
-    if args.map_region_size < 0:
-        setattr(args, "map_region_size", area / args.map_region_no)
-    else:
-        setattr(
-            args, "map_region_no", max(1, int(area / args.map_region_size)))
-
     # write input parameter summary
-    for arg in ("ref_file", "test_file", "rand_file", "map_file"):
+    for arg in ("ref_file", "test_file", "rand_file"):
         path = getattr(args, arg)
         if path is not None:
             setattr(args, arg, os.path.abspath(os.path.expanduser(path)))
     write_argparse_summary(args, outdir.path_params_file())
 
     # load the reference sample
-    print("==> loading unknown objects")
+    print("==> loading reference objects")
     with pyfits.open(args.ref_file) as fits:
+        ext = args.ref_file_ext
         refdata = pd.DataFrame({
-            "RA": fits[1].data[args.ref_ra].byteswap().newbyteorder(),
-            "DEC": fits[1].data[args.ref_dec].byteswap().newbyteorder(),
-            "z": fits[1].data[args.ref_z].byteswap().newbyteorder()})
+            "RA": fits[ext].data[args.ref_ra].byteswap().newbyteorder(),
+            "DEC": fits[ext].data[args.ref_dec].byteswap().newbyteorder(),
+            "z": fits[ext].data[args.ref_z].byteswap().newbyteorder()})
+        if args.ref_weight is not None:
+            refdata["weight"] = \
+                fits[1].data[args.ref_weight].byteswap().newbyteorder()
     if len(refdata) < args.ref_source_limit:
         if args.exit_on_warning:
             print(
@@ -226,19 +210,25 @@ if __name__ == '__main__':
         print("==> loading unknown objects")
         testdata, testfiles = bin_table(
             testbindir, args.test_file, args.test_ra, args.test_dec,
-            args.test_z, args.test_weight, zbins=zbins)
+            args.test_z, args.test_weight,
+            zbins=zbins, cat_ext=args.test_file_ext)
         print("==> loading random objects")
         randdata, randfiles = bin_table(
             randbindir, args.rand_file, args.rand_ra, args.rand_dec,
-            args.rand_z, args.rand_weight, zbins=zbins)
+            args.rand_z, args.rand_weight,
+            zbins=zbins, cat_ext=args.rand_file_ext)
         bin_weights_dict = get_bin_weights(testdata, testfiles)
     else:
+        print("==> loading unknown objects")
         testdata, testfiles = bin_table(
             testbindir, args.test_file, args.test_ra, args.test_dec,
-            args.test_z, args.test_weight, zbins=None)
+            args.test_z, args.test_weight,
+            zbins=None, cat_ext=args.test_file_ext)
+        print("==> loading random objects")
         randdata, randfiles = bin_table(
             randbindir, args.rand_file, args.rand_ra, args.rand_dec,
-            args.rand_z, args.rand_weight, zbins=None)
+            args.rand_z, args.rand_weight,
+            zbins=None, cat_ext=args.rand_file_ext)
         bin_weights_dict = None
 
     try:
@@ -268,9 +258,7 @@ if __name__ == '__main__':
         sys.stdout.flush()
 
         # run YAW
-        est = PairMaker(
-            args.map_file, args.map_region_no,
-            threads=args.threads, verbose=True)
+        est = PairMaker(threads=args.threads, verbose=True)
         try:
             est.setUnknown(
                 testdata[i].RA, testdata[i].DEC, testdata[i].z,
@@ -291,7 +279,11 @@ if __name__ == '__main__':
                     randdata[i].RA, randdata[i].DEC, randdata[i].z)
             except AttributeError:
                 est.setRandoms(randdata[i].RA, randdata[i].DEC)
-        est.setReference(refdata.RA, refdata.DEC, refdata.z)
+        if "weight" in refdata:
+            est.setReference(
+                refdata.RA, refdata.DEC, refdata.z, refdata.weight)
+        else:
+            est.setReference(refdata.RA, refdata.DEC, refdata.z, None)
 
         for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
             scaledir = outdir[scale_name]
