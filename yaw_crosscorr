@@ -50,9 +50,9 @@ ref_cat.add_argument(
     '--ref-z', metavar='FIELD', required=True,
     help='spectroscopic (known) redshift column name')
 ref_cat.add_argument(
-    '--ref-idx', metavar='FIELD', help='object index column name')
-ref_cat.add_argument(
     '--ref-weight', metavar='FIELD', help='object weight column name')
+ref_cat.add_argument(
+    '--ref-region', metavar='FIELD', help='spatial region index column name')
 
 test_cat = parser.add_argument_group(
     title="test sample catalogue file",
@@ -74,6 +74,8 @@ test_cat.add_argument(
     help='photometric (estimated) redshift column name')
 test_cat.add_argument(
     '--test-weight', metavar='FIELD', help='object weight column name')
+test_cat.add_argument(
+    '--test-region', metavar='FIELD', help='spatial region index column name')
 
 rand_cat = parser.add_argument_group(
     title="random sample catalogue file",
@@ -95,6 +97,8 @@ rand_cat.add_argument(
     help='photometric (estimated) redshift column name')
 rand_cat.add_argument(
     '--rand-weight', metavar='FIELD', help='object weight column name')
+rand_cat.add_argument(
+    '--rand-region', metavar='FIELD', help='spatial region index column name')
 
 analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
@@ -128,7 +132,7 @@ analysis_parameters.add_argument(
     help='number of spectroscopic bins (default: %(default)s)')
 analysis_parameters.add_argument(
     '--ref-bin-type', default="comoving", nargs='*',
-    # choices=["linear", "adapt", "comoving", "logspace"],
+    choices=["linear", "adapt", "comoving", "logspace"],
     help='spacing of the spectroscopic bins (default: %(default)s)')
 analysis_parameters.add_argument(
     '--test-bin-edges', metavar='LIST',
@@ -149,7 +153,14 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    args.map_region_no = 1  # compatibilty
+    # check region column arguments
+    regions_set = [
+        val is not None for val in (
+            args.ref_region, args.test_region, args.rand_region)]
+    if any(regions_set) and not all(regions_set):
+        raise parser.error(
+            "if region indices (--*-region) are used for one data set they "
+            "are required for all data sets")
 
     # check z_min:
     if args.z_min <= 0.0:
@@ -171,14 +182,16 @@ if __name__ == '__main__':
     # load the reference sample
     print("==> loading reference objects")
     with pyfits.open(args.ref_file) as fits:
-        ext = args.ref_file_ext
+        data = fits[args.ref_file_ext].data
         refdata = pd.DataFrame({
-            "RA": fits[ext].data[args.ref_ra].byteswap().newbyteorder(),
-            "DEC": fits[ext].data[args.ref_dec].byteswap().newbyteorder(),
-            "z": fits[ext].data[args.ref_z].byteswap().newbyteorder()})
+            "RA": data[args.ref_ra].byteswap().newbyteorder(),
+            "DEC": data[args.ref_dec].byteswap().newbyteorder(),
+            "z": data[args.ref_z].byteswap().newbyteorder()})
         if args.ref_weight is not None:
-            refdata["weight"] = \
-                fits[1].data[args.ref_weight].byteswap().newbyteorder()
+            refdata["weight"] = data[args.ref_weight].byteswap().newbyteorder()
+        if args.ref_region is not None:
+            endian_corrected = data[args.ref_region].byteswap().newbyteorder()
+            refdata["region_idx"] = endian_corrected.astype(np.int16)
     if len(refdata) < args.ref_source_limit:
         if args.exit_on_warning:
             print(
@@ -206,31 +219,23 @@ if __name__ == '__main__':
                     "invalid format in bin edges: " + args.test_bin_edges)
             for i in range(len(edges) - 1):
                 zbins.append([float(edges[i]), float(edges[i + 1])])
-        # load and bin the test and random data
-        print("==> loading unknown objects")
-        testdata, testfiles = bin_table(
-            testbindir, args.test_file, args.test_ra, args.test_dec,
-            args.test_z, args.test_weight,
-            zbins=zbins, cat_ext=args.test_file_ext)
-        print("==> loading random objects")
-        randdata, randfiles = bin_table(
-            randbindir, args.rand_file, args.rand_ra, args.rand_dec,
-            args.rand_z, args.rand_weight,
-            zbins=zbins, cat_ext=args.rand_file_ext)
-        bin_weights_dict = get_bin_weights(testdata, testfiles)
     else:
-        print("==> loading unknown objects")
-        testdata, testfiles = bin_table(
-            testbindir, args.test_file, args.test_ra, args.test_dec,
-            args.test_z, args.test_weight,
-            zbins=None, cat_ext=args.test_file_ext)
-        print("==> loading random objects")
-        randdata, randfiles = bin_table(
-            randbindir, args.rand_file, args.rand_ra, args.rand_dec,
-            args.rand_z, args.rand_weight,
-            zbins=None, cat_ext=args.rand_file_ext)
-        bin_weights_dict = None
+        zbins = None
+    # load and bin the test and random data
+    print("==> loading unknown objects")
+    testdata, testfiles = bin_table(
+        testbindir, args.test_file, args.test_ra, args.test_dec,
+        args.test_z, args.test_weight, args.test_region,
+        zbins=zbins, cat_ext=args.test_file_ext)
+    print("==> loading random objects")
+    randdata, randfiles = bin_table(
+        randbindir, args.rand_file, args.rand_ra, args.rand_dec,
+        args.rand_z, args.rand_weight, args.rand_region,
+        zbins=zbins, cat_ext=args.rand_file_ext)
+    # figure out the bin weights
+    bin_weights_dict = get_bin_weights(testdata, testfiles)
 
+    # configure the random normalisation
     try:
         D_R_ratio = 1.0 / float(args.R_D_ratio)
     except ValueError:
@@ -245,8 +250,7 @@ if __name__ == '__main__':
         with open(outdir[scale].path_weights_file(), "wb") as f:
             pickle.dump(bin_weights_dict, f)
 
-
-    sys.stdout.write("==> run yet another wizz\n")
+    sys.stdout.write("\n==> run yet another wizz\n")
     sys.stdout.flush()
 
     # iterate the binned test data and randoms
@@ -259,32 +263,11 @@ if __name__ == '__main__':
 
         # run YAW
         est = PairMaker(threads=args.threads, verbose=True)
-        try:
-            est.setUnknown(
-                testdata[i].RA, testdata[i].DEC, testdata[i].z,
-                testdata[i].weight)
-        except AttributeError:
-            try:
-                est.setUnknown(
-                    testdata[i].RA, testdata[i].DEC, testdata[i].z)
-            except AttributeError:
-                    est.setUnknown(testdata[i].RA, testdata[i].DEC)
-        try:
-            est.setRandoms(
-                randdata[i].RA, randdata[i].DEC, randdata[i].z,
-                randdata[i].weight)
-        except AttributeError:
-            try:
-                est.setRandoms(
-                    randdata[i].RA, randdata[i].DEC, randdata[i].z)
-            except AttributeError:
-                est.setRandoms(randdata[i].RA, randdata[i].DEC)
-        if "weight" in refdata:
-            est.setReference(
-                refdata.RA, refdata.DEC, refdata.z, refdata.weight)
-        else:
-            est.setReference(refdata.RA, refdata.DEC, refdata.z, None)
+        est.setRandoms(**randdata[i])
+        est.setUnknown(**testdata[i])
+        est.setReference(**refdata)
 
+        # process scale after scale
         for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
             scaledir = outdir[scale_name]
             sys.stdout.write("==> running scale %s\n" % scale_name)
@@ -297,6 +280,7 @@ if __name__ == '__main__':
             else:
                 meta_file = paircoutdir.join("CC_%s_meta.pkl" % redshift)
                 paircount_file = paircoutdir.join("CC_%s.pqt" % redshift)
+
             # count pairs
             est.countPairs(
                 rmin=rmin, rmax=rmax, comoving=False,
@@ -305,6 +289,7 @@ if __name__ == '__main__':
                 regionize_unknown=(args.across_regions == "N"))
             est.writeMeta(meta_file)
             est.writeCounts(paircount_file)
+
             # create region pickle
             regionpicklefile = scaledir.path_crosscorr_file(
                 ".pkl", zlims=None if redshift == "all" else redshift)
@@ -318,17 +303,18 @@ if __name__ == '__main__':
                         args.ref_bin_type[0])
                 pdf.writeBinning(outdir.path_binning_file())
                 pdf.writeRegionPickle(regionpicklefile)
-            except ValueError:  # empty pair counts file
+            # empty pair counts file
+            except ValueError:
                 print(
                     "WARNING: the pair count file was empty, create dummy "
                     "output instead")
-                array_shape = (args.ref_bin_no, args.map_region_no)
+                array_shape = (args.ref_bin_no, est.nRegions())
                 region_pickle = {
                     "n_reference": np.zeros(array_shape, dtype=np.int_),
                     "redshift": np.zeros(array_shape, dtype=np.float_),
                     "unknown": np.zeros(array_shape, dtype=np.float_),
                     "rand": np.zeros(array_shape, dtype=np.float_),
-                    "n_regions": args.map_region_no}
+                    "n_regions": est.nRegions()}
                 print(
                     "writing dummy region pickle to:\n    %s" %
                     regionpicklefile)
