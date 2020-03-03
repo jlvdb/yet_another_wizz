@@ -18,7 +18,6 @@ class PairMaker(BaseClass):
     _scales = None
     _dist_weight = True
     _pair_counts = None
-    _regions = None
 
     def __init__(self, cosmology=None, threads=None, verbose=True):
         self._verbose = verbose
@@ -45,22 +44,19 @@ class PairMaker(BaseClass):
             data["region_idx"] = region_idx.astype(np.uint8)
             # remove objects with negative indices
             data = data[data.region_idx >= 0]
-            regions = np.unique(data["region_idx"])
         else:
             data["region_idx"] = np.zeros(len(RA), dtype=np.uint8)
-            regions = np.zeros(1, dtype=np.uint8)
-        # check against any registered regions
-        if self._regions is None:
-            self._regions = regions
-        elif np.any(self._regions != regions):
-            raise ValueError("region indices do not align with existing ones")
         return data
 
     def nRegions(self):
-        if self._regions is None:
-            return 1
+        if self._random_data is not None:
+            return len(np.unique(self._random_data.region_idx))
+        if self._unknown_data is not None:
+            return len(np.unique(self._unknown_data.region_idx))
+        if self._reference_data is not None:
+            return len(np.unique(self._reference_data.region_idx))
         else:
-            return len(self._regions)
+            return 1
 
     def getMeta(self):
         meta_dict = {
