@@ -52,7 +52,7 @@ class PairMaker(BaseClass):
         # check against any registered regions
         if self._regions is None:
             self._regions = regions
-        elif self._regions != regions:
+        elif np.any(self._regions != regions):
             raise ValueError("region indices do not align with existing ones")
         return data
 
