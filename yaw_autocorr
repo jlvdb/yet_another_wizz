@@ -14,7 +14,7 @@ from astropy.io import fits as pyfits
 from yaw_tools.correlation import run_ac_single_bin
 from yaw_tools.folders import CCFolder, Folder
 from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
-                             DEFAULT_RESAMPLING, TypeNone)
+                             DEFAULT_RESAMPLING, TypeNone, get_region_number)
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
 from yet_another_wizz.utils import ThreadHelper, load_argparse_summary
@@ -62,8 +62,9 @@ data_cat.add_argument(
 data_cat.add_argument(
     '--cat-z', metavar='FIELD', help='redshift column name')
 data_cat.add_argument(
-    '--cat-weight', metavar='FIELD',
-    help='object weight column name')
+    '--cat-weight', metavar='FIELD', help='object weight column name')
+data_cat.add_argument(
+    '--cat-region', metavar='FIELD', help='spatial region index column name')
 
 rand_cat = parser.add_argument_group(
     title="random sample catalogue file",
@@ -85,6 +86,8 @@ rand_cat.add_argument(
     help='photometric (estimated) redshift column name')
 rand_cat.add_argument(
     '--rand-weight', metavar='FIELD', help='object weight column name')
+rand_cat.add_argument(
+    '--rand-region', metavar='FIELD', help='spatial region index column name')
 
 analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
@@ -118,6 +121,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # check region column arguments
+    regions_set = [
+        val is not None for val in (
+            args.cat_region, args.rand_region)]
+    if any(regions_set) and not all(regions_set):
+        raise parser.error(
+            "if region indices (--*-region) are used for one data set they "
+            "are required for all data sets")
+
     if args.threads is not None:
         setattr(args, "threads", max(1, min(cpu_count(), args.threads)))
 
@@ -140,7 +152,6 @@ if __name__ == "__main__":
             args.cat_file_ext = DEFAULT_CAT_EXT
         if args.rand_file_ext is None:
             args.rand_file_ext = DEFAULT_CAT_EXT
-        args.map_region_no = 1  # compatibilty
         if args.resampling is None:
             args.resampling = DEFAULT_RESAMPLING
         if args.pair_weighting is None:
@@ -186,6 +197,9 @@ if __name__ == "__main__":
         if args.cat_weight is not None:
             data["weight"] = \
                 fits[1].data[args.cat_weight].byteswap().newbyteorder()
+        if args.cat_region is not None:
+            endian_corrected = data[args.cat_region].byteswap().newbyteorder()
+            data["region_idx"] = endian_corrected.astype(np.int16)
     print("==> loading random objects")
     with pyfits.open(args.rand_file) as fits:
         rand = pd.DataFrame({
@@ -195,6 +209,11 @@ if __name__ == "__main__":
         if args.rand_weight is not None:
             rand["weight"] = \
                 fits[1].data[args.rand_weight].byteswap().newbyteorder()
+        if args.rand_region is not None:
+            endian_corrected = data[args.rand_region].byteswap().newbyteorder()
+            rand["region_idx"] = endian_corrected.astype(np.int16)
+    # get the number of spatial regions from the random data region indices
+    n_regions = get_region_number(rand)
 
     rlimits = [
         (float(rmin), float(rmax)) for rmin, rmax in
@@ -240,13 +259,13 @@ if __name__ == "__main__":
             print(
                 "WARNING: the pair count file was empty, create dummy "
                 "output instead")
-            array_shape = (args.ref_bin_no, args.map_region_no)
+            array_shape = (args.ref_bin_no, n_regions)
             pickle_dict = {
                 "n_reference": np.zeros(array_shape, dtype=np.int_),
                 "redshift": np.zeros(array_shape, dtype=np.float_),
                 "unknown": np.zeros(array_shape, dtype=np.float_),
                 "rand": np.zeros(array_shape, dtype=np.float_),
-                "n_regions": args.map_region_no}
+                "n_regions": n_regions}
             try:
                 zbins = np.diff(
                     getattr(PdfMaker, args.ref_bin_type[0] + "Bins")(
