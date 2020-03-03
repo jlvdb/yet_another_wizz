@@ -193,9 +193,9 @@ if __name__ == "__main__":
         data = pd.DataFrame({
             "RA": fits[1].data[args.cat_ra].byteswap().newbyteorder(),
             "DEC": fits[1].data[args.cat_dec].byteswap().newbyteorder(),
-            "z": fits[1].data[args.cat_z].byteswap().newbyteorder()})
+            "Z": fits[1].data[args.cat_z].byteswap().newbyteorder()})
         if args.cat_weight is not None:
-            data["weight"] = \
+            data["weights"] = \
                 fits[1].data[args.cat_weight].byteswap().newbyteorder()
         if args.cat_region is not None:
             endian_corrected = data[args.cat_region].byteswap().newbyteorder()
@@ -205,9 +205,9 @@ if __name__ == "__main__":
         rand = pd.DataFrame({
             "RA": fits[1].data[args.rand_ra].byteswap().newbyteorder(),
             "DEC": fits[1].data[args.rand_dec].byteswap().newbyteorder(),
-            "z": fits[1].data[args.rand_z].byteswap().newbyteorder()})
+            "Z": fits[1].data[args.rand_z].byteswap().newbyteorder()})
         if args.rand_weight is not None:
-            rand["weight"] = \
+            rand["weights"] = \
                 fits[1].data[args.rand_weight].byteswap().newbyteorder()
         if args.rand_region is not None:
             endian_corrected = data[args.rand_region].byteswap().newbyteorder()
@@ -232,8 +232,8 @@ if __name__ == "__main__":
         instances = [copy.deepcopy(est) for n in range(len(binning) - 1)]
         # iterate the bins in parallel
         pool = ThreadHelper(len(instances), threads=args.threads)
-        pool.add_iterable(data.groupby(pd.cut(data.z, bins=binning)))
-        pool.add_iterable(rand.groupby(pd.cut(rand.z, bins=binning)))
+        pool.add_iterable(data.groupby(pd.cut(data.Z, bins=binning)))
+        pool.add_iterable(rand.groupby(pd.cut(rand.Z, bins=binning)))
         pool.add_constant((rmin, rmax))
         pool.add_constant(args.R_D_ratio)
         pool.add_constant(args.across_regions == "N")
