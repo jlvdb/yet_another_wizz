@@ -120,9 +120,8 @@ test -e ${OUTPUTDIR}/nz_bias_corr_spec && rm -r ${OUTPUTDIR}/nz_bias_corr_spec
 yaw_pickles_to_redshift \
     ${OUTPUTDIR}/correlation_pickles \
     --seed KV450 \
-    --cov-order $KEYORDER \
+    --bin-order $KEYORDER \
     -o ${OUTPUTDIR}/nz_bias_corr_spec
-# --cov-order will trigger computing a global covariance between bins.
 echo
 
 ### yaw_plot ###
