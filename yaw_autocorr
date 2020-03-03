@@ -174,7 +174,6 @@ if __name__ == "__main__":
             "if region indices (--*-region) are used for one data set they "
             "are required for all data sets")
 
-
     # warning if one is used with and one without weights
     if args.cat_weight is None and args.rand_weight is not None:
         print("WARNING: running with data but without random weights")
@@ -191,27 +190,31 @@ if __name__ == "__main__":
     # load the samples
     print("==> loading data objects")
     with pyfits.open(args.cat_file) as fits:
+        fits_data = fits[args.cat_file_ext].data
         data = pd.DataFrame({
-            "RA": fits[1].data[args.cat_ra].byteswap().newbyteorder(),
-            "DEC": fits[1].data[args.cat_dec].byteswap().newbyteorder(),
-            "Z": fits[1].data[args.cat_z].byteswap().newbyteorder()})
+            "RA": fits_data[args.cat_ra].byteswap().newbyteorder(),
+            "DEC": fits_data[args.cat_dec].byteswap().newbyteorder(),
+            "Z": fits_data[args.cat_z].byteswap().newbyteorder()})
         if args.cat_weight is not None:
             data["weights"] = \
-                fits[1].data[args.cat_weight].byteswap().newbyteorder()
+                fits_data[args.cat_weight].byteswap().newbyteorder()
         if args.cat_region is not None:
-            endian_corrected = data[args.cat_region].byteswap().newbyteorder()
+            endian_corrected = \
+                fits_data[args.cat_region].byteswap().newbyteorder()
             data["region_idx"] = endian_corrected.astype(np.int16)
     print("==> loading random objects")
     with pyfits.open(args.rand_file) as fits:
+        fits_data = fits[args.rand_file_ext].data
         rand = pd.DataFrame({
-            "RA": fits[1].data[args.rand_ra].byteswap().newbyteorder(),
-            "DEC": fits[1].data[args.rand_dec].byteswap().newbyteorder(),
-            "Z": fits[1].data[args.rand_z].byteswap().newbyteorder()})
+            "RA": fits_data[args.rand_ra].byteswap().newbyteorder(),
+            "DEC": fits_data[args.rand_dec].byteswap().newbyteorder(),
+            "Z": fits_data[args.rand_z].byteswap().newbyteorder()})
         if args.rand_weight is not None:
             rand["weights"] = \
-                fits[1].data[args.rand_weight].byteswap().newbyteorder()
+                fits_data[args.rand_weight].byteswap().newbyteorder()
         if args.rand_region is not None:
-            endian_corrected = data[args.rand_region].byteswap().newbyteorder()
+            endian_corrected = \
+                fits_data[args.rand_region].byteswap().newbyteorder()
             rand["region_idx"] = endian_corrected.astype(np.int16)
     # get the number of spatial regions from the random data region indices
     n_regions = get_region_number(rand)
