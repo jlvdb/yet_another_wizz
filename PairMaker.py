@@ -40,12 +40,16 @@ class PairMaker(BaseClass):
         if weights is not None:
             data["weights"] = weights
             data["weights"] /= weights.mean()
+        # set region indices
         if region_idx is not None:
             data["region_idx"] = region_idx.astype(np.uint8)
+            # remove objects with negative indices
+            data = data[data.region_idx >= 0]
             regions = np.unique(data["region_idx"])
         else:
             data["region_idx"] = np.zeros(len(RA), dtype=np.uint8)
             regions = np.zeros(1, dtype=np.uint8)
+        # check against any registered regions
         if self._regions is None:
             self._regions = regions
         elif self._regions != regions:
@@ -94,6 +98,8 @@ class PairMaker(BaseClass):
                 "input data empty or data length does not match", ValueError)
         self._printMessage("loading %d objects\n" % len(RA))
         self._reference_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage(
+            "kept %d of %d objects\n" % (len(self._reference_data), len(RA)))
 
     def writeReference(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -111,6 +117,8 @@ class PairMaker(BaseClass):
                 "input data empty or data length does not match", ValueError)
         self._printMessage("loading %d objects\n" % len(RA))
         self._unknown_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage(
+            "kept %d of %d objects\n" % (len(self._unknown_data), len(RA)))
 
     def writeUnknown(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -128,6 +136,8 @@ class PairMaker(BaseClass):
                 "input data empty or data length does not match", ValueError)
         self._printMessage("lading %d objects\n" % len(RA))
         self._random_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage(
+            "kept %d of %d objects\n" % (len(self._random_data), len(RA)))
 
     def writeRandoms(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
