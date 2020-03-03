@@ -121,15 +121,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # check region column arguments
-    regions_set = [
-        val is not None for val in (
-            args.cat_region, args.rand_region)]
-    if any(regions_set) and not all(regions_set):
-        raise parser.error(
-            "if region indices (--*-region) are used for one data set they "
-            "are required for all data sets")
-
     if args.threads is not None:
         setattr(args, "threads", max(1, min(cpu_count(), args.threads)))
 
@@ -173,6 +164,16 @@ if __name__ == "__main__":
                 pass
     if args.threads is None:
         setattr(args, "threads", cpu_count())
+
+    # check region column arguments
+    regions_set = [
+        val is not None for val in (
+            args.cat_region, args.rand_region)]
+    if any(regions_set) and not all(regions_set):
+        raise parser.error(
+            "if region indices (--*-region) are used for one data set they "
+            "are required for all data sets")
+
 
     # warning if one is used with and one without weights
     if args.cat_weight is None and args.rand_weight is not None:
