@@ -15,7 +15,6 @@ from yaw_tools.correlation import run_ac_single_bin
 from yaw_tools.folders import CCFolder, Folder
 from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
                              DEFAULT_RESAMPLING, TypeNone)
-
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
 from yet_another_wizz.utils import ThreadHelper, load_argparse_summary

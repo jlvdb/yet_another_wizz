@@ -6,7 +6,8 @@ from collections import Counter
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
-from yaw_tools.folders import ScaleFolder, DEFAULT_EXT_DATA, binname
+from yaw_tools.folders import (DEFAULT_EXT_DATA, DEFAULT_EXT_HIST,
+                               get_bin_key, ScaleFolder)
 from yaw_tools.utils import guess_bin_order
 
 from Nz_Fitting.utils import Figure
@@ -49,7 +50,7 @@ if __name__ == "__main__":
         arg_str = "--plot " + " ".join(pltargs)
         if len(pltargs) == 0:
             raise parser.error("no input folder supplied with '--plot'")
-        if len(pltargs) > 4:
+        if len(pltargs) > (len(key_map) + 1):
             raise parser.error(
                 "too many arguments in '%s'" % arg_str)
         arg_dict = {"data": pltargs[0]}
@@ -89,7 +90,7 @@ if __name__ == "__main__":
             matches = folder.find(".*\d\.\d*z\d\.\d*.*" + DEFAULT_EXT_DATA)
             files = {}
             for match in matches:
-                zbin = binname(match)
+                zbin = get_bin_key(match)
                 if zbin in files:
                     raise KeyError(
                         ("found multiple matches for key '%s' " % zbin) +
@@ -109,7 +110,11 @@ if __name__ == "__main__":
         data_list = []
         n_data = None
         for zbin in bin_order:
-            data = np.loadtxt(files[zbin])
+            is_hist = os.path.splitext(files[zbin])[0] == DEFAULT_EXT_HIST
+            if is_hist:
+                data = np.loadtxt(files[zbin])[:-1, 1:]
+            else:
+                data = np.loadtxt(files[zbin])
             xmax = np.nanmax(data[:, 0])
             if np.isfinite(xmax):  # ignore INFs
                 zmax = max(xmax + 0.1, zmax)

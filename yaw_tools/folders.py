@@ -4,12 +4,13 @@ import shutil
 from collections import OrderedDict
 
 
+DEFAULT_EXT_HIST = ".hist"
 DEFAULT_EXT_DATA = ".dat"
 DEFAULT_EXT_BOOT = ".boot"
 DEFAULT_EXT_COV = ".cov"
 
 
-def getext(path):
+def get_ext(path):
     try:
         base, ext = os.path.splitext(path)
         return ext.lstrip(".")
@@ -17,7 +18,7 @@ def getext(path):
         return ""
 
 
-def binname(path):
+def get_bin_key(path):
     pattern = "\d\.\d*z\d\.\d*"
     try:
         name = re.findall(pattern, path)[-1]
@@ -143,7 +144,7 @@ class ScaleFolder(Folder):
                 continue
             # check if the type of file is correct
             try:
-                if getext(file) == ext.lstrip("."):
+                if get_ext(file) == ext.lstrip("."):
                     # extract the information
                     base, file_ext = os.path.splitext(file)
                     name, suffix = base.split("_")
@@ -162,7 +163,7 @@ class ScaleFolder(Folder):
                 continue
             try:
                 # check if the type of file is correct
-                if getext(file) == ext.lstrip("."):
+                if get_ext(file) == ext.lstrip("."):
                     # extract the information
                     base, file_ext = os.path.splitext(file)
                     name, zbin = base.split("_")
