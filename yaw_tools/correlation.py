@@ -87,7 +87,7 @@ def bin_table(
                     bindata[weight_name].byteswap().newbyteorder()
             if region_name is not None:
                 frame["region_idx"] = \
-                    data[region_name].byteswap().newbyteorder()
+                    bindata[region_name].byteswap().newbyteorder()
             framelist.append(frame)
             filelist.append(filename)
     return framelist, filelist
