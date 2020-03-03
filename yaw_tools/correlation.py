@@ -47,9 +47,9 @@ def bin_table(
             frame = pd.DataFrame({
                 "RA": data[ra_name].byteswap().newbyteorder(),
                 "DEC": data[dec_name].byteswap().newbyteorder(),
-                "z": data[z_name].byteswap().newbyteorder()})
+                "Z": data[z_name].byteswap().newbyteorder()})
         if weight_name is not None:
-            frame["weight"] = data[weight_name].byteswap().newbyteorder()
+            frame["weights"] = data[weight_name].byteswap().newbyteorder()
         if region_name is not None:
             frame["region_idx"] = data[region_name].byteswap().newbyteorder()
         framelist.append(frame)
@@ -81,9 +81,9 @@ def bin_table(
                 frame = pd.DataFrame({
                     "RA": bindata[ra_name].byteswap().newbyteorder(),
                     "DEC": bindata[dec_name].byteswap().newbyteorder(),
-                    "z": bindata[z_name].byteswap().newbyteorder()})
+                    "Z": bindata[z_name].byteswap().newbyteorder()})
             if weight_name is not None:
-                frame["weight"] = \
+                frame["weights"] = \
                     bindata[weight_name].byteswap().newbyteorder()
             if region_name is not None:
                 frame["region_idx"] = \

@@ -186,9 +186,10 @@ if __name__ == '__main__':
         refdata = pd.DataFrame({
             "RA": data[args.ref_ra].byteswap().newbyteorder(),
             "DEC": data[args.ref_dec].byteswap().newbyteorder(),
-            "z": data[args.ref_z].byteswap().newbyteorder()})
+            "Z": data[args.ref_z].byteswap().newbyteorder()})
         if args.ref_weight is not None:
-            refdata["weight"] = data[args.ref_weight].byteswap().newbyteorder()
+            refdata["weights"] = \
+                data[args.ref_weight].byteswap().newbyteorder()
         if args.ref_region is not None:
             endian_corrected = data[args.ref_region].byteswap().newbyteorder()
             refdata["region_idx"] = endian_corrected.astype(np.int16)

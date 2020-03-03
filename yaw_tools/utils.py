@@ -27,8 +27,7 @@ DEFAULT_HCOV = "correlation amplitude ({:}) covariance matrix"
 def get_region_number(*frames):
     try:
         # count the unique region indices in the data
-        regions_per_frame = [
-            np.unique(frame.region_idx) for frame in frame_list]
+        regions_per_frame = [np.unique(frame.region_idx) for frame in frames]
         n_regions = len(np.unique(np.concatenate(regions_per_frame)))
     except AttributeError:
         n_regions = 1
