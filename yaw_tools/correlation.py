@@ -1,3 +1,4 @@
+import json
 import os
 
 import numpy as np
@@ -119,3 +120,30 @@ def run_ac_single_bin(
             D_R_ratio=D_R_ratio, regionize_unknown=regionize_unknown)
         print("processed data in z ∈", zd)
         return [est.getMeta(), est.getCounts()]
+
+
+def write_argparse_summary(args, outputpath, ignore=[]):
+    """
+    write a file summarizing all input parameters
+    ARGS:    args:       argparser.Namespace object
+             outputpath: file path
+             ignore:     list with Namespace objects to omit
+    """
+    ignore = list(ignore)
+    ignore.extend(["redo", "wdir"])
+    arg_dict = {
+        key: value for key, value in vars(args).items()
+        if key not in ignore}
+    with open(outputpath, 'w') as f:
+        json.dump(arg_dict, f)
+
+
+def load_argparse_summary(filepath):
+    """
+    load file produced with write_argparse_summary(), recovering original data
+    type
+    ARGS:    filepath: file to load
+    RETURNS: dictionary with input flags
+    """
+    with open(filepath) as f:
+        return json.load(f)
