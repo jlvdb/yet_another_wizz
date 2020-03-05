@@ -1,12 +1,10 @@
-import json
-import operator
 import os
 
 import numpy as np
 import pandas as pd
 from scipy.interpolate import InterpolatedUnivariateSpline
 
-from .utils import BaseClass
+from .utils import BaseClass, dump_json
 
 
 class PdfMaker(BaseClass):
@@ -139,10 +137,7 @@ class PdfMaker(BaseClass):
     def writeRegionDict(self, path):
         region_counts = self.getRegionDict()
         self._printMessage("writing region counts to:\n    %s\n" % path)
-        with open(path, "w") as f:
-            json.dump(
-                region_counts, f, indent=4,
-                default=operator.methodcaller("tolist"))
+        dump_json(region_counts, path)
 
     def getRedshifts(self):
         region_counts = self.getRegionDict()

@@ -1,5 +1,7 @@
 import inspect
+import json
 import multiprocessing
+import operator
 import sys
 
 import numpy as np
@@ -8,6 +10,25 @@ from matplotlib import colors
 from matplotlib import pyplot as plt
 
 from .spatial import FastSeparation2Angle
+
+
+def load_json(path):
+    with open(path) as f:
+        data_dict = json.load(f)
+        # convert lists to numpy arrays
+        for key, value in data_dict.items():
+            if type(value) is list:
+                data_dict[key] = np.array(value)
+    return data_dict
+
+
+def dump_json(data, path, preview=False):
+    kwargs = dict(indent=4, default=operator.methodcaller("tolist"))
+    if preview:
+        print(json.dumps(data, **kwargs))
+    else:
+        with open(path, "w") as f:
+            json.dump(data, f, **kwargs)
 
 
 def region_color_map(base_cmap, n_regions, cycle_length=10):
