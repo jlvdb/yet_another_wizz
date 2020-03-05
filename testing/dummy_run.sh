@@ -100,25 +100,25 @@ do
     echo
 done
 
-### yaw_merge_pickles ###
-test -e ${OUTPUTDIR}/correlation_pickles && rm -r ${OUTPUTDIR}/correlation_pickles
+### yaw_merge_counts ###
+test -e ${OUTPUTDIR}/region_counts && rm -r ${OUTPUTDIR}/region_counts
 # concatenate the output of the cross-correlation runs
-yaw_merge_pickles \
+yaw_merge_counts \
     -i ${OUTPUTDIR}/pointings_w_sp/*/ \
-    -o ${OUTPUTDIR}/correlation_pickles
+    -o ${OUTPUTDIR}/region_counts
 echo
 # concatenate the output of the auto-correlation runs into the same folder
-yaw_merge_pickles \
+yaw_merge_counts \
     -i ${OUTPUTDIR}/pointings_w_ss/*/ \
-    -o ${OUTPUTDIR}/correlation_pickles
+    -o ${OUTPUTDIR}/region_counts
 echo
 
-### yaw_pickles_to_redshift ###
-# produce cross-correlation n(z) with spec. bias correction from the pickles
+### yaw_merge_counts ###
+# produce cross-correlation n(z) with spec. bias correction from the regions
 KEYORDER="0.101z0.301 0.301z0.501 0.501z0.701 0.701z0.901 0.901z1.201 0.101z1.201"
 test -e ${OUTPUTDIR}/nz_bias_corr_spec && rm -r ${OUTPUTDIR}/nz_bias_corr_spec
-yaw_pickles_to_redshift \
-    ${OUTPUTDIR}/correlation_pickles \
+yaw_counts_to_redshift \
+    ${OUTPUTDIR}/region_counts \
     --seed KV450 \
     --bin-order $KEYORDER \
     -o ${OUTPUTDIR}/nz_bias_corr_spec
