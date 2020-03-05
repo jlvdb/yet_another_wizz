@@ -124,9 +124,6 @@ class ScaleFolder(Folder):
     def path_shiftfit_file(self, ext, zlims=None):
         return self._path_zbin_file("shiftfit", ext, zlims)
 
-    def path_weights_file(self):
-        return self.join("bin_weights.pkl")
-
     def path_global_cov_file(self, prefix):
         return self.join("%s_global%s" % (prefix, DEFAULT_EXT_COV))
 
@@ -134,7 +131,7 @@ class ScaleFolder(Folder):
         return self.join("covariance_bin_order.txt")
 
     def path_weights_file(self):
-        return self.join("bin_weights.pkl")
+        return self.join("bin_weights.json")
 
     def list_autocorr_files(self, ext):
         suffixes = OrderedDict()
@@ -299,17 +296,17 @@ def find_cc_scales(input_folder):
 
 
 def check_autocorrelation(scaledir, suffix_name, name):
-    ac_dict = scaledir.list_autocorr_files(".pkl")
+    ac_dict = scaledir.list_autocorr_files(".json")
     if suffix_name is not None:
         try:
-            pickle_path = ac_dict[suffix_name]
-            print("found %s auto-correlation pickle" % name)
+            counts_dict_path = ac_dict[suffix_name]
+            print("found %s auto-correlation counts" % name)
         except KeyError:
-            raise ValueError("%s auto-correlation pickle not found" % name)
+            raise ValueError("%s auto-correlation counts not found" % name)
     else:
-        pickle_path = None
-    use_corr = pickle_path is not None
-    return pickle_path, use_corr
+        counts_dict_path = None
+    use_corr = counts_dict_path is not None
+    return counts_dict_path, use_corr
 
 
 if __name__ == "__main__":
@@ -325,7 +322,7 @@ if __name__ == "__main__":
     print("# incorporation")
     old_path = "testdir/test_0.101z0.301.txt"
     print("old path: %s" % old_path)
-    new_path = ff.incorporate(old_path, ext=".pkl")
+    new_path = ff.incorporate(old_path, ext=".json")
     print("new path: %s" % new_path)
     print("# listing and finding files")
     pprint(ff.listdir())
@@ -336,8 +333,8 @@ if __name__ == "__main__":
     sf = ScaleFolder(
         "~/CC/YAW/MICE2_KV450_magnification_on/n_cc/idealized/kpc100t1000")
     print("# file path proposals")
-    pprint(sf.path_autocorr_file(".pkl"))
-    pprint(sf.path_autocorr_file(".pkl", suffix="spec"))
+    pprint(sf.path_autocorr_file(".json"))
+    pprint(sf.path_autocorr_file(".json", suffix="spec"))
     pprint(sf.path_crosscorr_file(DEFAULT_EXT_DATA))
     pprint(sf.path_crosscorr_file(DEFAULT_EXT_DATA, [0.101, 0.301]))
     pprint(sf.path_weights_file())

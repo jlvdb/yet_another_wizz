@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
-import pickle
+import json
+import operator
 import os
 import shutil
 import sys
@@ -248,10 +249,12 @@ if __name__ == '__main__':
         (float(rmin), float(rmax)) for rmin, rmax in
         zip(args.scales_min.split(","), args.scales_max.split(","))]
     scale_names = [outdir.add_scale(rlim) for rlim in rlimits]
-    # write bin weight pickles for each scale
+    # write bin weight counts for each scale
     for scale in scale_names:
-        with open(outdir[scale].path_weights_file(), "wb") as f:
-            pickle.dump(bin_weights_dict, f)
+        with open(outdir[scale].path_weights_file(), "w") as f:
+            json.dump(
+                bin_weights_dict, f, indent=4,
+                default=operator.methodcaller("tolist"))
 
     sys.stdout.write("\n==> run yet another wizz\n")
     sys.stdout.flush()
@@ -293,9 +296,9 @@ if __name__ == '__main__':
             est.writeMeta(meta_file)
             est.writeCounts(paircount_file)
 
-            # create region pickle
-            regionpicklefile = scaledir.path_crosscorr_file(
-                ".pkl", zlims=None if redshift == "all" else redshift)
+            # create region counts
+            regioncountsfile = scaledir.path_crosscorr_file(
+                ".json", zlims=None if redshift == "all" else redshift)
             try:
                 pdf = PdfMaker(paircount_file, autocorr=False)
                 if args.ref_bin_type[0] == "adapt":
@@ -305,21 +308,23 @@ if __name__ == '__main__':
                         args.ref_bin_no, args.z_min, args.z_max,
                         args.ref_bin_type[0])
                 pdf.writeBinning(outdir.path_binning_file())
-                pdf.writeRegionPickle(regionpicklefile)
+                pdf.writeRegionDict(regioncountsfile)
             # empty pair counts file
             except ValueError:
                 print(
                     "WARNING: the pair count file was empty, create dummy "
                     "output instead")
                 array_shape = (args.ref_bin_no, n_regions)
-                region_pickle = {
+                region_counts = {
                     "n_reference": np.zeros(array_shape, dtype=np.int_),
-                    "redshift": np.zeros(array_shape, dtype=np.float_),
-                    "unknown": np.zeros(array_shape, dtype=np.float_),
-                    "rand": np.zeros(array_shape, dtype=np.float_),
+                    "sum_redshifts": np.zeros(array_shape, dtype=np.float_),
+                    "data_data": np.zeros(array_shape, dtype=np.float_),
+                    "data_random": np.zeros(array_shape, dtype=np.float_),
                     "n_regions": n_regions}
                 print(
-                    "writing dummy region pickle to:\n    %s" %
-                    regionpicklefile)
-                with open(regionpicklefile, "wb") as f:
-                    pickle.dump(region_pickle, f)
+                    "writing dummy region counts to:\n    %s" %
+                    regioncountsfile)
+                with open(regioncountsfile, "w") as f:
+                    json.dump(
+                        region_counts, f, indent=4,
+                        default=operator.methodcaller("tolist"))

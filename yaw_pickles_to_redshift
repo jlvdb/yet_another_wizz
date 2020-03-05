@@ -8,15 +8,16 @@ import numpy as np
 from Nz_Fitting import RedshiftDataBinned
 from yaw_tools.folders import (check_autocorrelation, find_cc_scales,
                                init_input_folder, init_output_folder)
-from yaw_tools.pickles import (AutoCorrelationPickle, CrossCorrelationPickle,
-                               PickleConverter)
+from yaw_tools.region_counts import (AutoCorrelationRegionCounts,
+                                     CrossCorrelationRegionCounts,
+                                     RegionCountsConverter)
 from yaw_tools.utils import (DEFAULT_HBOOT, DEFAULT_HCOV, DEFAULT_HDATA,
                              guess_bin_order, write_global_cov, write_nz_data)
 
 
 parser = argparse.ArgumentParser(
-    description='Unpickles yet_another_wizz region pickle files, optionally '
-                'applying bias corrections.')
+    description='Deserializing yet_another_wizz region counts files, '
+                'optionally applying bias corrections.')
 parser.add_argument(
     'wdir', metavar='DATAFOLDER',
     help='an output folder of yet_another_wizz')
@@ -55,57 +56,59 @@ if __name__ == "__main__":
     hasher = md5(bytes(args.seed, "utf-8"))
     hashval = bytes(hasher.hexdigest(), "utf-8")
     np.random.seed(np.frombuffer(hashval, dtype=np.uint32))
-    # initialize region bootstrapping of pickle converter, all data output
-    # will be based on the same region realizations
-    pkl2data = PickleConverter(args.n_boot)
+    # initialize region bootstrapping of region counts converter, all data
+    # output will be based on the same region realizations
+    json2data = RegionCountsConverter(args.n_boot)
 
-    # convert the pickles
+    # convert the region counts
     for scale, scaledir in indir.iter_scales():
         print("==> processing scale: {:}".format(scale))
 
-        # check which correlation pickles exist
-        cc_pickles = scaledir.list_crosscorr_files(".pkl")
-        if len(cc_pickles) == 0:
-            raise ValueError("no cross-correlation pickles found")
+        # check which correlation region counts exist
+        cc_counts_dicts = scaledir.list_crosscorr_files(".json")
+        if len(cc_counts_dicts) == 0:
+            raise ValueError("no cross-correlation counts found")
         # figure out whether to use spectroscopic auto-correlation
-        ac_spec_pickle, use_wss = check_autocorrelation(
+        ac_spec_counts_dict, use_wss = check_autocorrelation(
             scaledir, args.bias_spec, "spec.")
         # figure out whether to use photometric auto-correlation
-        ac_phot_pickle, use_wpp = check_autocorrelation(
+        ac_phot_counts_dict, use_wpp = check_autocorrelation(
             scaledir, args.bias_phot, "phot.")
 
         # NaNs are to be expected so we ignore warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
-            # process auto-correlation pickles and compute the bias correction
+            # process auto-correlation counts and compute the bias correction
             header_key = "w_sp"
             bias_key = []
             autocorrs = 1.0
             autocorr_samples = 1.0
             if use_wss:
-                pkl2data.set_bias(None, None)  # clear bias arrays
-                pkl2data.load_pickle(ac_spec_pickle, AutoCorrelationPickle)
+                json2data.set_bias(None, None)  # clear bias arrays
+                json2data.load_counts_dict(
+                    ac_spec_counts_dict, AutoCorrelationRegionCounts)
                 # get the data
-                w_ss_data = pkl2data.get_data()
+                w_ss_data = json2data.get_data()
                 autocorrs *= w_ss_data.n(all=True)
                 autocorr_samples *= w_ss_data.getSamples(all=True)
                 # write the data
-                path = outdir[scale].incorporate(pkl2data.pickle_path)
+                path = outdir[scale].incorporate(json2data.counts_dict_path)
                 write_nz_data(
                     path, w_ss_data, DEFAULT_HDATA.format("w_ss"),
                     DEFAULT_HBOOT.format("w_ss"), DEFAULT_HCOV.format("w_ss"),
                     stats=False, dtype_message="autocorrelation")
                 bias_key.append("w_ss")
             if use_wpp:
-                pkl2data.set_bias(None, None)  # clear bias arrays
-                pkl2data.load_pickle(ac_phot_pickle, AutoCorrelationPickle)
+                json2data.set_bias(None, None)  # clear bias arrays
+                json2data.load_counts_dict(
+                    ac_phot_counts_dict, AutoCorrelationRegionCounts)
                 # get the data
-                w_pp_data = pkl2data.get_data()
+                w_pp_data = json2data.get_data()
                 autocorrs *= w_pp_data.n(all=True)
                 autocorr_samples *= w_pp_data.getSamples(all=True)
                 # write the data
-                path = outdir[scale].incorporate(pkl2data.pickle_path)
+                path = outdir[scale].incorporate(json2data.counts_dict_path)
                 write_nz_data(
                     path, w_pp_data, DEFAULT_HDATA.format("w_pp"),
                     DEFAULT_HBOOT.format("w_pp"), DEFAULT_HCOV.format("w_pp"),
@@ -122,23 +125,23 @@ if __name__ == "__main__":
 
             # figure out the bin order
             if args.bin_order is None:
-                args.bin_order = guess_bin_order(cc_pickles.keys())
+                args.bin_order = guess_bin_order(cc_counts_dicts.keys())
 
-            # process the cross-correlation pickles
+            # process the cross-correlation counts
             w_sp_data = []  # collect for global covariance
             print("writing n(z) statistics to: stats/")
             for zbin in args.bin_order:
-                pkl2data.set_bias(bias, bias_samples)
+                json2data.set_bias(bias, bias_samples)
                 try:
-                    pkl2data.load_pickle(
-                        cc_pickles[zbin], CrossCorrelationPickle)
+                    json2data.load_counts_dict(
+                        cc_counts_dicts[zbin], CrossCorrelationRegionCounts)
                 except KeyError:
                     raise KeyError(
                         "invalid redshift bin '{:}' in --bin-order".format(
                             zbin))
-                w_sp_data.append(pkl2data.get_data())
+                w_sp_data.append(json2data.get_data())
                 # write the data
-                path = outdir[scale].incorporate(pkl2data.pickle_path)
+                path = outdir[scale].incorporate(json2data.counts_dict_path)
                 write_nz_data(
                     path, w_sp_data[-1], DEFAULT_HDATA.format(header_key),
                     DEFAULT_HBOOT.format(header_key),

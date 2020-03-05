@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import argparse
+import json
+import operator
 import os
-import pickle
 import shutil
 import sys
 from collections import Counter
@@ -9,11 +10,11 @@ from functools import reduce
 
 import numpy as np
 from yaw_tools.folders import CCFolder
-from yaw_tools.pickles import merge_pickles
+from yaw_tools.region_counts import merge_region_counts, load_json
 
 
 parser = argparse.ArgumentParser(
-    description='Merges region pickle files produced by yet_another-wizz')
+    description='Merges region count files produced by yet_another-wizz')
 parser.add_argument(
     '-i', '--input', nargs='*', required=True,
     help='input folders which contain output of yet_another')
@@ -106,20 +107,20 @@ if __name__ == "__main__":
         print("==> processing scale: %s" % scale)
         N_folders = len(scale_folders[scale])
 
-        # check which correlation pickles exist
+        # check which correlation region counts exist
         zbin_counter = Counter()
         suffix_counter = Counter()
         for folder in scale_folders[scale]:
-            zbin_dict = folder.list_crosscorr_files(".pkl")
+            zbin_dict = folder.list_crosscorr_files(".json")
             zbin_counter.update(zbin_dict.keys())
-            suffix_dict = folder.list_autocorr_files(".pkl")
+            suffix_dict = folder.list_autocorr_files(".json")
             suffix_counter.update(suffix_dict.keys())
         zbins = set(zbin_counter.keys())
         suffixes = set(suffix_counter.keys())
         # check that each folder contains all cross-correlation redshift bin
         for zbin, count in zbin_counter.items():
             if count != N_folders:
-                string = "missing cross-correlation pickles for "
+                string = "missing cross-correlation region counts for "
                 string += "bin '%s' " % zbin
                 string += "in %d / %d input folders" % (
                     N_folders - count, N_folders)
@@ -127,43 +128,47 @@ if __name__ == "__main__":
         # check that each folder contains all auto-correlation suffixes
         for suffix, count in suffix_counter.items():
             if count != N_folders:
-                string = "missing auto-correlation pickles for "
+                string = "missing auto-correlation region counts for "
                 string += "suffix '%s' " % suffix
                 string += "in %d / %d input folders" % (
                     N_folders - count, N_folders)
                 raise ValueError(string)
 
-        # merge the pickles
+        # merge the region counts
         if len(zbins) == 0 and len(suffixes) == 0:
             sys.exit("WARNING: there is nothing to do")
  
         if len(suffixes) > 0:
-            print("merging auto-correlation pickles")
+            print("merging auto-correlation region counts")
             print("found auto-correlation types: %s" % str(sorted(suffixes)))
             for suffix in suffixes:
                 paths = [
-                    folder.path_autocorr_file(".pkl", suffix=suffix)
+                    folder.path_autocorr_file(".json", suffix=suffix)
                     for folder in scale_folders[scale]]
-                master_pickle = merge_pickles(paths)
+                master_counts_dict = merge_region_counts(paths)
                 outpath = outdir[scale].path_autocorr_file(
-                    ".pkl", suffix=suffix)
-                print("writing merged pickle: %s" % os.path.basename(outpath))
-                with open(outpath, "wb") as f:
-                    pickle.dump(master_pickle, f)
+                    ".json", suffix=suffix)
+                print("writing merged counts: %s" % os.path.basename(outpath))
+                with open(outpath, "w") as f:
+                    json.dump(
+                        master_counts_dict, f, indent=4,
+                        default=operator.methodcaller("tolist"))
 
         if len(zbins) > 0:
-            print("merging cross-correlation pickles")
+            print("merging cross-correlation region counts")
             print("found tomographic bins: %s" % str(sorted(zbins)))
             for zbin in zbins:
                 paths = [
-                    folder.path_crosscorr_file(".pkl", zlims=zbin)
+                    folder.path_crosscorr_file(".json", zlims=zbin)
                     for folder in scale_folders[scale]]
-                master_pickle = merge_pickles(paths)
+                master_counts_dict = merge_region_counts(paths)
                 outpath = outdir[scale].path_crosscorr_file(
-                    ".pkl", zlims=zbin)
-                print("writing merged pickle: %s" % os.path.basename(outpath))
-                with open(outpath, "wb") as f:
-                    pickle.dump(master_pickle, f)
+                    ".json", zlims=zbin)
+                print("writing merged counts: %s" % os.path.basename(outpath))
+                with open(outpath, "w") as f:
+                    json.dump(
+                        master_counts_dict, f, indent=4,
+                        default=operator.methodcaller("tolist"))
 
         # sum the bin weights together
         weights_exist = [
@@ -177,8 +182,8 @@ if __name__ == "__main__":
             print("compute the combined tomographic bin weights")
             weights = []
             for folder in scale_folders[scale]:
-                with open(folder.path_weights_file(), "rb") as f:
-                    data = Counter(pickle.load(f))  # dict with zbins as keys
+                with open(folder.path_weights_file(), "r") as f:
+                    data = Counter(load_json(f))  # dict with zbins as keys
                     if set(data.keys()) != zbins:
                         raise ValueError(
                             "not all bins have an associated weight")
@@ -188,5 +193,7 @@ if __name__ == "__main__":
             print(
                 "weight sum:   %s" % {
                     k: "%.2e" % v for k, v in weight_sum.items()})
-            with open(outdir[scale].path_weights_file(), "wb") as f:
-                pickle.dump(weight_sum, f)
+            with open(outdir[scale].path_weights_file(), "w") as f:
+                json.dump(
+                    weight_sum, f, indent=4,
+                    default=operator.methodcaller("tolist"))

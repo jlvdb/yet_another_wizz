@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import copy
+import json
+import operator
 import os
 import pickle
 import shutil
@@ -44,7 +46,7 @@ parser.add_argument(
     '--threads', metavar='INT', type=int)
 parser.add_argument(
     '--output-suffix', metavar='str',
-    help='suffix to append to the auto-correlation and region pickle files')
+    help='suffix to append to the auto-correlation and region counts files')
 
 data_cat = parser.add_argument_group(
     title="data sample catalogue file",
@@ -252,23 +254,23 @@ if __name__ == "__main__":
             pickle.dump(dataframes[0][0], f)
         pd.concat([frames[1] for frames in dataframes]).to_parquet(
             paircount_file)
-        # create region pickle
-        regionpicklefile = scaledir.path_autocorr_file(
-            ".pkl", suffix=args.output_suffix)
+        # create region counts
+        regioncountsfile = scaledir.path_autocorr_file(
+            ".json", suffix=args.output_suffix)
         try:
             pdf = PdfMaker(paircount_file, autocorr=True)
             pdf.setBinning(binning)
-            pdf.writeRegionPickle(regionpicklefile)
+            pdf.writeRegionDict(regioncountsfile)
         except ValueError:  # empty pair counts file
             print(
                 "WARNING: the pair count file was empty, create dummy "
                 "output instead")
             array_shape = (args.ref_bin_no, n_regions)
-            pickle_dict = {
+            counts_dict = {
                 "n_reference": np.zeros(array_shape, dtype=np.int_),
-                "redshift": np.zeros(array_shape, dtype=np.float_),
-                "unknown": np.zeros(array_shape, dtype=np.float_),
-                "rand": np.zeros(array_shape, dtype=np.float_),
+                "sum_redshifts": np.zeros(array_shape, dtype=np.float_),
+                "data_data": np.zeros(array_shape, dtype=np.float_),
+                "data_random": np.zeros(array_shape, dtype=np.float_),
                 "n_regions": n_regions}
             try:
                 zbins = np.diff(
@@ -279,9 +281,11 @@ if __name__ == "__main__":
                     getattr(PdfMaker, args.ref_bin_type[0] + "Bins")(
                         args.ref_bin_no, args.z_min, args.z_max,
                         default_cosmology.get()))
-            pickle_dict["amplitude_factor"] = np.diff(zbins)
+            counts_dict["amplitude_factor"] = np.diff(zbins)
             print(
-                "writing dummy region pickle to:\n    %s" %
-                regionpicklefile)
-            with open(regionpicklefile, "wb") as f:
-                pickle.dump(pickle_dict, f)
+                "writing dummy region counts to:\n    %s" %
+                regioncountsfile)
+            with open(regioncountsfile, "w") as f:
+                json.dump(
+                    counts_dict, f, indent=4,
+                    default=operator.methodcaller("tolist"))

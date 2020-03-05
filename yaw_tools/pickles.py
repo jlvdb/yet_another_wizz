@@ -1,6 +1,6 @@
 import copy
+import json
 import os
-import pickle
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -9,7 +9,15 @@ from scipy.integrate import cumtrapz
 from Nz_Fitting import RedshiftData
 
 
-class Pickle(object):
+def load_json(file_obj):
+    data_dict = json.load(file_obj)
+    for key, value in data_dict.items():
+        if type(value) is list:
+            data_dict[key] = np.array(value)
+    return data_dict
+
+
+class RegionCounts(object):
 
     # uninitialized members
     _z = None
@@ -87,16 +95,9 @@ class Pickle(object):
         return inst
 
     @staticmethod
-    def _load_pickle(path):
-        try:  # python 3
-            with open(path, "rb") as f:
-                return pickle.load(f)
-        except UnicodeDecodeError:
-            with open(path, "rb") as f:
-                return pickle.load(f, encoding="latin1")
-        except TypeError:  # python 2
-            with open(path) as f:
-                return pickle.load(f)
+    def _load_counts_dict(path):
+        with open(path) as f:
+            return load_json(f)
 
     def _update_z(self):
         if self._n_ref is not None and self._zs is not None:
@@ -276,55 +277,56 @@ class Pickle(object):
         ax.set_ylim(bottom=min(ymin, 0.0))
 
 
-class CrossCorrelationPickle(Pickle):
+class CrossCorrelationRegionCounts(RegionCounts):
 
     def __init__(self, path):
-        data_dict = self._load_pickle(path)
+        data_dict = self._load_counts_dict(path)
         # incorporate data
-        self._DD = data_dict["unknown"]
-        self._DR = data_dict["rand"]
+        self._DD = data_dict["data_data"]
+        self._DR = data_dict["data_random"]
         self._n_ref = data_dict["n_reference"]
-        self._zs = data_dict["redshift"]
+        self._zs = data_dict["sum_redshifts"]
         self._update_z()
         # initialize resampling
         self.generate_sampling_idx()
 
 
-class AutoCorrelationPickle(Pickle):
+class AutoCorrelationRegionCounts(RegionCounts):
 
     def __init__(self, path):
-        data_dict = self._load_pickle(path)
+        data_dict = self._load_counts_dict(path)
         # incorporate data
-        self._DD = data_dict["unknown"]
-        self._DR = data_dict["rand"]
+        self._DD = data_dict["data_data"]
+        self._DR = data_dict["data_random"]
         self._n_ref = data_dict["n_reference"]
-        self._zs = data_dict["redshift"]
-        self._bin_width_factor = data_dict["amplitude_factor"]
+        self._zs = data_dict["sum_redshifts"]
+        self._bin_width_factor = data_dict["width_correction"]
         self._update_z()
         # initialize resampling
         self.generate_sampling_idx()
 
 
-def merge_pickles(pickle_list):
-    pickles = []
-    for path in pickle_list:
-        with open(path, "rb") as f:
-            pickles.append(pickle.load(f))
-    # create the master pickle
-    master_pickle = {"n_regions": 0}
-    for key in pickles[0]:
+def merge_region_counts(counts_dict_list):
+    counts_dicts = []
+    for path in counts_dict_list:
+        with open(path) as f:
+            counts_dicts.append(load_json(f))
+    # create the master counts dict
+    master_counts_dict = {"n_regions": 0}
+    for key in counts_dicts[0]:
         try:
-            master_pickle[key] = np.concatenate(
-                [data[key] for data in pickles], axis=1)
+            master_counts_dict[key] = np.concatenate(
+                [data[key] for data in counts_dicts], axis=1)
         except ValueError:
             if key == "n_regions":  # sum the region counters
-                master_pickle[key] = sum(data[key] for data in pickles)
+                master_counts_dict[key] = sum(
+                    data[key] for data in counts_dicts)
             else:  # just copy first from first element
-                master_pickle[key] = pickles[0][key]
-    return master_pickle
+                master_counts_dict[key] = counts_dicts[0][key]
+    return master_counts_dict
 
 
-class PickleConverter(object):
+class RegionCountsConverter(object):
 
     bias = None
     bias_samples = None
@@ -340,9 +342,9 @@ class PickleConverter(object):
         self.bias = bias
         self.bias_samples = bias_samples
 
-    def load_pickle(self, pickle_path, pickle_class):
-        self.pickle_path = pickle_path
-        self.pickler = pickle_class(pickle_path)
+    def load_counts_dict(self, counts_dict_path, counts_dict_class):
+        self.counts_dict_path = counts_dict_path
+        self.pickler = counts_dict_class(counts_dict_path)
         # initialize the bootstrap resampling indices
         if self.boot_idx is None:
             self.pickler.generate_sampling_idx(n_bootstraps=self.n_boot)
