@@ -16,6 +16,40 @@ def get_region_number(*frames):
         n_regions = len(np.unique(np.concatenate(regions_per_frame)))
     except AttributeError:
         n_regions = 1
+
+
+def region_color_map(base_cmap, n_regions, cycle_length=10):
+    """
+    region_color_map(base_cmap, n_regions, cycle_length=10)
+
+    Create a cyclic discrete matplotlib colour map useful to plot STOMP mask
+    regions.
+
+    Parameters
+    ----------
+    base_cmap : str
+        Name of a builtin matplotlib colormap.
+    n_regions : int
+        Number of expected STOMP mask regions.
+    cycle_length : int
+        Length of the colour cycle.
+
+    Returns
+    -------
+    cmap : matplotlib.colors.LinearSegmentedColormap
+        Colour map to be used with matplotlib.
+    """
+    basemap = plt.cm.get_cmap(base_cmap)  # get one of the builtin maps
+    # draw colours from the map and repeat the cycle
+    repeats = n_regions // cycle_length + 1
+    color_list = np.asarray(basemap(np.linspace(0, 1, cycle_length)))
+    color_list = np.concatenate([color_list] * repeats, axis=0)
+    color_list = color_list[:n_regions]
+    # create the new color map from the cycle
+    new_name = basemap.name + "_c%d_r%d" % (cycle_length, n_regions)
+    cmap = colors.LinearSegmentedColormap.from_list(
+        new_name, color_list, n_regions)
+    return cmap
     return n_regions
 
 
