@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import json
-import operator
 import os
 import shutil
 import sys
@@ -17,6 +15,7 @@ from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
                              DEFAULT_RESAMPLING, get_region_number)
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
+from yet_another_wizz.utils import dump_json
 
 
 parser = argparse.ArgumentParser(
@@ -251,10 +250,7 @@ if __name__ == '__main__':
     scale_names = [outdir.add_scale(rlim) for rlim in rlimits]
     # write bin weight counts for each scale
     for scale in scale_names:
-        with open(outdir[scale].path_weights_file(), "w") as f:
-            json.dump(
-                bin_weights_dict, f, indent=4,
-                default=operator.methodcaller("tolist"))
+        dump_json(bin_weights_dict, outdir[scale].path_weights_file())
 
     sys.stdout.write("\n==> run yet another wizz\n")
     sys.stdout.flush()
@@ -324,7 +320,4 @@ if __name__ == '__main__':
                 print(
                     "writing dummy region counts to:\n    %s" %
                     regioncountsfile)
-                with open(regioncountsfile, "w") as f:
-                    json.dump(
-                        region_counts, f, indent=4,
-                        default=operator.methodcaller("tolist"))
+                dump_json(region_counts, regioncountsfile)

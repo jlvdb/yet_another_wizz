@@ -1,20 +1,12 @@
 import copy
-import json
 import os
 
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.integrate import cumtrapz
+from yet_another_wizz.utils import load_json
 
 from Nz_Fitting import RedshiftData
-
-
-def load_json(file_obj):
-    data_dict = json.load(file_obj)
-    for key, value in data_dict.items():
-        if type(value) is list:
-            data_dict[key] = np.array(value)
-    return data_dict
 
 
 class RegionCounts(object):
@@ -96,8 +88,7 @@ class RegionCounts(object):
 
     @staticmethod
     def _load_counts_dict(path):
-        with open(path) as f:
-            return load_json(f)
+        return load_json(path)
 
     def _update_z(self):
         if self._n_ref is not None and self._zs is not None:
@@ -309,8 +300,7 @@ class AutoCorrelationRegionCounts(RegionCounts):
 def merge_region_counts(counts_dict_list):
     counts_dicts = []
     for path in counts_dict_list:
-        with open(path) as f:
-            counts_dicts.append(load_json(f))
+        counts_dicts.append(load_json(path))
     # create the master counts dict
     master_counts_dict = {"n_regions": 0}
     for key in counts_dicts[0]:
