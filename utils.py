@@ -148,7 +148,7 @@ class BaseClass(object):
         if name == "default":
             self.cosmology = cosmology.default_cosmology.get()
         elif name in NAMED_COSMOLOGIES:
-            self.cosmology = getattr(cosmology, name)()
+            self.cosmology = getattr(cosmology, name)
         else:  # now we need to initialize it with the **cosmo_params
             try:
                 cosmo_class = getattr(cosmology, name)
