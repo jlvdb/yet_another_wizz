@@ -6,8 +6,6 @@ import sys
 
 import numpy as np
 from astropy.cosmology import FLRW, default_cosmology
-from matplotlib import colors
-from matplotlib import pyplot as plt
 
 from .spatial import FastSeparation2Angle
 
