@@ -1,5 +1,6 @@
+import json
+import operator
 import os
-import pickle
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,7 @@ class PdfMaker(BaseClass):
     z_bins = None
     _zmin = None
     _zmax = None
-    _region_pickle = None
+    _region_counts = None
 
     def __init__(self, pair_counts, autocorr, verbose=True):
         self._verbose = verbose
@@ -122,43 +123,46 @@ class PdfMaker(BaseClass):
                 z_sum[bin_idx, reg_idx] = zbin.z.sum()
                 DD_sum[bin_idx, reg_idx] = zbin.DD.sum()
                 DR_sum[bin_idx, reg_idx] = zbin.DR.sum()
-        pickle_dict = {
-            "n_reference": n_ref, "redshift": z_sum,
-            "unknown": DD_sum, "rand": DR_sum, "n_regions": self.n_regions}
+        counts_dict = {
+            "n_reference": n_ref, "sum_redshifts": z_sum,
+            "data_data": DD_sum, "data_random": DR_sum,
+            "n_regions": self.n_regions}
         if self.autocorr:
-            pickle_dict["amplitude_factor"] = np.diff(zbins)
-        self._region_pickle = pickle_dict
+            counts_dict["width_correction"] = np.diff(zbins)
+        self._region_counts = counts_dict
 
-    def getRegionPickle(self):
-        if self._region_pickle is None:
+    def getRegionDict(self):
+        if self._region_counts is None:
             self.collapsePairCounts(self._pair_counts, self.getBinning())
-        return self._region_pickle
+        return self._region_counts
 
-    def writeRegionPickle(self, path):
-        region_pickle = self.getRegionPickle()
-        self._printMessage("writing region pickle to:\n    %s\n" % path)
-        with open(path, "wb") as f:
-            pickle.dump(region_pickle, f)
+    def writeRegionDict(self, path):
+        region_counts = self.getRegionDict()
+        self._printMessage("writing region counts to:\n    %s\n" % path)
+        with open(path, "w") as f:
+            json.dump(
+                region_counts, f, indent=4,
+                default=operator.methodcaller("tolist"))
 
     def getRedshifts(self):
-        region_pickle = self.getRegionPickle()
-        n_ref = region_pickle["n_reference"]
-        redshifts = region_pickle["redshift"]
+        region_counts = self.getRegionDict()
+        n_ref = region_counts["n_reference"]
+        redshifts = region_counts["sum_redshifts"]
         return redshifts.sum(axis=1) / n_ref.sum(axis=1)
 
     def getAmplitudes(self, rescale=False):
-        region_pickle = self.getRegionPickle()
-        DD = region_pickle["unknown"]
-        DR = region_pickle["rand"]
+        region_counts = self.getRegionDict()
+        DD = region_counts["data_data"]
+        DR = region_counts["data_random"]
         amplitudes = DD.sum(axis=1) / DR.sum(axis=1) - 1.0
         if rescale:
-            amplitudes *= region_pickle["amplitude_factor"]
+            amplitudes *= region_counts["width_correction"]
         return amplitudes
 
     def getErrors(self, rescale=False, n_bootstraps=1000):
-        region_pickle = self.getRegionPickle()
-        DD = region_pickle["unknown"]
-        DR = region_pickle["rand"]
+        region_counts = self.getRegionDict()
+        DD = region_counts["data_data"]
+        DR = region_counts["data_random"]
         # generate bootstrap region indices
         boot_idx = np.random.randint(
             0, self.n_regions, size=(n_bootstraps, self.n_regions))
@@ -167,7 +171,7 @@ class PdfMaker(BaseClass):
         samples_DR = DR[:, boot_idx].sum(axis=2)
         samples = samples_DD / samples_DR - 1.0
         if rescale:
-            samples *= self._region_pickle["amplitude_factor"][:, np.newaxis]
+            samples *= self._region_counts["width_correction"][:, np.newaxis]
         # compute classical bootstrap error
         return np.nanstd(samples, axis=1)
 
