@@ -11,8 +11,9 @@ from astropy.io import fits as pyfits
 from yaw_tools.correlation import (bin_table, get_bin_weights,
                                    write_argparse_summary)
 from yaw_tools.folders import CCFolder, Folder
+from yaw_tools.region_counts import get_region_number
 from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
-                             DEFAULT_RESAMPLING, get_region_number)
+                             DEFAULT_RESAMPLING)
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
 from yet_another_wizz.utils import dump_json

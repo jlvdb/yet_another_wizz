@@ -9,6 +9,16 @@ from yet_another_wizz.utils import load_json
 from Nz_Fitting import RedshiftData
 
 
+def get_region_number(*frames):
+    try:
+        # count the unique region indices in the data
+        regions_per_frame = [np.unique(frame.region_idx) for frame in frames]
+        n_regions = len(np.unique(np.concatenate(regions_per_frame)))
+    except AttributeError:
+        n_regions = 1
+    return n_regions
+
+
 class RegionCounts(object):
 
     # uninitialized members
