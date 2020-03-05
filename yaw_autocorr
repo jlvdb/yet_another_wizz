@@ -2,7 +2,6 @@
 import argparse
 import copy
 import os
-import pickle
 import shutil
 import sys
 from multiprocessing import cpu_count
@@ -246,11 +245,11 @@ if __name__ == "__main__":
         dataframes = pool.map(run_ac_single_bin)
         # file names of intermediate products
         paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
-        meta_file = paircoutdir.join("AC_meta.pkl")
+        meta_file = paircoutdir.join("AC_meta.json")
         paircount_file = paircoutdir.join("AC.pqt")
         # write pair count data
-        with open(meta_file, "wb") as f:
-            pickle.dump(dataframes[0][0], f)
+        meta_data = dataframes[0][0]  # same for each bin
+        dump_json(meta_data, meta_file)
         pd.concat([frames[1] for frames in dataframes]).to_parquet(
             paircount_file)
         # create region counts

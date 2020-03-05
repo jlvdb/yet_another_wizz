@@ -278,10 +278,10 @@ if __name__ == '__main__':
             # file names of intermediate products
             paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
             if args.test_bin_edges is None:
-                meta_file = paircoutdir.join("CC_meta.pkl")
+                meta_file = paircoutdir.join("CC_meta.json")
                 paircount_file = paircoutdir.join("CC.pqt")
             else:
-                meta_file = paircoutdir.join("CC_%s_meta.pkl" % redshift)
+                meta_file = paircoutdir.join("CC_%s_meta.json" % redshift)
                 paircount_file = paircoutdir.join("CC_%s.pqt" % redshift)
 
             # count pairs
