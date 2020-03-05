@@ -16,6 +16,10 @@ class PdfMaker(BaseClass):
 
     def __init__(self, pair_counts, autocorr, verbose=True):
         self._verbose = verbose
+        if type(autocorr) is not bool:
+            self._throwException(
+                "'autocorr' must be of type bool", TypeError)
+        self.autocorr = autocorr
         # load the pair counts
         self._printMessage("loading pair counts\n")
         if type(pair_counts) is pd.DataFrame:
@@ -33,7 +37,7 @@ class PdfMaker(BaseClass):
         self._zmin = self._pair_counts.z.min()
         self._zmax = self._pair_counts.z.max()
         self.n_regions = len(self._pair_counts.region_idx.unique())
-        self.autocorr = autocorr
+        self.setCosmology(name="default")
 
     @staticmethod
     def adaptiveBins(nbins, zmin, zmax, redshifts):

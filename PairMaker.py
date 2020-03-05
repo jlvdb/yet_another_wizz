@@ -1,3 +1,4 @@
+import json
 import os
 import pickle
 from multiprocessing import cpu_count
@@ -6,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .spatial import FastSeparation2Angle, SphericalKDTree, count_pairs
-from .utils import BaseClass, ThreadHelper
+from .utils import BaseClass, ThreadHelper, dump_json
 
 
 class PairMaker(BaseClass):
@@ -19,7 +20,7 @@ class PairMaker(BaseClass):
     _dist_weight = True
     _pair_counts = None
 
-    def __init__(self, cosmology=None, threads=None, verbose=True):
+    def __init__(self, threads=None, verbose=True):
         self._verbose = verbose
         self._printMessage("initializing correlator\n")
         # initialize the number of parallel threads
@@ -28,8 +29,7 @@ class PairMaker(BaseClass):
                 self._throwException(
                     "'threads' must be a positive integer", ValueError)
             self._threads = min(max(threads, 1), cpu_count())
-        if cosmology is not None:
-            self.setCosmology(cosmology)
+        self.setCosmology(name="default")
 
     def _packData(self, RA, DEC, Z=None, weights=None, region_idx=None):
         # compare the input data vector lengths
@@ -60,16 +60,16 @@ class PairMaker(BaseClass):
 
     def getMeta(self):
         meta_dict = {
-            "cosmology": self.cosmology, "scale": self._scales,
+            "cosmology": self._cosmo_info,
+            "scale": self._scales,
             "inv_dist_weights": self._dist_weight,
             "n_regions": self.nRegions()}
         return meta_dict
 
     def writeMeta(self, path):
-        self._printMessage("writing meta data to pickle:\n    %s\n" % path)
-        pickle_path = os.path.splitext(path)[0] + ".pkl"
-        with open(pickle_path, "wb") as f:
-            pickle.dump(self.getMeta(), f)
+        json_path = os.path.splitext(path)[0] + ".json"
+        self._printMessage("writing meta data to:\n    %s\n" % json_path)
+        dump_json(self.getMeta(), json_path)
 
     @staticmethod
     def _inputGood(*args):

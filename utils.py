@@ -5,9 +5,12 @@ import operator
 import sys
 
 import numpy as np
-from astropy.cosmology import FLRW, default_cosmology
+from astropy import cosmology
 
 from .spatial import FastSeparation2Angle
+
+
+NAMED_COSMOLOGIES = ["default", *cosmology.parameters.available]
 
 
 def load_json(path):
@@ -115,14 +118,17 @@ class ThreadHelper(object):
 
 class BaseClass(object):
 
-    cosmology = default_cosmology.get()
     _verbose = True
 
     def _printMessage(self, message):
         if self._verbose:
             classname = self.__class__.__name__
             methodname = inspect.stack()[1].function
-            sys.stdout.write("%s::%s - %s" % (classname, methodname, message))
+            if methodname == "__init__":
+                sys.stdout.write("%s - %s" % (classname, message))
+            else:
+                sys.stdout.write("%s::%s - %s" % (
+                    classname, methodname, message))
             sys.stdout.flush()
 
     def _throwException(self, message, exception_type):
@@ -136,12 +142,27 @@ class BaseClass(object):
         sys.stdout.flush()
         raise exception
 
-    def setCosmology(self, cosmology):
-        if type(cosmology) is str:
-            self.cosmology = \
-                default_cosmology.get_cosmology_from_string(cosmology)
-        elif not issubclass(type(cosmology), FLRW):
-            self._throwException(
-                "cosmology must be subclass of type %s" % FLRW, TypeError)
-        else:
-            self.cosmology = cosmology
+    def setCosmology(self, name="default", **cosmo_params):
+        if name != "default":
+            self._printMessage("%s\n" % name)
+        if name == "default":
+            self.cosmology = cosmology.default_cosmology.get()
+        elif name in NAMED_COSMOLOGIES:
+            self.cosmology = getattr(cosmology, name)()
+        else:  # now we need to initialize it with the **cosmo_params
+            try:
+                cosmo_class = getattr(cosmology, name)
+                assert(issubclass(cosmo_class, cosmology.FLRW))
+            except (AttributeError, AssertionError):
+                raise ValueError("invalid cosmology name '%s'" % name)
+            self.cosmology = cosmo_class(**cosmo_params)
+        self._cosmo_info = {"name": name}
+        self._cosmo_info.update(cosmo_params)
+
+    def loadCosmology(self, path):
+        self.setCosmology(**load_json(path))
+
+    def writeCosmology(self, path):
+        self._printMessage(
+            "writing cosmology information to:\n    %s\n" % path)
+        dump_json(self._cosmo_info, path)
