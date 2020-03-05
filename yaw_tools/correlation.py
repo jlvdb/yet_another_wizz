@@ -12,7 +12,7 @@ def get_bin_weights(framelist, filelist):
     weight_dict = {}
     for frame, path in zip(framelist, filelist):
         try:
-            weight = frame.weight.sum()
+            weight = frame.weights.sum()
         except AttributeError:  # assume uniform weights
             weight = len(frame)
         try:
