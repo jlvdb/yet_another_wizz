@@ -16,7 +16,7 @@ from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
                              DEFAULT_RESAMPLING)
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
-from yet_another_wizz.utils import dump_json
+from yet_another_wizz.utils import dump_json, NAMED_COSMOLOGIES
 
 
 parser = argparse.ArgumentParser(
@@ -104,6 +104,10 @@ rand_cat.add_argument(
 analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
     description='controlling the autocorrelation computation')
+analysis_parameters.add_argument(
+    '--cosmology', metavar='STR', choices=NAMED_COSMOLOGIES, default='default',
+    help='astropy cosmology to use for distance calculations '
+         '(default: astropy default)')
 analysis_parameters.add_argument(
     '--scales-min', metavar='LIST', default='100',
     help='comma separated list of inner radii of analysis annulus '
@@ -266,9 +270,14 @@ if __name__ == '__main__':
 
         # run YAW
         est = PairMaker(threads=args.threads, verbose=True)
+        est.setCosmology(args.cosmology)
         est.setRandoms(**randdata[i])
         est.setUnknown(**testdata[i])
         est.setReference(**refdata)
+        # write the used cosmology
+        cosmo_file = outdir.path_cosmology_file()
+        if not os.path.exists(cosmo_file):
+            est.writeCosmology(cosmo_file)
 
         # process scale after scale
         for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
@@ -298,6 +307,7 @@ if __name__ == '__main__':
                 ".json", zlims=None if redshift == "all" else redshift)
             try:
                 pdf = PdfMaker(paircount_file, autocorr=False)
+                pdf.setCosmology(args.cosmology)
                 if args.ref_bin_type[0] == "adapt":
                     raise NotImplementedError()
                 else:

@@ -14,10 +14,10 @@ from yaw_tools.correlation import run_ac_single_bin, load_argparse_summary
 from yaw_tools.region_counts import get_region_number
 from yaw_tools.folders import CCFolder, Folder
 from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
-                             DEFAULT_RESAMPLING, TypeNone)
+                             DEFAULT_RESAMPLING, DEFAULT_COSMOLOGY, TypeNone)
 from yet_another_wizz.PairMaker import PairMaker
 from yet_another_wizz.PdfMaker import PdfMaker
-from yet_another_wizz.utils import dump_json, ThreadHelper
+from yet_another_wizz.utils import dump_json, ThreadHelper, NAMED_COSMOLOGIES
 
 
 parser = argparse.ArgumentParser(
@@ -93,6 +93,9 @@ analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
     description='controlling the autocorrelation computation')
 analysis_parameters.add_argument(
+    '--cosmology', metavar='STR', choices=NAMED_COSMOLOGIES,
+    help='astropy cosmology to use for distance calculations')
+analysis_parameters.add_argument(
     '--scales-min', metavar='LIST',
     help='comma separated list of inner radii of analysis annulus '
          'on sky in kpc')
@@ -147,6 +150,8 @@ if __name__ == "__main__":
             args.resampling = DEFAULT_RESAMPLING
         if args.pair_weighting is None:
             args.pair_weighting = DEFAULT_PAIR_WEIGHTING
+        if args.cosmology is None:
+            args.cosmology = DEFAULT_COSMOLOGY
     else:
         wizz_params = load_argparse_summary(args.param_file)
         # populate argument parser namespace with original argument names
@@ -233,7 +238,13 @@ if __name__ == "__main__":
         sys.stdout.flush()
         # create copies of PairMaker for each redshift bin
         est = PairMaker(threads=args.threads)
+        est.setCosmology(args.cosmology)
+        # write the used cosmology
+        cosmo_file = outdir.path_cosmology_file()
+        if not os.path.exists(cosmo_file):
+            est.writeCosmology(cosmo_file)
         instances = [copy.deepcopy(est) for n in range(len(binning) - 1)]
+
         # iterate the bins in parallel
         pool = ThreadHelper(len(instances), threads=args.threads)
         pool.add_iterable(data.groupby(pd.cut(data.Z, bins=binning)))
@@ -252,11 +263,13 @@ if __name__ == "__main__":
         dump_json(meta_data, meta_file)
         pd.concat([frames[1] for frames in dataframes]).to_parquet(
             paircount_file)
+
         # create region counts
         regioncountsfile = scaledir.path_autocorr_file(
             ".json", suffix=args.output_suffix)
         try:
             pdf = PdfMaker(paircount_file, autocorr=True)
+            pdf.setCosmology(args.cosmology)
             pdf.setBinning(binning)
             pdf.writeRegionDict(regioncountsfile)
         except ValueError:  # empty pair counts file

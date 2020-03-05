@@ -209,6 +209,9 @@ class CCFolder(Folder):
     def path_binning_file(self):
         return self.join("binning%s" % DEFAULT_EXT_DATA)
 
+    def path_cosmology_file(self):
+        return self.join("cosmology.json")
+
     def path_params_file(self):
         return self.join("yet_another_wizz.param")
 
