@@ -1,12 +1,9 @@
 import copy
-import os
 
 import numpy as np
 from matplotlib import colors
 from matplotlib import pyplot as plt
-from scipy.integrate import cumtrapz
 from yet_another_wizz.utils import load_json
-
 from Nz_Fitting import RedshiftData
 
 

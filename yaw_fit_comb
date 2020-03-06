@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import pickle
 # disable threading in numpy
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
 import numpy as np
-from matplotlib.backends.backend_pdf import PdfPages
 from Nz_Fitting import (CombModelBinned, CurveFit, GaussianComb, PowerLawBias,
                         RedshiftData, RedshiftDataBinned)
-from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
-                               DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
+from yaw_tools.folders import (DEFAULT_EXT_DATA, find_cc_scales,
                                init_input_folder, init_output_folder)
 from yaw_tools.utils import (guess_bin_order, write_fit_stats,
                              write_global_cov, write_nz_data, write_parameters)
+from yet_another_wizz.utils import load_json
 
 
 parser = argparse.ArgumentParser(
@@ -68,8 +66,7 @@ if __name__ == "__main__":
         weight_file = scaledir.path_weights_file()
         if not os.path.exists(weight_file):
             raise OSError("bin weights file not found")
-        with open(weight_file, "rb") as f:
-            weight_dict = pickle.load(f)
+        weight_dict = load_json(weight_file)
         # sort and normalize the weights
         weights = np.fromiter(
             (weight_dict[zbin] for zbin in bin_order[:-1]), dtype=np.float32)

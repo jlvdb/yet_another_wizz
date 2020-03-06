@@ -9,7 +9,6 @@ from scipy.optimize import curve_fit
 from yaw_tools.folders import (DEFAULT_EXT_DATA, DEFAULT_EXT_HIST,
                                get_bin_key, ScaleFolder)
 from yaw_tools.utils import guess_bin_order
-
 from Nz_Fitting.utils import Figure
 
 
