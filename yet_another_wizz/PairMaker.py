@@ -1,12 +1,10 @@
-import json
 import os
-import pickle
 from multiprocessing import cpu_count
 
 import numpy as np
 import pandas as pd
 
-from .spatial import FastSeparation2Angle, SphericalKDTree, count_pairs
+from .spatial import count_pairs
 from .utils import BaseClass, ThreadHelper, dump_json
 
 

@@ -5,10 +5,9 @@ import os
 import numpy as np
 from astropy.io import fits as pyfits
 
-from Nz_Fitting import format_variable, RedshiftHistogram
-from yaw_tools.utils import (DEFAULT_CAT_EXT, get_bin_key, tex2png,
-                             write_nz_stats)
-from yet_another_wizz.PdfMaker import PdfMaker
+from Nz_Fitting import RedshiftHistogram
+from yaw_tools.utils import DEFAULT_CAT_EXT, write_nz_stats
+from yet_another_wizz import PdfMaker
 
 
 parser = argparse.ArgumentParser(

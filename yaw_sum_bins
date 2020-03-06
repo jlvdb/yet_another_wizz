@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import pickle
 
 import numpy as np
 
 from Nz_Fitting import RedshiftHistogram
 from yaw_tools.utils import write_nz_stats
+from yet_another_wizz.utils import load_json
 
 
 parser = argparse.ArgumentParser(
@@ -22,8 +22,8 @@ parser.add_argument(
     help='file that lists the bin edges used to compute --nz-file(s) '
          '(default: first data column are bin edges)')
 parser.add_argument(
-    '--weight-pickle',
-    help='python3 pickle file that lists the bin weights in a dictionary with '
+    '--bin-weights',
+    help='JSON file that lists the bin weights in a dictionary with '
          'keys matching the suffices listed with --nz-file')
 parser.add_argument(
     '--sum-suffix', required=True,
@@ -111,13 +111,12 @@ if __name__ == '__main__':
             edges = binning
         bin_data.append(RedshiftHistogram(edges, counts, centers))
 
-    # load the weights form pickles (overwriting values from --nz-file)
-    if args.weight_pickle is not None:
-        with open(args.weight_pickle, "rb") as f:
-            weight_dict = pickle.load(f)
+    # load the weights (overwriting values from --nz-file)
+    if args.bin_weights is not None:
+        weight_dict = load_json(weight_file)
         if set(bin_keys) > set(weight_dict.keys()):
             raise KeyError(
-                "redshift keys '{:}' in pickle file ".format(bin_keys) +
+                "redshift keys '{:}' in weight file ".format(bin_keys) +
                 "do not match the suffices '{:}'".format(weight_dict.keys()))
         for arg_dict in arg_dicts:
             key = arg_dict["suffix"]

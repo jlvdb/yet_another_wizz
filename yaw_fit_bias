@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import pickle
 
 import numpy as np
 from matplotlib import pyplot as plt
 from Nz_Fitting import (BiasFitModel, CurveFit, PowerLawBias, RedshiftData,
                         RedshiftDataBinned)
-from scipy.optimize import curve_fit
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
-                               DEFAULT_EXT_DATA, CCFolder, find_cc_scales,
+                               DEFAULT_EXT_DATA, find_cc_scales,
                                init_input_folder, init_output_folder)
-from yaw_tools.utils import (apply_bias, guess_bin_order, nancov,
+from yaw_tools.utils import (apply_bias, guess_bin_order,
                              write_fit_stats, write_global_cov, write_nz_data,
                              write_parameters)
+from yet_another_wizz.utils import load_json
 
 
 parser = argparse.ArgumentParser(
@@ -87,8 +86,7 @@ if __name__ == "__main__":
         weight_file = scaledir.path_weights_file()
         if not os.path.exists(weight_file):
             raise OSError("bin weights file not found")
-        with open(weight_file, "rb") as f:
-            weight_dict = pickle.load(f)
+        weight_dict = load_json(weight_file)
         # normalize the weights
         weight_dict.pop(args.master_key)
         norm = sum(weight_dict.values())
