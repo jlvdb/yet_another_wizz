@@ -80,7 +80,8 @@ class FastSeparation2Angle(object):
             self.cosmology = \
                 default_cosmology.get_cosmology_from_string(cosmology)
         elif not issubclass(type(cosmology), FLRW):
-            raise TypeError("cosmology must be subclass of type %s" % FLRW)
+            raise TypeError(
+                "cosmology must be subclass of type %s" % str(FLRW))
         else:
             self.cosmology = cosmology
         self._fit_spline()

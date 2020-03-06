@@ -7,8 +7,6 @@ import sys
 import numpy as np
 from astropy import cosmology
 
-from .spatial import FastSeparation2Angle
-
 
 NAMED_COSMOLOGIES = ["default", *cosmology.parameters.available]
 
