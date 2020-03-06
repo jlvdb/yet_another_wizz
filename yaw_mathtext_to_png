@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import argparse
+import os
+
+from yaw_tools.utils import tex2png
+
+
+parser = argparse.ArgumentParser(
+    description='Convert a valid TEX string from an inpt file to a PNG image '
+                'with the same file name and minimal size.')
+parser.add_argument(
+    '-i', '--input', metavar='TEXfile', required=True, help='input TEX file')
+parser.add_argument(
+    '--dpi', type=int, default=600,
+    help='output PNG resolution in DPI (default: %(default)s')
+parser.add_argument(
+    '-o', '--output', metavar='PNGfile', required=False,
+    help='output PNG file (default: as input file)')
+parser.add_argument(
+    '-v', '--verbose', action='store_true')
+
+
+if __name__ == "__main__":
+
+    args = parser.parse_args()
+    if args.verbose:
+        print("==> converting TEX to PNG")
+    if args.output is None:
+        args.output = os.path.splitext(args.input)[0] + ".png"
+    tex2png(args.input, args.output, dpi=args.dpi, verbose=args.verbose)
