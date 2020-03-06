@@ -1,3 +1,4 @@
+import json
 import os
 import pickle
 from multiprocessing import cpu_count
@@ -6,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .spatial import FastSeparation2Angle, SphericalKDTree, count_pairs
-from .utils import BaseClass, ThreadHelper
+from .utils import BaseClass, ThreadHelper, dump_json
 
 
 class PairMaker(BaseClass):
@@ -18,9 +19,8 @@ class PairMaker(BaseClass):
     _scales = None
     _dist_weight = True
     _pair_counts = None
-    _regions = None
 
-    def __init__(self, cosmology=None, threads=None, verbose=True):
+    def __init__(self, threads=None, verbose=True):
         self._verbose = verbose
         self._printMessage("initializing correlator\n")
         # initialize the number of parallel threads
@@ -29,8 +29,7 @@ class PairMaker(BaseClass):
                 self._throwException(
                     "'threads' must be a positive integer", ValueError)
             self._threads = min(max(threads, 1), cpu_count())
-        if cosmology is not None:
-            self.setCosmology(cosmology)
+        self.setCosmology(name="default")
 
     def _packData(self, RA, DEC, Z=None, weights=None, region_idx=None):
         # compare the input data vector lengths
@@ -40,36 +39,37 @@ class PairMaker(BaseClass):
         if weights is not None:
             data["weights"] = weights
             data["weights"] /= weights.mean()
+        # set region indices
         if region_idx is not None:
             data["region_idx"] = region_idx.astype(np.uint8)
-            regions = np.unique(data["region_idx"])
+            # remove objects with negative indices
+            data = data[data.region_idx >= 0]
         else:
             data["region_idx"] = np.zeros(len(RA), dtype=np.uint8)
-            regions = np.zeros(1, dtype=np.uint8)
-        if self._regions is None:
-            self._regions = regions
-        elif self._regions != regions:
-            raise ValueError("region indices do not align with existing ones")
         return data
 
     def nRegions(self):
-        if self._regions is None:
-            return 1
+        if self._random_data is not None:
+            return len(np.unique(self._random_data.region_idx))
+        if self._unknown_data is not None:
+            return len(np.unique(self._unknown_data.region_idx))
+        if self._reference_data is not None:
+            return len(np.unique(self._reference_data.region_idx))
         else:
-            return len(self._regions)
+            return 1
 
     def getMeta(self):
         meta_dict = {
-            "cosmology": self.cosmology, "scale": self._scales,
+            "cosmology": self._cosmo_info,
+            "scale": self._scales,
             "inv_dist_weights": self._dist_weight,
             "n_regions": self.nRegions()}
         return meta_dict
 
     def writeMeta(self, path):
-        self._printMessage("writing meta data to pickle:\n    %s\n" % path)
-        pickle_path = os.path.splitext(path)[0] + ".pkl"
-        with open(pickle_path, "wb") as f:
-            pickle.dump(self.getMeta(), f)
+        json_path = os.path.splitext(path)[0] + ".json"
+        self._printMessage("writing meta data to:\n    %s\n" % json_path)
+        dump_json(self.getMeta(), json_path)
 
     @staticmethod
     def _inputGood(*args):
@@ -94,6 +94,8 @@ class PairMaker(BaseClass):
                 "input data empty or data length does not match", ValueError)
         self._printMessage("loading %d objects\n" % len(RA))
         self._reference_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage(
+            "kept %d of %d objects\n" % (len(self._reference_data), len(RA)))
 
     def writeReference(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -111,6 +113,8 @@ class PairMaker(BaseClass):
                 "input data empty or data length does not match", ValueError)
         self._printMessage("loading %d objects\n" % len(RA))
         self._unknown_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage(
+            "kept %d of %d objects\n" % (len(self._unknown_data), len(RA)))
 
     def writeUnknown(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -128,6 +132,8 @@ class PairMaker(BaseClass):
                 "input data empty or data length does not match", ValueError)
         self._printMessage("lading %d objects\n" % len(RA))
         self._random_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage(
+            "kept %d of %d objects\n" % (len(self._random_data), len(RA)))
 
     def writeRandoms(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)

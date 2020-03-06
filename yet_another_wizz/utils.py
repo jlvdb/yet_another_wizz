@@ -1,48 +1,35 @@
 import inspect
 import json
 import multiprocessing
+import operator
 import sys
 
 import numpy as np
-from astropy.cosmology import FLRW, default_cosmology
-from matplotlib import colors
-from matplotlib import pyplot as plt
+from astropy import cosmology
 
 from .spatial import FastSeparation2Angle
 
 
-def region_color_map(base_cmap, n_regions, cycle_length=10):
-    """
-    region_color_map(base_cmap, n_regions, cycle_length=10)
+NAMED_COSMOLOGIES = ["default", *cosmology.parameters.available]
 
-    Create a cyclic discrete matplotlib colour map useful to plot STOMP mask
-    regions.
 
-    Parameters
-    ----------
-    base_cmap : str
-        Name of a builtin matplotlib colormap.
-    n_regions : int
-        Number of expected STOMP mask regions.
-    cycle_length : int
-        Length of the colour cycle.
+def load_json(path):
+    with open(path) as f:
+        data_dict = json.load(f)
+        # convert lists to numpy arrays
+        for key, value in data_dict.items():
+            if type(value) is list:
+                data_dict[key] = np.array(value)
+    return data_dict
 
-    Returns
-    -------
-    cmap : matplotlib.colors.LinearSegmentedColormap
-        Colour map to be used with matplotlib.
-    """
-    basemap = plt.cm.get_cmap(base_cmap)  # get one of the builtin maps
-    # draw colours from the map and repeat the cycle
-    repeats = n_regions // cycle_length + 1
-    color_list = np.asarray(basemap(np.linspace(0, 1, cycle_length)))
-    color_list = np.concatenate([color_list] * repeats, axis=0)
-    color_list = color_list[:n_regions]
-    # create the new color map from the cycle
-    new_name = basemap.name + "_c%d_r%d" % (cycle_length, n_regions)
-    cmap = colors.LinearSegmentedColormap.from_list(
-        new_name, color_list, n_regions)
-    return cmap
+
+def dump_json(data, path, preview=False):
+    kwargs = dict(indent=4, default=operator.methodcaller("tolist"))
+    if preview:
+        print(json.dumps(data, **kwargs))
+    else:
+        with open(path, "w") as f:
+            json.dump(data, f, **kwargs)
 
 
 class ThreadHelper(object):
@@ -131,14 +118,17 @@ class ThreadHelper(object):
 
 class BaseClass(object):
 
-    cosmology = default_cosmology.get()
     _verbose = True
 
     def _printMessage(self, message):
         if self._verbose:
             classname = self.__class__.__name__
             methodname = inspect.stack()[1].function
-            sys.stdout.write("%s::%s - %s" % (classname, methodname, message))
+            if methodname == "__init__":
+                sys.stdout.write("%s - %s" % (classname, message))
+            else:
+                sys.stdout.write("%s::%s - %s" % (
+                    classname, methodname, message))
             sys.stdout.flush()
 
     def _throwException(self, message, exception_type):
@@ -152,39 +142,27 @@ class BaseClass(object):
         sys.stdout.flush()
         raise exception
 
-    def setCosmology(self, cosmology):
-        if type(cosmology) is str:
-            self.cosmology = \
-                default_cosmology.get_cosmology_from_string(cosmology)
-        elif not issubclass(type(cosmology), FLRW):
-            self._throwException(
-                "cosmology must be subclass of type %s" % FLRW, TypeError)
-        else:
-            self.cosmology = cosmology
+    def setCosmology(self, name="default", **cosmo_params):
+        if name != "default":
+            self._printMessage("%s\n" % name)
+        if name == "default":
+            self.cosmology = cosmology.default_cosmology.get()
+        elif name in NAMED_COSMOLOGIES:
+            self.cosmology = getattr(cosmology, name)
+        else:  # now we need to initialize it with the **cosmo_params
+            try:
+                cosmo_class = getattr(cosmology, name)
+                assert(issubclass(cosmo_class, cosmology.FLRW))
+            except (AttributeError, AssertionError):
+                raise ValueError("invalid cosmology name '%s'" % name)
+            self.cosmology = cosmo_class(**cosmo_params)
+        self._cosmo_info = {"name": name}
+        self._cosmo_info.update(cosmo_params)
 
+    def loadCosmology(self, path):
+        self.setCosmology(**load_json(path))
 
-def write_argparse_summary(args, outputpath, ignore=[]):
-    """
-    write a file summarizing all input parameters
-    ARGS:    args:       argparser.Namespace object
-             outputpath: file path
-             ignore:     list with Namespace objects to omit
-    """
-    ignore = list(ignore)
-    ignore.extend(["redo", "wdir"])
-    arg_dict = {
-        key: value for key, value in vars(args).items()
-        if key not in ignore}
-    with open(outputpath, 'w') as f:
-        json.dump(arg_dict, f)
-
-
-def load_argparse_summary(filepath):
-    """
-    load file produced with write_argparse_summary(), recovering original data
-    type
-    ARGS:    filepath: file to load
-    RETURNS: dictionary with input flags
-    """
-    with open(filepath) as f:
-        return json.load(f)
+    def writeCosmology(self, path):
+        self._printMessage(
+            "writing cosmology information to:\n    %s\n" % path)
+        dump_json(self._cosmo_info, path)
