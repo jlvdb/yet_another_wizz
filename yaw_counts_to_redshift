@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import warnings
+from hashlib import md5
+
+import numpy as np
+from Nz_Fitting import RedshiftDataBinned
+from yaw_tools.folders import (check_autocorrelation, find_cc_scales,
+                               init_input_folder, init_output_folder)
+from yaw_tools.region_counts import (AutoCorrelationRegionCounts,
+                                     CrossCorrelationRegionCounts,
+                                     RegionCountsConverter)
+from yaw_tools.utils import (DEFAULT_HBOOT, DEFAULT_HCOV, DEFAULT_HDATA,
+                             guess_bin_order, write_global_cov, write_nz_data)
+
+
+parser = argparse.ArgumentParser(
+    description='Deserializing yet_another_wizz region counts files, '
+                'optionally applying bias corrections.')
+parser.add_argument(
+    'wdir', metavar='DATAFOLDER',
+    help='an output folder of yet_another_wizz')
+parser.add_argument(
+    '--bias-spec',
+    help='suffix of the auto-correlation files to apply for correcting the '
+         'spectroscopic bias (optional)')
+parser.add_argument(
+    '--bias-phot',
+    help='suffix of the auto-correlation files to apply for correcting the '
+         'photometric bias (optional)')
+parser.add_argument(
+    '--seed', default='KV450',
+    help='string to seed the random generator (default: %(default)s)')
+parser.add_argument(
+    '--n-boot', type=int, default=1000,
+    help='number of bootstrap realisations for covariance estimation')
+parser.add_argument(
+    '--bin-order', nargs='*',
+    help='order of redshift keys (e.g. 0.101z1.201) in which the cross-'
+         'correlation files are inserted into the global covariance matrix, '
+         'the full sample should come last (default: sorted automatically)')
+parser.add_argument(
+    '-o', '--output',
+    help='folder in which the output is stored (optional)')
+
+
+if __name__ == "__main__":
+
+    args = parser.parse_args()
+    indir = init_input_folder(args)
+    outdir = init_output_folder(args, indir)
+    scales = find_cc_scales(indir)
+
+    # initialize the random state
+    hasher = md5(bytes(args.seed, "utf-8"))
+    hashval = bytes(hasher.hexdigest(), "utf-8")
+    np.random.seed(np.frombuffer(hashval, dtype=np.uint32))
+    # initialize region bootstrapping of region counts converter, all data
+    # output will be based on the same region realizations
+    json2data = RegionCountsConverter(args.n_boot)
+
+    # convert the region counts
+    for scale, scaledir in indir.iter_scales():
+        print("==> processing scale: {:}".format(scale))
+
+        # check which correlation region counts exist
+        cc_counts_dicts = scaledir.list_crosscorr_files(".json")
+        if len(cc_counts_dicts) == 0:
+            raise ValueError("no cross-correlation counts found")
+        # figure out whether to use spectroscopic auto-correlation
+        ac_spec_counts_dict, use_wss = check_autocorrelation(
+            scaledir, args.bias_spec, "spec.")
+        # figure out whether to use photometric auto-correlation
+        ac_phot_counts_dict, use_wpp = check_autocorrelation(
+            scaledir, args.bias_phot, "phot.")
+
+        # NaNs are to be expected so we ignore warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            # process auto-correlation counts and compute the bias correction
+            header_key = "w_sp"
+            bias_key = []
+            autocorrs = 1.0
+            autocorr_samples = 1.0
+            if use_wss:
+                json2data.set_bias(None, None)  # clear bias arrays
+                json2data.load_counts_dict(
+                    ac_spec_counts_dict, AutoCorrelationRegionCounts)
+                # get the data
+                w_ss_data = json2data.get_data()
+                autocorrs *= w_ss_data.n(all=True)
+                autocorr_samples *= w_ss_data.getSamples(all=True)
+                # write the data
+                path = outdir[scale].incorporate(json2data.counts_dict_path)
+                write_nz_data(
+                    path, w_ss_data, DEFAULT_HDATA.format("w_ss"),
+                    DEFAULT_HBOOT.format("w_ss"), DEFAULT_HCOV.format("w_ss"),
+                    stats=False, dtype_message="autocorrelation")
+                bias_key.append("w_ss")
+            if use_wpp:
+                json2data.set_bias(None, None)  # clear bias arrays
+                json2data.load_counts_dict(
+                    ac_phot_counts_dict, AutoCorrelationRegionCounts)
+                # get the data
+                w_pp_data = json2data.get_data()
+                autocorrs *= w_pp_data.n(all=True)
+                autocorr_samples *= w_pp_data.getSamples(all=True)
+                # write the data
+                path = outdir[scale].incorporate(json2data.counts_dict_path)
+                write_nz_data(
+                    path, w_pp_data, DEFAULT_HDATA.format("w_pp"),
+                    DEFAULT_HBOOT.format("w_pp"), DEFAULT_HCOV.format("w_pp"),
+                    stats=False, dtype_message="autocorrelation")
+                bias_key.append("w_pp")
+            if len(bias_key) > 0:
+                header_key += " / sqrt(" + " / ".join(bias_key) + ")"
+            # apply the bias correction
+            if np.all(autocorrs == 1.0):
+                bias, bias_samples = None, None  # fallback values
+            else:
+                bias = np.sqrt(autocorrs)
+                bias_samples = np.sqrt(autocorr_samples)
+
+            # figure out the bin order
+            if args.bin_order is None:
+                args.bin_order = guess_bin_order(cc_counts_dicts.keys())
+
+            # process the cross-correlation counts
+            w_sp_data = []  # collect for global covariance
+            print("writing n(z) statistics to: stats/")
+            for zbin in args.bin_order:
+                json2data.set_bias(bias, bias_samples)
+                try:
+                    json2data.load_counts_dict(
+                        cc_counts_dicts[zbin], CrossCorrelationRegionCounts)
+                except KeyError:
+                    raise KeyError(
+                        "invalid redshift bin '{:}' in --bin-order".format(
+                            zbin))
+                w_sp_data.append(json2data.get_data())
+                # write the data
+                path = outdir[scale].incorporate(json2data.counts_dict_path)
+                write_nz_data(
+                    path, w_sp_data[-1], DEFAULT_HDATA.format(header_key),
+                    DEFAULT_HBOOT.format(header_key),
+                    DEFAULT_HCOV.format(header_key), stats=True)
+
+            # write the global covariance matrix
+            data_joint = RedshiftDataBinned(w_sp_data[:-1], w_sp_data[-1])
+            header = "global correlation amplitude "
+            header += "({:}) covariance matrix".format(header_key)
+            write_global_cov(
+                outdir[scale], data_joint, args.bin_order, header, "crosscorr")

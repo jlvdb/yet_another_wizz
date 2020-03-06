@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+import argparse
+import os
+from collections import Counter
+
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy.optimize import curve_fit
+from yaw_tools.folders import (DEFAULT_EXT_DATA, DEFAULT_EXT_HIST,
+                               get_bin_key, ScaleFolder)
+from yaw_tools.utils import guess_bin_order
+
+from Nz_Fitting.utils import Figure
+
+
+parser = argparse.ArgumentParser(
+    description='SURPRISE!')
+parser.add_argument(
+    '-p', '--plot', action='append', nargs='*', required=True,
+    help='spicify next plot layer: input folder [t:type s:style c:color, '
+         'l:label o:offset]\nwhere type specifies the data type to plot '
+         '(crosscorr shiftfit combfit), style specifies the graph type (hist, '
+         'ebar, line) and color is a valid matplotlib color string')
+parser.add_argument(
+    '--bin-marker', choices=("shade", "text", "both"),
+    help='indicate tomographic bins in the plots (default: no indication)')
+parser.add_argument(
+    '--auto-offset', action='store_true',
+    help='automatically offset error bar plots to improve visibility with '
+         'multiple layers')
+parser.add_argument(
+    '--z-max', type=float, help='maximum of x (redshift) axes')
+parser.add_argument(
+    '-o', '--output',
+    help='where to store the output plot, if not given, open an interactive '
+         'window')
+
+key_map = {
+    "t": "type", "s": "style", "c": "color", "o": "offset", "l": "label"}
+
+
+if __name__ == "__main__":
+    
+    args = parser.parse_args()
+    print("==> make n(z) check plot")
+
+    # check and autofill omitted arguments
+    arg_list = []
+    for pltargs in args.plot:
+        arg_str = "--plot " + " ".join(pltargs)
+        if len(pltargs) == 0:
+            raise parser.error("no input folder supplied with '--plot'")
+        if len(pltargs) > (len(key_map) + 1):
+            raise parser.error(
+                "too many arguments in '%s'" % arg_str)
+        arg_dict = {"data": pltargs[0]}
+        for i, arg in enumerate(pltargs[1:], 2):
+            try:
+                key, value = arg.split(":")
+            except ValueError:
+                raise parser.error(
+                    "arguement %d in '%s' comes without an arguement key" %
+                        (i, arg_str))
+            try:
+                arg_dict[key_map[key]] = value
+            except KeyError:
+                raise parser.error(
+                    "invalid key '%s' in '%s'" % (key, arg_str))
+        arg_list.append(arg_dict)
+
+    # load data
+    zmax = 0.0
+    bin_order = None
+    norm_idx = None
+    draw_legend = False
+    style_counter = Counter()
+    for i, arg_dict in enumerate(arg_list):
+        if not os.path.exists(arg_dict["data"]):
+            raise OSError("input folder '%s' not found" % arg_dict["data"])
+        print("loading from: %s" % arg_dict["data"])
+        # parse the input files using optional type argument
+        folder = ScaleFolder(arg_dict["data"])
+        if "type" in arg_dict:
+            try:
+                getfiles = getattr(folder, "list_%s_files" % arg_dict["type"])
+                files = dict(getfiles(DEFAULT_EXT_DATA))
+            except AttributeError:
+                raise ValueError("invalid data type '%s'" % arg_dict["type"])
+        else:
+            matches = folder.find(".*\d\.\d*z\d\.\d*.*" + DEFAULT_EXT_DATA)
+            files = {}
+            for match in matches:
+                zbin = get_bin_key(match)
+                if zbin in files:
+                    raise KeyError(
+                        ("found multiple matches for key '%s' " % zbin) +
+                        ("in '%s' " % folder.root) +
+                        "specify type argument accordingly")
+                else:
+                    files[zbin] = match
+        if len(files) == 0:
+            raise ValueError("no valid data in '%s'" % arg_dict["data"])
+        # check that all bins are the same
+        if bin_order is None:
+            bin_order = guess_bin_order(files.keys())
+        else:
+            if bin_order != guess_bin_order(files.keys()):
+                raise ValueError("redshifts bins of data sets do not match")
+        # load the data files
+        data_list = []
+        n_data = None
+        for zbin in bin_order:
+            is_hist = os.path.splitext(files[zbin])[0] == DEFAULT_EXT_HIST
+            if is_hist:
+                data = np.loadtxt(files[zbin])[:-1, 1:]
+            else:
+                data = np.loadtxt(files[zbin])
+            xmax = np.nanmax(data[:, 0])
+            if np.isfinite(xmax):  # ignore INFs
+                zmax = max(xmax + 0.1, zmax)
+            data_list.append(data)
+        arg_dict["data"] = data_list
+        # figure out the correct style
+        if "style" not in arg_dict:
+            if data.shape[1] == 2:
+                arg_dict["style"] = "hist"
+                norm_idx = i
+            elif data.shape[0] > 90:
+                arg_dict["style"] = "line"
+                norm_idx = i
+            else:
+                arg_dict["style"] = "ebar"
+        style_counter[arg_dict["style"]] += 1
+        # set the default label
+        if "label" not in arg_dict:
+            arg_dict["label"] = None
+        else:
+            draw_legend = True
+    # set the remaining defaults
+    auto_offsets = np.arange(style_counter["ebar"]) * 0.0075
+    auto_offsets -= auto_offsets.max() / 2.0
+    for i, arg_dict in enumerate(arg_list):
+        # figure out the color
+        if "color" not in arg_dict:
+            if arg_dict["style"] == "ebar" and style_counter["ebar"] == 1:
+                arg_dict["color"] = "k"
+            elif arg_dict["style"] == "hist" and style_counter["hist"] == 1:
+                arg_dict["color"] = "0.5"
+            else:
+                arg_dict["color"] = None
+        # set offsets
+        if "offset" not in arg_dict:
+            if args.auto_offset and style_counter["ebar"] > 1:
+                arg_dict["offset"] = auto_offsets[i]
+            else:
+                arg_dict["offset"] = 0.0
+        else:
+            arg_dict["offset"] = float(arg_dict["offset"])
+    # unpack the bin limits
+    bin_lims = [tuple(float(f) for f in zbin.split("z")) for zbin in bin_order]
+
+    # normalize all data
+    norm_reference = arg_list[0 if norm_idx is None else norm_idx]
+    # first normalize all data that can be integrated
+    for arg_dict in arg_list:
+        for i, data in enumerate(arg_dict["data"]):
+            if arg_dict["style"] != "ebar":
+                norm = np.trapz(data[:, 1], x=data[:, 0])
+                data[:, 1:] /= norm
+    # now normalize the rest since the reference normalization may have changed
+    for arg_dict in arg_list:
+        for i, data in enumerate(arg_dict["data"]):
+            if arg_dict["style"] == "ebar":
+                # interpolate the reference data on the current data x-values
+                reference = norm_reference["data"][i]
+                # supress NaNs
+                mask_ref = np.isfinite(norm_reference["data"][i][:, 1])
+                mask_dat = np.isfinite(data[:, 1])
+                ref_data = np.interp(
+                    data[mask_dat, 0], *reference[mask_ref, :2].T)
+                ref_data[~np.isfinite(ref_data)] = 0.0
+                # fit the data amplitude to the reference, weight by reference
+                # data amplitude to give the best match
+                good_mask = ref_data > 0.0
+                good_weights = ref_data[good_mask]**-1
+                bad_weights = good_weights.min()
+                # negative data points receive a minimum weight > 0.0
+                weights = np.empty_like(ref_data)
+                weights[good_mask] = good_weights
+                weights[~good_mask] = bad_weights
+                # supress NaNs
+                norm = curve_fit(
+                    lambda z, *params: data[mask_dat, 1] / params[0],
+                    data[mask_dat, 0], ref_data, p0=1.0, sigma=weights)[0][0]
+                data[:, 1:] /= norm
+
+    # make the plot
+    fig = Figure(len(bin_order))
+    for zorder, arg_dict in enumerate(arg_list):
+        for ax, data in zip(fig.axes, arg_dict["data"]):
+            # make the layer
+            if arg_dict["style"] == "ebar":
+                try:
+                    z, p, dp = data.T
+                except:
+                    ValueError("data misses error bars")
+                handle = ax.errorbar(
+                    z + arg_dict["offset"], p, yerr=dp,
+                    marker=".", ls="none", color=arg_dict["color"],
+                    zorder=zorder)
+            elif arg_dict["style"] == "line":
+                z, p = data.T[:2]
+                handle = ax.plot(
+                    z + arg_dict["offset"], p,
+                    color=arg_dict["color"], zorder=zorder)[0]
+                try:
+                    dp = data[:, 2]
+                    lower = data[:, 1] - data[:, 2] / 2.0
+                    upper = data[:, 1] + data[:, 2] / 2.0
+                    ax.fill_between(
+                        z + arg_dict["offset"], p - dp / 2.0, p + dp / 2.0,
+                        color=handle.get_color(), alpha=0.3, zorder=zorder)
+                except ValueError:
+                    pass
+            else:
+                z, p = data.T[:2]
+                line = ax.plot(
+                    z + arg_dict["offset"], p,
+                    color=arg_dict["color"], zorder=zorder)
+                handle = ax.fill_between(
+                    z + arg_dict["offset"], 0.0, p,
+                    color=line[0].get_color(), alpha=0.5)
+        arg_dict["handle"] = handle
+
+    # add the legend
+    if draw_legend:
+        fig.legend(
+            [arg_dict["handle"] for arg_dict in arg_list],
+            [arg_dict["label"] for arg_dict in arg_list])
+    # mark tomographic bins
+    if args.bin_marker in ("shade", "both"):
+        fig.vspans(bin_lims)
+    if args.bin_marker in ("text", "both"):
+        bin_texts = [
+            r"$%.2f \leq z_{\rm B} < %.2f$" % lims for lims in bin_lims]
+        fig.annotate(bin_texts, (0.75, 0.9))
+    # format the axes
+    fig.set_xlim(0.0, args.z_max if args.z_max is not None else zmax)
+    fig.set_xlabel(r"$z$")
+    if norm_idx is not None:
+        fig.set_ylabel(r"$p(z)$")
+    # optimize the subplot grid
+    fig.no_gaps()
+    # produce the output
+    if args.output is None:
+        plt.show()
+    else:
+        print("writing plot: %s" % args.output)
+        fig.savefig(args.output)
