@@ -89,6 +89,8 @@ if __name__ == "__main__":
                         break
         master_data = bins_data.pop()
         # create a joint data container (automatically computes global covar.)
+        print("selecting covariance type: %s" % args.cov_type)
+        master_data.setCovMatType(args.cov_type)
         joint_data = RedshiftDataBinned(bins_data, master_data)
 
         # fit the bias model
