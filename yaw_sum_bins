@@ -113,7 +113,7 @@ if __name__ == '__main__':
 
     # load the weights (overwriting values from --nz-file)
     if args.bin_weights is not None:
-        weight_dict = load_json(weight_file)
+        weight_dict = load_json(args.bin_weights)
         if set(bin_keys) > set(weight_dict.keys()):
             raise KeyError(
                 "redshift keys '{:}' in weight file ".format(bin_keys) +
