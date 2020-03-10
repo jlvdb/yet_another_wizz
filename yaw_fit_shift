@@ -124,7 +124,7 @@ if __name__ == "__main__":
         write_parameters(fitparams, paramdir, precision=4, notation="decimal")
 
         # evaluate the best fit result
-        shift_fit_data = fit_model.evaluate(joint_hist, fitparams)
+        shift_fit_data = fit_model.evaluate(joint_data, fitparams)
 
         # write the shifted redshift histograms
         print("writing n(z) statistics to: stats/")
