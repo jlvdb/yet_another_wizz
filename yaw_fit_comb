@@ -102,14 +102,14 @@ if __name__ == "__main__":
         print(fitparams)
         paramdir = outdir[scale].join("comb_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
-        write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
+        write_fit_stats(fitparams, paramdir, precision=2, notation="decimal")
         write_parameters(fitparams, paramdir, precision=3, notation="exp")
 
         # evaluate the best fit result
         comb_fit_data = fit_model.evaluate(
             [np.linspace(0.0, zmax, 200)] * 6, fitparams)
 
-        # write the shifted redshift histograms
+        # write the fitted n(z) models
         N = args.n_comp
         header = "col 1 = mean redshift\n"
         header += "col 2 = comb fit (%d components)\n" % N

@@ -120,7 +120,7 @@ if __name__ == "__main__":
         print(fitparams)
         paramdir = outdir[scale].join("shift_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
-        write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
+        write_fit_stats(fitparams, paramdir, precision=2, notation="decimal")
         write_parameters(fitparams, paramdir, precision=4, notation="decimal")
 
         # evaluate the best fit result
