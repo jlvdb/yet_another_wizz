@@ -122,7 +122,7 @@ def tex2png(texfile, pngfile=None, dpi=600, verbose=False):
             for i in range(max(start - 5, 0), min(end + 5, len(lines))):
                 print(lines[i].strip("\n"))
             print("#" * 40)
-            sys.exit("ERROR:something went wrong during conversion to PDF")
+            sys.exit("ERROR: something went wrong during conversion to PDF")
         # run pdftocairo
         with open(basepath + ".log", "w") as pipe:
             returncode = subprocess.call([
@@ -148,20 +148,27 @@ def tex2png(texfile, pngfile=None, dpi=600, verbose=False):
         rmtree(tmpdir)
 
 
-def write_fit_stats(fitparams, folder, precision=3, notation="decimal"):
+def write_fit_stats(
+        fitparams, folder, precision=3, notation="decimal", to_png=True):
     if not os.path.exists(folder):
         os.mkdir(folder)
     # write tex files
-    with open(os.path.join(folder, "chi_squared.tex"), "w") as f:
+    texfile = os.path.join(folder, "chi_squared.tex")
+    with open(texfile, "w") as f:
         chisq = fitparams.chiSquare()
         string = format_variable(
             chisq, error=None, precision=precision, notation=notation)
         f.write("$\\chi^2 = %s$\n" % string.strip(" $"))
-    with open(os.path.join(folder, "chi_squared_ndof.tex"), "w") as f:
+    if to_png:
+        tex2png(texfile)
+    texfile = os.path.join(folder, "chi_squared_ndof.tex")
+    with open(texfile, "w") as f:
         chisq /= fitparams.nDoF()
         string = format_variable(
             chisq, error=None, precision=precision, notation=notation)
         f.write("$\\chi^2_{\\rm dof} = %s$\n" % string.strip(" $"))
+    if to_png:
+        tex2png(texfile)
 
 
 def write_parameters(
@@ -203,7 +210,7 @@ def write_parameters(
         fitparams.paramCovar(), header=header)
 
 
-def write_nz_stats(statdir, data, zkey=None):
+def write_nz_stats(statdir, data, zkey=None, to_png=True):
     # write mean and median redshifts
     if not os.path.exists(statdir):
         os.mkdir(statdir)
@@ -226,7 +233,8 @@ def write_nz_stats(statdir, data, zkey=None):
                 use_siunitx=True)
             f.write("$%s = %s$\n" % (TEX, string.strip("$")))
         # convert to PNG
-        tex2png(statfile)
+        if to_png:
+            tex2png(statfile)
 
 
 def write_nz_data(
