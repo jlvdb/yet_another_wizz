@@ -184,8 +184,6 @@ class SphericalKDTree(object):
     @staticmethod
     def _position_sky2sphere(RA, DEC):
         """
-        _position_sky2sphere(RA, DEC)
-
         Maps celestial coordinates onto a unit-sphere in three dimensions
         (x, y, z).
 
@@ -218,8 +216,6 @@ class SphericalKDTree(object):
     @staticmethod
     def _distance_sky2sphere(dist_sky):
         """
-        _distance_sky2sphere(dist_sky)
-
         Converts angular separation in celestial coordinates to the
         Euclidean distance in (x, y, z) space.
 
@@ -240,8 +236,6 @@ class SphericalKDTree(object):
     @staticmethod
     def _distance_sphere2sky(dist_sphere):
         """
-        _distance_sphere2sky(dist_sphere)
-
         Converts Euclidean distance in (x, y, z) space to angular separation in
         celestial coordinates.
 
@@ -261,8 +255,6 @@ class SphericalKDTree(object):
 
     def query_radius(self, RA, DEC, r):
         """
-        query_radius(RA, DEC, r)
-
         Find all data points within an angular aperture r around a reference
         point with coordiantes (RA, DEC) obeying the spherical geometry.
 
@@ -294,8 +286,6 @@ class SphericalKDTree(object):
 
     def query_shell(self, RA, DEC, rmin, rmax):
         """
-        query_radius(RA, DEC, r)
-
         Find all data points within an angular annulus rmin <= r < rmax around
         a reference point with coordiantes (RA, DEC) obeying the spherical
         geometry.
@@ -331,12 +321,46 @@ class SphericalKDTree(object):
 def count_pairs(
         group_reference, group_other, rlimits, comoving=False,
         cosmology=None, inv_distance_weight=True):
+    """
+    Count pairs between a reference and an unknown data catalouge with a
+    constant physical or comoving separation r_min <= r < r_max using k-nearest
+    neighbour search. Individual object weights from both catalogues and an
+    inverse distance weight can be included.
+
+    Parameters
+    ----------
+    group_reference : tuple (as returned by pandas.DataFrame.groupby)
+        Reference object catalogue around which the other catalogue is queried,
+        must contain a pandas.DataFrame with keys 'RA' (right ascension), 'DEC'
+        (declination), 'z' (redshift) and optionally 'weights' (object weights)
+    group_other : tuple (as returned by pandas.DataFrame.groupby)
+        Other catalogue from which pairs are selected using a k-nearest
+        neighbour tree, must contain a pandas.DataFrame with keys 'RA' (right
+        ascension), 'DEC' (declination) and optionally 'weights' (object
+        weights)
+    rlimits : tuple
+        Tuple of minimum and maximum projected comoving/physical distance used
+        to select object pairs.
+    comoving : bool
+        Whether the rlimits are comoving or physical projected distances.
+    cosmology : astropy.cosmology
+        An astropy cosmology instance used for distance calculations.
+    inv_distance_weight : bool
+        Whether or not to use the inverse distance of two partners as
+        additional weight for the pair.
+
+    Returns
+    -------
+    pair_counts : pandas.DataFrame
+        DataFrame with reference catalogue indices and sum of pair weights
+        associated with each reference object.
+    """
     # unpack the pandas groups and dictionary
     region_idx, data_reference = group_reference
     region_idx, data_other = group_other
     try:
         weights_other = data_other.weights.to_numpy()
-    except Exception:
+    except Exception:  # default to unity weight
         weights_other = np.ones(len(data_other))
     # initialize fast angular diameter distance calculator
     get_angle = FastSeparation2Angle()
@@ -356,18 +380,19 @@ def count_pairs(
             # query the unknown tree between ang_min and ang_max
             idx, distance = tree.query_shell(
                 item.RA, item.DEC, ang_min[n], ang_max[n])
-            # compute DD pair count including optional weights
+            # compute pair count including optional weights
             if len(idx) > 0:
                 weight = weights_other[idx]
                 if inv_distance_weight:
                     pairs[n] = np.sum(weight / distance)
                 else:
                     pairs[n] = np.sum(weight)
-                if "weights" in item:
+                if "weights" in item:  # reference weight
                     pairs[n] *= item.weights
-            else:
+            else:  # fallback for an empty slice
                 pairs[n] = 0.0
-    else:
+    else:  # fallback for an empty group
         pairs = np.zeros(len(data_reference))
+    # indices are needed to map the counts back to the correct reference object
     pair_counts = pd.DataFrame({"pairs": pairs}, index=data_reference.index)
     return pair_counts
