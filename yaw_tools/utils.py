@@ -140,6 +140,10 @@ def tex2png(texfile, pngfile=None, dpi=600, verbose=False):
             sys.exit("ERROR:something went wrong during conversion to PNG")
         if verbose:
             print("created output PNG:     %s.png" % pngfile)
+    except OSError:
+        print(
+            "WARNING: pdflatex or pdftocairo are not availble, could not "
+            "convert TEX to PNG")
     finally:
         rmtree(tmpdir)
 
