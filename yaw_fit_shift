@@ -116,7 +116,7 @@ if __name__ == "__main__":
         # fit the bias model
         joint_data.setCovMatType(args.cov_type)
         optimizer = CurveFit(fit_model, joint_data)
-        fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 1000)
+        fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 2000)
         print(fitparams)
         paramdir = outdir[scale].join("shift_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
