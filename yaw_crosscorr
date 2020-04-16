@@ -117,9 +117,14 @@ analysis_parameters.add_argument(
     help='comma separated list of outer radii of analysis annulus '
          'on sky in kpc (default: %(default)s)')
 analysis_parameters.add_argument(
+    '--scales-type', metavar='STR', choices=('physical', 'comoving'),
+    default='physical',
+    help='type of distance measure for analysis annulus '
+         '(default: %(default)s)')
+analysis_parameters.add_argument(
     '--across-regions', metavar='Y/N', default='N',
     help='wether to include pairs with galaxies from neighboring spatial '
-         'regions')
+         'regions (default: %(default)s)')
 analysis_parameters.add_argument(
     '--z-min', metavar='FLOAT', type=float, default=0.01,
     help='minimum analysis redshift (default: %(default)s)')
@@ -282,7 +287,8 @@ if __name__ == '__main__':
         # process scale after scale
         for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
             scaledir = outdir[scale_name]
-            sys.stdout.write("==> running scale %s\n" % scale_name)
+            sys.stdout.write(
+                "==> running scale %s (%s)\n" % (scale_name, args.scales_type))
             sys.stdout.flush()
             # file names of intermediate products
             paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
@@ -295,7 +301,8 @@ if __name__ == '__main__':
 
             # count pairs
             est.countPairs(
-                rmin=rmin, rmax=rmax, comoving=False,
+                rmin=rmin, rmax=rmax,
+                comoving=(args.scales_type == "comoving"),
                 inv_distance_weight=(args.pair_weighting == "Y"),
                 D_R_ratio=D_R_ratio,
                 regionize_unknown=(args.across_regions == "N"))

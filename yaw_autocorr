@@ -103,6 +103,11 @@ analysis_parameters.add_argument(
     help='comma separated list of outer radii of analysis annulus '
          'on sky in kpc')
 analysis_parameters.add_argument(
+    '--scales-type', metavar='STR', choices=('physical', 'comoving'),
+    default='physical',
+    help='type of distance measure for analysis annulus '
+         '(default: %(default)s)')
+analysis_parameters.add_argument(
     '--across-regions', metavar='Y/N', default='N',
     help='wether to include pairs with galaxies from neighboring spatial '
          'regions')
@@ -233,7 +238,8 @@ if __name__ == "__main__":
 
     for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
         scaledir = outdir[scale_name]
-        sys.stdout.write("==> running scale %s\n" % scale_name)
+        sys.stdout.write(
+            "==> running scale %s (%s)\n" % (scale_name, args.scales_type))
         sys.stdout.flush()
         # create copies of PairMaker for each redshift bin
         est = PairMaker(threads=args.threads)
@@ -249,6 +255,7 @@ if __name__ == "__main__":
         pool.add_iterable(data.groupby(pd.cut(data.Z, bins=binning)))
         pool.add_iterable(rand.groupby(pd.cut(rand.Z, bins=binning)))
         pool.add_constant((rmin, rmax))
+        pool.add_constant(args.scales_type == "comoving")
         pool.add_constant(args.R_D_ratio)
         pool.add_constant(args.across_regions == "N")
         pool.add_iterable(instances)
