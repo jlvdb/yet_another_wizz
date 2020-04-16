@@ -17,6 +17,9 @@ DEFAULT_CAT_EXT = 1
 DEFAULT_COSMOLOGY = "default"
 DEFAULT_RESAMPLING = 10
 DEFAULT_PAIR_WEIGHTING = "Y"
+DEFAULT_SCALE_TYPE = "physical"
+DEFAULT_ACROSS_REGIONS = "N"
+DEFAULT_DR_RATIO = "local"
 
 DEFAULT_HDATA = "col 1 = mean redshift\n"
 DEFAULT_HDATA += "col 2 = correlation amplitude ({:})\n"

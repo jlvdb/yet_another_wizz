@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(
     description='SURPRISE!')
 parser.add_argument(
     '-p', '--plot', action='append', nargs='*', required=True,
-    help='spicify next plot layer: input folder [t:type s:style c:color, '
+    help='specify next plot layer: input folder [t:type s:style c:color, '
          'l:label o:offset]\nwhere type specifies the data type to plot '
          '(crosscorr shiftfit combfit), style specifies the graph type (hist, '
          'ebar, line) and color is a valid matplotlib color string')
