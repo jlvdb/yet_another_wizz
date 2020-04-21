@@ -110,7 +110,7 @@ class ScaleFolder(Folder):
         else:
             zmin, zmax = zlims
             fname = self.zbin_filename(zmin, zmax, ext, prefix=prefix)
-        return self.join(fname)
+        return fname
 
     def path_crosscorr_file(self, ext, zlims=None):
         return self._path_zbin_file("crosscorr", ext, zlims)

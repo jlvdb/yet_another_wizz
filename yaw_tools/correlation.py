@@ -95,7 +95,7 @@ def bin_table(
 
 
 def run_ac_single_bin(
-        datapack, randpack, rlims, R_D_ratio, regionize_unknown,
+        datapack, randpack, rlims, comoving, R_D_ratio, regionize_unknown,
         pair_maker_instance):
     try:
         D_R_ratio = 1.0 / float(R_D_ratio)
@@ -116,7 +116,7 @@ def run_ac_single_bin(
         est.setUnknown(**bindata)
         est.setReference(**bindata)
         est.countPairs(
-            rmin=rlims[0], rmax=rlims[1], comoving=False,
+            rmin=rlims[0], rmax=rlims[1], comoving=comoving,
             D_R_ratio=D_R_ratio, regionize_unknown=regionize_unknown)
         print("processed data in z ∈", zd)
         return [est.getMeta(), est.getCounts()]

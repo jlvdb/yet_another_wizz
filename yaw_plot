@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(
     description='SURPRISE!')
 parser.add_argument(
     '-p', '--plot', action='append', nargs='*', required=True,
-    help='spicify next plot layer: input folder [t:type s:style c:color, '
+    help='specify next plot layer: input folder [t:type s:style c:color, '
          'l:label o:offset]\nwhere type specifies the data type to plot '
          '(crosscorr shiftfit combfit), style specifies the graph type (hist, '
          'ebar, line) and color is a valid matplotlib color string')
@@ -86,9 +86,11 @@ if __name__ == "__main__":
             except AttributeError:
                 raise ValueError("invalid data type '%s'" % arg_dict["type"])
         else:
-            matches = folder.find(".*\d\.\d*z\d\.\d*.*" + DEFAULT_EXT_DATA)
+            matches = folder.find(".*\d\.\d*z\d\.\d*.*")
             files = {}
             for match in matches:
+                if not match.endswith((DEFAULT_EXT_DATA, DEFAULT_EXT_HIST)):
+                    continue
                 zbin = get_bin_key(match)
                 if zbin in files:
                     raise KeyError(

@@ -13,7 +13,9 @@ from yaw_tools.correlation import run_ac_single_bin, load_argparse_summary
 from yaw_tools.region_counts import get_region_number
 from yaw_tools.folders import CCFolder, Folder
 from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
-                             DEFAULT_RESAMPLING, DEFAULT_COSMOLOGY, TypeNone)
+                             DEFAULT_RESAMPLING, DEFAULT_COSMOLOGY,
+                             DEFAULT_SCALE_TYPE, DEFAULT_ACROSS_REGIONS,
+                             DEFAULT_DR_RATIO, TypeNone)
 from yet_another_wizz import PairMaker
 from yet_another_wizz import PdfMaker
 from yet_another_wizz.utils import dump_json, ThreadHelper, NAMED_COSMOLOGIES
@@ -103,20 +105,25 @@ analysis_parameters.add_argument(
     help='comma separated list of outer radii of analysis annulus '
          'on sky in kpc')
 analysis_parameters.add_argument(
-    '--across-regions', metavar='Y/N', default='N',
+    '--scales-type', metavar='STR', type=TypeNone(str),
+    choices=('physical', 'comoving'),
+    help='type of distance measure for analysis annulus '
+         '(default: %s)' % DEFAULT_SCALE_TYPE)
+analysis_parameters.add_argument(
+    '--across-regions', metavar='Y/N', type=TypeNone(str),
     help='wether to include pairs with galaxies from neighboring spatial '
-         'regions')
+         'regions (default: %s)' % DEFAULT_ACROSS_REGIONS)
 analysis_parameters.add_argument(
     '--resampling', metavar='INT', type=TypeNone(int),
     help='number of random galaxy realizations created (default: %d)' %
-    DEFAULT_RESAMPLING)
+         DEFAULT_RESAMPLING)
 analysis_parameters.add_argument(
     '--pair-weighting', metavar='Y/N', type=TypeNone(str),
     help='wether to weight pairs by the inverse separation (default: %s)' %
-    DEFAULT_PAIR_WEIGHTING)
+         DEFAULT_PAIR_WEIGHTING)
 analysis_parameters.add_argument(
-    '--R-D-ratio', default="local",
-    help='ratio of random to data objects (default: local)')
+    '--R-D-ratio', default="local", type=TypeNone(str),
+    help='ratio of random to data objects (default: %s)' % DEFAULT_DR_RATIO)
 
 
 if __name__ == "__main__":
@@ -233,7 +240,8 @@ if __name__ == "__main__":
 
     for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
         scaledir = outdir[scale_name]
-        sys.stdout.write("==> running scale %s\n" % scale_name)
+        sys.stdout.write(
+            "==> running scale %s (%s)\n" % (scale_name, args.scales_type))
         sys.stdout.flush()
         # create copies of PairMaker for each redshift bin
         est = PairMaker(threads=args.threads)
@@ -249,6 +257,7 @@ if __name__ == "__main__":
         pool.add_iterable(data.groupby(pd.cut(data.Z, bins=binning)))
         pool.add_iterable(rand.groupby(pd.cut(rand.Z, bins=binning)))
         pool.add_constant((rmin, rmax))
+        pool.add_constant(args.scales_type == "comoving")
         pool.add_constant(args.R_D_ratio)
         pool.add_constant(args.across_regions == "N")
         pool.add_iterable(instances)

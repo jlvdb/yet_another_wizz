@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 import argparse
 import os
+# disable threading in numpy
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
 
 import numpy as np
 from matplotlib import pyplot as plt
-from Nz_Fitting import (BiasFitModel, CurveFit, PowerLawBias, RedshiftData,
+from Nz_Fitting import (CurveFit, PowerLawBias, RedshiftData,
                         RedshiftDataBinned)
+from yaw_tools.bias_fitting import fit_bias, apply_bias_fit
 from yaw_tools.folders import (DEFAULT_EXT_BOOT, DEFAULT_EXT_COV,
                                DEFAULT_EXT_DATA, find_cc_scales,
                                init_input_folder, init_output_folder)
-from yaw_tools.utils import (apply_bias, guess_bin_order,
-                             write_fit_stats, write_global_cov, write_nz_data,
+from yaw_tools.utils import (guess_bin_order, write_fit_stats,
+                             write_global_cov, write_nz_data,
                              write_parameters)
 from yet_another_wizz.utils import load_json
 
@@ -48,29 +53,8 @@ if __name__ == "__main__":
         cc_data = scaledir.list_crosscorr_files(DEFAULT_EXT_DATA)
         if len(cc_data) == 0:
             raise ValueError("no cross-correlation data files found")
-        elif args.master_key not in cc_data:
-            raise KeyError("master key '%s' data not found" % args.master_key)
-        # check which cross-correlation bootstrap files exist
-        cc_boot = scaledir.list_crosscorr_files(DEFAULT_EXT_BOOT)
-        if len(cc_boot) == 0:
-            raise ValueError("no cross-correlation bootstraps found")
-        if cc_data.keys() != cc_boot.keys():
-            raise KeyError(
-                "redshift bins of bootstraps do not match data files")
-        # check the covariance matrices
-        if args.use_cov:
-            cc_cov = scaledir.list_crosscorr_files(DEFAULT_EXT_COV)
-            if len(cc_cov) == 0:
-                raise ValueError(
-                    "no cross-correlation covariance matrices found")
-            elif args.master_key not in cc_cov:
-                raise KeyError(
-                    "master key '%s' covariance matrix not found" %
-                    args.master_key)
-        else:
-            cc_cov = None
 
-        # try using the global bin order
+        # figure out the bin order
         order_file = scaledir.path_bin_order_file()
         if os.path.exists(order_file):
             bin_order = []
@@ -87,70 +71,42 @@ if __name__ == "__main__":
         if not os.path.exists(weight_file):
             raise OSError("bin weights file not found")
         weight_dict = load_json(weight_file)
-        # normalize the weights
-        weight_dict.pop(args.master_key)
-        norm = sum(weight_dict.values())
+        # sort and normalize the weights
+        weights = np.fromiter(
+            (weight_dict[zbin] for zbin in bin_order[:-1]), dtype=np.float32)
+        weights /= weight_dict[bin_order[-1]]
 
-        # load the data files
-        master_data = None
+        # load the data
         bins_data = []
-        weights = []
         for zbin in bin_order:
-            data = RedshiftData(*np.loadtxt(cc_data[zbin]).T)
-            data.setRealisations(np.loadtxt(cc_boot[zbin])) 
-            if cc_cov is not None:
-                data.setCovariance(np.loadtxt(cc_cov[args.master_key]))
-            if zbin == args.master_key:
-                master_data = data
-                # load the header key
-                with open(cc_data[zbin]) as f:
-                    for line in f.readlines():
-                        if "col 2 = correlation amplitude" in line:
-                            header_line = line.strip("\n")
-                            break
-            else:
-                weights.append(weight_dict[zbin] / norm)
-                bins_data.append(data)
-
-        bias_model = PowerLawBias()
-        # construct the fit model
-        model = BiasFitModel(bias_model, bins_data, master_data, weights)
+            data_path = os.path.splitext(cc_data[zbin])[0]
+            bins_data.append(RedshiftData.read(data_path))
+            # load the header key
+            with open(cc_data[zbin]) as f:
+                for line in f.readlines():
+                    if "col 2 = correlation amplitude" in line:
+                        header_line = line.strip("\n")
+                        break
+        master_data = bins_data.pop()
+        # create a joint data container (automatically computes global covar.)
+        print("selecting covariance type: %s" % args.cov_type)
+        master_data.setCovMatType(args.cov_type)
+        joint_data = RedshiftDataBinned(bins_data, master_data)
 
         # fit the bias model
-        master_data.setCovMatType(args.cov_type)
-        optimizer = CurveFit(master_data, model)
-        fitparams = optimizer.optimize(max_nfev=model.getParamNo() * 1000)
+        bias_model = PowerLawBias()
+        fitparams = fit_bias(
+            joint_data, weights, bias_model,
+            max_nfev=bias_model.getParamNo() * 1000)
         print(fitparams)
-        paramdir = outdir[scale].join("bias_parameters")
+        paramdir = outdir[scale].join("shift_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
         write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
-        write_parameters(fitparams, paramdir, precision=2, notation="decimal")
+        write_parameters(fitparams, paramdir, precision=3, notation="decimal")
 
-        # evaluate the bias model for each parameter realisation
-        bias_data = bias_model.modelBest(fitparams, master_data.z)[1]
-        bias_realisations = np.empty((len(fitparams), len(master_data)))
-        for i, params in enumerate(fitparams.paramSamples()):
-            bias_realisations[i] = bias_model.modelBest(
-                params, master_data.z)[1]
-        # collect them as a container
-        bias_data = RedshiftData(
-            master_data.z, bias_data,
-            np.zeros_like(master_data.z))  # compute the correct errors later
-        bias_data.setRealisations(bias_realisations)
-
-        # apply the bias correction to the input data
-        bins_corrected = [
-            apply_bias(data, bias_data) for data in bins_data]
-        # finally apply the renormalisation to the bias to get the correct
-        # bias model error estimate
-        master_corrected = apply_bias(master_data, bias_data, renorm_bias=True)
-        joint_corrected = RedshiftDataBinned(bins_corrected, master_corrected)
-
-        # compute the missing covariances
-        bias_data.dn = np.nanstd(bias_data.getRealisations(), axis=0)
-        bias_data.setCovariance(nancov(bias_data.getRealisations()))
-        joint_corrected.setCovariance(
-            nancov(joint_corrected.getRealisations()))
+        # evaluate the bias model
+        bias_data, joint_corrected = apply_bias_fit(
+            joint_data, bias_model, fitparams)
 
         # write the bias model files
         header = "col 1 = mean redshift\n"
@@ -159,7 +115,8 @@ if __name__ == "__main__":
         write_nz_data(
             outdir[scale].path_bias_file(""), bias_data,
             hdata=header, hboot="bias realisations",
-            hcov="bias covariance matrix", stats=False)
+            hcov="bias covariance matrix", stats=False,
+            dtype_message="bias  model")
 
         # write the corrected redshift distributions
         hkey = "%s / bias model" % header_line.strip(")")
@@ -168,7 +125,7 @@ if __name__ == "__main__":
         header += "col 2 = correlation amplitude (%s)\n" % hkey
         header += "col 3 = amplitude error"
         print("writing n(z) statistics to: stats/")
-        for zbin, data in zip(bin_order, [*bins_corrected, master_corrected]):
+        for zbin, data in zip(bin_order, joint_corrected.iterData()):
             write_nz_data(
                 outdir[scale].path_crosscorr_file("", zbin), data,
                 hdata=header,
@@ -184,8 +141,7 @@ if __name__ == "__main__":
         # make check plots
         plot_file = outdir[scale].path_bias_file(".*")
         print("writing fit check plot to: %s" % os.path.basename(plot_file))
-        fig = master_data.plot()
-        model.plot(fitparams, ax=fig.axes[0])
+        fig = bias_data.plot(lines=True)
         fig.set_xlabel(r"$z$", fontsize=13)
         fig.no_gaps()
         fig.savefig(plot_file.replace(".*", ".pdf"))

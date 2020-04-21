@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import os
+# disable threading in numpy
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
 
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
@@ -112,15 +116,15 @@ if __name__ == "__main__":
         # fit the bias model
         joint_data.setCovMatType(args.cov_type)
         optimizer = CurveFit(fit_model, joint_data)
-        fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 1000)
+        fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 10000)
         print(fitparams)
         paramdir = outdir[scale].join("shift_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
-        write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
+        write_fit_stats(fitparams, paramdir, precision=2, notation="decimal")
         write_parameters(fitparams, paramdir, precision=4, notation="decimal")
 
         # evaluate the best fit result
-        shift_fit_data = fit_model.evaluate(joint_hist, fitparams)
+        shift_fit_data = fit_model.evaluate(joint_data, fitparams)
 
         # write the shifted redshift histograms
         print("writing n(z) statistics to: stats/")
