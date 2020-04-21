@@ -31,8 +31,8 @@ parser.add_argument(
     '--cov-type', default="global", choices=RedshiftDataBinned._covmat_types,
     help='way in which the covariance information is used')
 parser.add_argument(
-    '-o', '--output',
-    help='folder in which the output is stored (optional)')
+    '-o', '--output', required=True,
+    help='folder in which the output is stored')
 
 
 if __name__ == "__main__":

@@ -34,8 +34,8 @@ parser.add_argument(
     '--cov-type', default="global", choices=RedshiftData._covmat_types,
     help='way in which the covariance information is used')
 parser.add_argument(
-    '-o', '--output',
-    help='folder in which the output is stored (optional)')
+    '-o', '--output', required=True,
+    help='folder in which the output is stored')
 
 
 if __name__ == "__main__":
@@ -99,7 +99,7 @@ if __name__ == "__main__":
             joint_data, weights, bias_model,
             max_nfev=bias_model.getParamNo() * 1000)
         print(fitparams)
-        paramdir = outdir[scale].join("shift_parameters")
+        paramdir = outdir[scale].join("bias_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
         write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
         write_parameters(fitparams, paramdir, precision=3, notation="decimal")
