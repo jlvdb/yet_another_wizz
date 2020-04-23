@@ -112,11 +112,26 @@ def fit_bias(
     # resample data points for each fit to estimate parameter covariance
     if threads is None:
         threads = multiprocessing.cpu_count()
-    # get the number of samples to use
-    try:
-        n_samples = nz_data.getSampleNo()
-    except AttributeError:
+    # generate samples ahead of time if necessecary
+    if not nz_data.hasSamples():
         n_samples = 1000
+        # generate sample for the bins
+        for i, nz_bin in enumerate(nz_data.iterBins(), 1):
+            print("resampling bin %d" % i)
+            samples = np.empty((n_samples, nz_bin.len(all=True)))
+            for n, nz in enumerate(nz_bin.iterSamples(n_samples)):
+                samples[n] = nz.n(all=True)
+            nz_bin.setSamples(samples)
+        # generate samples for the master sample
+        nz_master = nz_data.getMaster()
+        print("resampling master data")
+        samples = np.empty((n_samples, nz_master.len(all=True)))
+        for n, nz in enumerate(nz_master.iterSamples(n_samples)):
+            samples[n] = nz.n(all=True)
+        nz_master.setSamples(samples)
+        assert(nz_data.hasSamples())
+    # get the number of samples to use
+    n_samples = nz_data.getSampleNo()
     threads = min(threads, n_samples)
     chunksize = n_samples // threads + 1  # optmizes the workload
     threaded_fit = partial(
