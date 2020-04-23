@@ -68,7 +68,7 @@ def fit_bias_realisation(
         sigma = master.dn(concat=True)
     # run the optimizer
     fit_func = partial(
-        nz_model_summed_bins, check_binning=True,
+        nz_model_summed_bins, check_binning=check_binning,
         weights=weights, bias_model=bias_model)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
