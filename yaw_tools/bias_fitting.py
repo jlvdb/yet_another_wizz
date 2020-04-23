@@ -113,7 +113,10 @@ def fit_bias(
     if threads is None:
         threads = multiprocessing.cpu_count()
     # get the number of samples to use
-    n_samples = nz_data.getSampleNo()
+    try:
+        n_samples = nz_data.getSampleNo()
+    except AttributeError:
+        n_samples = 1000
     threads = min(threads, n_samples)
     chunksize = n_samples // threads + 1  # optmizes the workload
     threaded_fit = partial(
