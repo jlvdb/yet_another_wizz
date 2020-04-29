@@ -148,6 +148,18 @@ class PairMaker(BaseClass):
         self.getReference()
         self.getUnknown()
         self.getRandoms()
+        # check that all the region indices match
+        reference_regions = np.unique(self.getReference().region_idx)
+        unknown_regions = np.unique(self.getUnknown().region_idx)
+        if set(reference_regions) != set(unknown_regions):
+            self._throwException(
+                "region indices of unknown objects do not match reference",
+                ValueError)
+        randoms_regions = np.unique(self.getRandoms().region_idx)
+        if set(reference_regions) != set(randoms_regions):
+            self._throwException(
+                "region indices of randoms do not match reference objects",
+                ValueError)
         # create pool to find pairs DD
         poolDD = ThreadHelper(
             self.nRegions(), threads=min(self._threads, self.nRegions()))
@@ -204,6 +216,7 @@ class PairMaker(BaseClass):
             DD.rename(columns={"pairs": "DD"}, inplace=True)
         except ValueError:
             DD = pd.DataFrame({"DD": []})
+        # find DR pairs in regions running parallel threads
         self._printMessage("finding data-random pairs\n")
         try:
             DR = poolDR.map(count_pairs)
