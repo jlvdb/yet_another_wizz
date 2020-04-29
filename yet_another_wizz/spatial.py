@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from astropy import units
 from astropy.cosmology import FLRW, default_cosmology
+from scipy.integrate import quad
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.spatial import cKDTree, minkowski_distance
 
@@ -384,7 +385,13 @@ def count_pairs(
             if len(idx) > 0:
                 weight = weights_other[idx]
                 if inv_distance_weight:
-                    pairs[n] = np.sum(weight / distance)
+                    count = np.sum(weight / distance)
+                    # We need to normalise the weights. If all reference
+                    # objects were at the same redshift within each bin, this
+                    # would simply divied out in the estimator. Otherwise the
+                    # weight evolves over the width of the reference bin.
+                    norm = np.log(ang_max[n] / ang_min[n])  # relative norm
+                    pairs[n] = count / norm
                 else:
                     pairs[n] = np.sum(weight)
                 if "weights" in item:  # reference weight
