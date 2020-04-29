@@ -34,6 +34,9 @@ parser.add_argument(
     '--cov-type', default="global", choices=RedshiftData._covmat_types,
     help='way in which the covariance information is used')
 parser.add_argument(
+    '--no-z-check', action='store_true',
+    help='do not check if the redshift sampling points match')
+parser.add_argument(
     '-o', '--output', required=True,
     help='folder in which the output is stored')
 
@@ -87,6 +90,8 @@ if __name__ == "__main__":
                     if "col 2 = correlation amplitude" in line:
                         header_line = line.strip("\n")
                         break
+                    else:
+                        header_line = None
         master_data = bins_data.pop()
         # create a joint data container (automatically computes global covar.)
         print("selecting covariance type: %s" % args.cov_type)
@@ -97,6 +102,7 @@ if __name__ == "__main__":
         bias_model = PowerLawBias()
         fitparams = fit_bias(
             joint_data, weights, bias_model,
+            check_binning=not(args.no_z_check),
             max_nfev=bias_model.getParamNo() * 1000)
         print(fitparams)
         paramdir = outdir[scale].join("bias_parameters")
@@ -119,22 +125,26 @@ if __name__ == "__main__":
             dtype_message="bias  model")
 
         # write the corrected redshift distributions
-        hkey = "%s / bias model" % header_line.strip(")")
-        hkey = hkey.split("(")[-1]
+        if header_line is None:
+            hkey = "(known type, bias fit applied)"
+        else:
+            hkey = "%s / bias model" % header_line.strip(")")
+            hkey = hkey.split("(")[-1]
+            hkey = "(" + hkey + ")"
         header = "col 1 = mean redshift\n"
-        header += "col 2 = correlation amplitude (%s)\n" % hkey
+        header += "col 2 = correlation amplitude %s\n" % hkey
         header += "col 3 = amplitude error"
         print("writing n(z) statistics to: stats/")
         for zbin, data in zip(bin_order, joint_corrected.iterData()):
             write_nz_data(
                 outdir[scale].path_crosscorr_file("", zbin), data,
                 hdata=header,
-                hboot="correlation amplitude (%s) realisations" % hkey,
-                hcov="correlation amplitude (%s) covariance matrix" % hkey,
+                hboot="correlation amplitude %s realisations" % hkey,
+                hcov="correlation amplitude %s covariance matrix" % hkey,
                 stats=True)
         # store global covariance matrix
         header = "global correlation amplitude "
-        header += "(%s) covariance matrix" % hkey
+        header += "%s covariance matrix" % hkey
         write_global_cov(
             outdir[scale], joint_corrected, bin_order, header, "crosscorr")
 

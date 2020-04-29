@@ -10,10 +10,11 @@ from Nz_Fitting.data import RedshiftData, RedshiftDataBinned
 from Nz_Fitting.fitting import FitResult
 
 
-def nz_model_summed_bins(nz_data, *params, **kwargs):
+def nz_model_summed_bins(nz_data, *params, check_binning=True, **kwargs):
     """
     nz_data : BinnedRedshiftData
     *params : array_like, curve_fit parameter list -> parameters of bias model
+    check_binning : bool, assert that all redshift sampling points are the same
     weights : array_like, one weight per bin, sum normalized to unity
     bias_model : PowerLawBias, the bias model to fit to the data
     """
@@ -22,7 +23,8 @@ def nz_model_summed_bins(nz_data, *params, **kwargs):
     weights = kwargs["weights"]
     bias_model = kwargs["bias_model"]
     # get the redshift sampling end evaluate the redshift binning
-    nz_data.assertEqual(nz_data.z())  # same redshift binning everywhere
+    if check_binning:
+        nz_data.assertEqual(nz_data.z())  # same redshift binning everywhere
     z = master.z()
     bias = bias_model(z, *params)
     # compute the normalization after dividing the master n(z) by the bias
@@ -37,13 +39,15 @@ def nz_model_summed_bins(nz_data, *params, **kwargs):
     return bias * norm_factor * summed_nz
 
 
-def fit_bias_realisation(*args, draw_sample=False, **kwargs):
+def fit_bias_realisation(
+        *args, draw_sample=False, check_binning=True, **kwargs):
     """
     *args : array_like, curve_fit parameter list -> parameters of bias model
     draw_sample : bool, whether to draw/get a realisation or not
     nz_data : BinnedRedshiftData
     weights : array_like, one weight per bin, sum normalized to unity
     bias_model : PowerLawBias, the bias model to fit to the data
+    check_binning : bool, assert that all redshift sampling points are the same
     **kwargs : parsed to curve_fit
     """
     nz_data = kwargs.pop("nz_data")
@@ -64,7 +68,8 @@ def fit_bias_realisation(*args, draw_sample=False, **kwargs):
         sigma = master.dn(concat=True)
     # run the optimizer
     fit_func = partial(
-        nz_model_summed_bins, weights=weights, bias_model=bias_model)
+        nz_model_summed_bins, check_binning=check_binning,
+        weights=weights, bias_model=bias_model)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         popt, _ = curve_fit(
@@ -82,12 +87,15 @@ def fit_bias_realisation(*args, draw_sample=False, **kwargs):
     return popt, chisq
 
 
-def fit_bias(nz_data, weights, bias_model, threads=None, **kwargs):
+def fit_bias(
+        nz_data, weights, bias_model, threads=None, check_binning=True,
+        **kwargs):
     """
     nz_data : BinnedRedshiftData
     weights : array_like, one weight per bin, sum normalized to unity
     bias_model : PowerLawBias, the bias model to fit to the data
     threads : int, number of threads to use
+    check_binning : bool, assert that all redshift sampling points are the same
     **kwargs : parsed to curve_fit
     """
     label_dict = OrderedDict(zip(
@@ -97,20 +105,39 @@ def fit_bias(nz_data, weights, bias_model, threads=None, **kwargs):
     bounds = bias_model.getParamBounds()
     # get the best fit parameters
     pbest, chisq = fit_bias_realisation(
-        draw_sample=False, nz_data=nz_data,
+        draw_sample=False, nz_data=nz_data, check_binning=check_binning,
         weights=weights, bias_model=bias_model, **kwargs)
     bias_model.setParamGuess(pbest)
     pbest_dict = OrderedDict(zip(label_dict.keys(), pbest))
     # resample data points for each fit to estimate parameter covariance
     if threads is None:
         threads = multiprocessing.cpu_count()
+    # generate samples ahead of time if necessecary
+    if not nz_data.hasSamples():
+        n_samples = 1000
+        # generate sample for the bins
+        for i, nz_bin in enumerate(nz_data.iterBins(), 1):
+            print("resampling bin %d" % i)
+            samples = np.empty((n_samples, nz_bin.len(all=True)))
+            for n, nz in enumerate(nz_bin.iterSamples(n_samples)):
+                samples[n] = nz.n(all=True)
+            nz_bin.setSamples(samples)
+        # generate samples for the master sample
+        nz_master = nz_data.getMaster()
+        print("resampling master data")
+        samples = np.empty((n_samples, nz_master.len(all=True)))
+        for n, nz in enumerate(nz_master.iterSamples(n_samples)):
+            samples[n] = nz.n(all=True)
+        nz_master.setSamples(samples)
+        assert(nz_data.hasSamples())
     # get the number of samples to use
     n_samples = nz_data.getSampleNo()
     threads = min(threads, n_samples)
     chunksize = n_samples // threads + 1  # optmizes the workload
     threaded_fit = partial(
         fit_bias_realisation, draw_sample=True, nz_data=nz_data,
-        weights=weights, bias_model=bias_model, **kwargs)
+        check_binning=check_binning, weights=weights, bias_model=bias_model,
+        **kwargs)
     # run in parallel threads
     with multiprocessing.Pool(threads) as pool:
         param_samples = pool.map(
