@@ -27,9 +27,13 @@ parser.add_argument(
     'models', metavar='MODELFOLDER',
     help='a folder containing redshift distribution files with redshift keys '
          '(e.g. 0.101z1.201) matching those in the input data folder')
-parser.add_argument(
+group = parser.add_mutually_exclusive_group()
+group.add_argument(
     '--fit-bias', action='store_true',
     help='additinally try to fit the galaxy bias')
+group.add_argument(
+    '--norm-data', action='store_true',
+    help='normalize the data prior to fitting')
 parser.add_argument(
     '--cov-type', default="global", choices=RedshiftDataBinned._covmat_types,
     help='way in which the covariance information is used')
@@ -89,8 +93,11 @@ if __name__ == "__main__":
         bins_model = []
         for zbin in bin_order:
             data_path = os.path.splitext(cc_data[zbin])[0]
-            bins_data.append(RedshiftData.read(data_path))
-            bins_data[-1].setEdges(binning)
+            bin_data = RedshiftData.read(data_path)
+            bin_data.setEdges(binning)
+            if args.norm_data:
+                bin_data.normalize()
+            bins_data.append(bin_data)
             try:
                 model_path = os.path.splitext(models[zbin])[0]
                 model_hist = RedshiftHistogram.read(model_path)
