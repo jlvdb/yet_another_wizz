@@ -1,4 +1,5 @@
 import os
+import struct
 from multiprocessing import cpu_count
 
 import numpy as np
@@ -174,7 +175,7 @@ class PairMaker(BaseClass):
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
         poolDD.add_constant(inv_distance_weight)
-        # create pool to find pairs DD
+        # create pool to find pairs DR
         poolDR = ThreadHelper(
             self.nRegions(), threads=min(self._threads, self.nRegions()))
         poolDR.add_iterable(self.getReference().groupby("region_idx"))
@@ -224,7 +225,9 @@ class PairMaker(BaseClass):
                 DR[i].pairs *= D_R
             DR = pd.concat(DR)
             DR.rename(columns={"pairs": "DR"}, inplace=True)
-        except Exception:
+        except (KeyboardInterrupt, struct.error):
+            raise e
+        except Exception as e:
             DR = pd.DataFrame({"DR": []})
         # combine the pair counts with redshifts and region indices
         try:
