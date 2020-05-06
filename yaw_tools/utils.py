@@ -242,7 +242,7 @@ def write_nz_stats(statdir, data, zkey=None, to_png=True):
 
 def write_nz_data(
         path, data, hdata=None, hboot=None, hcov=None, stats=False,
-        dtype_message="n(z)"):
+        dtype_message="n(z)", to_png=True):
     assert(type(data) is RedshiftData)
     basepath = os.path.splitext(path)[0]
     print(
@@ -255,7 +255,7 @@ def write_nz_data(
             zkey = get_bin_key(basepath)
         except ValueError:
             zkey = None
-        write_nz_stats(statdir, data, zkey=zkey)
+        write_nz_stats(statdir, data, zkey=zkey, to_png=to_png)
 
 
 def write_global_cov(folder, data, order, header, prefix):

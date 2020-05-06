@@ -40,6 +40,9 @@ parser.add_argument(
          'correlation files are inserted into the global covariance matrix, '
          'the full sample should come last (default: sorted automatically)')
 parser.add_argument(
+    '--no-tex-conversion', action='store_true',
+    help='disable automatically converting .tex files to PNG images')
+parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
 
@@ -96,7 +99,8 @@ if __name__ == "__main__":
                 write_nz_data(
                     path, w_ss_data, DEFAULT_HDATA.format("w_ss"),
                     DEFAULT_HBOOT.format("w_ss"), DEFAULT_HCOV.format("w_ss"),
-                    stats=False, dtype_message="autocorrelation")
+                    stats=False, dtype_message="autocorrelation",
+                    to_png=not args.no_tex_conversion)
                 bias_key.append("w_ss")
             if use_wpp:
                 json2data.set_bias(None, None)  # clear bias arrays
@@ -111,7 +115,8 @@ if __name__ == "__main__":
                 write_nz_data(
                     path, w_pp_data, DEFAULT_HDATA.format("w_pp"),
                     DEFAULT_HBOOT.format("w_pp"), DEFAULT_HCOV.format("w_pp"),
-                    stats=False, dtype_message="autocorrelation")
+                    stats=False, dtype_message="autocorrelation",
+                    to_png=not args.no_tex_conversion)
                 bias_key.append("w_pp")
             if len(bias_key) > 0:
                 header_key += " / sqrt(" + " / ".join(bias_key) + ")"
@@ -144,7 +149,8 @@ if __name__ == "__main__":
                 write_nz_data(
                     path, w_sp_data[-1], DEFAULT_HDATA.format(header_key),
                     DEFAULT_HBOOT.format(header_key),
-                    DEFAULT_HCOV.format(header_key), stats=True)
+                    DEFAULT_HCOV.format(header_key), stats=True,
+                    to_png=not args.no_tex_conversion)
 
             # write the global covariance matrix
             data_joint = RedshiftDataBinned(w_sp_data[:-1], w_sp_data[-1])
