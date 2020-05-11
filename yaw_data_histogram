@@ -3,6 +3,7 @@ import argparse
 import os
 
 import numpy as np
+from astropy.cosmology import default_cosmology
 from astropy.io import fits as pyfits
 
 from Nz_Fitting import RedshiftHistogram
@@ -35,6 +36,10 @@ parser.add_argument(
     '--n-bins', type=int, default=200,
     help='number of bins to use for the histogram (default: %(default)s)')
 parser.add_argument(
+    '--bin-type', default="adapt",
+    choices=["linear", "adapt", "comoving", "logspace"],
+    help='spacing of the spectroscopic bins (default: %(default)s)')
+parser.add_argument(
     '-o', '--output',
     help='folder in which the output is stored (optional)')
 
@@ -58,9 +63,18 @@ if __name__ == '__main__':
         else:
             weights = None
     # compute the binning
-    binning = PdfMaker.adaptiveBins(args.n_bins + 2, None, None, z_spec)
-    binning = np.append(0.0, binning)
-    binning = np.append(binning, z_spec.max() + 0.1)
+    if args.bin_type == "linear":
+        binning = PdfMaker.linearBins(
+            args.n_bins, z_spec.min(), z_spec.max())
+    elif args.bin_type == "logspace":
+        binning = PdfMaker.logspaceBins(
+            args.n_bins, z_spec.min(), z_spec.max())
+    elif args.bin_type == "comoving":
+        binning = PdfMaker.comovingBins(
+            args.n_bins, z_spec.min(), z_spec.max(), default_cosmology.get())
+    else:
+        binning = PdfMaker.adaptiveBins(
+            args.n_bins, None, None, z_spec)
 
     print("writing histogram statistics to: stats/")
     statdir = os.path.join(args.output, "stats")
