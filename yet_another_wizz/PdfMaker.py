@@ -115,14 +115,14 @@ class PdfMaker(BaseClass):
         DD_sum = np.empty_like(z_sum)
         DR_sum = np.empty_like(z_sum)
         # collapse objects into region statistics
-        for i, (reg_idx, region) in enumerate(pair_counts_regionized):
+        for reg_idx, region in pair_counts_regionized:
             region_binned = region.groupby(
                 pd.cut(region.z, zbins))
             for bin_idx, (zlimits, zbin) in enumerate(region_binned):
-                n_ref[bin_idx, i] = len(zbin)
-                z_sum[bin_idx, i] = zbin.z.sum()
-                DD_sum[bin_idx, i] = zbin.DD.sum()
-                DR_sum[bin_idx, i] = zbin.DR.sum()
+                n_ref[bin_idx, reg_idx] = len(zbin)
+                z_sum[bin_idx, reg_idx] = zbin.z.sum()
+                DD_sum[bin_idx, reg_idx] = zbin.DD.sum()
+                DR_sum[bin_idx, reg_idx] = zbin.DR.sum()
         counts_dict = {
             "n_reference": n_ref, "sum_redshifts": z_sum,
             "data_data": DD_sum, "data_random": DR_sum,
