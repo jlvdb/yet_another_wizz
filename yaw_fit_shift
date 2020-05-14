@@ -111,6 +111,14 @@ if __name__ == "__main__":
         master_model = bins_model.pop()
         # create a joint data container (automatically computes global covar.)
         joint_data = RedshiftDataBinned(bins_data, master_data)
+        if not joint_data.hasSamples():
+            try:
+                joint_data.setCovMat(
+                    np.loadtxt(scaledir.join("crosscorr_global.cov")))
+            except FileNotFoundError:
+                if args.cov_type != "diagonal":
+                    raise ValueError(
+                        "could not determine global covariance matrix")
         joint_hist = RedshiftHistogramBinned(bins_hist, master_hist)
 
         # construct the fit model
