@@ -39,9 +39,13 @@ class PdfMaker(BaseClass):
 
     @staticmethod
     def adaptiveBins(nbins, zmin, zmax, redshifts):
-        z_sorted = np.sort(redshifts)
+        mask = (redshifts >= zmin) & (redshifts < zmax)
+        z_sorted = np.sort(redshifts[mask])
         idx = np.linspace(0, len(z_sorted) - 1, nbins + 1, dtype=int)
-        return z_sorted[idx]
+        binning = z_sorted[idx]
+        # fix the limits
+        binning[0], binning[-1] = zmin, zmax
+        return binning
 
     @staticmethod
     def comovingBins(nbins, zmin, zmax, cosmology):
