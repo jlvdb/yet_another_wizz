@@ -33,6 +33,10 @@ parser.add_argument(
     help='redshift keys (e.g. 0.101z1.201) used to bin the sample and '
          'name the output files')
 parser.add_argument(
+    '--z-min', type=float, help='lower redshift limit of binning')
+parser.add_argument(
+    '--z-max', type=float, help='upper redshift limit of binning')
+parser.add_argument(
     '--n-bins', type=int, default=200,
     help='number of bins to use for the histogram (default: %(default)s)')
 parser.add_argument(
@@ -63,18 +67,22 @@ if __name__ == '__main__':
         else:
             weights = None
     # compute the binning
+    if args.z_min is None:
+        args.z_min = z_spec.min()
+    if args.z_max is None:
+        args.z_max = z_spec.max()
     if args.bin_type == "linear":
         binning = PdfMaker.linearBins(
-            args.n_bins, z_spec.min(), z_spec.max())
+            args.n_bins, args.z_min, args.z_max)
     elif args.bin_type == "logspace":
         binning = PdfMaker.logspaceBins(
-            args.n_bins, z_spec.min(), z_spec.max())
+            args.n_bins, args.z_min, args.z_max)
     elif args.bin_type == "comoving":
         binning = PdfMaker.comovingBins(
-            args.n_bins, z_spec.min(), z_spec.max(), default_cosmology.get())
+            args.n_bins, args.z_min, args.z_max, default_cosmology.get())
     else:
         binning = PdfMaker.adaptiveBins(
-            args.n_bins, None, None, z_spec)
+            args.n_bins, args.z_min, args.z_max, z_spec)
 
     print("writing histogram statistics to: stats/")
     statdir = os.path.join(args.output, "stats")
