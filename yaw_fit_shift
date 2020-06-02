@@ -110,7 +110,7 @@ if __name__ == "__main__":
         master_hist = bins_hist.pop()
         master_model = bins_model.pop()
         # create a joint data container (automatically computes global covar.)
-        joint_data = RedshiftDataBinned(bins_data, master_data)
+        joint_data = RedshiftDataBinned(bins_data)
         if not joint_data.hasSamples():
             try:
                 joint_data.setCovMat(
@@ -119,19 +119,19 @@ if __name__ == "__main__":
                 if args.cov_type != "diagonal":
                     raise ValueError(
                         "could not determine global covariance matrix")
-        joint_hist = RedshiftHistogramBinned(bins_hist, master_hist)
+        joint_hist = RedshiftHistogramBinned(bins_hist)
 
         # construct the fit model
         if args.fit_bias:
             bias_model = PowerLawBias()
         else:
             bias_model = None
-        fit_model = ShiftModelBinned([*bins_model, master_model], bias_model)
+        fit_model = ShiftModelBinned(bins_model, bias_model)
 
         # fit the bias model
         joint_data.setCovMatType(args.cov_type)
         optimizer = CurveFit(fit_model, joint_data)
-        fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 10000)
+        fitparams = optimizer.optimize(max_nfev=fit_model.getParamNo() * 1000)
         print(fitparams)
         paramdir = outdir[scale].join("shift_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
@@ -160,4 +160,4 @@ if __name__ == "__main__":
         header += os.path.dirname(model_path)  # does not matter which
         header += ") covariance matrix"
         write_global_cov(
-            outdir[scale], shift_fit_data, bin_order, header, "shiftfit")
+            outdir[scale], shift_fit_data, bin_order[:-1], header, "shiftfit")
