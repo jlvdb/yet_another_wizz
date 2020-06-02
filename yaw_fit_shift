@@ -113,8 +113,12 @@ if __name__ == "__main__":
         joint_data = RedshiftDataBinned(bins_data)
         if not joint_data.hasSamples():
             try:
-                joint_data.setCovMat(
-                    np.loadtxt(scaledir.join("crosscorr_global.cov")))
+                global_covmat = np.loadtxt(
+                    scaledir.join("crosscorr_global.cov"))
+                # remove the master sample if necessary
+                n_used = sum(joint_data.len(all=True)[:-1])
+                global_covmat = global_covmat[:n_used, :n_used]
+                joint_data.setCovMat(global_covmat)
             except FileNotFoundError:
                 if args.cov_type != "diagonal":
                     raise ValueError(
