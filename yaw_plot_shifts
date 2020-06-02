@@ -20,7 +20,10 @@ def load_params(cc_dir):
                 values.append(float(line.split()[1]))
     values = np.array(values)
     errors = np.loadtxt(param_boot).std(axis=0)
-    return values[:-2], errors[:-2]
+    if len(values) == 10:
+        return values, errors
+    else:
+        return values[:-2], errors[:-2]
 
 
 zbins = OrderedDict([
@@ -57,6 +60,10 @@ for y in range(1, len(zbins)):
     ax.axhline(y + 0.5, color="k", lw=0.7)
 ax.axvline(
     x=0, color="k", alpha=0.33, lw=0.7, zorder=-1)
+ax.axvline(
+    x=-0.01, color="k", alpha=0.33, lw=0.7, ls=":", zorder=-1)
+ax.axvline(
+    x=0.01, color="k", alpha=0.33, lw=0.7, ls=":", zorder=-1)
 ax.yaxis.grid(False)
 ax.yaxis.set_tick_params(length=0)
 
