@@ -13,7 +13,7 @@ from yaw_tools.correlation import (bin_table, get_bin_weights,
 from yaw_tools.folders import CCFolder, Folder
 from yaw_tools.region_counts import get_region_number
 from yaw_tools.utils import (DEFAULT_PAIR_WEIGHTING, DEFAULT_CAT_EXT,
-                             DEFAULT_RESAMPLING)
+                             DEFAULT_RESAMPLING, DEFAULT_COSMOLOGY)
 from yet_another_wizz import PairMaker
 from yet_another_wizz import PdfMaker
 from yet_another_wizz.utils import dump_json, NAMED_COSMOLOGIES
@@ -105,7 +105,8 @@ analysis_parameters = parser.add_argument_group(
     title='analysis parameters',
     description='controlling the autocorrelation computation')
 analysis_parameters.add_argument(
-    '--cosmology', metavar='STR', choices=NAMED_COSMOLOGIES, default='default',
+    '--cosmology', metavar='STR',
+    choices=NAMED_COSMOLOGIES, default=DEFAULT_COSMOLOGY,
     help='astropy cosmology to use for distance calculations '
          '(default: astropy default)')
 analysis_parameters.add_argument(

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from astropy import units
-from astropy.cosmology import FLRW, default_cosmology
+from astropy.cosmology import FLRW, default_cosmology, Planck15
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.spatial import cKDTree, minkowski_distance
 
@@ -34,7 +34,7 @@ class FastSeparation2Angle(object):
     """
 
     # use the default cosmolgy of astropy
-    cosmology = default_cosmology.get()
+    cosmology = Planck15
 
     def __init__(self, zmin=0.001, zmax=100.0, nlogsamples=100, units=False):
         if zmax <= zmin:
@@ -77,6 +77,8 @@ class FastSeparation2Angle(object):
 
         """
         if type(cosmology) is str:
+            if cosmology == "default":
+                cosmology = "Planck15"
             self.cosmology = \
                 default_cosmology.get_cosmology_from_string(cosmology)
         elif not issubclass(type(cosmology), FLRW):

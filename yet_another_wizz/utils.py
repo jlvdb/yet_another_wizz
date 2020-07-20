@@ -141,10 +141,8 @@ class BaseClass(object):
         raise exception
 
     def setCosmology(self, name="default", **cosmo_params):
-        if name != "default":
-            self._printMessage("%s\n" % name)
         if name == "default":
-            self.cosmology = cosmology.default_cosmology.get()
+            self.cosmology = cosmology.Planck15
         elif name in NAMED_COSMOLOGIES:
             self.cosmology = getattr(cosmology, name)
         else:  # now we need to initialize it with the **cosmo_params
