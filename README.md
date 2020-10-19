@@ -17,8 +17,7 @@ The required packages are listed in `requirements.txt`. Additionally, it
 depends on the
 [KiDS n(z) fitting](https://github.com/KiDS-WL/Nz_Fitting) package.
 
-    Note: Currently, code from the u/jlvdb branch is requried instead
-    of the master branch.
+    Note: Currently, you must checkout the branch u/jlvdb of Nz_Fitting.
 
 Optional depencies are `pdflatex` and `pdftocairo` to automatically convert
 outputs in (La)TEX format (like reported mean redshifts and fit parameters),
