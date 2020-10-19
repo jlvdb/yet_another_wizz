@@ -31,6 +31,9 @@ parser.add_argument(
     '--cov-type', default="global", choices=RedshiftDataBinned._covmat_types,
     help='way in which the covariance information is used')
 parser.add_argument(
+    '--tex-conversion', action='store_true',
+    help='automatically convert .tex files to PNG images')
+parser.add_argument(
     '-o', '--output', required=True,
     help='folder in which the output is stored')
 
@@ -102,8 +105,12 @@ if __name__ == "__main__":
         print(fitparams)
         paramdir = outdir[scale].join("comb_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
-        write_fit_stats(fitparams, paramdir, precision=2, notation="decimal")
-        write_parameters(fitparams, paramdir, precision=3, notation="exp")
+        write_fit_stats(
+            fitparams, paramdir, precision=2, notation="decimal",
+            to_png=args.tex_conversion)
+        write_parameters(
+            fitparams, paramdir, precision=3, notation="exp",
+            to_png=args.tex_conversion)
 
         # evaluate the best fit result
         comb_fit_data = fit_model.evaluate(
@@ -121,7 +128,7 @@ if __name__ == "__main__":
                 hdata=header,
                 hboot="comb fit realisations (%d components)\n" % N,
                 hcov="comb fit (%d components) covariance matrix" % N,
-                stats=True)
+                stats=True, to_png=args.tex_conversion)
 
         # store global covariance matrix
         header = "global comb fit (%d components) " % N

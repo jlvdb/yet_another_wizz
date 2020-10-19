@@ -38,6 +38,9 @@ parser.add_argument(
     '--cov-type', default="global", choices=RedshiftDataBinned._covmat_types,
     help='way in which the covariance information is used')
 parser.add_argument(
+    '--tex-conversion', action='store_true',
+    help='automatically convert .tex files to PNG images')
+parser.add_argument(
     '-o', '--output', required=True,
     help='folder in which the output is stored')
 
@@ -139,8 +142,12 @@ if __name__ == "__main__":
         print(fitparams)
         paramdir = outdir[scale].join("shift_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
-        write_fit_stats(fitparams, paramdir, precision=2, notation="decimal")
-        write_parameters(fitparams, paramdir, precision=4, notation="decimal")
+        write_fit_stats(
+            fitparams, paramdir, precision=2, notation="decimal",
+            to_png=args.tex_conversion)
+        write_parameters(
+            fitparams, paramdir, precision=4, notation="decimal",
+            to_png=args.tex_conversion)
 
         # evaluate the best fit result
         shift_fit_data = fit_model.evaluate(joint_data, fitparams)
@@ -157,7 +164,7 @@ if __name__ == "__main__":
                 hdata=header,
                 hboot="shifted n(z) realisations (from %s)" % model_path,
                 hcov="shifted n(z) (from %s) covariance matrix" % model_path,
-                stats=True)
+                stats=True, to_png=args.tex_conversion)
 
         # store global covariance matrix
         header = "global shifted n(z) (from "

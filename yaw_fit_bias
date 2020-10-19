@@ -37,6 +37,9 @@ parser.add_argument(
     '--no-z-check', action='store_true',
     help='do not check if the redshift sampling points match')
 parser.add_argument(
+    '--tex-conversion', action='store_true',
+    help='automatically convert .tex files to PNG images')
+parser.add_argument(
     '-o', '--output', required=True,
     help='folder in which the output is stored')
 
@@ -107,8 +110,12 @@ if __name__ == "__main__":
         print(fitparams)
         paramdir = outdir[scale].join("bias_parameters")
         print("writing fit parameters to: %s/" % os.path.basename(paramdir))
-        write_fit_stats(fitparams, paramdir, precision=3, notation="decimal")
-        write_parameters(fitparams, paramdir, precision=3, notation="decimal")
+        write_fit_stats(
+            fitparams, paramdir, precision=3, notation="decimal",
+            to_png=args.tex_conversion)
+        write_parameters(
+            fitparams, paramdir, precision=3, notation="decimal",
+            to_png=args.tex_conversion)
 
         # evaluate the bias model
         bias_data, joint_corrected = apply_bias_fit(
@@ -122,7 +129,7 @@ if __name__ == "__main__":
             outdir[scale].path_bias_file(""), bias_data,
             hdata=header, hboot="bias realisations",
             hcov="bias covariance matrix", stats=False,
-            dtype_message="bias  model")
+            dtype_message="bias  model", to_png=args.tex_conversion)
 
         # write the corrected redshift distributions
         if header_line is None:
@@ -141,7 +148,7 @@ if __name__ == "__main__":
                 hdata=header,
                 hboot="correlation amplitude %s realisations" % hkey,
                 hcov="correlation amplitude %s covariance matrix" % hkey,
-                stats=True)
+                stats=True, to_png=args.tex_conversion)
         # store global covariance matrix
         header = "global correlation amplitude "
         header += "%s covariance matrix" % hkey
