@@ -321,7 +321,6 @@ if __name__ == '__main__':
                 pdf.writeRegionDict(regioncountsfile)
             # empty pair counts file
             except ValueError:
-                raise
                 print(
                     "WARNING: the pair count file was empty, create dummy "
                     "output instead")
