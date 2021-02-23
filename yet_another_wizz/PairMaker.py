@@ -129,7 +129,7 @@ class PairMaker(BaseClass):
         if not self._inputGood(RA, DEC, Z, weights, region_idx):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
-        self._printMessage("lading %d objects\n" % len(RA))
+        self._printMessage("laoding %d objects\n" % len(RA))
         self._random_data = self._packData(RA, DEC, Z, weights, region_idx)
         self._printMessage(
             "kept %d of %d objects\n" % (len(self._random_data), len(RA)))

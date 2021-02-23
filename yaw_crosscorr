@@ -141,7 +141,7 @@ analysis_parameters.add_argument(
     '--ref-bin-no', metavar='INT', type=int, default=20,
     help='number of spectroscopic bins (default: %(default)s)')
 analysis_parameters.add_argument(
-    '--ref-bin-type', default="comoving", nargs='*',
+    '--ref-bin-type', default=["comoving"], nargs='*',
     choices=["linear", "adapt", "comoving", "logspace"],
     help='spacing of the spectroscopic bins (default: %(default)s)')
 analysis_parameters.add_argument(
@@ -315,7 +315,7 @@ if __name__ == '__main__':
             else:
                 pdf.generateBinning(
                     args.ref_bin_no, args.z_min, args.z_max,
-                    args.ref_bin_type)
+                    args.ref_bin_type[0])
             pdf.writeBinning(outdir.path_binning_file())
             try:
                 pdf.writeRegionDict(regioncountsfile)
