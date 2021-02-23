@@ -84,7 +84,7 @@ class PdfMaker(BaseClass):
         bin_types = ("adaptive", "comoving", "linear", "logspace")
         if bintype not in bin_types:
             self._throwException(
-                "'bintype' must be either of {%s}" % ", ".join(bintype),
+                "'bintype' must be either of {%s}" % ", ".join(bin_types),
                 ValueError)
         if zmin is not None:
             self._zmin = zmin

@@ -292,12 +292,8 @@ if __name__ == '__main__':
             sys.stdout.flush()
             # file names of intermediate products
             paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
-            if args.test_bin_edges is None:
-                meta_file = paircoutdir.join("CC_meta.json")
-                paircount_file = paircoutdir.join("CC.pqt")
-            else:
-                meta_file = paircoutdir.join("CC_%s_meta.json" % redshift)
-                paircount_file = paircoutdir.join("CC_%s.pqt" % redshift)
+            meta_file = paircoutdir.join("CC_%s_meta.json" % redshift)
+            paircount_file = paircoutdir.join("CC_%s.pqt" % redshift)
 
             # count pairs
             est.countPairs(
@@ -310,8 +306,9 @@ if __name__ == '__main__':
             est.writeCounts(paircount_file)
 
             # create region counts
+            print(scaledir.root)
             regioncountsfile = scaledir.path_crosscorr_file(
-                ".json", zlims=None if redshift == "all" else redshift)
+                ".json", zlims=redshift)
             try:
                 pdf = PdfMaker(paircount_file, autocorr=False)
                 pdf.setCosmology(args.cosmology)
@@ -320,7 +317,7 @@ if __name__ == '__main__':
                 else:
                     pdf.generateBinning(
                         args.ref_bin_no, args.z_min, args.z_max,
-                        args.ref_bin_type[0])
+                        args.ref_bin_type)
                 pdf.writeBinning(outdir.path_binning_file())
                 pdf.writeRegionDict(regioncountsfile)
             # empty pair counts file

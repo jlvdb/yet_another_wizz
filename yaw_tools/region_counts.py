@@ -14,6 +14,7 @@ def get_region_number(*frames):
         n_regions = len(np.unique(np.concatenate(regions_per_frame)))
     except AttributeError:
         n_regions = 1
+    return n_regions
 
 
 def region_color_map(base_cmap, n_regions, cycle_length=10):

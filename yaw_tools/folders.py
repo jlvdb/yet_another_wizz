@@ -102,26 +102,24 @@ class ScaleFolder(Folder):
             fname = "autocorr_%s.%s" % (suffix, ext.lstrip("."))
         return self.join(fname)
 
-    def _path_zbin_file(self, prefix, ext, zlims=None):
-        if zlims is None:
-            fname = self.join("%s.%s" % (prefix, ext.lstrip(".")))
-        elif type(zlims) is str:
+    def _path_zbin_file(self, prefix, ext, zlims):
+        if type(zlims) is str:
             fname = self.join("%s_%s.%s" % (prefix, zlims, ext.lstrip(".")))
         else:
             zmin, zmax = zlims
             fname = self.zbin_filename(zmin, zmax, ext, prefix=prefix)
         return fname
 
-    def path_crosscorr_file(self, ext, zlims=None):
+    def path_crosscorr_file(self, ext, zlims):
         return self._path_zbin_file("crosscorr", ext, zlims)
 
     def path_bias_file(self, ext):
         return self._path_zbin_file("bias", ext)
 
-    def path_combfit_file(self, ext, zlims=None):
+    def path_combfit_file(self, ext, zlims):
         return self._path_zbin_file("combfit", ext, zlims)
 
-    def path_shiftfit_file(self, ext, zlims=None):
+    def path_shiftfit_file(self, ext, zlims):
         return self._path_zbin_file("shiftfit", ext, zlims)
 
     def path_global_cov_file(self, prefix):
@@ -177,10 +175,10 @@ class ScaleFolder(Folder):
     def list_bias_files(self, ext):
         return self._list_zbin_files("bias", ext)
 
-    def list_combfit_files(self, ext, zlims=None):
+    def list_combfit_files(self, ext, zlims):
         return self._list_zbin_files("combfit", ext)
 
-    def list_shiftfit_files(self, ext, zlims=None):
+    def list_shiftfit_files(self, ext, zlims):
         return self._list_zbin_files("shiftfit", ext)
 
 

@@ -38,20 +38,23 @@ def guess_bin_order(bin_keys):
         zmin, zmax = [float(z) for z in key.split("z")]
         return zmax
 
-    keys_sorted = sorted(bin_keys, key=get_zmin)
-    # one bin could be the master sample
-    zmin = np.inf
-    zmax = 0.0
-    for key in keys_sorted:
-        zmin = min(zmin, get_zmin(key))
-        zmax = max(zmax, get_zmax(key))
-    master_key = None
-    for i, key in enumerate(keys_sorted):
-        if zmin == get_zmin(key) and zmax == get_zmax(key):
-            master_key = keys_sorted.pop(i)
-            break
-    if master_key is not None:
-        keys_sorted.append(master_key)
+    if set(bin_keys) == {"all"}:
+        keys_sorted = ["all"]
+    else:
+        keys_sorted = sorted(bin_keys, key=get_zmin)
+        # one bin could be the master sample
+        zmin = np.inf
+        zmax = 0.0
+        for key in keys_sorted:
+            zmin = min(zmin, get_zmin(key))
+            zmax = max(zmax, get_zmax(key))
+        master_key = None
+        for i, key in enumerate(keys_sorted):
+            if zmin == get_zmin(key) and zmax == get_zmax(key):
+                master_key = keys_sorted.pop(i)
+                break
+        if master_key is not None:
+            keys_sorted.append(master_key)
     return keys_sorted
 
 
