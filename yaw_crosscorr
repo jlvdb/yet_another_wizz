@@ -306,22 +306,22 @@ if __name__ == '__main__':
             est.writeCounts(paircount_file)
 
             # create region counts
-            print(scaledir.root)
             regioncountsfile = scaledir.path_crosscorr_file(
                 ".json", zlims=redshift)
+            pdf = PdfMaker(paircount_file, autocorr=False)
+            pdf.setCosmology(args.cosmology)
+            if args.ref_bin_type[0] == "adapt":
+                raise NotImplementedError()
+            else:
+                pdf.generateBinning(
+                    args.ref_bin_no, args.z_min, args.z_max,
+                    args.ref_bin_type)
+            pdf.writeBinning(outdir.path_binning_file())
             try:
-                pdf = PdfMaker(paircount_file, autocorr=False)
-                pdf.setCosmology(args.cosmology)
-                if args.ref_bin_type[0] == "adapt":
-                    raise NotImplementedError()
-                else:
-                    pdf.generateBinning(
-                        args.ref_bin_no, args.z_min, args.z_max,
-                        args.ref_bin_type)
-                pdf.writeBinning(outdir.path_binning_file())
                 pdf.writeRegionDict(regioncountsfile)
             # empty pair counts file
             except ValueError:
+                raise
                 print(
                     "WARNING: the pair count file was empty, create dummy "
                     "output instead")
