@@ -258,6 +258,7 @@ if __name__ == "__main__":
         pool.add_iterable(rand.groupby(pd.cut(rand.Z, bins=binning)))
         pool.add_constant((rmin, rmax))
         pool.add_constant(args.scales_type == "comoving")
+        pool.add_constant(args.pair_weighting == "Y")
         pool.add_constant(args.R_D_ratio)
         pool.add_constant(args.across_regions == "N")
         pool.add_iterable(instances)
