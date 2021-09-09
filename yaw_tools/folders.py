@@ -114,7 +114,7 @@ class ScaleFolder(Folder):
         return self._path_zbin_file("crosscorr", ext, zlims)
 
     def path_bias_file(self, ext):
-        return self._path_zbin_file("bias", ext)
+        return self.join("bias.%s" % ext.lstrip("."))
 
     def path_combfit_file(self, ext, zlims):
         return self._path_zbin_file("combfit", ext, zlims)
