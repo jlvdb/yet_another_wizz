@@ -8,18 +8,10 @@ publication [van den Busch et al. (2020)](https://arxiv.org/abs/2007.01846).
 
 ## Installation
 
-`yet_another_wizz` is written in Python3 and can be directly cloned from
-[github](https://github.com/jlvdb/yet_another_wizz). Its root directory should
-be included in the `PYTHONPATH` of the environment.
-
-
-## Requirements
-
-The required packages are listed in `requirements.txt`. Additionally, it
-depends on the
-[KiDS n(z) fitting](https://github.com/KiDS-WL/Nz_Fitting) package.
-
-    Note: Currently, you must checkout the branch u/jlvdb of Nz_Fitting.
+`yet_another_wizz` is written in Python3 and can be installed with pip:
+```
+pip install .
+```
 
 Optional depencies are `pdflatex` and `pdftocairo` to automatically convert
 outputs in (La)TEX format (like reported mean redshifts and fit parameters),
