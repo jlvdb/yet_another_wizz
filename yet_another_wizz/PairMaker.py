@@ -38,6 +38,8 @@ class PairMaker(BaseClass):
         if weights is not None:
             data["weights"] = weights
             data["weights"] /= weights.mean()
+        else:
+            data["weights"] = 1.0
         # set region indices
         if region_idx is not None:
             data["region_idx"] = region_idx.astype(np.int16)
@@ -224,19 +226,20 @@ class PairMaker(BaseClass):
             DR.rename(columns={"pairs": "DR"}, inplace=True)
         except ValueError:
             DR = pd.DataFrame({"DR": []})
-        # expand D/R to reference objects
-        n_D_obj = np.zeros(len(DD), dtype=n_D.dtype)
-        n_R_obj = np.zeros(len(DR), dtype=n_R.dtype)
-        for i in range(self.nRegions()):
-            mask = self.getReference().region_idx == i
-            n_D_obj[mask] = n_D[i]
-            n_R_obj[mask] = n_R[i]
-        D_R_obj = pd.DataFrame({"n_D": n_D_obj, "n_R": n_R_obj})
         # combine the pair counts with redshifts and region indices
         try:
             ref_data = self._reference_data[["z", "region_idx", "weights"]]
         except KeyError:
             ref_data = self._reference_data[["z", "region_idx"]]
+        # expand D/R to reference objects
+        n_D_obj = np.zeros(len(DD), dtype=n_D.dtype)
+        n_R_obj = np.zeros(len(DR), dtype=n_R.dtype)
+        for i in range(self.nRegions()):
+            mask = ref_data.region_idx == i
+            n_D_obj[mask] = n_D[i]
+            n_R_obj[mask] = n_R[i]
+        D_R_obj = pd.DataFrame(
+            {"n_D": n_D_obj, "n_R": n_R_obj}, index=ref_data.index)
         self._pair_counts = pd.concat([ref_data, DD, DR, D_R_obj], axis=1)
 
     def getDummyCounts(
