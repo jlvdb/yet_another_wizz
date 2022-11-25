@@ -8,7 +8,10 @@ import numpy as np
 from astropy import cosmology
 
 
-NAMED_COSMOLOGIES = ["default", *cosmology.parameters.available]
+try:
+    NAMED_COSMOLOGIES = ["default", *cosmology.parameters.available]
+except AttributeError:
+    NAMED_COSMOLOGIES = ["default", *cosmology.realizations.available]
 
 
 def load_json(path):
