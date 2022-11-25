@@ -329,7 +329,9 @@ if __name__ == '__main__':
                     "n_reference": np.zeros(array_shape, dtype=np.int_),
                     "sum_redshifts": np.zeros(array_shape, dtype=np.float_),
                     "data_data": np.zeros(array_shape, dtype=np.float_),
+                    "n_data": np.zeros(n_regions, dtype=np.float_),
                     "data_random": np.zeros(array_shape, dtype=np.float_),
+                    "n_random": np.zeros(n_regions, dtype=np.float_),
                     "n_regions": n_regions}
                 print(
                     "writing dummy region counts to:\n    %s" %

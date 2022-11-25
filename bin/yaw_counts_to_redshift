@@ -97,11 +97,13 @@ if __name__ == "__main__":
                 # write the data
                 path = outdir[scale].incorporate(json2data.counts_dict_path)
                 write_nz_data(
-                    path, w_ss_data, DEFAULT_HDATA.format("w_ss"),
-                    DEFAULT_HBOOT.format("w_ss"), DEFAULT_HCOV.format("w_ss"),
+                    path, w_ss_data,
+                    DEFAULT_HDATA.format("w_ss * dz"),
+                    DEFAULT_HBOOT.format("w_ss * dz"),
+                    DEFAULT_HCOV.format("w_ss * dz"),
                     stats=False, dtype_message="autocorrelation",
                     to_png=args.tex_conversion)
-                bias_key.append("w_ss")
+                bias_key.append("w_ss * dz")
             if use_wpp:
                 json2data.set_bias(None, None)  # clear bias arrays
                 json2data.load_counts_dict(
@@ -113,13 +115,15 @@ if __name__ == "__main__":
                 # write the data
                 path = outdir[scale].incorporate(json2data.counts_dict_path)
                 write_nz_data(
-                    path, w_pp_data, DEFAULT_HDATA.format("w_pp"),
-                    DEFAULT_HBOOT.format("w_pp"), DEFAULT_HCOV.format("w_pp"),
+                    path, w_pp_data,
+                    DEFAULT_HDATA.format("w_pp * dz"),
+                    DEFAULT_HBOOT.format("w_pp * dz"),
+                    DEFAULT_HCOV.format("w_pp * dz"),
                     stats=False, dtype_message="autocorrelation",
                     to_png=args.tex_conversion)
-                bias_key.append("w_pp")
+                bias_key.append("w_pp * dz")
             if len(bias_key) > 0:
-                header_key += " / sqrt(" + " / ".join(bias_key) + ")"
+                header_key += " / sqrt(" + " * ".join(bias_key) + ")"
             # apply the bias correction
             if np.all(autocorrs == 1.0):
                 bias, bias_samples = None, None  # fallback values

@@ -57,8 +57,9 @@ class RegionCounts(object):
     # uninitialized members
     _z = None
     _DD = None
+    _n_D = None
     _DR = None
-    _RR = None
+    _n_R = None
     _zs = None
     _z = None
     _n_ref = None
@@ -83,8 +84,7 @@ class RegionCounts(object):
             z_equal = np.all(self._z == other._z)
             DD_equal = np.all(self._DD == other._DD)
             DR_equal = np.all(self._DR == other._DR)
-            RR_equal = np.all(self._RR == other._RR)
-            return z_equal & DD_equal & DR_equal & RR_equal
+            return z_equal & DD_equal & DR_equal
 
     def __ne__(self, other):
         if type(self) != type(other):
@@ -96,16 +96,14 @@ class RegionCounts(object):
         z_inequal = np.all(self._z != other._z)
         DD_inequal = np.any(self._DD != other._DD)
         DR_inequal = np.any(self._DR != other._DR)
-        RR_inequal = np.any(self._RR != other._RR)
-        return z_inequal & DD_inequal & DR_inequal & RR_inequal
+        return z_inequal & DD_inequal & DR_inequal
 
     def __copy__(self):
         inst = type(self).__new__(self.__class__)
         inst._DD = self._DD.copy()
+        inst._n_D = self._n_D.copy()
         inst._DR = self._DR.copy()
-        # RR is None in the new instance
-        if self._RR is not None:
-            inst._RR = self._RR.copy()
+        inst._n_R = self._n_R.copy()
         return inst
 
     def __getattr__(self, attr):
@@ -120,12 +118,13 @@ class RegionCounts(object):
                 "'%s' object has no attribute '%s'" % (
                     self.__class__.__name__, attr))
 
-    def _from_pairs(self, DD, DR, RR=None, n_ref=None, zs=None):
+    def _from_pairs(self, DD, n_D, DR, n_R, n_ref=None, zs=None):
         assert(DD.shape == DR.shape)
         inst = type(self).__new__(self.__class__)
         inst._DD = DD
+        inst._n_D = n_D
         inst._DR = DR
-        inst._RR = RR
+        inst._n_R = n_R
         inst._update_z()
         return inst
 
@@ -138,11 +137,8 @@ class RegionCounts(object):
             self._z = self._zs.sum(axis=1) / self._n_ref.sum(axis=1)
 
     @staticmethod
-    def _correlation_estimator(DD, DR, RR=None):
-        if RR is None:  # use Peebles-Davis estimator
-            est = DD / DR - 1.0
-        else:  # use Landy-Szalay estimator
-            est = (DD - 2.0 * DR + RR) / RR
+    def _correlation_estimator(DD, n_D, DR, n_R):
+        est = n_R/n_D * DD/DR - 1.0
         est[np.isinf(est)] = np.nan  # we cannot handle infs properly
         return est
 
@@ -155,15 +151,17 @@ class RegionCounts(object):
             raise ValueError(
                 "Number of redshift bins do not match")
         DD = np.concatenate([self._DD, other._DD], axis=1)
+        n_D = np.concatenate([self._n_D, other._n_D])
         DR = np.concatenate([self._DR, other._DR], axis=1)
+        n_R = np.concatenate([self._n_R, other._n_R])
         kwargs = {}
-        for attr in ("_RR", "_n_ref", "_zs"):
+        for attr in ("_n_ref", "_zs"):
             if getattr(self, attr) is None or getattr(other, attr) is None:
                 kwargs[attr.strip("_")] = None
             else:
                 kwargs[attr.strip("_")] = np.concatenate([
                     getattr(self, attr), getattr(other, attr)], axis=1)
-        return self._from_pairs(DD, DR, **kwargs)
+        return self._from_pairs(DD, n_D, DR, n_R, **kwargs)
 
     def ingest(self, other):
         if type(self) != type(other):
@@ -175,8 +173,10 @@ class RegionCounts(object):
                 "Number of redshift bins do not match")
         self._update_z()
         self._DD = np.concatenate([self._DD, other._DD], axis=1)
+        self._n_D = np.concatenate([self._n_D, other._n_D])
         self._DR = np.concatenate([self._DR, other._DR], axis=1)
-        for attr in ("_RR", "_n_ref", "_zs"):
+        self._n_R = np.concatenate([self._n_R, other._n_R])
+        for attr in ("_n_ref", "_zs"):
             if getattr(self, attr) is None or getattr(other, attr) is None:
                 setattr(self, attr, None)
             else:
@@ -233,12 +233,10 @@ class RegionCounts(object):
     def get_samples(self):
         # resample the correlation estimate
         DD = self._DD[:, self._sampling_idx].sum(axis=2)
+        n_D = self._n_D[self._sampling_idx].sum(axis=1)
         DR = self._DR[:, self._sampling_idx].sum(axis=2)
-        try:
-            RR = self._RR[:, self._sampling_idx].sum(axis=2)
-            amplitude_samples = self._correlation_estimator(DD, DR, RR)
-        except TypeError:
-            amplitude_samples = self._correlation_estimator(DD, DR)
+        n_R = self._n_R[self._sampling_idx].sum(axis=1)
+        amplitude_samples = self._correlation_estimator(DD, n_D, DR, n_R)
         if self._bin_width_factor is not None:  # only autocorrelation
             amplitude_samples *= self._bin_width_factor[:, np.newaxis]
         return amplitude_samples
@@ -255,18 +253,13 @@ class RegionCounts(object):
     def get_DR(self):
         return self._DR.copy()
 
-    def get_RR(self):
-        return self._RR.copy()
-
     def get_amplitudes(self):
         # compute the correlation estimator
         DD = self._DD.sum(axis=1)
+        n_D = self._n_D.sum()
         DR = self._DR.sum(axis=1)
-        try:
-            RR = self._RR.sum(axis=1)
-            amplitudes = self._correlation_estimator(DD, DR, RR)
-        except AttributeError:
-            amplitudes = self._correlation_estimator(DD, DR)
+        n_R = self._n_R.sum()
+        amplitudes = self._correlation_estimator(DD, n_D, DR, n_R)
         # correct the amplitudes for variable redshift bin width
         if self._bin_width_factor is not None:
             amplitudes *= self._bin_width_factor
@@ -317,7 +310,9 @@ class CrossCorrelationRegionCounts(RegionCounts):
         data_dict = self._load_counts_dict(path)
         # incorporate data
         self._DD = data_dict["data_data"]
+        self._n_D = data_dict["n_data"]
         self._DR = data_dict["data_random"]
+        self._n_R = data_dict["n_random"]
         self._n_ref = data_dict["n_reference"]
         self._zs = data_dict["sum_redshifts"]
         self._update_z()
@@ -331,7 +326,9 @@ class AutoCorrelationRegionCounts(RegionCounts):
         data_dict = self._load_counts_dict(path)
         # incorporate data
         self._DD = data_dict["data_data"]
+        self._n_D = data_dict["n_data"]
         self._DR = data_dict["data_random"]
+        self._n_R = data_dict["n_random"]
         self._n_ref = data_dict["n_reference"]
         self._zs = data_dict["sum_redshifts"]
         self._bin_width_factor = data_dict["width_correction"]
@@ -348,8 +345,9 @@ def merge_region_counts(counts_dict_list):
     master_counts_dict = {"n_regions": 0}
     for key in counts_dicts[0]:
         try:
+            axis = len(counts_dicts[0][key].shape) - 1
             master_counts_dict[key] = np.concatenate(
-                [data[key] for data in counts_dicts], axis=1)
+                [data[key] for data in counts_dicts], axis=axis)
         except ValueError:
             if key == "n_regions":  # sum the region counters
                 master_counts_dict[key] = sum(

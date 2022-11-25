@@ -40,11 +40,11 @@ class PairMaker(BaseClass):
             data["weights"] /= weights.mean()
         # set region indices
         if region_idx is not None:
-            data["region_idx"] = region_idx.astype(np.uint8)
+            data["region_idx"] = region_idx.astype(np.int16)
             # remove objects with negative indices
             data = data[data.region_idx >= 0]
         else:
-            data["region_idx"] = np.zeros(len(RA), dtype=np.uint8)
+            data["region_idx"] = np.zeros(len(RA), dtype=np.int16)
         return data
 
     def nRegions(self):
@@ -191,21 +191,20 @@ class PairMaker(BaseClass):
         poolDR.add_constant(inv_distance_weight)
         # set data to random ratio
         if D_R_ratio == "global":
-            D_R_ratio = np.full(
-                self.nRegions(),
-                len(self.getUnknown()) / len(self.getRandoms()))
+            n_D = np.full(self.nRegions(), self.getUnknown().weights.sum())
+            n_R = np.full(self.nRegions(), self.getRandoms().weights.sum())
         elif D_R_ratio == "local":
             n_D = np.asarray([
-                np.count_nonzero(self._unknown_data.region_idx == i)
+                self.getUnknown().weights[self.getUnknown().region_idx==i].sum()
                 for i in range(self.nRegions())])
             n_R = np.asarray([
-                np.count_nonzero(self._random_data.region_idx == i)
+                self.getRandoms().weights[self.getRandoms().region_idx==i].sum()
                 for i in range(self.nRegions())])
-            D_R_ratio = n_D / n_R
         else:
             try:
                 assert(D_R_ratio > 0.0)
-                D_R_ratio = np.full(self.nRegions(), D_R_ratio)
+                n_D = np.full(self.nRegions(), D_R_ratio)
+                n_R = np.ones(self.nRegions())
             except Exception:
                 self._throwException(
                     "D_R_ratio must be either of 'local', 'global' or a "
@@ -221,20 +220,24 @@ class PairMaker(BaseClass):
         self._printMessage("finding data-random pairs\n")
         try:
             DR = poolDR.map(count_pairs)
-            for i, D_R in enumerate(D_R_ratio):
-                DR[i].pairs *= D_R
             DR = pd.concat(DR)
             DR.rename(columns={"pairs": "DR"}, inplace=True)
-        except (KeyboardInterrupt, struct.error):
-            raise e
-        except Exception as e:
+        except ValueError:
             DR = pd.DataFrame({"DR": []})
+        # expand D/R to reference objects
+        n_D_obj = np.zeros(len(DD), dtype=n_D.dtype)
+        n_R_obj = np.zeros(len(DR), dtype=n_R.dtype)
+        for i in range(self.nRegions()):
+            mask = self.getReference().region_idx == i
+            n_D_obj[mask] = n_D[i]
+            n_R_obj[mask] = n_R[i]
+        D_R_obj = pd.DataFrame({"n_D": n_D_obj, "n_R": n_R_obj})
         # combine the pair counts with redshifts and region indices
         try:
             ref_data = self._reference_data[["z", "region_idx", "weights"]]
         except KeyError:
             ref_data = self._reference_data[["z", "region_idx"]]
-        self._pair_counts = pd.concat([ref_data, DD, DR], axis=1)
+        self._pair_counts = pd.concat([ref_data, DD, DR, D_R_obj], axis=1)
 
     def getDummyCounts(
             self, rmin, rmax, comoving=False, inv_distance_weight=True,
@@ -243,10 +246,11 @@ class PairMaker(BaseClass):
         self._dist_weight = inv_distance_weight
         if reference_weights:
             return pd.DataFrame(
-                columns=["z", "region_idx", "weights", "DD", "DR"])
+                columns=[
+                    "z", "region_idx", "weights", "DD", "DR", "n_D", "n_R"])
         else:
             return pd.DataFrame(
-                columns=["z", "region_idx", "DD", "DR"])
+                columns=["z", "region_idx", "DD", "DR", "n_D", "n_R"])
 
     def getCounts(self):
         if self._pair_counts is None:

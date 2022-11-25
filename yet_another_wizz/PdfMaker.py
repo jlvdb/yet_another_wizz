@@ -114,10 +114,12 @@ class PdfMaker(BaseClass):
             pair_counts.region_idx)
         n_bins = len(zbins) - 1
         # create output arrays
-        n_ref = np.empty((n_bins, self.n_regions), dtype=np.int32)
+        n_ref = np.empty((n_bins, self.n_regions), dtype=np.int_)
         z_sum = np.empty((n_bins, self.n_regions))
         DD_sum = np.empty_like(z_sum)
         DR_sum = np.empty_like(z_sum)
+        n_D = np.empty(self.n_regions)
+        n_R = np.empty(self.n_regions)
         # collapse objects into region statistics
         for i, (reg_idx, region) in enumerate(pair_counts_regionized):
             region_binned = region.groupby(
@@ -127,9 +129,12 @@ class PdfMaker(BaseClass):
                 z_sum[bin_idx, i] = zbin.z.sum()
                 DD_sum[bin_idx, i] = zbin.DD.sum()
                 DR_sum[bin_idx, i] = zbin.DR.sum()
+            n_D[i] = region.n_D.mean()
+            n_R[i] = region.n_R.mean()
         counts_dict = {
             "n_reference": n_ref, "sum_redshifts": z_sum,
             "data_data": DD_sum, "data_random": DR_sum,
+            "n_data": n_D, "n_random": n_R,
             "n_regions": self.n_regions}
         if self.autocorr:
             counts_dict["width_correction"] = np.diff(zbins)
@@ -154,8 +159,10 @@ class PdfMaker(BaseClass):
     def getAmplitudes(self, rescale=False):
         region_counts = self.getRegionDict()
         DD = region_counts["data_data"]
+        n_D = region_counts["n_data"]
         DR = region_counts["data_random"]
-        amplitudes = DD.sum(axis=1) / DR.sum(axis=1) - 1.0
+        n_R = region_counts["n_random"]
+        amplitudes = n_R.sum()/n_D.sum() * DD.sum(axis=1)/DR.sum(axis=1) - 1.0
         if rescale:
             amplitudes *= region_counts["width_correction"]
         return amplitudes
@@ -163,14 +170,18 @@ class PdfMaker(BaseClass):
     def getErrors(self, rescale=False, n_bootstraps=1000):
         region_counts = self.getRegionDict()
         DD = region_counts["data_data"]
+        n_D = region_counts["n_data"]
         DR = region_counts["data_random"]
+        n_R = region_counts["n_random"]
         # generate bootstrap region indices
         boot_idx = np.random.randint(
             0, self.n_regions, size=(n_bootstraps, self.n_regions))
         # create bootstrapped pair counts
         samples_DD = DD[:, boot_idx].sum(axis=2)
+        samples_n_D = n_D[boot_idx].sum(axis=1)
         samples_DR = DR[:, boot_idx].sum(axis=2)
-        samples = samples_DD / samples_DR - 1.0
+        samples_n_R = n_R[boot_idx].sum(axis=1)
+        samples = samples_DD/samples_DR * (samples_n_R/samples_n_D)[np.newaxis, :] - 1.0
         if rescale:
             samples *= self._region_counts["width_correction"][:, np.newaxis]
         # compute classical bootstrap error
