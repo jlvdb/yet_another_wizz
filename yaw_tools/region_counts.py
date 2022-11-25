@@ -348,7 +348,7 @@ def merge_region_counts(counts_dict_list):
             axis = len(counts_dicts[0][key].shape) - 1
             master_counts_dict[key] = np.concatenate(
                 [data[key] for data in counts_dicts], axis=axis)
-        except ValueError:
+        except (ValueError, AttributeError):
             if key == "n_regions":  # sum the region counters
                 master_counts_dict[key] = sum(
                     data[key] for data in counts_dicts)
