@@ -30,25 +30,6 @@ class PairMaker(BaseClass):
             self._threads = min(max(threads, 1), cpu_count())
         self.setCosmology(name="default")
 
-    def _packData(self, ra, dec, z=None, weights=None, region_idx=None):
-        # compare the input data vector lengths
-        data = pd.DataFrame({"ra": ra, "dec": dec})
-        if z is not None:
-            data["z"] = z
-        if weights is not None:
-            data["weights"] = weights
-            data["weights"] /= weights.mean()
-        else:
-            data["weights"] = 1.0
-        # set region indices
-        if region_idx is not None:
-            data["region_idx"] = region_idx.astype(np.int16)
-            # remove objects with negative indices
-            data = data[data.region_idx >= 0]
-        else:
-            data["region_idx"] = np.zeros(len(ra), dtype=np.int16)
-        return data
-
     def nRegions(self):
         if self._random_data is not None:
             return len(np.unique(self._random_data.region_idx))
@@ -72,31 +53,15 @@ class PairMaker(BaseClass):
         self._printMessage("writing meta data to:\n    %s\n" % json_path)
         dump_json(self.getMeta(), json_path)
 
-    @staticmethod
-    def _inputGood(*args):
-        n_data = None
-        for arg in args:
-            if arg is not None:
-                if n_data is None:
-                    n_data = len(arg)
-                if len(arg) != n_data:
-                    return False
-        return n_data > 0  # otherwise this is also bad
-
     def getReference(self):
         if self._reference_data is None:
             self._throwException(
                 "reference data not initialized", RuntimeError)
         return self._reference_data
 
-    def setReference(self, ra, dec, z, weights=None, region_idx=None):
-        if not self._inputGood(ra, dec, z, weights, region_idx):
-            self._throwException(
-                "input data empty or data length does not match", ValueError)
-        self._printMessage("loading %d objects\n" % len(ra))
-        self._reference_data = self._packData(ra, dec, z, weights, region_idx)
-        self._printMessage(
-            "kept %d of %d objects\n" % (len(self._reference_data), len(ra)))
+    def setReference(self, df):
+        self._reference_data = df
+        self._printMessage(f"loaded {len(df)} objects\n")
 
     def writeReference(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -108,14 +73,9 @@ class PairMaker(BaseClass):
                 "unknown data not initialized", RuntimeError)
         return self._unknown_data
 
-    def setUnknown(self, ra, dec, z=None, weights=None, region_idx=None):
-        if not self._inputGood(ra, dec, z, weights, region_idx):
-            self._throwException(
-                "input data empty or data length does not match", ValueError)
-        self._printMessage("loading %d objects\n" % len(ra))
-        self._unknown_data = self._packData(ra, dec, z, weights, region_idx)
-        self._printMessage(
-            "kept %d of %d objects\n" % (len(self._unknown_data), len(ra)))
+    def setUnknown(self, df):
+        self._unknown_data = df
+        self._printMessage(f"loaded {len(df)} objects\n")
 
     def writeUnknown(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -127,23 +87,17 @@ class PairMaker(BaseClass):
                 "random data not initialized", RuntimeError)
         return self._random_data
 
-    def setRandoms(self, ra, dec, z=None, weights=None, region_idx=None):
-        if not self._inputGood(ra, dec, z, weights, region_idx):
-            self._throwException(
-                "input data empty or data length does not match", ValueError)
-        self._printMessage("laoding %d objects\n" % len(ra))
-        self._random_data = self._packData(ra, dec, z, weights, region_idx)
-        self._printMessage(
-            "kept %d of %d objects\n" % (len(self._random_data), len(ra)))
+    def setRandoms(self, df):
+        self._random_data = df
+        self._printMessage(f"loaded {len(df)} objects\n")
 
     def writeRandoms(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
         self.getRandoms().to_parquet(path)
 
     def countPairs(
-            self, rmin, rmax, zbins, comoving=False, inv_distance_weight=True,
-            D_R_ratio="global", regionize_unknown=True):
-        self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
+            self, scales, zbins, inv_distance_weight=True,
+            regionize_unknown=True):
         self._dist_weight = inv_distance_weight
         # check if all data is present
         self.getReference()
@@ -173,7 +127,7 @@ class PairMaker(BaseClass):
         for reg_id, region in self.getUnknown().groupby("region_idx"):
             regions[reg_id] = region
         poolDD.add_iterable([{reg_id: regions[reg_id]} for reg_id in reg_ids])
-        poolDD.add_constant(np.array([[self._scales["min"], self._scales["max"]]]))
+        poolDD.add_constant(scales)
         poolDD.add_constant(self.cosmology)
         poolDD.add_constant(zbins)
         poolDD.add_constant(True)
@@ -191,7 +145,7 @@ class PairMaker(BaseClass):
         for reg_id, region in self.getRandoms().groupby("region_idx"):
             regions[reg_id] = region
         poolDR.add_iterable([{reg_id: regions[reg_id]} for reg_id in reg_ids])
-        poolDR.add_constant(np.array([[self._scales["min"], self._scales["max"]]]))
+        poolDR.add_constant(scales)
         poolDR.add_constant(self.cosmology)
         poolDR.add_constant(zbins)
         poolDR.add_constant(True)
@@ -217,6 +171,5 @@ class PairMaker(BaseClass):
         return self._pair_counts
 
     def writeCounts(self, path):
-        return
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
         self.getCounts().to_parquet(path)

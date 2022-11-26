@@ -1,6 +1,7 @@
 import json
 import os
 
+import astropandas as apd
 import numpy as np
 import pandas as pd
 from astropy.io import fits as pyfits
@@ -26,10 +27,17 @@ def get_bin_weights(framelist, filelist):
 def bin_table(
         bindir, filepath, ra_name, dec_name, z_name, weight_name=None,
         region_name=None, zbins=None, cat_ext=1):
+    columns = dict(ra=ra_name, dec=dec_name)
+    if z_name is not None:
+        columns["z"] = z_name
+    if weight_name is not None:
+        columns["weights"] = weight_name
+    if region_name is not None:
+        columns["region_idx"] = region_name
     # read input catalogue
-    with pyfits.open(filepath) as fits:
-        head = fits[cat_ext].header
-        data = fits[cat_ext].data
+    data = apd.read_fits(filepath, list(columns.values()), hdu=cat_ext)
+    data = pd.DataFrame({
+        key: data[colname] for key, colname in columns.items()})
     print("loaded %d objects" % len(data))
     # make catalogue for each selected bin
     framelist = []
@@ -38,22 +46,11 @@ def bin_table(
         if z_name is None:
             filename = bindir.join("bin_all.fits")
             os.symlink(filepath, filename)
-            frame = pd.DataFrame({
-                "ra": data[ra_name].byteswap().newbyteorder(),
-                "dec": data[dec_name].byteswap().newbyteorder()})
         else:
             zmin, zmax = data[z_name].min(), data[z_name].max()
             filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
             os.symlink(filepath, filename)
-            frame = pd.DataFrame({
-                "ra": data[ra_name].byteswap().newbyteorder(),
-                "dec": data[dec_name].byteswap().newbyteorder(),
-                "z": data[z_name].byteswap().newbyteorder()})
-        if weight_name is not None:
-            frame["weights"] = data[weight_name].byteswap().newbyteorder()
-        if region_name is not None:
-            frame["region_idx"] = data[region_name].byteswap().newbyteorder()
-        framelist.append(frame)
+        framelist.append(data)
         filelist.append(filename)
     else:
         for zmin, zmax in zbins:
@@ -62,33 +59,16 @@ def bin_table(
             filename = bindir.zbin_filename(
                 zmin, zmax, ".fits", prefix="bin")
             if z_name is None:
-                filename = bindir.zbin_filename(
-                    zmin, zmax, ".fits", prefix="bin")
                 os.symlink(filepath, filename)
-                bindata = data
-                frame = pd.DataFrame({
-                    "ra": data[ra_name].byteswap().newbyteorder(),
-                    "dec": data[dec_name].byteswap().newbyteorder()})
+                frame = data
             else:
                 mask = (data[z_name] > zmin) & (data[z_name] <= zmax)
                 print(
                     "selected %d out of %d objects" % (
                         np.count_nonzero(mask), len(mask)))
-                bindata = data[mask]
+                frame = data[mask]
                 # write the bin data to a new fits file
-                hdu = pyfits.BinTableHDU(header=head, data=bindata)
-                hdu.writeto(filename)
-                # keep the bin data as pandas DataFrame
-                frame = pd.DataFrame({
-                    "ra": bindata[ra_name].byteswap().newbyteorder(),
-                    "dec": bindata[dec_name].byteswap().newbyteorder(),
-                    "z": bindata[z_name].byteswap().newbyteorder()})
-            if weight_name is not None:
-                frame["weights"] = \
-                    bindata[weight_name].byteswap().newbyteorder()
-            if region_name is not None:
-                frame["region_idx"] = \
-                    bindata[region_name].byteswap().newbyteorder()
+                apd.to_fits(frame, filename)
             framelist.append(frame)
             filelist.append(filename)
     return framelist, filelist

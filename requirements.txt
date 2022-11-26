@@ -1,6 +1,7 @@
 numpy
 pyarrow
 pandas
+astropandas
 scipy
 astropy
 matplotlib

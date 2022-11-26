@@ -5,6 +5,7 @@ import shutil
 import sys
 from multiprocessing import cpu_count
 
+import astropandas as apd
 import numpy as np
 import pandas as pd
 from astropy.io import fits as pyfits
@@ -132,9 +133,6 @@ analysis_parameters.add_argument(
     '--z-max', metavar='FLOAT', type=float, default=5.01,
     help='maximum analysis redshift (default: %(default)s)')
 analysis_parameters.add_argument(
-    '--resampling', metavar='INT', type=int, default=DEFAULT_RESAMPLING,
-    help='number of random galaxy realizations created (default: %(default)s)')
-analysis_parameters.add_argument(
     '--ref-source-limit', metavar='INT', type=int, default=10,
     help='minimum number of sources in the reference catalogue after masking')
 analysis_parameters.add_argument(
@@ -154,9 +152,6 @@ analysis_parameters.add_argument(
 analysis_parameters.add_argument(
     '--pair-weighting', metavar='Y/N', default=DEFAULT_PAIR_WEIGHTING,
     help='wether to weight pairs by the inverse separation')
-analysis_parameters.add_argument(
-    '--R-D-ratio', default="local",
-    help='ratio of random to data objects (default: local)')
 
 
 if __name__ == '__main__':
@@ -191,31 +186,15 @@ if __name__ == '__main__':
 
     # load the reference sample
     print("==> loading reference objects")
-    with pyfits.open(args.ref_file) as fits:
-        data = fits[args.ref_file_ext].data
-        refdata = pd.DataFrame({
-            "ra": data[args.ref_ra].byteswap().newbyteorder(),
-            "dec": data[args.ref_dec].byteswap().newbyteorder(),
-            "z": data[args.ref_z].byteswap().newbyteorder()})
-        if args.ref_weight is not None:
-            refdata["weights"] = \
-                data[args.ref_weight].byteswap().newbyteorder()
-        if args.ref_region is not None:
-            endian_corrected = data[args.ref_region].byteswap().newbyteorder()
-            refdata["region_idx"] = endian_corrected.astype(np.int16)
-    if len(refdata) < args.ref_source_limit:
-        if args.exit_on_warning:
-            print(
-                "ERROR: there are less then %d" % args.ref_source_limit +
-                " reference sources after masking")
-            print("remove all output")
-            shutil.rmtree(outdir.root)
-            sys.exit(1)
-        else:
-            sys.stdout.write(
-                "WARNING: there are less then %d" % args.ref_source_limit +
-                " reference sources after masking\n")
-        sys.stdout.flush()
+    columns = dict(ra=args.ref_ra, dec=args.ref_dec, z=args.ref_z)
+    if args.ref_weight is not None:
+        columns["weights"] = args.ref_weight
+    if args.ref_region is not None:
+        columns["region_idx"] = args.ref_region
+    refdata = apd.read_fits(
+        args.ref_file, list(columns.values()), hdu=args.ref_file_ext)
+    refdata = pd.DataFrame({
+        key: refdata[colname] for key, colname in columns.items()})
 
     # create tomographic bins
     testbindir = Folder(outdir.join("test_sample_bins"))
@@ -248,15 +227,9 @@ if __name__ == '__main__':
     # get the number of spatial regions from the random data region indices
     n_regions = get_region_number(*randdata)
 
-    # configure the random normalisation
-    try:
-        D_R_ratio = 1.0 / float(args.R_D_ratio)
-    except ValueError:
-        D_R_ratio = args.R_D_ratio
-
-    rlimits = [
+    rlimits = np.array([
         (float(rmin), float(rmax)) for rmin, rmax in
-        zip(args.scales_min.split(","), args.scales_max.split(","))]
+        zip(args.scales_min.split(","), args.scales_max.split(","))])
     scale_names = [outdir.add_scale(rlim) for rlim in rlimits]
     # write bin weight counts for each scale
     for scale in scale_names:
@@ -276,66 +249,63 @@ if __name__ == '__main__':
         # run YAW
         est = PairMaker(threads=args.threads, verbose=True)
         est.setCosmology(args.cosmology)
-        est.setRandoms(**randdata[i])
-        est.setUnknown(**testdata[i])
-        est.setReference(**refdata)
+        est.setRandoms(randdata[i])
+        est.setUnknown(testdata[i])
+        est.setReference(refdata)
         # write the used cosmology
         cosmo_file = outdir.path_cosmology_file()
         if not os.path.exists(cosmo_file):
             est.writeCosmology(cosmo_file)
 
+        # count pairs
+        est.countPairs(
+            rlimits,
+            zbins=np.linspace(args.z_min, args.z_max, args.ref_bin_no+1),
+            inv_distance_weight=(args.pair_weighting == "Y"),
+            regionize_unknown=(args.across_regions == "N"))
+        continue
+        est.writeMeta(meta_file)
+        est.writeCounts(paircount_file)
+
         # process scale after scale
-        for scale_name, (rmin, rmax) in zip(scale_names, rlimits):
-            scaledir = outdir[scale_name]
-            sys.stdout.write(
-                "==> running scale %s (%s)\n" % (scale_name, args.scales_type))
-            sys.stdout.flush()
-            # file names of intermediate products
-            paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
-            meta_file = paircoutdir.join("CC_%s_meta.json" % redshift)
-            paircount_file = paircoutdir.join("CC_%s.pqt" % redshift)
+        scaledir = outdir[scale_name]
+        sys.stdout.write(
+            "==> running scale %s (%s)\n" % (scale_name, args.scales_type))
+        sys.stdout.flush()
+        # file names of intermediate products
+        paircoutdir = Folder(outdir.join("paircounts_" + scale_name))
+        meta_file = paircoutdir.join("CC_%s_meta.json" % redshift)
+        paircount_file = paircoutdir.join("CC_%s.pqt" % redshift)
 
-            # count pairs
-            est.countPairs(
-                rmin=rmin, rmax=rmax,
-                zbins=np.linspace(args.z_min, args.z_max, args.ref_bin_no+1),
-                comoving=(args.scales_type == "comoving"),
-                inv_distance_weight=(args.pair_weighting == "Y"),
-                D_R_ratio=D_R_ratio,
-                regionize_unknown=(args.across_regions == "N"))
-            est.writeMeta(meta_file)
-            est.writeCounts(paircount_file)
-            continue
-
-            # create region counts
-            regioncountsfile = scaledir.path_crosscorr_file(
-                ".json", zlims=redshift)
-            pdf = PdfMaker(paircount_file, autocorr=False)
-            pdf.setCosmology(args.cosmology)
-            if args.ref_bin_type[0] == "adapt":
-                raise NotImplementedError()
-            else:
-                pdf.generateBinning(
-                    args.ref_bin_no, args.z_min, args.z_max,
-                    args.ref_bin_type[0])
-            pdf.writeBinning(outdir.path_binning_file())
-            try:
-                pdf.writeRegionDict(regioncountsfile)
-            # empty pair counts file
-            except ValueError:
-                print(
-                    "WARNING: the pair count file was empty, create dummy "
-                    "output instead")
-                array_shape = (args.ref_bin_no, n_regions)
-                region_counts = {
-                    "n_reference": np.zeros(array_shape, dtype=np.int_),
-                    "sum_redshifts": np.zeros(array_shape, dtype=np.float_),
-                    "data_data": np.zeros(array_shape, dtype=np.float_),
-                    "n_data": np.zeros(n_regions, dtype=np.float_),
-                    "data_random": np.zeros(array_shape, dtype=np.float_),
-                    "n_random": np.zeros(n_regions, dtype=np.float_),
-                    "n_regions": n_regions}
-                print(
-                    "writing dummy region counts to:\n    %s" %
-                    regioncountsfile)
-                dump_json(region_counts, regioncountsfile)
+        # create region counts
+        regioncountsfile = scaledir.path_crosscorr_file(
+            ".json", zlims=redshift)
+        pdf = PdfMaker(paircount_file, autocorr=False)
+        pdf.setCosmology(args.cosmology)
+        if args.ref_bin_type[0] == "adapt":
+            raise NotImplementedError()
+        else:
+            pdf.generateBinning(
+                args.ref_bin_no, args.z_min, args.z_max,
+                args.ref_bin_type[0])
+        pdf.writeBinning(outdir.path_binning_file())
+        try:
+            pdf.writeRegionDict(regioncountsfile)
+        # empty pair counts file
+        except ValueError:
+            print(
+                "WARNING: the pair count file was empty, create dummy "
+                "output instead")
+            array_shape = (args.ref_bin_no, n_regions)
+            region_counts = {
+                "n_reference": np.zeros(array_shape, dtype=np.int_),
+                "sum_redshifts": np.zeros(array_shape, dtype=np.float_),
+                "data_data": np.zeros(array_shape, dtype=np.float_),
+                "n_data": np.zeros(n_regions, dtype=np.float_),
+                "data_random": np.zeros(array_shape, dtype=np.float_),
+                "n_random": np.zeros(n_regions, dtype=np.float_),
+                "n_regions": n_regions}
+            print(
+                "writing dummy region counts to:\n    %s" %
+                regioncountsfile)
+            dump_json(region_counts, regioncountsfile)
