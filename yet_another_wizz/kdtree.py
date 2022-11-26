@@ -1,31 +1,25 @@
 from __future__ import annotations
 
-import dataclasses
-from itertools import repeat
-
 import numpy as np
-from numpy.typing import NDArray
-import pandas as pd
-from astropy import units
-from astropy.cosmology import FLRW, default_cosmology
-from scipy.interpolate import InterpolatedUnivariateSpline
+from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import cKDTree
 
 
-@dataclasses.dataclass(frozen=True, repr=False)
-class PairCountData:
-    binning: pd.IntervalIndex
-    count: NDArray[np.float_]
-    total: NDArray[np.float_]
-
-    def normalise(self) -> NDArray[np.float_]:
-        normalised = self.count / self.total
-        return pd.DataFrame(data=normalised.T, index=self.binning)
+class DummyTree:
+    
+    def __init__(self) -> None:
+        raise NotADirectoryError
 
 
-class SphericalKDTree(object):
+class SphericalKDTree:
 
-    def __init__(self, RA, DEC, weights=None, leafsize=16):
+    def __init__(
+        self,
+        RA: NDArray[np.float_],
+        DEC: NDArray[np.float_],
+        weights: NDArray[np.float_] | None = None,
+        leafsize: int = 16
+    ) -> None:
         # convert angular coordinates to 3D points on unit sphere
         assert(len(RA) == len(DEC))
         pos_sphere = self._position_sky2sphere(np.column_stack([RA, DEC]))
@@ -38,7 +32,7 @@ class SphericalKDTree(object):
             self.weights = np.asarray(weights)
             self._sum_weights = self.weights.sum()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.weights)
 
     @property
@@ -46,7 +40,9 @@ class SphericalKDTree(object):
         return self._sum_weights
 
     @staticmethod
-    def _position_sky2sphere(RA_DEC):
+    def _position_sky2sphere(
+        RA_DEC: NDArray[np.float_]
+    ) -> NDArray[np.float_]:
         """
         Maps celestial coordinates onto a unit-sphere in three dimensions
         (x, y, z).
@@ -63,7 +59,7 @@ class SphericalKDTree(object):
         return np.squeeze(pos_sphere)
 
     @staticmethod
-    def _distance_sky2sphere(dist_sky):
+    def _distance_sky2sphere(dist_sky: ArrayLike) -> ArrayLike:
         """
         Converts angular separation in celestial coordinates to the
         Euclidean distance in (x, y, z) space.
@@ -73,7 +69,7 @@ class SphericalKDTree(object):
         return dist_sphere
 
     @staticmethod
-    def _distance_sphere2sky(dist_sphere):
+    def _distance_sphere2sky(dist_sphere: ArrayLike) -> ArrayLike:
         """
         Converts Euclidean distance in (x, y, z) space to angular separation in
         celestial coordinates.
@@ -82,7 +78,14 @@ class SphericalKDTree(object):
         dist_sky = np.rad2deg(dist_sky_rad)
         return dist_sky
 
-    def count(self, other, auto, scales, dist_weight_scale=None, weight_res=50):
+    def count(
+        self,
+        other: SphericalKDTree,
+        auto: bool,
+        scales: NDArray[np.float_],
+        dist_weight_scale: float | None = None,
+        weight_res: int = 50
+    ) -> tuple[NDArray, NDArray]:
         # unpack query scales
         scales = np.atleast_2d(scales)
         if scales.shape[1] != 2:
@@ -114,68 +117,3 @@ class SphericalKDTree(object):
         else:
             total = self.total * other.total
         return result, total
-
-
-def r_kpc_to_angle(
-    r_kpc: NDArray[np.float_],
-    z: float,
-    cosmology: FLRW
-) -> tuple[float, float]:
-    f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
-    angle_rad = np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
-    return np.rad2deg(angle_rad)
-
-
-def count_pairs_binned(
-    auto: bool,
-    reg_id1: int,
-    region1: pd.DataFrame,
-    regions2: dict[int, pd.DataFrame],
-    scales: NDArray[np.float_],
-    cosmology: FLRW,
-    zbins: NDArray[np.float_],
-    bin1: bool = True,
-    bin2: bool = False,
-    dist_weight_scale: float | None = None,
-    weight_res: int = 50
-) -> dict[tuple[int, int], PairCountData]:
-    z_centers = (zbins[1:] + zbins[:-1]) / 2.0
-    # build tree for region in 1
-    if bin1:
-        trees1 = []
-        for _, bin_data1 in region1.groupby(pd.cut(region1["z"], zbins)):
-            trees1.append(SphericalKDTree(
-                bin_data1["ra"], bin_data1["dec"], bin_data1.get("weight")))
-    else:
-        trees1 = repeat(SphericalKDTree(  # can iterate indefinitely
-            region1["ra"], region1["dec"], region1.get("weight")))
-    # build tree for region(s) in 2
-    reg_trees2 = {}
-    for reg_id2, region2 in regions2.items():
-        if bin2:
-            trees2 = []
-            for _, bin_data2 in region2.groupby(pd.cut(region2["z"], zbins)):
-                trees2.append(SphericalKDTree(
-                    bin_data2["ra"], bin_data2["dec"], bin_data2.get("weight")))
-            reg_trees2[reg_id2] = trees2
-        else:
-            reg_trees2[reg_id2] = repeat(SphericalKDTree(  # iter. indefinitely
-                region2["ra"], region2["dec"], region2.get("weight")))
-
-    # count pairs
-    results = {}
-    for reg_id2, trees2 in reg_trees2.items():
-        totals, counts = [], []
-        for z, tree1, tree2 in zip(z_centers, trees1, trees2):
-            total, count = tree1.count(
-                tree2,
-                auto=(auto and reg_id1 == reg_id2),
-                scales=r_kpc_to_angle(scales, z, cosmology),
-                dist_weight_scale=dist_weight_scale,
-                weight_res=weight_res)
-            totals.append(total)
-            counts.append(count)
-        results[(reg_id1, reg_id2)] = PairCountData(
-            pd.IntervalIndex.from_breaks(zbins),
-            total=np.array(totals), count=np.array(counts))
-    return results

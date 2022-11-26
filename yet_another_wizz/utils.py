@@ -1,17 +1,198 @@
-import inspect
+from __future__ import annotations
+
 import json
 import multiprocessing
 import operator
-import sys
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
+from typing import Any
 
 import numpy as np
-from astropy import cosmology
+import pandas as pd
+from astropy.cosmology import FLRW, Planck15
+from numpy.typing import ArrayLike, NDArray
+from pandas import DataFrame
+
+from yet_another_wizz.catalog import BinnedCatalog
 
 
-try:
-    NAMED_COSMOLOGIES = ["default", *cosmology.parameters.available]
-except AttributeError:
-    NAMED_COSMOLOGIES = ["default", *cosmology.realizations.available]
+def get_default_cosmology() -> FLRW:
+    return Planck15
+
+
+class CustomCosmology(ABC):
+    """
+    Can be used to implement a custom cosmology outside of astropy.cosmology
+    """
+
+    @abstractmethod
+    def to_format(self, format: str = "mapping") -> str:
+        # TODO: really necessary?
+        raise NotImplementedError
+
+    @abstractmethod
+    def comoving_distance(self, z: ArrayLike) -> ArrayLike:
+        raise NotImplementedError
+
+    @abstractmethod
+    def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike:
+        raise NotImplementedError
+
+
+def r_kpc_to_angle(
+    r_kpc: NDArray[np.float_],
+    z: float,
+    cosmology: FLRW | CustomCosmology
+) -> tuple[float, float]:
+    f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
+    angle_rad = np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
+    return np.rad2deg(angle_rad)
+
+
+class UniformRandoms:
+
+    def __init__(
+        self,
+        ra_min: float,
+        ra_max: float,
+        dec_min: float,
+        dec_max: float,
+        seed: int = 12345
+    ) -> None:
+        self.x_min, self.y_min = self.sky2cylinder(ra_min, dec_min)
+        self.x_max, self.y_max = self.sky2cylinder(ra_max, dec_max)
+        self.rng = np.random.SeedSequence(seed)
+
+    @classmethod
+    def from_catalogue(cls, cat: BinnedCatalog) -> UniformRandoms:
+        return cls(
+            np.rad2deg(cat.ra.min()),
+            np.rad2deg(cat.ra.max()),
+            np.rad2deg(cat.dec.min()),
+            np.rad2deg(cat.dec.max()))
+
+    @staticmethod
+    def sky2cylinder(
+        ra: float | NDArray[np.float_],
+        dec: float | NDArray[np.float_]
+    ) -> NDArray:
+        x = np.deg2rad(ra)
+        y = np.sin(np.deg2rad(dec))
+        return np.transpose([x, y])
+ 
+    @staticmethod
+    def cylinder2sky(
+        x: float | NDArray[np.float_],
+        y: float | NDArray[np.float_]
+    ) -> float | NDArray[np.float_]:
+        ra = np.rad2deg(x)
+        dec = np.rad2deg(np.arcsin(y))
+        return np.transpose([ra, dec])
+
+    def generate(
+        self,
+        size: int,
+        names: list[str, str] | None = None,
+        draw_from: dict[str, NDArray] | None = None,
+        n_threads: int = 1
+    ) -> DataFrame:
+        seeds = self.rng.spawn(n_threads)
+        if size <= 100 * n_threads:
+            n_threads = 1
+        sizes = np.diff(np.linspace(0, size, n_threads+1).astype(np.int_))
+        args = []
+        for i in range(n_threads):
+            args.append([self, seeds[i], sizes[i], names, draw_from])
+        with multiprocessing.Pool(n_threads) as pool:
+            chunks = pool.starmap(_generate_uniform_randoms, args)
+        return pd.concat(chunks)
+
+
+def _generate_uniform_randoms(
+    inst: UniformRandoms,
+    seed: np.random.SeedSequence,
+    size: int,
+    names: list[str, str] | None = None,
+    draw_from: dict[str, NDArray] | None = None
+) -> DataFrame:
+    rng = np.random.default_rng(seed)
+    if names is None:
+        names = ["ra", "dec"]
+    # generate positions
+    x = np.random.uniform(inst.x_min, inst.x_max, size)
+    y = np.random.uniform(inst.y_min, inst.y_max, size)
+    ra, dec = UniformRandoms.cylinder2sky(x, y).T
+    rand = DataFrame({names[0]: ra, names[1]: dec})
+    # generate random draw
+    if draw_from is not None:
+        N = None
+        for col in draw_from.values():
+            if N is None:
+                if len(col.shape) > 1:
+                    raise ValueError("data to draw from must be 1-dimensional")
+                N = len(col)
+            else:
+                if len(col) != N:
+                    raise ValueError(
+                        "length of columns to draw from does not match")
+        draw_idx = rng.integers(0, N, size=size)
+        # draw and insert data
+        for key, col in draw_from.items():
+            rand[key] = col[draw_idx]
+    return rand
+
+
+class ArrayDict(Mapping):
+
+    def __init__(
+        self,
+        keys: Collection[Any],
+        array: NDArray
+    ) -> None:
+        if len(array) != len(keys):
+            raise ValueError("number of keys and array length do not match")
+        self._array = array
+        self._dict = {key: idx for idx, key in enumerate(keys)}
+
+    def __len__(self) -> int:
+        return len(self._array)
+
+    def __getitem__(self, key: Any) -> NDArray:
+        idx = self._dict[key]
+        return self._array[idx]
+
+    def __iter__(self) -> Iterator[NDArray]:
+        return self._dict.__iter__()
+
+    def __contains__(self, key: Any) -> bool:
+        return key in self._dict
+
+    def items(self) -> list[tuple[Any, NDArray]]:
+        # ensure that the items are ordered by the index of each key
+        return sorted(self._dict.items(), key=lambda item: item[1])
+
+    def keys(self) -> list[Any]:
+        # key are ordered by their corresponding index
+        return [key for key, _ in self.items()]
+
+    def values(self) -> list[NDArray]:
+        # values are returned in index order
+        return [value for value in self._array]
+
+    def get(self, key: Any, default: Any) -> Any:
+        try:
+            idx = self._dict[key]
+        except KeyError:
+            return default
+        else:
+            return self._array[idx]
+
+    def sample(self, keys: Iterable[Any]) -> NDArray:
+        idx = [self._dict[key] for key in keys]
+        return self._array[idx]
+
+    def as_array(self) -> NDArray:
+        return self._array
 
 
 def load_json(path):
@@ -50,49 +231,45 @@ class ThreadHelper(object):
 
     threads = multiprocessing.cpu_count()
 
-    def __init__(self, n_items, threads=None):
+    def __init__(
+        self,
+        n_items: int,
+        threads: int | None = None
+    ) -> None:
         self._n_items = n_items
         if threads is not None:
             self.threads = threads
         self.args = []
 
-    def __len__(self):
+    def __len__(self) -> int:
         """
         Returns the number of expected function arguments.
         """
         return self._n_items
 
-    def add_constant(self, value):
+    def add_constant(self, value: Any) -> None:
         """
         add_constant(value)
 
         Append a constant argument that will be repeated for each thread.
-
-        Parameters
-        ----------
-        value : any
-            Any object that can be serialized.
         """
         self.args.append([value] * self._n_items)
 
-    def add_iterable(self, iterable, no_checks=False):
+    def add_iterable(
+        self,
+        iterable: Iterable,
+        no_checks: bool = False
+    ) -> None:
         """
         add_iterable(iterable, no_checks=False)
 
         Append a constant argument that will be repeated for each thread.
-
-        Parameters
-        ----------
-        iterable : iterable
-            Any iterator that yields objects that can be serialized.
-        no_checks : bool
-            Whether the iterable should be checked if it supports iteration.
         """
         if not hasattr(iterable, "__iter__") and not no_checks:
             raise TypeError("object is not iterable: %s" % iterable)
         self.args.append(iterable)
 
-    def map(self, callable):
+    def map(self, callable: Callable) -> Iterable:
         """
         map(callable)
 
@@ -115,55 +292,3 @@ class ThreadHelper(object):
         else:  # mimic the behaviour of pool.starmap() with map()
             results = list(map(callable, *self.args))
         return results
-
-
-class BaseClass(object):
-
-    _verbose = True
-
-    def _printMessage(self, message):
-        if self._verbose:
-            classname = self.__class__.__name__
-            methodname = inspect.stack()[1].function
-            if methodname == "__init__":
-                sys.stdout.write("%s - %s" % (classname, message))
-            else:
-                sys.stdout.write("%s::%s - %s" % (
-                    classname, methodname, message))
-            sys.stdout.flush()
-
-    def _throwException(self, message, exception_type):
-        classname = self.__class__.__name__
-        methodname = inspect.stack()[1].function
-        exception = exception_type(message)
-        exceptionname = exception.__class__.__name__
-        sys.stdout.write(
-            "%s::%s - %s: %s\n" % (
-                classname, methodname, exceptionname, message))
-        sys.stdout.flush()
-        raise exception
-
-    def setCosmology(self, name="default", **cosmo_params):
-        if name != "default":
-            self._printMessage("%s\n" % name)
-        if name == "default":
-            self.cosmology = cosmology.default_cosmology.get()
-        elif name in NAMED_COSMOLOGIES:
-            self.cosmology = getattr(cosmology, name)
-        else:  # now we need to initialize it with the **cosmo_params
-            try:
-                cosmo_class = getattr(cosmology, name)
-                assert(issubclass(cosmo_class, cosmology.FLRW))
-            except (AttributeError, AssertionError):
-                raise ValueError("invalid cosmology name '%s'" % name)
-            self.cosmology = cosmo_class(**cosmo_params)
-        self._cosmo_info = {"name": name}
-        self._cosmo_info.update(cosmo_params)
-
-    def loadCosmology(self, path):
-        self.setCosmology(**load_json(path))
-
-    def writeCosmology(self, path):
-        self._printMessage(
-            "writing cosmology information to:\n    %s\n" % path)
-        dump_json(self._cosmo_info, path)
