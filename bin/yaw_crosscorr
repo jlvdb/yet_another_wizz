@@ -298,6 +298,7 @@ if __name__ == '__main__':
             # count pairs
             est.countPairs(
                 rmin=rmin, rmax=rmax,
+                zbins=np.linspace(args.z_min, args.z_max, args.ref_bin_no+1),
                 comoving=(args.scales_type == "comoving"),
                 inv_distance_weight=(args.pair_weighting == "Y"),
                 D_R_ratio=D_R_ratio,

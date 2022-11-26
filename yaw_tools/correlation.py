@@ -39,16 +39,16 @@ def bin_table(
             filename = bindir.join("bin_all.fits")
             os.symlink(filepath, filename)
             frame = pd.DataFrame({
-                "RA": data[ra_name].byteswap().newbyteorder(),
-                "DEC": data[dec_name].byteswap().newbyteorder()})
+                "ra": data[ra_name].byteswap().newbyteorder(),
+                "dec": data[dec_name].byteswap().newbyteorder()})
         else:
             zmin, zmax = data[z_name].min(), data[z_name].max()
             filename = bindir.zbin_filename(zmin, zmax, ".fits", prefix="bin")
             os.symlink(filepath, filename)
             frame = pd.DataFrame({
-                "RA": data[ra_name].byteswap().newbyteorder(),
-                "DEC": data[dec_name].byteswap().newbyteorder(),
-                "Z": data[z_name].byteswap().newbyteorder()})
+                "ra": data[ra_name].byteswap().newbyteorder(),
+                "dec": data[dec_name].byteswap().newbyteorder(),
+                "z": data[z_name].byteswap().newbyteorder()})
         if weight_name is not None:
             frame["weights"] = data[weight_name].byteswap().newbyteorder()
         if region_name is not None:
@@ -67,8 +67,8 @@ def bin_table(
                 os.symlink(filepath, filename)
                 bindata = data
                 frame = pd.DataFrame({
-                    "RA": data[ra_name].byteswap().newbyteorder(),
-                    "DEC": data[dec_name].byteswap().newbyteorder()})
+                    "ra": data[ra_name].byteswap().newbyteorder(),
+                    "dec": data[dec_name].byteswap().newbyteorder()})
             else:
                 mask = (data[z_name] > zmin) & (data[z_name] <= zmax)
                 print(
@@ -80,9 +80,9 @@ def bin_table(
                 hdu.writeto(filename)
                 # keep the bin data as pandas DataFrame
                 frame = pd.DataFrame({
-                    "RA": bindata[ra_name].byteswap().newbyteorder(),
-                    "DEC": bindata[dec_name].byteswap().newbyteorder(),
-                    "Z": bindata[z_name].byteswap().newbyteorder()})
+                    "ra": bindata[ra_name].byteswap().newbyteorder(),
+                    "dec": bindata[dec_name].byteswap().newbyteorder(),
+                    "z": bindata[z_name].byteswap().newbyteorder()})
             if weight_name is not None:
                 frame["weights"] = \
                     bindata[weight_name].byteswap().newbyteorder()

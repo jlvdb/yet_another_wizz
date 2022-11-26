@@ -5,7 +5,7 @@ from multiprocessing import cpu_count
 import numpy as np
 import pandas as pd
 
-from .spatial import count_pairs
+from .spatial import count_pairs_binned
 from .utils import BaseClass, ThreadHelper, dump_json
 
 
@@ -30,11 +30,11 @@ class PairMaker(BaseClass):
             self._threads = min(max(threads, 1), cpu_count())
         self.setCosmology(name="default")
 
-    def _packData(self, RA, DEC, Z=None, weights=None, region_idx=None):
+    def _packData(self, ra, dec, z=None, weights=None, region_idx=None):
         # compare the input data vector lengths
-        data = pd.DataFrame({"ra": RA, "dec": DEC})
-        if Z is not None:
-            data["z"] = Z
+        data = pd.DataFrame({"ra": ra, "dec": dec})
+        if z is not None:
+            data["z"] = z
         if weights is not None:
             data["weights"] = weights
             data["weights"] /= weights.mean()
@@ -46,7 +46,7 @@ class PairMaker(BaseClass):
             # remove objects with negative indices
             data = data[data.region_idx >= 0]
         else:
-            data["region_idx"] = np.zeros(len(RA), dtype=np.int16)
+            data["region_idx"] = np.zeros(len(ra), dtype=np.int16)
         return data
 
     def nRegions(self):
@@ -89,14 +89,14 @@ class PairMaker(BaseClass):
                 "reference data not initialized", RuntimeError)
         return self._reference_data
 
-    def setReference(self, RA, DEC, Z, weights=None, region_idx=None):
-        if not self._inputGood(RA, DEC, Z, weights, region_idx):
+    def setReference(self, ra, dec, z, weights=None, region_idx=None):
+        if not self._inputGood(ra, dec, z, weights, region_idx):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
-        self._printMessage("loading %d objects\n" % len(RA))
-        self._reference_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage("loading %d objects\n" % len(ra))
+        self._reference_data = self._packData(ra, dec, z, weights, region_idx)
         self._printMessage(
-            "kept %d of %d objects\n" % (len(self._reference_data), len(RA)))
+            "kept %d of %d objects\n" % (len(self._reference_data), len(ra)))
 
     def writeReference(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -108,14 +108,14 @@ class PairMaker(BaseClass):
                 "unknown data not initialized", RuntimeError)
         return self._unknown_data
 
-    def setUnknown(self, RA, DEC, Z=None, weights=None, region_idx=None):
-        if not self._inputGood(RA, DEC, Z, weights, region_idx):
+    def setUnknown(self, ra, dec, z=None, weights=None, region_idx=None):
+        if not self._inputGood(ra, dec, z, weights, region_idx):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
-        self._printMessage("loading %d objects\n" % len(RA))
-        self._unknown_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage("loading %d objects\n" % len(ra))
+        self._unknown_data = self._packData(ra, dec, z, weights, region_idx)
         self._printMessage(
-            "kept %d of %d objects\n" % (len(self._unknown_data), len(RA)))
+            "kept %d of %d objects\n" % (len(self._unknown_data), len(ra)))
 
     def writeUnknown(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -127,14 +127,14 @@ class PairMaker(BaseClass):
                 "random data not initialized", RuntimeError)
         return self._random_data
 
-    def setRandoms(self, RA, DEC, Z=None, weights=None, region_idx=None):
-        if not self._inputGood(RA, DEC, Z, weights, region_idx):
+    def setRandoms(self, ra, dec, z=None, weights=None, region_idx=None):
+        if not self._inputGood(ra, dec, z, weights, region_idx):
             self._throwException(
                 "input data empty or data length does not match", ValueError)
-        self._printMessage("laoding %d objects\n" % len(RA))
-        self._random_data = self._packData(RA, DEC, Z, weights, region_idx)
+        self._printMessage("laoding %d objects\n" % len(ra))
+        self._random_data = self._packData(ra, dec, z, weights, region_idx)
         self._printMessage(
-            "kept %d of %d objects\n" % (len(self._random_data), len(RA)))
+            "kept %d of %d objects\n" % (len(self._random_data), len(ra)))
 
     def writeRandoms(self, path):
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
@@ -161,6 +161,7 @@ class PairMaker(BaseClass):
             self._throwException(
                 "region indices of randoms do not match reference objects",
                 ValueError)
+        self._printMessage("regionising data sets\n")
         # create pool to find pairs DD
         poolDD = ThreadHelper(
             self.nRegions(), threads=min(self._threads, self.nRegions()))
@@ -168,8 +169,11 @@ class PairMaker(BaseClass):
         reg_ids, regions = zip(*self.getReference().groupby("region_idx"))
         poolDD.add_iterable(reg_ids)
         poolDD.add_iterable(regions)
-        poolDD.add_iterable(dict(self.getUnknown().groupby("region_idx")))
-        poolDD.add_constant(self._scales)
+        regions = {}
+        for reg_id, region in self.getUnknown().groupby("region_idx"):
+            regions[reg_id] = region
+        poolDD.add_iterable([{reg_id: regions[reg_id]} for reg_id in reg_ids])
+        poolDD.add_constant(np.array([[self._scales["min"], self._scales["max"]]]))
         poolDD.add_constant(self.cosmology)
         poolDD.add_constant(zbins)
         poolDD.add_constant(True)
@@ -183,8 +187,11 @@ class PairMaker(BaseClass):
         reg_ids, regions = zip(*self.getReference().groupby("region_idx"))
         poolDR.add_iterable(reg_ids)
         poolDR.add_iterable(regions)
-        poolDR.add_iterable(dict(self.getRandoms().groupby("region_idx")))
-        poolDR.add_constant(self._scales)
+        regions = {}
+        for reg_id, region in self.getRandoms().groupby("region_idx"):
+            regions[reg_id] = region
+        poolDR.add_iterable([{reg_id: regions[reg_id]} for reg_id in reg_ids])
+        poolDR.add_constant(np.array([[self._scales["min"], self._scales["max"]]]))
         poolDR.add_constant(self.cosmology)
         poolDR.add_constant(zbins)
         poolDR.add_constant(True)
@@ -193,10 +200,10 @@ class PairMaker(BaseClass):
         poolDR.add_constant(50)
         # find DD pairs in regions running parallel threads
         self._printMessage("finding data-data pairs\n")
-        DD = pd.concat(poolDD.map(count_pairs))
+        DD = poolDD.map(count_pairs_binned)
         # find DR pairs in regions running parallel threads
         self._printMessage("finding data-random pairs\n")
-        DR = poolDR.map(count_pairs)
+        DR = poolDR.map(count_pairs_binned)
         self._pair_counts = (DD, DR)
 
     def getDummyCounts(
