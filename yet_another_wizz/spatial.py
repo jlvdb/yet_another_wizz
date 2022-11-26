@@ -31,7 +31,7 @@ class SphericalKDTree(object):
         pos_sphere = self._position_sky2sphere(np.column_stack([RA, DEC]))
         self.tree = cKDTree(pos_sphere, leafsize)
         if weights is None:
-            self.weights = np.ones(pos_sphere)
+            self.weights = np.ones(len(pos_sphere))
             self._sum_weights = len(self)
         else:
             assert(len(weights) == len(RA))
@@ -95,7 +95,7 @@ class SphericalKDTree(object):
         # count pairs
         counts = self.tree.count_neighbors(
             other.tree, self._distance_sky2sphere(r_edges), 
-            weights=[self.weights, other.weight], cumulative=False)
+            weights=(self.weights, other.weights), cumulative=False)
         counts = counts[1:]  # discard counts with 0 < R <= r_min
         # apply the distance weights
         rlog_centers = (rlog_edges[:-1] + rlog_edges[1:]) / 2.0
@@ -123,8 +123,7 @@ def r_kpc_to_angle(
 ) -> tuple[float, float]:
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
     angle_rad = np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
-    ang_min, ang_max = np.rad2deg(angle_rad)
-    return ang_min, ang_max
+    return np.rad2deg(angle_rad)
 
 
 def count_pairs_binned(
@@ -148,8 +147,8 @@ def count_pairs_binned(
             trees1.append(SphericalKDTree(
                 bin_data1["ra"], bin_data1["dec"], bin_data1.get("weight")))
     else:
-        trees1 = repeat([SphericalKDTree(  # can iterate indefinitely
-            region1["ra"], region1["dec"], region1.get("weight"))])
+        trees1 = repeat(SphericalKDTree(  # can iterate indefinitely
+            region1["ra"], region1["dec"], region1.get("weight")))
     # build tree for region(s) in 2
     reg_trees2 = {}
     for reg_id2, region2 in regions2.items():
@@ -160,8 +159,8 @@ def count_pairs_binned(
                     bin_data2["ra"], bin_data2["dec"], bin_data2.get("weight")))
             reg_trees2[reg_id2] = trees2
         else:
-            reg_trees2[reg_id2] = repeat([SphericalKDTree(  # iter. indefinitely
-                region2["ra"], region2["dec"], region2.get("weight"))])
+            reg_trees2[reg_id2] = repeat(SphericalKDTree(  # iter. indefinitely
+                region2["ra"], region2["dec"], region2.get("weight")))
 
     # count pairs
     results = {}
