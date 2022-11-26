@@ -32,7 +32,7 @@ class PairMaker(BaseClass):
 
     def _packData(self, RA, DEC, Z=None, weights=None, region_idx=None):
         # compare the input data vector lengths
-        data = pd.DataFrame({"RA": RA, "DEC": DEC})
+        data = pd.DataFrame({"ra": RA, "dec": DEC})
         if Z is not None:
             data["z"] = Z
         if weights is not None:
@@ -141,10 +141,8 @@ class PairMaker(BaseClass):
         self.getRandoms().to_parquet(path)
 
     def countPairs(
-            self, rmin, rmax, comoving=False, inv_distance_weight=True,
+            self, rmin, rmax, zbins, comoving=False, inv_distance_weight=True,
             D_R_ratio="global", regionize_unknown=True):
-        if regionize_unknown and D_R_ratio == "local":
-            D_R_ratio = "global"
         self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
         self._dist_weight = inv_distance_weight
         # check if all data is present
@@ -166,94 +164,45 @@ class PairMaker(BaseClass):
         # create pool to find pairs DD
         poolDD = ThreadHelper(
             self.nRegions(), threads=min(self._threads, self.nRegions()))
-        poolDD.add_iterable(self.getReference().groupby("region_idx"))
-        if regionize_unknown:
-            poolDD.add_iterable(self.getUnknown().groupby("region_idx"))
-        else:
-            poolDD.add_iterable([
-                (r, self.getUnknown())
-                for r in sorted(pd.unique(self.getReference().region_idx))])
-        poolDD.add_constant((rmin, rmax))
-        poolDD.add_constant(comoving)
+        poolDD.add_constant(len(self.getReference()) == len(self.getUnknown()))  # auto
+        reg_ids, regions = zip(*self.getReference().groupby("region_idx"))
+        poolDD.add_iterable(reg_ids)
+        poolDD.add_iterable(regions)
+        poolDD.add_iterable(dict(self.getUnknown().groupby("region_idx")))
+        poolDD.add_constant(self._scales)
         poolDD.add_constant(self.cosmology)
-        poolDD.add_constant(inv_distance_weight)
+        poolDD.add_constant(zbins)
+        poolDD.add_constant(True)
+        poolDD.add_constant(False)
+        poolDD.add_constant(-1.0 if inv_distance_weight else None)
+        poolDD.add_constant(50)
         # create pool to find pairs DR
         poolDR = ThreadHelper(
             self.nRegions(), threads=min(self._threads, self.nRegions()))
-        poolDR.add_iterable(self.getReference().groupby("region_idx"))
-        if regionize_unknown:
-            poolDR.add_iterable(self.getRandoms().groupby("region_idx"))
-        else:
-            poolDR.add_iterable([
-                (r, self.getRandoms())
-                for r in sorted(pd.unique(self.getReference().region_idx))])
-        poolDR.add_constant((rmin, rmax))
-        poolDR.add_constant(comoving)
+        poolDR.add_constant(False)  # auto
+        reg_ids, regions = zip(*self.getReference().groupby("region_idx"))
+        poolDR.add_iterable(reg_ids)
+        poolDR.add_iterable(regions)
+        poolDR.add_iterable(dict(self.getRandoms().groupby("region_idx")))
+        poolDR.add_constant(self._scales)
         poolDR.add_constant(self.cosmology)
-        poolDR.add_constant(inv_distance_weight)
-        # set data to random ratio
-        if D_R_ratio == "global":
-            n_D = np.full(self.nRegions(), self.getUnknown().weights.sum())
-            n_R = np.full(self.nRegions(), self.getRandoms().weights.sum())
-        elif D_R_ratio == "local":
-            n_D = np.asarray([
-                self.getUnknown().weights[self.getUnknown().region_idx==i].sum()
-                for i in range(self.nRegions())])
-            n_R = np.asarray([
-                self.getRandoms().weights[self.getRandoms().region_idx==i].sum()
-                for i in range(self.nRegions())])
-        else:
-            try:
-                assert(D_R_ratio > 0.0)
-                n_D = np.full(self.nRegions(), D_R_ratio)
-                n_R = np.ones(self.nRegions())
-            except Exception:
-                self._throwException(
-                    "D_R_ratio must be either of 'local', 'global' or a "
-                    "positive number", ValueError)
+        poolDR.add_constant(zbins)
+        poolDR.add_constant(True)
+        poolDR.add_constant(False)
+        poolDR.add_constant(-1.0 if inv_distance_weight else None)
+        poolDR.add_constant(50)
         # find DD pairs in regions running parallel threads
         self._printMessage("finding data-data pairs\n")
-        try:
-            DD = pd.concat(poolDD.map(count_pairs))
-            DD.rename(columns={"pairs": "DD"}, inplace=True)
-        except ValueError:
-            DD = pd.DataFrame({"DD": []})
+        DD = pd.concat(poolDD.map(count_pairs))
         # find DR pairs in regions running parallel threads
         self._printMessage("finding data-random pairs\n")
-        try:
-            DR = poolDR.map(count_pairs)
-            DR = pd.concat(DR)
-            DR.rename(columns={"pairs": "DR"}, inplace=True)
-        except ValueError:
-            DR = pd.DataFrame({"DR": []})
-        # combine the pair counts with redshifts and region indices
-        try:
-            ref_data = self._reference_data[["z", "region_idx", "weights"]]
-        except KeyError:
-            ref_data = self._reference_data[["z", "region_idx"]]
-        # expand D/R to reference objects
-        n_D_obj = np.zeros(len(DD), dtype=n_D.dtype)
-        n_R_obj = np.zeros(len(DR), dtype=n_R.dtype)
-        for i in range(self.nRegions()):
-            mask = ref_data.region_idx == i
-            n_D_obj[mask] = n_D[i]
-            n_R_obj[mask] = n_R[i]
-        D_R_obj = pd.DataFrame(
-            {"n_D": n_D_obj, "n_R": n_R_obj}, index=ref_data.index)
-        self._pair_counts = pd.concat([ref_data, DD, DR, D_R_obj], axis=1)
+        DR = poolDR.map(count_pairs)
+        self._pair_counts = (DD, DR)
 
     def getDummyCounts(
             self, rmin, rmax, comoving=False, inv_distance_weight=True,
             reference_weights=False):
-        self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
-        self._dist_weight = inv_distance_weight
-        if reference_weights:
-            return pd.DataFrame(
-                columns=[
-                    "z", "region_idx", "weights", "DD", "DR", "n_D", "n_R"])
-        else:
-            return pd.DataFrame(
-                columns=["z", "region_idx", "DD", "DR", "n_D", "n_R"])
+        return (None, None)
 
     def getCounts(self):
         if self._pair_counts is None:
@@ -261,5 +210,6 @@ class PairMaker(BaseClass):
         return self._pair_counts
 
     def writeCounts(self, path):
+        return
         self._printMessage("writing data to parquet file:\n    %s\n" % path)
         self.getCounts().to_parquet(path)

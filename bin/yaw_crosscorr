@@ -194,9 +194,9 @@ if __name__ == '__main__':
     with pyfits.open(args.ref_file) as fits:
         data = fits[args.ref_file_ext].data
         refdata = pd.DataFrame({
-            "RA": data[args.ref_ra].byteswap().newbyteorder(),
-            "DEC": data[args.ref_dec].byteswap().newbyteorder(),
-            "Z": data[args.ref_z].byteswap().newbyteorder()})
+            "ra": data[args.ref_ra].byteswap().newbyteorder(),
+            "dec": data[args.ref_dec].byteswap().newbyteorder(),
+            "z": data[args.ref_z].byteswap().newbyteorder()})
         if args.ref_weight is not None:
             refdata["weights"] = \
                 data[args.ref_weight].byteswap().newbyteorder()
@@ -304,6 +304,7 @@ if __name__ == '__main__':
                 regionize_unknown=(args.across_regions == "N"))
             est.writeMeta(meta_file)
             est.writeCounts(paircount_file)
+            continue
 
             # create region counts
             regioncountsfile = scaledir.path_crosscorr_file(
