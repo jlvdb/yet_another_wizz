@@ -1,29 +1,49 @@
 from __future__ import annotations
 
-import dataclasses
+import itertools
 from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Generator
 
 import numpy as np
 from numpy.typing import NDArray
-from pandas import DataFrame, Interval, IntervalIndex
+from pandas import DataFrame, IntervalIndex
 
-from yet_another_wizz.utils import ArrayDict
-
-
-@dataclasses.dataclass(frozen=True, repr=False)
-class PairCountData:
-    binning: IntervalIndex
-    count: NDArray[np.float_]
-    total: NDArray[np.float_]
-
-    def normalise(self) -> NDArray[np.float_]:
-        normalised = self.count / self.total
-        return DataFrame(data=normalised.T, index=self.binning)
+from yet_another_wizz.utils import ArrayDict, PairCountData, TypePatchKey, TypeScaleResult
 
 
-@dataclasses.dataclass(frozen=True, repr=False)
-class TreeCorrData:
-    npatch: tuple(int, int)
+def bootstrap_iter(
+    index: NDArray[np.int_],
+    mask: NDArray[np.bool_]
+) -> Generator[TypePatchKey, None, None]:
+    """from TreeCorr.BinnedCorr2"""
+    # Include all represented auto-correlations once, repeating as appropriate.
+    # This needs to be done separately from the below step to avoid extra
+    # pairs (i,i) that you would get by looping i in index and j in index for
+    # cases where i=j at different places in the index list.  E.g. if i=3 shows
+    # up 3 times in index, then the naive way would get 9 instance of (3,3),
+    # whereas we only want 3 instances.
+    ret1 = ((i, i) for i in index if mask[i, i])
+    # And all other pairs that aren't really auto-correlations.
+    # These can happen at their natural multiplicity from i and j loops.
+    ret2 = ((i, j) for i in index for j in index if mask[i, j] and i != j)
+    # merge generators
+    return itertools.chain(ret1, ret2)
+
+
+def jackknife_iter(
+    patch_key_list: Iterable[TypePatchKey],
+    drop_index: int,
+    mask: NDArray[np.bool_]
+) -> Generator[TypePatchKey, None, None]:
+    """from TreeCorr.BinnedCorr2"""
+    return ((j, k) for j, k in patch_key_list
+            if j != drop_index and k != drop_index and mask[j, k])
+
+
+@dataclass(frozen=True, repr=False)
+class PairCountResult:
+    npatch: int
     count: ArrayDict
     total: ArrayDict
     mask: NDArray[np.bool_]
@@ -33,7 +53,7 @@ class TreeCorrData:
         if self.count.keys() != self.total.keys():
             raise KeyError("keys for 'count' and 'total' are not identical")
 
-    def keys(self) -> list[tuple(int, int)]:
+    def keys(self) -> list[TypePatchKey]:
         return self.total.keys()
 
     @property
@@ -41,71 +61,30 @@ class TreeCorrData:
         return len(self.binning)
 
     @classmethod
-    def from_nncorrelation(
+    def from_patch_dict(
         cls,
-        interval: Interval,
-        correlation: treecorr.NNCorrelation
-    ) -> TreeCorrData:
+        binning: NDArray[np.float_],
+        npatch: int,
+        patch_dict: TypeScaleResult
+    ) -> PairCountResult:
         # extract the (cross-patch) pair counts
-        npatch = (correlation.npatch1, correlation.npatch2)
         keys = []
-        count = np.empty((len(correlation.results), 1))
-        total = np.empty((len(correlation.results), 1))
-        for i, (patches, result) in enumerate(correlation.results.items()):
+        count = []
+        total = []
+        for patches, result in patch_dict.items():
             keys.append(patches)
-            count[i] = result.weight
-            total[i] = result.tot
+            count.append(result.count)
+            total.append(result.total)
+        # mark which patches are available
+        mask = np.zeros((npatch, npatch), dtype=np.bool_)
+        for key in keys:
+            mask[key] = True
         return cls(
             npatch=npatch,
-            count=ArrayDict(keys, count),
-            total=ArrayDict(keys, total),
-            mask=correlation._ok,
-            binning=IntervalIndex([interval]))
-
-    @classmethod
-    def from_bins(
-        cls,
-        zbins: Iterable[TreeCorrData]
-    ) -> TreeCorrData:
-        # check that the data is compatible
-        if len(zbins) == 0:
-            raise ValueError("'zbins' is empty")
-        npatch = zbins[0].npatch
-        mask = zbins[0].mask
-        keys = tuple(zbins[0].keys())
-        nbins = zbins[0].nbins
-        for zbin in zbins[1:]:
-            if zbin.npatch != npatch:
-                raise ValueError("the patch numbers are inconsistent")
-            if not np.array_equal(mask, zbin.mask):
-                raise ValueError("pair masks are inconsistent")
-            if tuple(zbin.keys()) != keys:
-                raise ValueError("patches are inconsistent")
-            if zbin.nbins != nbins:
-                raise IndexError("number of bins is inconsistent")
-
-        # check the ordering of the bins based on the provided intervals
-        binning = IntervalIndex.from_tuples([
-            zbin.binning.to_tuples()[0]  # contains just one entry
-            for zbin in zbins])
-        if not binning.is_non_overlapping_monotonic:
-            raise ValueError(
-                "the binning interval is overlapping or not monotonic")
-        for this, following in zip(binning[:-1], binning[1:]):
-            if this.right != following.left:
-                raise ValueError(f"the binning interval is not contiguous")
-
-        # merge the ArrayDicts
-        count = ArrayDict(
-            keys, np.column_stack([zbin.count.as_array() for zbin in zbins]))
-        total = ArrayDict(
-            keys, np.column_stack([zbin.total.as_array() for zbin in zbins]))
-        return cls(
-            npatch=npatch,
-            count=count,
-            total=total,
+            count=ArrayDict(keys, np.array(count)),
+            total=ArrayDict(keys, np.array(total)),
             mask=mask,
-            binning=binning)
+            binning=IntervalIndex.from_breaks(binning))
 
     def get_patch_count(self) -> DataFrame:
         return DataFrame(
@@ -130,9 +109,8 @@ class TreeCorrData:
         n_boot: int,
         seed: int = 12345
     ) -> NDArray[np.int_]:
-        N = max(self.npatch)
         rng = np.random.default_rng(seed=seed)
-        return rng.integers(0, N, size=(n_boot, N))
+        return rng.integers(0, self.npatch, size=(n_boot, self.npatch))
 
     def get_jackknife_samples(
         self,
@@ -145,10 +123,9 @@ class TreeCorrData:
         total = []
         if global_norm:
             global_total = self.total.as_array().sum(axis=0)
-        for idx in range(max(self.npatch)):  # leave-one-out iteration
+        for idx in range(self.npatch):  # leave-one-out iteration
             # we need to use the jackknife iterator twice
-            patches = list(treecorr.NNCorrelation.JackknifePairIterator(
-                self.count, *self.npatch, idx, self.mask))
+            patches = list(jackknife_iter(self.keys(), idx, mask=self.mask))
             count.append(self.count.sample(patches).sum(axis=0))
             if global_norm:
                 total.append(global_total)
@@ -175,8 +152,7 @@ class TreeCorrData:
             global_total = self.total.as_array().sum(axis=0)
         for idx in patch_idx:  # simplified leave-one-out iteration
             # we need to use the jackknife iterator twice
-            patches = list(treecorr.NNCorrelation.BootstrapPairIterator(
-                self.count, *self.npatch, idx, self.mask))
+            patches = list(bootstrap_iter(idx, mask=self.mask))
             count.append(self.count.sample(patches).sum(axis=0))
             if global_norm:
                 total.append(global_total)

@@ -5,15 +5,57 @@ import multiprocessing
 import operator
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
-from typing import Any
+from dataclasses import dataclass
+from datetime import timedelta
+from timeit import default_timer
+from typing import Any, Union
+from typing_extensions import TypeAlias
 
 import numpy as np
 import pandas as pd
 from astropy.cosmology import FLRW, Planck15
 from numpy.typing import ArrayLike, NDArray
-from pandas import DataFrame
+from pandas import DataFrame, IntervalIndex
 
-from yet_another_wizz.catalog import BinnedCatalog
+
+TypeCosmology: TypeAlias = Union[FLRW, "CustomCosmology"]
+TypePatchKey = tuple[int, int]
+TypeScaleResult = dict[TypePatchKey, "PairCountData"]
+TypeScaleKey = str
+TypeThreadResult = dict[TypeScaleKey, TypeScaleResult]
+
+
+@dataclass(frozen=True, repr=False)
+class PairCountData:
+    binning: IntervalIndex
+    count: NDArray[np.float_]
+    total: NDArray[np.float_]
+
+    def normalise(self) -> NDArray[np.float_]:
+        normalised = self.count / self.total
+        return DataFrame(data=normalised.T, index=self.binning)
+
+
+class Timed:
+
+    def __init__(
+        self,
+        msg: str | None = None,
+        verbose: bool = True
+    ) -> None:
+        self.verbose = verbose
+        self.msg = msg
+
+    def __enter__(self) -> Timed:
+        if self.verbose and self.msg is not None:
+            print(self.msg, end="")
+        self.t = default_timer()
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        delta = default_timer() - self.t
+        if self.verbose:
+            print(" - " + str(timedelta(seconds=round(delta))))
 
 
 def get_default_cosmology() -> FLRW:
@@ -42,7 +84,7 @@ class CustomCosmology(ABC):
 def r_kpc_to_angle(
     r_kpc: NDArray[np.float_],
     z: float,
-    cosmology: FLRW | CustomCosmology
+    cosmology: TypeCosmology
 ) -> tuple[float, float]:
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
     angle_rad = np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
@@ -64,12 +106,8 @@ class UniformRandoms:
         self.rng = np.random.SeedSequence(seed)
 
     @classmethod
-    def from_catalogue(cls, cat: BinnedCatalog) -> UniformRandoms:
-        return cls(
-            np.rad2deg(cat.ra.min()),
-            np.rad2deg(cat.ra.max()),
-            np.rad2deg(cat.dec.min()),
-            np.rad2deg(cat.dec.max()))
+    def from_catalogue(cls, cat) -> UniformRandoms:
+        raise NotImplementedError
 
     @staticmethod
     def sky2cylinder(
@@ -214,81 +252,60 @@ def dump_json(data, path, preview=False):
             json.dump(data, f, **kwargs)
 
 
-class ThreadHelper(object):
+class ParallelHelper(object):
     """
-    ThreadHelper(threads, n_items)
-
     Helper class to apply a series of arguments to a function using
     multiprocessing.Pool.
-
-    Parameters
-    ----------
-    threads : int
-        Number of parallel threads for the pool.
-    n_items : int
-        Number items to be processed by the threads.
     """
-
-    threads = multiprocessing.cpu_count()
 
     def __init__(
         self,
+        function: Callable,
         n_items: int,
-        threads: int | None = None
+        num_threads: int | None = None
     ) -> None:
+        self.function = function
         self._n_items = n_items
-        if threads is not None:
-            self.threads = threads
+        if num_threads is None:
+            num_threads = multiprocessing.cpu_count()
+        self._num_threads = num_threads
         self.args = []
 
-    def __len__(self) -> int:
+    def n_jobs(self) -> int:
         """
         Returns the number of expected function arguments.
         """
         return self._n_items
 
+    def n_args(self) -> int:
+        return len(self.args)
+
+    def n_threads(self):
+        return self._num_threads
+
     def add_constant(self, value: Any) -> None:
         """
-        add_constant(value)
-
         Append a constant argument that will be repeated for each thread.
         """
         self.args.append([value] * self._n_items)
 
-    def add_iterable(
-        self,
-        iterable: Iterable,
-        no_checks: bool = False
-    ) -> None:
+    def add_iterable(self, iterable: Collection) -> None:
         """
-        add_iterable(iterable, no_checks=False)
-
-        Append a constant argument that will be repeated for each thread.
+        Append a variable argument that will be iterated for each thread.
         """
-        if not hasattr(iterable, "__iter__") and not no_checks:
-            raise TypeError("object is not iterable: %s" % iterable)
+        if len(iterable) != self._n_items:
+            raise ValueError(
+                f"length of iterable argument must be {self._n_items}")
         self.args.append(iterable)
 
-    def map(self, callable: Callable) -> Iterable:
+    def run(self) -> list:
         """
-        map(callable)
-
         Apply the accumulated arguments to a function in a pool of threads.
         The threads are blocking until all results are received.
-
-        Parameters
-        ----------
-        callable : callable
-            Callable object with the correct number of arguements.
-
-        Returns:
-        --------
-        results: list
-            Ordered list of return values of the called object per thread.
         """
-        if self.threads > 1:
-            with multiprocessing.Pool(self.threads) as pool:
-                results = pool.starmap(callable, zip(*self.args))
+        if self._num_threads > 1:
+            with multiprocessing.Pool(self._num_threads) as pool:
+                results = pool.starmap(self.function, zip(*self.args))
         else:  # mimic the behaviour of pool.starmap() with map()
-            results = list(map(callable, *self.args))
+            results = list(map(self.function, *self.args))
         return results

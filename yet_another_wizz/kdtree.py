@@ -1,17 +1,34 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod, abstractproperty
+
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import cKDTree
 
 
-class DummyTree:
-    
-    def __init__(self) -> None:
-        raise NotADirectoryError
+class KDTree(ABC):
+
+    @abstractmethod
+    def __len__(self) -> int:
+        NotImplemented
+
+    @abstractproperty
+    def total(self) -> float:
+        NotImplemented
+
+    @abstractmethod
+    def count(
+        self,
+        other: KDTree,
+        auto: bool,
+        scales: NDArray[np.float_],
+        **kwargs
+    ) -> tuple[NDArray, float]:
+        NotImplemented
 
 
-class SphericalKDTree:
+class SphericalKDTree(KDTree):
 
     def __init__(
         self,
@@ -80,12 +97,16 @@ class SphericalKDTree:
 
     def count(
         self,
-        other: SphericalKDTree,
+        other: KDTree,
         auto: bool,
         scales: NDArray[np.float_],
         dist_weight_scale: float | None = None,
         weight_res: int = 50
-    ) -> tuple[NDArray, NDArray]:
+    ) -> tuple[NDArray, float]:
+        if isinstance(other, EmptyKDTree):
+            # the other tree has no data, so counts will be zero and the order
+            # can be reversed
+            return other.count(self, auto, scales)
         # unpack query scales
         scales = np.atleast_2d(scales)
         if scales.shape[1] != 2:
@@ -116,4 +137,23 @@ class SphericalKDTree:
             total = 0.5 * self.total*other.total  # ~ 0.5 total^2
         else:
             total = self.total * other.total
-        return result, total
+        return result, np.full(len(result), total)
+
+
+class EmptyKDTree(KDTree):
+
+    def __len__(self) -> int:
+        return 0
+
+    @property
+    def total(self) -> float:
+        return 0.0
+
+    def count(
+        self,
+        other: KDTree,
+        auto: bool,
+        scales: NDArray[np.float_],
+        **kwargs
+    ) -> tuple[NDArray, float]:
+        return np.zeros(len(scales)), 0.0

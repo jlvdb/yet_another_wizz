@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod, abstractproperty
 from typing import Any
 
-from astropy.cosmology import FLRW
 import numpy as np
 from pandas import DataFrame, IntervalIndex, Series
 from numpy.typing import NDArray
@@ -11,7 +10,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
 from yet_another_wizz.correlation import CorrelationFunction
-from yet_another_wizz.utils import CustomCosmology, get_default_cosmology
+from yet_another_wizz.utils import TypeCosmology, get_default_cosmology
 
 
 class BinFactory:
@@ -21,7 +20,7 @@ class BinFactory:
         zmin: float,
         zmax: float,
         nbins: int,
-        cosmology: FLRW | CustomCosmology | None = None
+        cosmology: TypeCosmology | None = None
     ):
         if zmin >= zmax:
             raise ValueError("'zmin' >= 'zmax'")
@@ -32,10 +31,10 @@ class BinFactory:
         self.zmax = zmax
         self.nbins = nbins
 
-    def linear(self, **kwargs) -> NDArray[np.float_]:
+    def linear(self) -> NDArray[np.float_]:
         return np.linspace(self.zmin, self.zmax, self.nbins + 1)
 
-    def comoving(self, **kwargs) -> NDArray[np.float_]:
+    def comoving(self) -> NDArray[np.float_]:
         cbinning = np.linspace(
             self.cosmology.comoving_distance(self.zmin).value,
             self.cosmology.comoving_distance(self.zmax).value,
@@ -45,18 +44,7 @@ class BinFactory:
         carray = self.cosmology.comoving_distance(zarray).value
         return np.interp(cbinning, xp=carray, fp=zarray)  # redshift @ cbinning
 
-    def adaptive(self, redshifts: NDArray[np.float_]) -> NDArray[np.float_]:
-        # find equal number bins within the given redshift limits
-        mask = (redshifts >= self.zmin) & (redshifts < self.zmax)
-        z_sorted = np.sort(redshifts[mask])
-        idx = np.linspace(0, len(z_sorted) - 1, self.nbins + 1, dtype=np.int_)
-        binning = z_sorted[idx]
-        # fix the limits
-        binning[0] = self.zmin
-        binning[-1] = self.zmax
-        return binning
-
-    def logspace(self, **kwargs) -> NDArray[np.float_]:
+    def logspace(self) -> NDArray[np.float_]:
         logbinning = np.linspace(
             np.log(1.0 + self.zmin), np.log(1.0 + self.zmax), self.nbins + 1)
         return np.exp(logbinning) - 1.0
@@ -66,9 +54,9 @@ class BinFactory:
         if np.any(np.diff(zbins) <= 0):
             raise ValueError("redshift bins are not monotonicaly increasing")
 
-    def get(self, method: str, **kwargs) -> NDArray[np.float_]:
+    def get(self, method: str) -> NDArray[np.float_]:
         try:
-            return getattr(self, method)(**kwargs)
+            return getattr(self, method)()
         except AttributeError:
             raise ValueError(f"invalid binning method '{method}'")
 

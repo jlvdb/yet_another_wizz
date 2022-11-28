@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import dataclasses
 from abc import ABC, abstractmethod, abstractproperty
+from dataclasses import dataclass, field, fields
 
 import numpy as np
 from numpy.typing import NDArray
@@ -9,7 +9,7 @@ from pandas import DataFrame, IntervalIndex, Series
 from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
-from yet_another_wizz.resampling import PairCountData, TreeCorrData
+from yet_another_wizz.resampling import PairCountData, PairCountResult
 
 
 class CorrelationEstimator(ABC):
@@ -118,13 +118,13 @@ class LandySzalay(CorrelationEstimator):
         return (DD - (DR + RD) + RR) / RR
 
 
-@dataclasses.dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False)
 class CorrelationFunction:
-    dd: TreeCorrData
-    dr: TreeCorrData | None = dataclasses.field(default=None)
-    rd: TreeCorrData | None = dataclasses.field(default=None)
-    rr: TreeCorrData | None = dataclasses.field(default=None)
-    npatch: tuple(int, int) = dataclasses.field(init=False)
+    dd: PairCountResult
+    dr: PairCountResult | None = field(default=None)
+    rd: PairCountResult | None = field(default=None)
+    rr: PairCountResult | None = field(default=None)
+    npatch: tuple(int, int) = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "npatch", self.dd.npatch)  # since frozen=True
@@ -135,7 +135,7 @@ class CorrelationFunction:
             raise ValueError("'rd' requires 'dr'")
         # check that the pair counts are compatible
         for kind in ("dr", "rd", "rr"):
-            pairs: TreeCorrData | None = getattr(self, kind)
+            pairs: PairCountResult | None = getattr(self, kind)
             if pairs is None:
                 continue
             if pairs.npatch != self.npatch:
@@ -156,7 +156,7 @@ class CorrelationFunction:
 
     def is_compatible(
         self,
-        other: TreeCorrData
+        other: PairCountResult
     ) -> bool:
         if self.npatch != other.npatch:
             return False
@@ -169,7 +169,7 @@ class CorrelationFunction:
         # figure out which of dd, dr, ... are not None
         available = set()
         # iterate all dataclass attributes that are in __init__
-        for attr in dataclasses.fields(self):
+        for attr in fields(self):
             if not attr.init:
                 continue
             if getattr(self, attr.name) is not None:
