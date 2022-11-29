@@ -104,12 +104,13 @@ class Nz(ABC):
         n_boot: int = 500,
         ax: Axis | None = None,
         color: str | NDArray | None = None,
+        xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         **kwargs
     ) -> None:
         # compute plot data
         y = self.get(*args)
-        z = [z.mid for z in y.index]
+        z = [z.mid + xoffset for z in y.index]
         y_samp = self.get_samples(
             *args, **kwargs, sample_method=sample_method, n_boot=n_boot)
         if sample_method == "bootstrap":
@@ -193,13 +194,14 @@ class NzTrue(Nz):
         n_boot: int = 500,
         ax: Axis | None = None,
         color: str | NDArray | None = None,
+        xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         **kwargs
     ) -> None:
         super().plot(
             "line",
             sample_method=sample_method, n_boot=n_boot,
-            ax=ax, color=color, plot_kwargs=plot_kwargs)
+            ax=ax, color=color, xoffset=xoffset, plot_kwargs=plot_kwargs)
 
 
 class NzEstimator(Nz):
@@ -301,10 +303,11 @@ class NzEstimator(Nz):
         n_boot: int = 500,
         ax: Axis | None = None,
         color: str | NDArray | None = None,
+        xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().plot(
             "ebar",
             estimator,
             sample_method=sample_method, n_boot=n_boot, global_norm=global_norm,
-            ax=ax, color=color, plot_kwargs=plot_kwargs)
+            ax=ax, color=color, xoffset=xoffset, plot_kwargs=plot_kwargs)
