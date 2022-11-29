@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 from pandas import DataFrame, Interval, IntervalIndex
 
 from yet_another_wizz.kdtree import EmptyKDTree, KDTree, SphericalKDTree
+from yet_another_wizz.utils import TypePatchKey
 
 
 class Patch(ABC):
@@ -284,8 +285,8 @@ class PatchCollection:
         for patch_id in sorted(self.patches.keys()):
             yield self.patches[patch_id]
 
-    def is_loaded(self) -> list[bool]:
-        return [patch.is_loaded() for patch in iter(self)]
+    def is_loaded(self) -> bool:
+        return all([patch.is_loaded() for patch in iter(self)])
 
     def load(self) -> None:
         return [patch.load() for patch in iter(self)]
@@ -331,3 +332,39 @@ class PatchCollection:
     def patch(self) -> NDArray[np.float_]:
         return np.concatenate([
             np.full(len(patch), patch.patch_id) for patch in iter(self)])
+
+
+class PatchLinker:
+
+    _linkage: list[TypePatchKey] | None = None
+
+    def __init__(
+        self,
+        patches: PatchCollection,
+        num_threads: int,
+        method: str = "balanced"
+    ) -> None:
+        self._patches = patches
+        self.compute(method)
+
+    def __len__(self) -> int:
+        return len(self._linkage)
+
+    def compute(self, method: str) -> None:
+        # parallel, load patches dynamically if not fully loaded
+        if method == "fast":
+            return 
+        self._linkage = ...
+
+    def save(self, filepath: str) -> None:
+        raise NotImplementedError
+
+    @classmethod
+    def load(self, filepath: str) -> PatchLinker:
+        raise NotImplementedError
+
+    def keys(self) -> list[TypePatchKey]:
+        return self._linkage
+
+    def __iter__(self) -> Iterator[tuple[Patch, Patch]]:
+        pass
