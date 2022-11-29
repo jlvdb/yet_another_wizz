@@ -141,8 +141,6 @@ class PairMaker(BaseClass):
     def countPairs(
             self, rmin, rmax, comoving=False, inv_distance_weight=True,
             D_R_ratio="global", regionize_unknown=True):
-        if regionize_unknown and D_R_ratio == "local":
-            D_R_ratio = "global"
         self._scales = {"min": rmin, "max": rmax, "comoving": comoving}
         self._dist_weight = inv_distance_weight
         # check if all data is present
