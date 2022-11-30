@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import os
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd

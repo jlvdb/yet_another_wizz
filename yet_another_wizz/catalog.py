@@ -3,13 +3,14 @@ from __future__ import annotations
 import gc
 import os
 from abc import ABC, abstractmethod
-from typing import Iterator
+from collections.abc import Iterator, Sequence
 
 import astropandas as apd
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 from pandas import DataFrame, Interval, IntervalIndex
+from scipy.spatial import distance_matrix
 
 from yet_another_wizz.kdtree import EmptyKDTree, KDTree, SphericalKDTree
 from yet_another_wizz.utils import Timed, TypePatchKey
@@ -43,7 +44,7 @@ class Patch(ABC):
 
     def require_loaded(self) -> None:
         if not self.is_loaded():
-            raise AttributeError("data is currently not loaded")
+            raise AttributeError("data is not loaded")
 
     @abstractmethod
     def load(self, use_threads: bool = True) -> None:
@@ -217,11 +218,31 @@ class PatchCatalog(Patch):
             for intv, bin_data in self._data.groupby(pd.cut(self.z, z_bins)):
                 yield intv, PatchCatalog(self.id, bin_data)
 
+    def get_info(
+        self,
+        n_subset: int | None = 1000
+    ) -> dict[str, ArrayLike]:
+        if n_subset is not None:
+            n_subset = min(len(self), int(n_subset))
+            which = np.random.randint(0, len(self), size=n_subset)
+            pos = self.pos[which]
+        else:
+            pos = self.pos
+        xyz = SphericalKDTree.position_sky2sphere(pos)
+        # compute mean coordinate, which will not be located on the unit sphere
+        mean_xyz = np.mean(xyz, axis=0)
+        # map back onto unit sphere
+        mean_sky = SphericalKDTree.position_sphere2sky(mean_xyz)
+        mean_sphere = SphericalKDTree.position_sky2sphere(mean_sky)
+        # compute maximum distance to any of the data points
+        max_dist = np.sqrt(np.sum((xyz - mean_sphere)**2, axis=1)).max()
+        return dict(center=mean_sphere, radius=max_dist, items=len(self))
+
     def get_tree(self, **kwargs) -> SphericalKDTree:
         return SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
 
 
-class PatchCollection:
+class PatchCollection(Sequence):
 
     def __init__(
         self,
@@ -280,17 +301,17 @@ class PatchCollection:
             if np.isinf(self._zmin):
                 self._zmin = None
                 self._zmax = None
-            self.patches = patches
+            self._patches = patches
             self._fill_missing(n_patches)
 
     def _fill_missing(self, n_patches: int | None = None) -> None:
         # assume that regions are labelled by integers, so fill up any empty
         # regions with dummies
         if n_patches is None:
-            n_patches = max(self.patches.keys())
-        ref_patch = next(iter(self.patches.values()))  # use any non-empty patch
+            n_patches = max(self._patches.keys())
+        ref_patch = next(iter(self._patches.values()))  # use any non-empty patch
         for patch_id in range(n_patches):
-            if patch_id not in self.patches:
+            if patch_id not in self._patches:
                 self.patches[patch_id] = EmptyPatch(
                     patch_id, ref_patch.has_z(), ref_patch.has_weights())
 
@@ -328,31 +349,24 @@ class PatchCollection:
         new._zmin = np.inf
         new._zmax = -np.inf
         # load the patches
-        new.patches = {}
+        new._patches = {}
         for path in os.listdir(patch_directory):
             try:
                 patch = PatchCatalog.from_cached(
                     os.path.join(patch_directory, path))
             except ValueError:
-                raise
                 pass
             else:
                 if patch.has_z():
                     new._zmin = np.minimum(new._zmin, patch.z.min())
                     new._zmax = np.maximum(new._zmax, patch.z.max())
                 patch.unload()
-                new.patches[patch.id] = patch
+                new._patches[patch.id] = patch
         if np.isinf(new._zmin):
             new._zmin = None
             new._zmax = None
         new._fill_missing(n_patches)
         return new
-
-    def __getitem__(self, item: int) -> Patch:
-        return self.patches[item]
-
-    def __len__(self) -> int:
-        return len(self.patches)
 
     def __repr__(self):
         length = len(self)
@@ -362,12 +376,26 @@ class PatchCollection:
         s += f"(patches={length}, loaded={loaded}/{length}, empty={empty})"
         return s
 
-    def total(self) -> float:
-        return np.sum([patch.total() for patch in self.patches.values()])
+    def __contains__(self, item: int) -> bool:
+        return item in self._patches
+
+    def __getitem__(self, item: int) -> Patch:
+        return self._patches[item]
+
+    def __len__(self) -> int:
+        return len(self._patches)
 
     def __iter__(self) -> Iterator[Patch]:
-        for patch_id in sorted(self.patches.keys()):
-            yield self.patches[patch_id]
+        for patch_id in sorted(self._patches.keys()):
+            yield self._patches[patch_id]
+
+    def iter_loaded(self) -> Iterator[Patch]:
+        for patch in iter(self):
+            loaded = patch.is_loaded()
+            patch.load()
+            yield patch
+            if not loaded:
+                patch.unload()
 
     def is_loaded(self) -> bool:
         return all([patch.is_loaded() for patch in iter(self)])
@@ -392,23 +420,24 @@ class PatchCollection:
 
     @property
     def ra(self) -> NDArray[np.float_]:
-        return np.concatenate([patch.ra for patch in iter(self)])
+        return np.concatenate([patch.ra for patch in self.iter_loaded()])
 
     @property
     def dec(self) -> NDArray[np.float_]:
-        return np.concatenate([patch.dec for patch in iter(self)])
+        return np.concatenate([patch.dec for patch in self.iter_loaded()])
 
     @property
     def z(self) -> NDArray[np.float_]:
         if self.has_z():
-            return np.concatenate([patch.z for patch in iter(self)])
+            return np.concatenate([patch.z for patch in self.iter_loaded()])
         else:
             return None
 
     @property
     def weights(self) -> NDArray[np.float_]:
         if self.has_weights():
-            return np.concatenate([patch.weights for patch in iter(self)])
+            return np.concatenate([
+                patch.weights for patch in self.iter_loaded()])
         else:
             return None
 
@@ -417,38 +446,28 @@ class PatchCollection:
         return np.concatenate([
             np.full(len(patch), patch.id) for patch in iter(self)])
 
+    def total(self) -> float:
+        return np.sum([patch.total() for patch in iter(self)])
 
-class PatchLinker:
-
-    _linkage: list[TypePatchKey] | None = None
-
-    def __init__(
+    def generate_joblist(
         self,
-        patches: PatchCollection,
-        num_threads: int,
-        method: str = "balanced"
-    ) -> None:
-        self._patches = patches
-        self.compute(method)
-
-    def __len__(self) -> int:
-        return len(self._linkage)
-
-    def compute(self, method: str) -> None:
-        # parallel, load patches dynamically if not fully loaded
-        if method == "fast":
-            return 
-        self._linkage = ...
-
-    def save(self, filepath: str) -> None:
-        raise NotImplementedError
-
-    @classmethod
-    def load(self, filepath: str) -> PatchLinker:
-        raise NotImplementedError
-
-    def keys(self) -> list[TypePatchKey]:
-        return self._linkage
-
-    def __iter__(self) -> Iterator[tuple[Patch, Patch]]:
-        pass
+        max_query_radius_deg: float,
+        n_subset: int | None = 1000
+    ):
+        """Remove duplicates for autocorrelation"""
+        # calculate the patch centers and sizes
+        infos = [patch.get_info(n_subset) for patch in self.iter_loaded()]
+        centers = np.array([info["center"] for info in infos])
+        sizes = SphericalKDTree.distance_sphere2sky(  # patch radius in degrees
+            np.array([info["radius"] for info in infos]))
+        # compute distance in degrees between all patch centers
+        dist_deg = SphericalKDTree.distance_sphere2sky(
+            distance_matrix(centers, centers))
+        # compare minimum separation required for patchs to not overlap
+        min_sep_deg = np.add.outer(sizes, sizes)
+        # check which patches overlap when factoring in query radius
+        overlaps = (dist_deg - max_query_radius_deg) < min_sep_deg
+        patch_pairs = []
+        for id1, overlap in enumerate(overlaps):
+            patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
+        return patch_pairs

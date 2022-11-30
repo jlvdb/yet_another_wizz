@@ -61,8 +61,8 @@ class SphericalKDTree(KDTree):
         RA_DEC: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         """
-        Maps celestial coordinates onto a unit-sphere in three dimensions
-        (x, y, z).
+        Maps celestial coordinates (degrees) onto a unit-sphere in three
+        dimensions (x, y, z).
         """
         # unpack data and compute intermediate values
         ra_dec_rad = np.deg2rad(np.atleast_2d(RA_DEC))
@@ -79,7 +79,8 @@ class SphericalKDTree(KDTree):
     @staticmethod
     def position_sphere2sky(xyz):
         """
-        Maps Euclidean coordinates (x, y, z) onto celestial coordinates (RA, Dec).
+        Maps Euclidean coordinates (x, y, z) onto celestial coordinates
+        (RA, Dec) in degrees.
         """
         # unpack data and compute intermediate values
         xyz = np.atleast_2d(xyz)

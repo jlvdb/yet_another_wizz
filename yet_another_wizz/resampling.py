@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from dataclasses import dataclass
-from typing import Generator
 
 import numpy as np
 from numpy.typing import NDArray
