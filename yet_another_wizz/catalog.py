@@ -194,7 +194,6 @@ class PatchCatalog(Patch):
         new.cachefile = cachefile
         try:
             new._data = pd.read_feather(cachefile)
-            raise KeyError
         except Exception as e:
             args = ()
             if hasattr(e, "args"):
