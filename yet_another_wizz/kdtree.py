@@ -100,7 +100,6 @@ class SphericalKDTree:
     def count(
         self,
         other: SphericalKDTree,
-        auto: bool,
         scales: NDArray[np.float_],
         dist_weight_scale: float | None = None,
         weight_res: int = 50
@@ -131,8 +130,5 @@ class SphericalKDTree:
             i_hi = np.argmin(np.abs(r_edges - scale[1]))
             select = np.arange(i_lo, i_hi)
             result[i] = counts[select].sum()
-        if auto:
-            total = 0.5 * self.total*other.total  # ~ 0.5 total^2
-        else:
-            total = self.total * other.total
+        total = self.total * other.total
         return result, np.full(len(result), total)

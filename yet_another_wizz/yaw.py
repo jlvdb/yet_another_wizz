@@ -33,7 +33,6 @@ def count_pairs_binned(
     dist_weight_scale: float | None = None,
     weight_res: int = 50
 ) -> TypeThreadResult:
-    print()
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
     # build trees
     patch1.load(use_threads=False)
@@ -56,11 +55,12 @@ def count_pairs_binned(
         # if bin1 is False and bin2 is False, these will still give different
         # counts since the angle for scales is chaning
         count, total = tree1.count(
-            tree2,
-            auto=(auto and patch1.id == patch2.id),
-            scales=r_kpc_to_angle(scales, intv.mid, cosmology),
-            dist_weight_scale=dist_weight_scale,
-            weight_res=weight_res)
+            tree2, scales=r_kpc_to_angle(scales, intv.mid, cosmology),
+            dist_weight_scale=dist_weight_scale, weight_res=weight_res)
+        if auto and patch1.id == patch2.id:
+            # (i, j) pairs are counted twice for i == j, but once for i != j
+            total *= 0.5
+            count *= 0.5
         totals.append(total)
         counts.append(count)
     totals = np.transpose(totals)
@@ -212,6 +212,24 @@ class YetAnotherWizz:
                 if scale_key not in result_scales:
                     result_scales[scale_key] = {}
                 result_scales[scale_key].update(patch_dict)
+        # fill up missing totals from skipped cross-patch measurements
+        z_intervals = pd.IntervalIndex.from_breaks(self.binning)
+        Nbins = len(z_intervals)
+        zero_counts = np.zeros(Nbins)
+        totals = np.multiply.outer(  # wasts memory, but very fast
+            [patch.total for patch in collection1],
+            [patch.total for patch in collection2])
+        for i in range(0, len(collection1)):
+            for j in range(i, len(collection2)):
+                if (i, j) not in result_scales[scale_key]:  # use last scale key
+                    # entry is missing at all scales
+                    for patch_dict in result_scales.values():
+                        dummy = PairCountData(
+                            z_intervals, zero_counts,
+                            np.full(Nbins, totals[i, j]))
+                        patch_dict[(i, j)] = dummy
+                        if not auto:  # symmetric counting
+                            patch_dict[(j, i)] = dummy
         # pack the data
         result = {}
         for scale_key, patch_dict in result_scales.items():
