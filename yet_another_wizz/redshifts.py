@@ -285,11 +285,6 @@ class NzEstimator(Nz):
             unk_corr = np.float64(1.0)
         else:
             unk_corr = self.unk_corr.get_samples(**kwargs)
-        """legacy:
-        dz_sq = cross_corr.copy()
-        for col in dz_sq.columns:
-            dz_sq[col] = self.dz**2
-        """
         N = len(cross_corr.columns)
         dz_sq = np.tile(self.dz**2, N).reshape((N, -1)).T
         return cross_corr / np.sqrt(dz_sq * ref_corr * unk_corr)

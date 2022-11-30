@@ -35,33 +35,30 @@ def count_pairs_binned(
 ) -> TypeThreadResult:
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
     # build trees for patch 1
+    patch1.load(use_threads=False)
     if bin1:
         trees1 = [patch.get_tree() for _, patch in patch1.iter_bins(z_bins)]
     else:
         trees1 = itertools.repeat(patch1.get_tree())
-    # build trees for patch(es) 2
-    patch_trees2 = {}
-    for patch2 in patches2:
-        if bin2:
-            trees2 = [patch.get_tree() for _, patch in patch2.iter_bins(z_bins)]
-        else:
-            trees2 = itertools.repeat(patch2.get_tree())
-        patch_trees2[patch2.patch_id] = trees2
 
     # count pairs
     scale_keys = scales_to_keys(scales)
     results = {key: {} for key in scale_keys}
-    patch_id1 = patch1.patch_id
-    for patch_id2, trees2 in patch_trees2.items():
+    for patch2 in patches2:
+        patch2.load(use_threads=False)
+        if bin2:
+            trees2 = [patch.get_tree() for _, patch in patch2.iter_bins(z_bins)]
+        else:
+            trees2 = itertools.repeat(patch2.get_tree())
+        # iterate through the bins and count pairs between the trees
         totals = []
         counts = []
-        # iterate through the bins and count pairs between the trees
         for intv, tree1, tree2 in zip(z_intervals, trees1, trees2):
             # if bin1 is False and bin2 is False, these will still give
             # different counts since the angle for scales is chaning
             count, total = tree1.count(
                 tree2,
-                auto=(auto and patch_id1 == patch_id2),
+                auto=(auto and patch1.id == patch2.id),
                 scales=r_kpc_to_angle(scales, intv.mid, cosmology),
                 dist_weight_scale=dist_weight_scale,
                 weight_res=weight_res)
@@ -71,8 +68,9 @@ def count_pairs_binned(
         counts = np.transpose(counts)
         # package result and identify with their patch IDs
         for key, total, count in zip(scale_keys, totals, counts):
-            results[key][(patch_id1, patch_id2)] = PairCountData(
+            results[key][(patch1.id, patch2.id)] = PairCountData(
                 z_intervals, total=total, count=count)
+        patch2.unload()
     return results
 
 
@@ -170,9 +168,9 @@ class YetAnotherWizz:
         # auto: bool
         pool.add_constant(collection2 is None)
         # patch1: Patch
-        pool.add_iterable(collection1)
+        pool.add_iterable(collection1)  # iter., distributed over jobs
         # patches2: Iterable[Patch]
-        pool.add_iterable([[patch] for patch in collection2])  #TODO:cross-patch
+        pool.add_constant(collection2)  # const., therefore iterated every time
         # scales: NDArray[np.float_]
         pool.add_constant(self.scales)
         # cosmology: TypeCosmology
@@ -270,7 +268,11 @@ class YetAnotherWizz:
         # compute the reshift histogram in each patch
         hist_counts = []
         for patch in self.unknown:
+            is_loaded = patch.is_loaded()
+            patch.load()
             counts, bins = np.histogram(
                 patch.z, self.binning, weights=patch.weights)
             hist_counts.append(counts)
+            if not is_loaded:
+                patch.unload()
         return NzTrue(np.array(hist_counts), bins)

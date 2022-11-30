@@ -12,12 +12,12 @@ from numpy.typing import NDArray
 from pandas import DataFrame, Interval, IntervalIndex
 
 from yet_another_wizz.kdtree import EmptyKDTree, KDTree, SphericalKDTree
-from yet_another_wizz.utils import TypePatchKey
+from yet_another_wizz.utils import Timed, TypePatchKey
 
 
 class Patch(ABC):
 
-    patch_id = 0
+    id = 0
     filepath = None
     _data = DataFrame()
     _has_z = False
@@ -40,12 +40,13 @@ class Patch(ABC):
             raise AttributeError("data is currently not loaded")
 
     @abstractmethod
-    def load(self) -> None:
+    def load(self, use_threads: bool = True) -> None:
         NotImplemented
 
     @abstractmethod
     def unload(self) -> None:
         self._data = None
+        gc.collect()
 
     def has_z(self) -> bool:
         return self._has_z
@@ -102,11 +103,11 @@ class EmptyPatch(Patch):
 
     def __init__(
         self,
-        patch_id: int,
+        id: int,
         has_z: bool,
         has_weights: bool
     ) -> None:
-        self.patch_id = patch_id
+        self.id = id
         self._has_z = has_z
         self._has_weights = has_weights
         # construct dummy dataframe with no data but the correct columns
@@ -119,7 +120,7 @@ class EmptyPatch(Patch):
             dummy_data["weights"] = pd.Series(dtype=np.float_)
         self._data = DataFrame(dummy_data)
 
-    def load(self) -> None:
+    def load(self, use_threads: bool = True) -> None:
         pass
 
     def unload(self) -> None:
@@ -143,11 +144,11 @@ class PatchCatalog(Patch):
 
     def __init__(
         self,
-        patch_id: int,
+        id: int,
         data: DataFrame,
         filepath: str | None = None
     ) -> None:
-        self.patch_id = patch_id
+        self.id = id
         if "ra" not in data:
             raise KeyError("right ascension column ('ra') is required")
         if "dec" not in data:
@@ -164,11 +165,11 @@ class PatchCatalog(Patch):
         self._has_z = "z" in data
         self._has_weights = "weights" in data
 
-    def load(self) -> None:
-        if not self._is_loaded:
+    def load(self, use_threads: bool = True) -> None:
+        if not self.is_loaded():
             if self.filepath is None:
                 raise ValueError("no datapath provided to load the data")
-            self._data = pd.read_feather(self.filepath)
+            self._data = pd.read_feather(self.filepath, use_threads=use_threads)
 
     def unload(self) -> None:
         self._data = None
@@ -185,7 +186,7 @@ class PatchCatalog(Patch):
                 yield intv, self
         else:
             for intv, bin_data in self._data.groupby(pd.cut(self.z, z_bins)):
-                yield intv, PatchCatalog(self.patch_id, bin_data)
+                yield intv, PatchCatalog(self.id, bin_data)
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
         return SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
@@ -208,7 +209,7 @@ class PatchCollection:
         if len(data) == 0:
             raise ValueError("data catalog is empty")
         # check if the columns exist
-        renames = {ra_name: "ra", dec_name: "dec", patch_name: "patch"}
+        renames = {ra_name: "ra", dec_name: "dec"}
         if z_name is not None:
             renames[z_name] = "z"
         if weight_name is not None:
@@ -223,33 +224,41 @@ class PatchCollection:
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{patch_directory}'")
         # run groupby first to avoid any intermediate copies of full data
-        patches: dict[int, PatchCatalog] = {}
-        for patch_id, patch_data in data.groupby(patch_name):
-            if patch_id < 0:
-                raise ValueError("negative patch IDs are not supported")
-            patch = patch_data.rename(columns=renames).reset_index(drop=True)
-            patch = patch.astype({"patch": np.int_})
-            kwargs = {}
-            if unload:
-                # data will be written as feather file and loaded on demand
-                kwargs["filepath"] = os.path.join(
-                    patch_directory, f"patch_{patch_id:d}.feather")
-            patch = PatchCatalog(
-                int(patch_id), patch.drop("patch", axis=1), **kwargs)
-            if unload:
-                patch.unload()
-                gc.collect()
-            patches[int(patch_id)] = patch
-        # assume that regions are labelled by integers, so fill up any empty
-        # regions with dummies
-        if n_patches is None:
-            n_patches = max(patches.keys())
-        ref_patch = next(iter(patches.values()))  # just any non-empty patch
-        for patch_id in range(n_patches):
-            if patch_id not in patches:
-                patches[patch_id] = EmptyPatch(
-                    patch_id, ref_patch.has_z(), ref_patch.has_weights())
-        self.patches = patches
+        with Timed("constructing patches"):
+            patches: dict[int, PatchCatalog] = {}
+            self._zmin = np.inf
+            self._zmax = -np.inf
+            for patch_id, patch_data in data.groupby(patch_name):
+                if patch_id < 0:
+                    raise ValueError("negative patch IDs are not supported")
+                patch_data = patch_data.drop("patch", axis=1)
+                patch_data.rename(columns=renames, inplace=True)
+                patch_data.reset_index(drop=True, inplace=True)
+                kwargs = {}
+                if unload:
+                    # data will be written as feather file and loaded on demand
+                    kwargs["filepath"] = os.path.join(
+                        patch_directory, f"patch_{patch_id:.0f}.feather")
+                patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
+                if patch.has_z():
+                    self._zmin = np.minimum(self._zmin, patch.z.min())
+                    self._zmax = np.maximum(self._zmax, patch.z.max())
+                if unload:
+                    patch.unload()
+                patches[patch.id] = patch
+            if np.isinf(self._zmin):
+                self._zmin = None
+                self._zmax = None
+            # assume that regions are labelled by integers, so fill up any empty
+            # regions with dummies
+            if n_patches is None:
+                n_patches = max(patches.keys())
+            ref_patch = next(iter(patches.values()))  # just any non-empty patch
+            for patch_id in range(n_patches):
+                if patch_id not in patches:
+                    patches[patch_id] = EmptyPatch(
+                        patch_id, ref_patch.has_z(), ref_patch.has_weights())
+            self.patches = patches
 
     @classmethod
     def from_file(
@@ -301,10 +310,10 @@ class PatchCollection:
         return all(patch.has_weights() for patch in iter(self))  # always equal
 
     def get_z_min(self) -> float:
-        return np.min([patch.z.min() for patch in iter(self)])
+        return self._zmin
 
     def get_z_max(self) -> float:
-        return np.max([patch.z.max() for patch in iter(self)])
+        return self._zmax
 
     @property
     def ra(self) -> NDArray[np.float_]:
@@ -331,7 +340,7 @@ class PatchCollection:
     @property
     def patch(self) -> NDArray[np.float_]:
         return np.concatenate([
-            np.full(len(patch), patch.patch_id) for patch in iter(self)])
+            np.full(len(patch), patch.id) for patch in iter(self)])
 
 
 class PatchLinker:
