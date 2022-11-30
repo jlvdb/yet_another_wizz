@@ -16,6 +16,10 @@ from yet_another_wizz.kdtree import EmptyKDTree, KDTree, SphericalKDTree
 from yet_another_wizz.utils import Timed, TypePatchKey
 
 
+class NotAPatchFileError(Exception):
+    pass
+
+
 class Patch(ABC):
 
     id = 0
@@ -182,13 +186,20 @@ class PatchCatalog(Patch):
     def from_cached(cls, cachefile: str) -> PatchCatalog:
         ext = ".feather"
         if not cachefile.endswith(ext):
-            raise ValueError("input must be a .feather file")
-        prefix, patch_id = cachefile[:-len(ext)].split("_")
+            raise NotAPatchFileError("input must be a .feather file")
+        prefix, patch_id = cachefile[:-len(ext)].rsplit("_", 1)
         # create the data instance
         new = cls.__new__(cls)
         new.id = int(patch_id)
         new.cachefile = cachefile
-        new._data = pd.read_feather(cachefile)
+        try:
+            new._data = pd.read_feather(cachefile)
+            raise KeyError
+        except Exception as e:
+            args = ()
+            if hasattr(e, "args"):
+                args = e.args
+            raise NotAPatchFileError(*args)
         new._len = len(new._data)
         new._has_z = "z" in new.data
         new._has_weights = "weights" in new.data
@@ -312,7 +323,7 @@ class PatchCollection(Sequence):
         ref_patch = next(iter(self._patches.values()))  # use any non-empty patch
         for patch_id in range(n_patches):
             if patch_id not in self._patches:
-                self.patches[patch_id] = EmptyPatch(
+                self._patches[patch_id] = EmptyPatch(
                     patch_id, ref_patch.has_z(), ref_patch.has_weights())
 
     @classmethod
@@ -351,17 +362,13 @@ class PatchCollection(Sequence):
         # load the patches
         new._patches = {}
         for path in os.listdir(patch_directory):
-            try:
-                patch = PatchCatalog.from_cached(
-                    os.path.join(patch_directory, path))
-            except ValueError:
-                pass
-            else:
-                if patch.has_z():
-                    new._zmin = np.minimum(new._zmin, patch.z.min())
-                    new._zmax = np.maximum(new._zmax, patch.z.max())
-                patch.unload()
-                new._patches[patch.id] = patch
+            patch = PatchCatalog.from_cached(
+                os.path.join(patch_directory, path))
+            if patch.has_z():
+                new._zmin = np.minimum(new._zmin, patch.z.min())
+                new._zmax = np.maximum(new._zmax, patch.z.max())
+            patch.unload()
+            new._patches[patch.id] = patch
         if np.isinf(new._zmin):
             new._zmin = None
             new._zmax = None
