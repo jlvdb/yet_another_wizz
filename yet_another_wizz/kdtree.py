@@ -39,7 +39,7 @@ class SphericalKDTree(KDTree):
     ) -> None:
         # convert angular coordinates to 3D points on unit sphere
         assert(len(RA) == len(DEC))
-        pos_sphere = self._position_sky2sphere(np.column_stack([RA, DEC]))
+        pos_sphere = self.position_sky2sphere(np.column_stack([RA, DEC]))
         self.tree = cKDTree(pos_sphere, leafsize)
         if weights is None:
             self.weights = np.ones(len(pos_sphere))
@@ -57,26 +57,48 @@ class SphericalKDTree(KDTree):
         return self._sum_weights
 
     @staticmethod
-    def _position_sky2sphere(
+    def position_sky2sphere(
         RA_DEC: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         """
         Maps celestial coordinates onto a unit-sphere in three dimensions
         (x, y, z).
         """
+        # unpack data and compute intermediate values
         ra_dec_rad = np.deg2rad(np.atleast_2d(RA_DEC))
         ra = ra_dec_rad[:, 0]
         dec = ra_dec_rad[:, 1]
-        sin_dec = np.sin(dec)
         cos_dec = np.cos(dec)
-        pos_sphere = np.empty((len(RA_DEC), 3))
+        # transform
+        pos_sphere = np.empty((len(ra_dec_rad), 3))
         pos_sphere[:, 0] = np.cos(ra) * cos_dec
-        pos_sphere[:, 1] = sin_dec * cos_dec
-        pos_sphere[:, 2] = sin_dec
+        pos_sphere[:, 1] = np.sin(ra) * cos_dec
+        pos_sphere[:, 2] = np.sin(dec)
         return np.squeeze(pos_sphere)
 
     @staticmethod
-    def _distance_sky2sphere(dist_sky: ArrayLike) -> ArrayLike:
+    def position_sphere2sky(xyz):
+        """
+        Maps Euclidean coordinates (x, y, z) onto celestial coordinates (RA, Dec).
+        """
+        # unpack data and compute intermediate values
+        xyz = np.atleast_2d(xyz)
+        x = xyz[:, 0]
+        y = xyz[:, 1]
+        z = xyz[:, 2]
+        x2 = x * x
+        y2 = y * y
+        z2 = z * z
+        r_d3 = np.sqrt(x2 + y2 + z2)
+        r_d2 = np.sqrt(x2 + y2)
+        # transform
+        pos_sky = np.empty((len(xyz), 2))
+        pos_sky[:, 0] = np.rad2deg(np.sign(y) * np.arccos(x / r_d2))
+        pos_sky[:, 1] = np.rad2deg(np.sign(y) * np.arcsin(z / r_d3))
+        return np.squeeze(pos_sky)
+
+    @staticmethod
+    def distance_sky2sphere(dist_sky: ArrayLike) -> ArrayLike:
         """
         Converts angular separation in celestial coordinates to the
         Euclidean distance in (x, y, z) space.
@@ -86,7 +108,7 @@ class SphericalKDTree(KDTree):
         return dist_sphere
 
     @staticmethod
-    def _distance_sphere2sky(dist_sphere: ArrayLike) -> ArrayLike:
+    def distance_sphere2sky(dist_sphere: ArrayLike) -> ArrayLike:
         """
         Converts Euclidean distance in (x, y, z) space to angular separation in
         celestial coordinates.
@@ -118,14 +140,14 @@ class SphericalKDTree(KDTree):
         r_edges = 10 ** rlog_edges
         # count pairs
         counts = self.tree.count_neighbors(
-            other.tree, self._distance_sky2sphere(r_edges), 
+            other.tree, self.distance_sky2sphere(r_edges), 
             weights=(self.weights, other.weights), cumulative=False)
         counts = counts[1:]  # discard counts with 0 < R <= r_min
         # apply the distance weights
         rlog_centers = (rlog_edges[:-1] + rlog_edges[1:]) / 2.0
         r_centers = 10 ** rlog_centers
         if dist_weight_scale is not None:
-            counts *= self._distance_sky2sphere(r_centers) ** dist_weight_scale
+            counts *= self.distance_sky2sphere(r_centers) ** dist_weight_scale
         # compute counts for original bins
         result = np.empty(len(scales))
         for i, scale in enumerate(scales):
