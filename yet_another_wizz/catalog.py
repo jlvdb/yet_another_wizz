@@ -22,6 +22,14 @@ class NotAPatchFileError(Exception):
 
 class PatchCatalog:
 
+    id = 0
+    cachefile = None
+    _data = DataFrame()
+    _len = 0
+    _total = None
+    _has_z = False
+    _has_weights = False
+
     def __init__(
         self,
         id: int,
@@ -45,13 +53,6 @@ class PatchCatalog:
         self._len = len(data)
         self._has_z = "z" in data
         self._has_weights = "weights" in data
-
-    id = 0
-    cachefile = None
-    _data = DataFrame()
-    _len = 0
-    _has_z = False
-    _has_weights = False
 
     def __repr__(self) -> str:
         s = self.__class__.__name__
@@ -144,10 +145,12 @@ class PatchCatalog:
             return None
 
     def total(self) -> float:
-        if self.has_weights():
-            return self.weights.sum()
-        else:
-            return float(len(self))
+        if self._total is None:
+            if self.has_weights():
+                self._total = self.weights.sum()
+            else:
+                self._total = float(len(self))
+        return self._total
 
     def iter_bins(
         self,
@@ -185,6 +188,7 @@ class PatchCatalog:
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
         return SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
+
 
 class PatchCollection(Sequence):
 
