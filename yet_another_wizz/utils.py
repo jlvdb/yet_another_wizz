@@ -86,6 +86,7 @@ def r_kpc_to_angle(
     z: float,
     cosmology: TypeCosmology
 ) -> tuple[float, float]:
+    """from kpc to degrees"""
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
     angle_rad = np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
     return np.rad2deg(angle_rad)

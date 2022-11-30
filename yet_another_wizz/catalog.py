@@ -371,7 +371,7 @@ class PatchCollection(Sequence):
     def total(self) -> float:
         return np.sum([patch.total() for patch in iter(self)])
 
-    def generate_joblist(
+    def generate_linkage(
         self,
         max_query_radius_deg: float,
         n_subset: int | None = 1000

@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
-from yet_another_wizz.catalog import Patch, PatchCollection
+from yet_another_wizz.catalog import PatchCatalog, PatchCollection
 from yet_another_wizz.correlation import CorrelationFunction
 from yet_another_wizz.redshifts import BinFactory, NzTrue
 from yet_another_wizz.resampling import PairCountData, PairCountResult
@@ -23,8 +23,8 @@ def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:
 
 def count_pairs_binned(
     auto: bool,
-    patch1: Patch,
-    patches2: Iterable[Patch],
+    patch1: PatchCatalog,
+    patch2: PatchCatalog,
     scales: NDArray[np.float_],
     cosmology: TypeCosmology,
     z_bins: NDArray[np.float_],
@@ -33,44 +33,42 @@ def count_pairs_binned(
     dist_weight_scale: float | None = None,
     weight_res: int = 50
 ) -> TypeThreadResult:
+    print()
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
-    # build trees for patch 1
+    # build trees
     patch1.load(use_threads=False)
     if bin1:
         trees1 = [patch.get_tree() for _, patch in patch1.iter_bins(z_bins)]
     else:
         trees1 = itertools.repeat(patch1.get_tree())
-
+    patch2.load(use_threads=False)
+    if bin2:
+        trees2 = [patch.get_tree() for _, patch in patch2.iter_bins(z_bins)]
+    else:
+        trees2 = itertools.repeat(patch2.get_tree())
     # count pairs
     scale_keys = scales_to_keys(scales)
     results = {key: {} for key in scale_keys}
-    for patch2 in patches2:
-        patch2.load(use_threads=False)
-        if bin2:
-            trees2 = [patch.get_tree() for _, patch in patch2.iter_bins(z_bins)]
-        else:
-            trees2 = itertools.repeat(patch2.get_tree())
-        # iterate through the bins and count pairs between the trees
-        totals = []
-        counts = []
-        for intv, tree1, tree2 in zip(z_intervals, trees1, trees2):
-            # if bin1 is False and bin2 is False, these will still give
-            # different counts since the angle for scales is chaning
-            count, total = tree1.count(
-                tree2,
-                auto=(auto and patch1.id == patch2.id),
-                scales=r_kpc_to_angle(scales, intv.mid, cosmology),
-                dist_weight_scale=dist_weight_scale,
-                weight_res=weight_res)
-            totals.append(total)
-            counts.append(count)
-        totals = np.transpose(totals)
-        counts = np.transpose(counts)
-        # package result and identify with their patch IDs
-        for key, total, count in zip(scale_keys, totals, counts):
-            results[key][(patch1.id, patch2.id)] = PairCountData(
-                z_intervals, total=total, count=count)
-        patch2.unload()
+    # iterate through the bins and count pairs between the trees
+    totals = []
+    counts = []
+    for intv, tree1, tree2 in zip(z_intervals, trees1, trees2):
+        # if bin1 is False and bin2 is False, these will still give different
+        # counts since the angle for scales is chaning
+        count, total = tree1.count(
+            tree2,
+            auto=(auto and patch1.id == patch2.id),
+            scales=r_kpc_to_angle(scales, intv.mid, cosmology),
+            dist_weight_scale=dist_weight_scale,
+            weight_res=weight_res)
+        totals.append(total)
+        counts.append(count)
+    totals = np.transpose(totals)
+    counts = np.transpose(counts)
+    # package result and identify with their patch IDs
+    for key, total, count in zip(scale_keys, totals, counts):
+        results[key][(patch1.id, patch2.id)] = PairCountData(
+            z_intervals, total=total, count=count)
     return results
 
 
@@ -81,13 +79,13 @@ class YetAnotherWizz:
         *,
         # data samples
         reference: PatchCollection,
-        ref_rand: PatchCollection,
+        ref_rand: PatchCollection,  # TODO: decide which arguments are optional
         unknown: PatchCollection,
         unk_rand: PatchCollection,
-        # measurement scales, TODO: implement multiple scales!
+        # measurement scales
         rmin_kpc: ArrayLike = 0.1,
         rmax_kpc: ArrayLike = 1.0,
-        dist_weight_scale: float | None = None,
+        dist_weight_scale: float | None = None,  # TODO: test if not None
         dist_weight_res: int = 50,
         # redshift binning
         zmin: float | None = None,
@@ -97,6 +95,7 @@ class YetAnotherWizz:
         cosmology: TypeCosmology | None = None,
         zbins: NDArray | None = None,
         # others
+        disable_crosspatch: bool = False,
         num_threads: int | None = None
     ) -> None:
         # set data
@@ -128,6 +127,16 @@ class YetAnotherWizz:
             self.binning = factory.get(zbin_method)
         else:
             raise ValueError("either 'zbins' or 'n_zbins' must be provided")
+        # generate patch linkage (patches sufficiently close for correlation)
+        if disable_crosspatch:
+            self._linkage = [(i, i) for i in range(self.n_patches())]
+        else:
+            # estimate the maximum query radius at low, but non-zero redshift
+            z_ref = 0.1  # TODO: resonable? lower redshift => more overlap
+            max_ang = r_kpc_to_angle(self.scales, z_ref, self.cosmology).max()
+            # generate the patch linkage (sufficiently close patches)
+            with Timed("generating patch linkage        "):
+                self._linkage = self.ref_rand.generate_linkage(max_ang)
         # others
         if num_threads is None:
             num_threads = os.cpu_count()
@@ -159,18 +168,27 @@ class YetAnotherWizz:
         collection2: PatchCollection | None = None,
         bin2: bool | None = None
     ) -> dict[TypeScaleKey, PairCountResult]:
-        if collection2 is None:
+        auto = collection2 is None
+        # prepare for autocorrelation
+        if auto:
             collection2 = collection1
+            # avoid double-counting pairs
+            linkage = [(i, j) for i, j in self._linkage if j >= i]
+        else:
+            if collection2 is None:
+                raise ValueError("no 'collection2' provided")
+            linkage = self._linkage
+        # prepare job scheduling
         pool = ParallelHelper(
             function=count_pairs_binned,
-            n_items=self.n_patches(),
+            n_items=len(linkage),
             num_threads=self.num_threads)
         # auto: bool
-        pool.add_constant(collection2 is None)
-        # patch1: Patch
-        pool.add_iterable(collection1)  # iter., distributed over jobs
-        # patches2: Iterable[Patch]
-        pool.add_constant(collection2)  # const., therefore iterated every time
+        pool.add_constant(auto)
+        # patch1: PatchCatalog
+        pool.add_iterable([collection1[id1] for id1, id2 in linkage])
+        # patch2: PatchCatalog
+        pool.add_iterable([collection2[id2] for id1, id2 in linkage])
         # scales: NDArray[np.float_]
         pool.add_constant(self.scales)
         # cosmology: TypeCosmology
