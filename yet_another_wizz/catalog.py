@@ -18,13 +18,19 @@ from yet_another_wizz.utils import Timed, TypePatchKey
 class Patch(ABC):
 
     id = 0
-    filepath = None
+    cachefile = None
     _data = DataFrame()
+    _len = 0
     _has_z = False
     _has_weights = False
 
+    def __repr__(self) -> str:
+        s = self.__class__.__name__
+        s += f"(id={self.id}, length={len(self)}, loaded={self.is_loaded()})"
+        return s
+
     def __len__(self) -> int:
-        return len(self._data)
+        return self._len
 
     def total(self) -> float:
         if self.has_weights():
@@ -58,6 +64,11 @@ class Patch(ABC):
     def data(self) -> DataFrame:
         self.require_loaded()
         return self._data
+
+    @property
+    def pos(self) -> NDArray[np.float_]:
+        self.require_loaded()
+        return self._data[["ra", "dec"]].to_numpy()
 
     @property
     def ra(self) -> NDArray[np.float_]:
@@ -146,7 +157,7 @@ class PatchCatalog(Patch):
         self,
         id: int,
         data: DataFrame,
-        filepath: str | None = None
+        cachefile: str | None = None
     ) -> None:
         self.id = id
         if "ra" not in data:
@@ -158,18 +169,36 @@ class PatchCatalog(Patch):
                 "'data' contains unidentified columns, optional columns are "
                 "restricted to 'z' and 'weights'")
         # if there is a file path, store the file
-        if filepath is not None:
-            data.to_feather(filepath)
-            self.filepath = filepath
+        if cachefile is not None:
+            data.to_feather(cachefile)
+            self.cachefile = cachefile
         self._data = data
+        self._len = len(data)
         self._has_z = "z" in data
         self._has_weights = "weights" in data
 
+    @classmethod
+    def from_cached(cls, cachefile: str) -> PatchCatalog:
+        ext = ".feather"
+        if not cachefile.endswith(ext):
+            raise ValueError("input must be a .feather file")
+        prefix, patch_id = cachefile[:-len(ext)].split("_")
+        # create the data instance
+        new = cls.__new__(cls)
+        new.id = int(patch_id)
+        new.cachefile = cachefile
+        new._data = pd.read_feather(cachefile)
+        new._len = len(new._data)
+        new._has_z = "z" in new.data
+        new._has_weights = "weights" in new.data
+        return new
+
     def load(self, use_threads: bool = True) -> None:
         if not self.is_loaded():
-            if self.filepath is None:
+            if self.cachefile is None:
                 raise ValueError("no datapath provided to load the data")
-            self._data = pd.read_feather(self.filepath, use_threads=use_threads)
+            self._data = pd.read_feather(
+                self.cachefile, use_threads=use_threads)
 
     def unload(self) -> None:
         self._data = None
@@ -204,7 +233,7 @@ class PatchCollection:
         z_name: str | None = None,
         weight_name: str | None = None,
         n_patches: int | None = None,
-        patch_directory: str | None = None
+        cache_directory: str | None = None
     ) -> None:
         if len(data) == 0:
             raise ValueError("data catalog is empty")
@@ -218,13 +247,15 @@ class PatchCollection:
             if col_name not in data:
                 raise KeyError(f"column {kind}='{col_name}' not found in data")
         # check if patches should be written and unloaded from memory
-        unload = patch_directory is not None
+        unload = cache_directory is not None
+        prefix = "constructing "
         if unload:
-            if not os.path.exists(patch_directory):
+            if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
-                    f"patch directory does not exist: '{patch_directory}'")
+                    f"patch directory does not exist: '{cache_directory}'")
+            prefix += "and caching "
         # run groupby first to avoid any intermediate copies of full data
-        with Timed("constructing patches"):
+        with Timed(prefix + "patches"):
             patches: dict[int, PatchCatalog] = {}
             self._zmin = np.inf
             self._zmax = -np.inf
@@ -237,8 +268,8 @@ class PatchCollection:
                 kwargs = {}
                 if unload:
                     # data will be written as feather file and loaded on demand
-                    kwargs["filepath"] = os.path.join(
-                        patch_directory, f"patch_{patch_id:.0f}.feather")
+                    kwargs["cachefile"] = os.path.join(
+                        cache_directory, f"patch_{patch_id:.0f}.feather")
                 patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
                 if patch.has_z():
                     self._zmin = np.minimum(self._zmin, patch.z.min())
@@ -249,16 +280,19 @@ class PatchCollection:
             if np.isinf(self._zmin):
                 self._zmin = None
                 self._zmax = None
-            # assume that regions are labelled by integers, so fill up any empty
-            # regions with dummies
-            if n_patches is None:
-                n_patches = max(patches.keys())
-            ref_patch = next(iter(patches.values()))  # just any non-empty patch
-            for patch_id in range(n_patches):
-                if patch_id not in patches:
-                    patches[patch_id] = EmptyPatch(
-                        patch_id, ref_patch.has_z(), ref_patch.has_weights())
             self.patches = patches
+            self._fill_missing(n_patches)
+
+    def _fill_missing(self, n_patches: int | None = None) -> None:
+        # assume that regions are labelled by integers, so fill up any empty
+        # regions with dummies
+        if n_patches is None:
+            n_patches = max(self.patches.keys())
+        ref_patch = next(iter(self.patches.values()))  # use any non-empty patch
+        for patch_id in range(n_patches):
+            if patch_id not in self.patches:
+                self.patches[patch_id] = EmptyPatch(
+                    patch_id, ref_patch.has_z(), ref_patch.has_weights())
 
     @classmethod
     def from_file(
@@ -271,7 +305,7 @@ class PatchCollection:
         z_name: str | None = None,
         weight_name: str | None = None,
         n_patches: int | None = None,
-        patch_directory: str | None = None
+        cache_directory: str | None = None
     ) -> PatchCatalog:
         columns = [
             col for col in [ra_name, dec_name, patch_name, z_name, weight_name]
@@ -282,10 +316,51 @@ class PatchCollection:
             z_name=z_name,
             weight_name=weight_name,
             n_patches=n_patches,
-            patch_directory=patch_directory)
+            cache_directory=cache_directory)
+
+    @classmethod
+    def restore(
+        cls,
+        patch_directory: str,
+        n_patches: int | None = None
+    ) -> PatchCollection:
+        new = cls.__new__(cls)
+        new._zmin = np.inf
+        new._zmax = -np.inf
+        # load the patches
+        new.patches = {}
+        for path in os.listdir(patch_directory):
+            try:
+                patch = PatchCatalog.from_cached(
+                    os.path.join(patch_directory, path))
+            except ValueError:
+                raise
+                pass
+            else:
+                if patch.has_z():
+                    new._zmin = np.minimum(new._zmin, patch.z.min())
+                    new._zmax = np.maximum(new._zmax, patch.z.max())
+                patch.unload()
+                new.patches[patch.id] = patch
+        if np.isinf(new._zmin):
+            new._zmin = None
+            new._zmax = None
+        new._fill_missing(n_patches)
+        return new
+
+    def __getitem__(self, item: int) -> Patch:
+        return self.patches[item]
 
     def __len__(self) -> int:
         return len(self.patches)
+
+    def __repr__(self):
+        length = len(self)
+        loaded = sum(1 for patch in iter(self) if patch.is_loaded())
+        empty = sum(1 for patch in iter(self) if isinstance(patch, EmptyPatch))
+        s = self.__class__.__name__
+        s += f"(patches={length}, loaded={loaded}/{length}, empty={empty})"
+        return s
 
     def total(self) -> float:
         return np.sum([patch.total() for patch in self.patches.values()])
