@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod, abstractproperty
-
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import cKDTree
@@ -103,7 +101,7 @@ class SphericalKDTree:
         scales: NDArray[np.float_],
         dist_weight_scale: float | None = None,
         weight_res: int = 50
-    ) -> tuple[NDArray, float]:
+    ) -> NDArray:
         # unpack query scales
         scales = np.atleast_2d(scales)
         if scales.shape[1] != 2:
@@ -130,5 +128,4 @@ class SphericalKDTree:
             i_hi = np.argmin(np.abs(r_edges - scale[1]))
             select = np.arange(i_lo, i_hi)
             result[i] = counts[select].sum()
-        total = self.total * other.total
-        return result, np.full(len(result), total)
+        return result
