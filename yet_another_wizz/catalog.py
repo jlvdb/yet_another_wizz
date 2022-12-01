@@ -13,7 +13,7 @@ from pandas import DataFrame, Interval, IntervalIndex
 from scipy.spatial import distance_matrix
 
 from yet_another_wizz.kdtree import SphericalKDTree
-from yet_another_wizz.utils import Timed, TypePatchKey
+from yet_another_wizz.utils import LimitTracker, Timed, TypePatchKey
 
 
 class NotAPatchFileError(Exception):
@@ -29,6 +29,8 @@ class PatchCatalog:
     _total = None
     _has_z = False
     _has_weights = False
+    _center = None
+    _radius = None
 
     def __init__(
         self,
@@ -47,12 +49,36 @@ class PatchCatalog:
                 "restricted to 'z' and 'weights'")
         # if there is a file path, store the file
         if cachefile is not None:
-            data.to_feather(cachefile)
             self.cachefile = cachefile
+            data.to_feather(cachefile)
         self._data = data
-        self._len = len(data)
-        self._has_z = "z" in data
-        self._has_weights = "weights" in data
+        self._init()
+
+    def _init(self) -> None:
+        self._len = len(self._data)
+        self._has_z = "z" in self._data
+        self._has_weights = "weights" in self._data
+        if self.has_weights():
+            self._total = float(self.weights.sum())
+        else:
+            self._total = float(len(self))
+        # precompute (estimate) the patch center and size since it is quite fast
+        # and the data is still loaded
+        SUBSET_SIZE = 1000  # seems a reasonable value, fast but not too sparse
+        if self._len < SUBSET_SIZE:
+            pos = self.pos
+        else:
+            which = np.random.randint(0, self._len, size=SUBSET_SIZE)
+            pos = self.pos[which]
+        xyz = SphericalKDTree.position_sky2sphere(pos)
+        # compute mean coordinate, which will not be located on the unit sphere
+        mean_xyz = np.mean(xyz, axis=0)
+        # map back onto unit sphere
+        mean_sky = SphericalKDTree.position_sphere2sky(mean_xyz)
+        self._center = SphericalKDTree.position_sky2sphere(mean_sky)
+        # compute maximum distance to any of the data points
+        radius_xyz = np.sqrt(np.sum((xyz - self.center)**2, axis=1)).max()
+        self._radius = SphericalKDTree.distance_sphere2sky(radius_xyz)
 
     def __repr__(self) -> str:
         s = self.__class__.__name__
@@ -79,9 +105,7 @@ class PatchCatalog:
             if hasattr(e, "args"):
                 args = e.args
             raise NotAPatchFileError(*args)
-        new._len = len(new._data)
-        new._has_z = "z" in new.data
-        new._has_weights = "weights" in new.data
+        new._init()
         return new
 
     def is_loaded(self) -> bool:
@@ -144,13 +168,17 @@ class PatchCatalog:
         else:
             return None
 
+    @property
     def total(self) -> float:
-        if self._total is None:
-            if self.has_weights():
-                self._total = self.weights.sum()
-            else:
-                self._total = float(len(self))
         return self._total
+
+    @property
+    def center(self) -> float:
+        return self._center
+
+    @property
+    def radius(self) -> float:
+        return self._radius
 
     def iter_bins(
         self,
@@ -165,26 +193,6 @@ class PatchCatalog:
         else:
             for intv, bin_data in self._data.groupby(pd.cut(self.z, z_bins)):
                 yield intv, PatchCatalog(self.id, bin_data)
-
-    def get_info(
-        self,
-        n_subset: int | None = 1000
-    ) -> dict[str, ArrayLike]:
-        if n_subset is not None:
-            n_subset = min(len(self), int(n_subset))
-            which = np.random.randint(0, len(self), size=n_subset)
-            pos = self.pos[which]
-        else:
-            pos = self.pos
-        xyz = SphericalKDTree.position_sky2sphere(pos)
-        # compute mean coordinate, which will not be located on the unit sphere
-        mean_xyz = np.mean(xyz, axis=0)
-        # map back onto unit sphere
-        mean_sky = SphericalKDTree.position_sphere2sky(mean_xyz)
-        mean_sphere = SphericalKDTree.position_sky2sphere(mean_sky)
-        # compute maximum distance to any of the data points
-        max_dist = np.sqrt(np.sum((xyz - mean_sphere)**2, axis=1)).max()
-        return dict(center=mean_sphere, radius=max_dist, items=len(self))
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
         return SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
@@ -224,9 +232,8 @@ class PatchCollection(Sequence):
             prefix += "and caching "
         # run groupby first to avoid any intermediate copies of full data
         with Timed(prefix + "patches"):
+            limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
-            self._zmin = np.inf
-            self._zmax = -np.inf
             for patch_id, patch_data in data.groupby(patch_name):
                 if patch_id < 0:
                     raise ValueError("negative patch IDs are not supported")
@@ -239,15 +246,11 @@ class PatchCollection(Sequence):
                     kwargs["cachefile"] = os.path.join(
                         cache_directory, f"patch_{patch_id:.0f}.feather")
                 patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
-                if patch.has_z():
-                    self._zmin = np.minimum(self._zmin, patch.z.min())
-                    self._zmax = np.maximum(self._zmax, patch.z.max())
+                limits.update(patch.z)
                 if unload:
                     patch.unload()
                 patches[patch.id] = patch
-            if np.isinf(self._zmin):
-                self._zmin = None
-                self._zmax = None
+            self._zmin, self._zmax = limits.get()
             self._patches = patches
 
     @classmethod
@@ -278,21 +281,16 @@ class PatchCollection(Sequence):
         patch_directory: str
     ) -> PatchCollection:
         new = cls.__new__(cls)
-        new._zmin = np.inf
-        new._zmax = -np.inf
         # load the patches
+        limits = LimitTracker()
         new._patches = {}
         for path in os.listdir(patch_directory):
             patch = PatchCatalog.from_cached(
                 os.path.join(patch_directory, path))
-            if patch.has_z():
-                new._zmin = np.minimum(new._zmin, patch.z.min())
-                new._zmax = np.maximum(new._zmax, patch.z.max())
+            limits.update(patch.z)
             patch.unload()
             new._patches[patch.id] = patch
-        if np.isinf(new._zmin):
-            new._zmin = None
-            new._zmax = None
+        new._zmin, new._zmax = limits.get()
         return new
 
     def __repr__(self):
@@ -311,8 +309,12 @@ class PatchCollection(Sequence):
     def __len__(self) -> int:
         return len(self._patches)
 
+    @property
+    def ids(self) -> list[int]:
+        return sorted(self._patches.keys())
+
     def __iter__(self) -> Iterator[PatchCatalog]:
-        for patch_id in sorted(self._patches.keys()):
+        for patch_id in self.ids:
             yield self._patches[patch_id]
 
     def iter_loaded(self) -> Iterator[PatchCatalog]:
@@ -327,10 +329,16 @@ class PatchCollection(Sequence):
         return all([patch.is_loaded() for patch in iter(self)])
 
     def load(self) -> None:
-        return [patch.load() for patch in iter(self)]
+        for patch in iter(self):
+            patch.load()
 
     def unload(self) -> None:
-        return [patch.unload() for patch in iter(self)]
+        for patch in iter(self):
+            patch.unload()
+
+    def n_patches(self) -> int:
+        # seems ok to drop the last patch if that is empty and therefore missing
+        return max(self._patches.keys())
 
     def has_z(self) -> bool:
         return all(patch.has_z() for patch in iter(self))  # always equal
@@ -372,28 +380,126 @@ class PatchCollection(Sequence):
         return np.concatenate([
             np.full(len(patch), patch.id) for patch in iter(self)])
 
-    def total(self) -> float:
-        return np.sum([patch.total() for patch in iter(self)])
+    @property
+    def totals(self) -> NDArray[np.float_]:
+        return np.array([patch.total for patch in iter(self)])
 
-    def generate_linkage(
+    @property
+    def total(self) -> float:
+        return self.totals.sum()
+
+    @property
+    def centers(self) -> NDArray[np.float_]:
+        return np.array([patch.center for patch in iter(self)])
+
+    @property
+    def radii(self) -> NDArray[np.float_]:
+        return np.array([patch.radius for patch in iter(self)])
+
+    def get_linkage(
         self,
-        max_query_radius_deg: float,
-        n_subset: int | None = 1000
-    ) -> list[TypePatchKey]:
-        """Remove duplicates for autocorrelation"""
-        # calculate the patch centers and sizes
-        infos = [patch.get_info(n_subset) for patch in self.iter_loaded()]
-        centers = np.array([info["center"] for info in infos])
-        sizes = SphericalKDTree.distance_sphere2sky(  # patch radius in degrees
-            np.array([info["radius"] for info in infos]))
+        max_query_radius_deg: float
+    ) -> PatchLinkage:
+        centers = self.centers  # in RA / Dec
+        radii = self.radii  # in degrees, maximum distance measured from center
         # compute distance in degrees between all patch centers
         dist_deg = SphericalKDTree.distance_sphere2sky(
             distance_matrix(centers, centers))
         # compare minimum separation required for patchs to not overlap
-        min_sep_deg = np.add.outer(sizes, sizes)
-        # check which patches overlap when factoring in query radius
+        min_sep_deg = np.add.outer(radii, radii)
+        # check which patches overlap when factoring in the query radius
         overlaps = (dist_deg - max_query_radius_deg) < min_sep_deg
         patch_pairs = []
         for id1, overlap in enumerate(overlaps):
             patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
-        return patch_pairs
+        return PatchLinkage(patch_pairs)
+
+
+class PatchLinkage:
+
+    def __init__(
+        self,
+        patch_tuples: list[TypePatchKey]
+    ) -> None:
+        self.pairs = patch_tuples
+
+    def __len__(self) -> int:
+        return len(self.pairs)
+
+    def get_pairs(
+        self,
+        auto: bool,
+        crosspatch: bool = True
+    ) -> list[TypePatchKey]:
+        if crosspatch:
+            if auto:
+                pairs = [(i, j) for i, j in self.pairs if j >= i]
+            else:
+                pairs = self.pairs
+        else:
+            pairs = [(i, j) for i, j in self.pairs if i == j]
+        return pairs
+
+    @staticmethod
+    def _parse_collections(
+        collection1: PatchCollection,
+        collection2: PatchCollection | None = None
+    ) -> tuple[bool, PatchCollection, PatchCollection, int]:
+        auto = collection2 is None
+        if auto:
+            collection2 = collection1
+        n_patches = max(collection1.n_patches(), collection2.n_patches()) + 1
+        return auto, collection1, collection2, n_patches
+
+    def get_matrix(
+        self,
+        collection1: PatchCollection,
+        collection2: PatchCollection | None = None,
+        crosspatch: bool = True
+    ) -> NDArray[np.bool_]:
+        auto, collection1, collection2, n_patches = self._parse_collections(
+            collection1, collection2)
+        pairs = self.get_pairs(auto, crosspatch)
+        # make a boolean matrix indicating the exisiting patch combinations
+        matrix = np.zeros((n_patches, n_patches), dtype=np.bool_)
+        for pair in pairs:
+            matrix[pair] = True
+        return matrix
+
+    def get_weight_matrix(
+        self,
+        collection1: PatchCollection,
+        collection2: PatchCollection | None = None,
+        crosspatch: bool = True
+    ) -> NDArray[np.float_]:
+        auto, collection1, collection2, n_patches = self._parse_collections(
+            collection1, collection2)
+        # compute the product of the total weight per patch
+        totals1 = np.zeros(n_patches)
+        for i, total in zip(collection1.ids, collection1.totals):
+            totals1[i] = total
+        totals2 = np.zeros(n_patches)
+        for i, total in zip(collection2.ids, collection2.totals):
+            totals2[i] = total
+        totals = np.multiply.outer(totals1, totals2)
+        if auto:
+            totals = np.triu(totals)  # (i, j) with i > j => 0
+            totals[np.diag_indices(len(totals))] *= 0.5  # avoid double-counting
+        return totals
+
+    def get_patches(
+        self,
+        collection1: PatchCollection,
+        collection2: PatchCollection | None = None,
+        crosspatch: bool = True
+    ) -> tuple[list[PatchCollection], list[PatchCollection]]:
+        auto, collection1, collection2, n_patches = self._parse_collections(
+            collection1, collection2)
+        pairs = self.get_pairs(auto, crosspatch)
+        # generate the patch lists
+        patches1 = []
+        patches2 = []
+        for id1, id2 in pairs:
+            patches1.append(collection1[id1])
+            patches2.append(collection1[id2])
+        return patches1, patches2

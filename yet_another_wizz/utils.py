@@ -20,7 +20,7 @@ from pandas import DataFrame, IntervalIndex
 
 TypeCosmology: TypeAlias = Union[FLRW, "CustomCosmology"]
 TypePatchKey = tuple[int, int]
-TypeScaleResult = dict[TypePatchKey, "PairCountData"]
+TypeScaleResult = dict[TypePatchKey, NDArray[np.float_]]
 TypeScaleKey = str
 TypeThreadResult = dict[TypeScaleKey, TypeScaleResult]
 
@@ -34,6 +34,23 @@ class PairCountData:
     def normalise(self) -> NDArray[np.float_]:
         normalised = self.count / self.total
         return DataFrame(data=normalised.T, index=self.binning)
+
+
+class LimitTracker:
+
+    def __init__(self):
+        self.min = +np.inf
+        self.max = -np.inf
+
+    def update(self, data: NDArray | None):
+        if data is not None:
+            self.min = np.minimum(self.min, np.min(data))
+            self.max = np.maximum(self.max, np.max(data))
+
+    def get(self):
+        vmin = None if np.isinf(self.min) else self.min
+        vmax = None if np.isinf(self.max) else self.max
+        return vmin, vmax
 
 
 class Timed:
