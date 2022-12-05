@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import multiprocessing
 import operator
@@ -20,9 +21,7 @@ from pandas import DataFrame, IntervalIndex
 
 TypeCosmology: TypeAlias = Union[FLRW, "CustomCosmology"]
 TypePatchKey = tuple[int, int]
-TypeScaleResult = dict[TypePatchKey, NDArray[np.float_]]
 TypeScaleKey = str
-TypeThreadResult = dict[TypeScaleKey, TypeScaleResult]
 
 
 @dataclass(frozen=True, repr=False)
@@ -270,7 +269,11 @@ def dump_json(data, path, preview=False):
             json.dump(data, f, **kwargs)
 
 
-class ParallelHelper(object):
+def _threadwrapper(arg_tuple, function):
+    return function(*arg_tuple)
+
+
+class ParallelHelper:
     """
     Helper class to apply a series of arguments to a function using
     multiprocessing.Pool.
@@ -327,3 +330,17 @@ class ParallelHelper(object):
         else:  # mimic the behaviour of pool.starmap() with map()
             results = list(map(self.function, *self.args))
         return results
+
+    def iter_result(self) -> Iterator:
+        """
+        Apply the accumulated arguments to a function in a pool of threads.
+        The results are processed unordered and yielded as an iterator.
+        """
+        function = functools.partial(_threadwrapper, function=self.function)
+        if self._num_threads > 1:
+            with multiprocessing.Pool(self._num_threads) as pool:
+                for result in pool.imap_unordered(function, zip(*self.args)):
+                    yield result
+        else:  # mimic the behaviour of pool.imap_unordered()
+            for result in map(self.function, *self.args):
+                yield result

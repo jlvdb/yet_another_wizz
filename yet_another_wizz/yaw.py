@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import itertools
 import os
-from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
@@ -11,9 +10,9 @@ from numpy.typing import ArrayLike, NDArray
 from yet_another_wizz.catalog import PatchCatalog, PatchCollection
 from yet_another_wizz.correlation import CorrelationFunction
 from yet_another_wizz.redshifts import BinFactory, NzTrue
-from yet_another_wizz.resampling import PairCountData, PairCountResult
+from yet_another_wizz.resampling import PairCountResult
 from yet_another_wizz.utils import (
-    ParallelHelper, Timed, TypeCosmology, TypeScaleKey, TypeThreadResult,
+    ArrayDict, ParallelHelper, Timed, TypeCosmology, TypePatchKey, TypeScaleKey,
     get_default_cosmology, r_kpc_to_angle)
 
 
@@ -21,8 +20,7 @@ def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:
     return [f"kpc{scale[0]:.0f}t{scale[1]:.0f}" for scale in scales]
 
 
-def count_pairs_binned(
-    auto: bool,
+def count_pairs_thread(
     patch1: PatchCatalog,
     patch2: PatchCatalog,
     scales: NDArray[np.float_],
@@ -32,7 +30,7 @@ def count_pairs_binned(
     bin2: bool = False,
     dist_weight_scale: float | None = None,
     weight_res: int = 50
-) -> TypeThreadResult:
+) -> tuple[TypePatchKey, tuple[NDArray, NDArray], dict[TypeScaleKey, NDArray]]:
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
     # build trees
     patch1.load(use_threads=False)
@@ -45,31 +43,20 @@ def count_pairs_binned(
         trees2 = [patch.get_tree() for _, patch in patch2.iter_bins(z_bins)]
     else:
         trees2 = itertools.repeat(patch2.get_tree())
-    # count pairs
-    scale_keys = scales_to_keys(scales)
-    results = {key: {} for key in scale_keys}
-    # iterate through the bins and count pairs between the trees
-    totals = []
-    counts = []
-    for intv, tree1, tree2 in zip(z_intervals, trees1, trees2):
+    # count pairs, iterate through the bins and count pairs between the trees
+    counts = np.empty((len(scales), len(z_intervals)))
+    totals1 = np.empty(len(z_intervals))
+    totals2 = np.empty(len(z_intervals))
+    for i, (intv, tree1, tree2) in enumerate(zip(z_intervals, trees1, trees2)):
         # if bin1 is False and bin2 is False, these will still give different
         # counts since the angle for scales is chaning
-        count, total = tree1.count(
+        counts[:, i] = tree1.count(
             tree2, scales=r_kpc_to_angle(scales, intv.mid, cosmology),
             dist_weight_scale=dist_weight_scale, weight_res=weight_res)
-        if auto and patch1.id == patch2.id:
-            # (i, j) pairs are counted twice for i == j, but once for i != j
-            total *= 0.5
-            count *= 0.5
-        totals.append(total)
-        counts.append(count)
-    totals = np.transpose(totals)
-    counts = np.transpose(counts)
-    # package result and identify with their patch IDs
-    for key, total, count in zip(scale_keys, totals, counts):
-        results[key][(patch1.id, patch2.id)] = PairCountData(
-            z_intervals, total=total, count=count)
-    return results
+        totals1[i] = tree1.total
+        totals2[i] = tree2.total
+    counts = {key: count for key, count in zip(scales_to_keys(scales), counts)}
+    return (patch1.id, patch2.id), (totals1, totals2), counts
 
 
 class YetAnotherWizz:
@@ -127,26 +114,28 @@ class YetAnotherWizz:
             self.binning = factory.get(zbin_method)
         else:
             raise ValueError("either 'zbins' or 'n_zbins' must be provided")
-        # generate patch linkage (patches sufficiently close for correlation)
-        if disable_crosspatch:
-            self._linkage = [(i, i) for i in range(self.n_patches())]
-        else:
-            # estimate the maximum query radius at low, but non-zero redshift
-            z_ref = 0.1  # TODO: resonable? lower redshift => more overlap
-            max_ang = r_kpc_to_angle(self.scales, z_ref, self.cosmology).max()
-            # generate the patch linkage (sufficiently close patches)
-            with Timed("generating patch linkage        "):
-                self._linkage = self.ref_rand.generate_linkage(max_ang)
+        # generate the patch linkage (sufficiently close patches)
+        with Timed("generating patch linkage        "):
+            if disable_crosspatch:
+                self._crosspatch = False
+                max_ang = 0.0  # only relevenat for cross-patch
+            else:
+                self._crosspatch = True
+                # estimate maximum query radius at low, but non-zero redshift
+                z_ref = 0.1  # TODO: resonable? lower redshift => more overlap
+                max_ang = r_kpc_to_angle(
+                    self.scales, z_ref, self.cosmology).max()
+            self._linkage = self.ref_rand.get_linkage(max_ang)
         # others
         if num_threads is None:
             num_threads = os.cpu_count()
         self.num_threads = num_threads
 
     def _check_patches(self) -> None:
-        n_patches = len(self.reference)
+        n_patches = self.n_patches()
         # check with all other items
-        for kind in ("ref_rand", "unknown", "unk_rand"):
-            if len(getattr(self, kind)) != n_patches:
+        for kind in ("reference", "ref_rand", "unknown"):
+            if getattr(self, kind).n_patches() != n_patches:
                 raise ValueError(
                     f"number of patches in '{kind}' does not match 'reference'")
 
@@ -156,7 +145,7 @@ class YetAnotherWizz:
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))#[0]
 
     def n_patches(self) -> int:
-        return len(self.reference)
+        return self.unk_rand.n_patches()
 
     def get_config(self) -> dict[str, int | float | bool | str | None]:
         raise NotImplementedError  # TODO
@@ -169,26 +158,19 @@ class YetAnotherWizz:
         bin2: bool | None = None
     ) -> dict[TypeScaleKey, PairCountResult]:
         auto = collection2 is None
-        # prepare for autocorrelation
-        if auto:
-            collection2 = collection1
-            # avoid double-counting pairs
-            linkage = [(i, j) for i, j in self._linkage if j >= i]
-        else:
-            if collection2 is None:
-                raise ValueError("no 'collection2' provided")
-            linkage = self._linkage
+        # prepare for measurement
+        patch1_list, patch2_list = self._linkage.get_patches(
+            collection1, collection2, self._crosspatch)
+        n_jobs = len(patch1_list)
+
         # prepare job scheduling
         pool = ParallelHelper(
-            function=count_pairs_binned,
-            n_items=len(linkage),
-            num_threads=self.num_threads)
-        # auto: bool
-        pool.add_constant(auto)
+            function=count_pairs_thread,
+            n_items=n_jobs, num_threads=min(n_jobs, self.num_threads))
         # patch1: PatchCatalog
-        pool.add_iterable([collection1[id1] for id1, id2 in linkage])
+        pool.add_iterable(patch1_list)
         # patch2: PatchCatalog
-        pool.add_iterable([collection2[id2] for id1, id2 in linkage])
+        pool.add_iterable(patch2_list)
         # scales: NDArray[np.float_]
         pool.add_constant(self.scales)
         # cosmology: TypeCosmology
@@ -203,38 +185,57 @@ class YetAnotherWizz:
         pool.add_constant(self.dist_weight_scale)
         # weight_res: int
         pool.add_constant(self.dist_weight_res)
-        # execute
-        result_list: list[TypeThreadResult] = pool.run()
-        # reorder output data hierarchy
-        result_scales: TypeThreadResult = {}
-        for scale_dict in result_list:
-            for scale_key, patch_dict in scale_dict.items():
-                if scale_key not in result_scales:
-                    result_scales[scale_key] = {}
-                result_scales[scale_key].update(patch_dict)
-        # fill up missing totals from skipped cross-patch measurements
-        z_intervals = pd.IntervalIndex.from_breaks(self.binning)
-        Nbins = len(z_intervals)
-        zero_counts = np.zeros(Nbins)
-        totals = np.multiply.outer(  # wasts memory, but very fast
-            [patch.total for patch in collection1],
-            [patch.total for patch in collection2])
-        for i in range(0, len(collection1)):
-            for j in range(i, len(collection2)):
-                if (i, j) not in result_scales[scale_key]:  # use last scale key
-                    # entry is missing at all scales
-                    for patch_dict in result_scales.values():
-                        dummy = PairCountData(
-                            z_intervals, zero_counts,
-                            np.full(Nbins, totals[i, j]))
-                        patch_dict[(i, j)] = dummy
-                        if not auto:  # symmetric counting
-                            patch_dict[(j, i)] = dummy
-        # pack the data
+
+        n_bins = len(self.binning) - 1
+        n_patches = self.n_patches()
+        # execute, unpack the data
+        totals1 = np.zeros((n_patches, n_bins))
+        totals2 = np.zeros((n_patches, n_bins))
+        count_dict = {key: {} for key in scales_to_keys(self.scales)}
+        for (id1, id2), (total1, total2), counts in pool.iter_result():
+            # record total weight per bin, overwriting OK since identical
+            totals1[id1] = total1
+            totals2[id2] = total2
+            # record counts at each scale
+            for scale_key, count in counts.items():
+                count_dict[scale_key][(id1, id2)] = count
+
+        # get mask of all used cross-patch combinations, upper triangle if auto
+        mask = self._linkage.get_mask(
+            collection1, collection2, self._crosspatch)
+        keys = [
+            tuple(key) for key in np.indices((n_patches, n_patches))[:, mask].T]
+
+        # compute patch-wise product of total of weights
+        total_matrix = np.empty((n_patches, n_patches, n_bins))
+        for i in range(n_bins):
+            # get the patch totals for the current bin
+            totals = np.multiply.outer(totals1[:, i], totals2[:, i])
+            total_matrix[:, :, i] = totals
+        # apply correction for autocorrelation, i. e. no double-counting
+        if auto:
+            total_matrix[np.diag_indices(n_patches)] *= 0.5
+        # flatten to shape (n_patches*n_patches, n_bins), also if auto:
+        # (id1, id2) not counted, i.e. dropped, if id1 > id2
+        total = total_matrix[mask]
+        del total_matrix
+
+        # sort counts into similar data structure, pack result
         result = {}
-        for scale_key, patch_dict in result_scales.items():
-            result[scale_key] = PairCountResult.from_patch_dict(
-                self.binning, self.n_patches(), patch_dict)
+        for scale_key, counts in count_dict.items():
+            count_matrix = np.zeros((n_patches, n_patches, n_bins))
+            for patch_key, count in counts.items():
+                count_matrix[patch_key] = count
+            # apply correction for autocorrelation, i. e. no double-counting
+            if auto:
+                count_matrix[np.diag_indices(n_patches)] *= 0.5
+            count = count_matrix[mask]
+            result[scale_key] = PairCountResult(
+                n_patches,
+                count=ArrayDict(keys, count),
+                total=ArrayDict(keys, total),
+                mask=mask,
+                binning=pd.IntervalIndex.from_breaks(self.binning))
         return result
 
     def crosscorr(

@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pandas import DataFrame, IntervalIndex
 
-from yet_another_wizz.utils import ArrayDict, PairCountData, TypePatchKey, TypeScaleResult
+from yet_another_wizz.utils import ArrayDict, PairCountData, TypePatchKey
 
 
 def bootstrap_iter(
@@ -58,32 +58,6 @@ class PairCountResult:
     @property
     def nbins(self) -> int:
         return len(self.binning)
-
-    @classmethod
-    def from_patch_dict(
-        cls,
-        binning: NDArray[np.float_],
-        npatch: int,
-        patch_dict: TypeScaleResult
-    ) -> PairCountResult:
-        # extract the (cross-patch) pair counts
-        keys = []
-        count = []
-        total = []
-        for patches, result in patch_dict.items():
-            keys.append(patches)
-            count.append(result.count)
-            total.append(result.total)
-        # mark which patches are available
-        mask = np.zeros((npatch, npatch), dtype=np.bool_)
-        for key in keys:
-            mask[key] = True
-        return cls(
-            npatch=npatch,
-            count=ArrayDict(keys, np.array(count)),
-            total=ArrayDict(keys, np.array(total)),
-            mask=mask,
-            binning=IntervalIndex.from_breaks(binning))
 
     def get_patch_count(self) -> DataFrame:
         return DataFrame(
