@@ -7,6 +7,8 @@ from scipy.spatial import cKDTree
 
 class SphericalKDTree:
 
+    _total = None
+
     def __init__(
         self,
         RA: NDArray[np.float_],
@@ -20,18 +22,18 @@ class SphericalKDTree:
         self.tree = cKDTree(pos_sphere, leafsize)
         if weights is None:
             self.weights = np.ones(len(pos_sphere))
-            self._sum_weights = len(self)
         else:
             assert(len(weights) == len(RA))
             self.weights = np.asarray(weights)
-            self._sum_weights = self.weights.sum()
 
     def __len__(self) -> int:
         return len(self.weights)
 
     @property
     def total(self) -> float:
-        return self._sum_weights
+        if self._total is None:
+            self._total = self.weights.sum()
+        return self._total
 
     @staticmethod
     def position_sky2sphere(

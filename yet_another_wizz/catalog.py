@@ -195,7 +195,9 @@ class PatchCatalog:
                 yield intv, PatchCatalog(self.id, bin_data)
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
-        return SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
+        tree = SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
+        tree._total = self.total  # no need to recompute this
+        return tree
 
 
 class PatchCollection(Sequence):
@@ -338,7 +340,7 @@ class PatchCollection(Sequence):
 
     def n_patches(self) -> int:
         # seems ok to drop the last patch if that is empty and therefore missing
-        return max(self._patches.keys())
+        return max(self._patches.keys()) + 1
 
     def has_z(self) -> bool:
         return all(patch.has_z() for patch in iter(self))  # always equal
@@ -448,7 +450,7 @@ class PatchLinkage:
         auto = collection2 is None
         if auto:
             collection2 = collection1
-        n_patches = max(collection1.n_patches(), collection2.n_patches()) + 1
+        n_patches = max(collection1.n_patches(), collection2.n_patches())
         return auto, collection1, collection2, n_patches
 
     def get_matrix(
@@ -465,6 +467,24 @@ class PatchLinkage:
         for pair in pairs:
             matrix[pair] = True
         return matrix
+
+    def get_mask(
+        self,
+        collection1: PatchCollection,
+        collection2: PatchCollection | None = None,
+        crosspatch: bool = True
+    ) -> NDArray[np.bool_]:
+        auto, collection1, collection2, n_patches = self._parse_collections(
+            collection1, collection2)
+        # make a boolean mask indicating all patch combinations
+        shape = (n_patches, n_patches)
+        if crosspatch:
+            mask = np.ones(shape, dtype=np.bool_)
+            if auto:
+                mask = np.triu(mask)
+        else:
+            mask = np.eye(n_patches, dtype=np.bool_)
+        return mask
 
     def get_weight_matrix(
         self,
