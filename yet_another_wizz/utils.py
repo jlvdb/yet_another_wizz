@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import json
 import operator
-from collections.abc import Collection, Iterable, Iterator, Mapping
 from datetime import timedelta
 from timeit import default_timer
-from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -54,57 +52,8 @@ class Timed:
             print(" - " + str(timedelta(seconds=round(delta))))
 
 
-class ArrayDict(Mapping):
-
-    def __init__(
-        self,
-        keys: Collection[Any],
-        array: NDArray
-    ) -> None:
-        if len(array) != len(keys):
-            raise ValueError("number of keys and array length do not match")
-        self._array = array
-        self._dict = {key: idx for idx, key in enumerate(keys)}
-
-    def __len__(self) -> int:
-        return len(self._array)
-
-    def __getitem__(self, key: Any) -> NDArray:
-        idx = self._dict[key]
-        return self._array[idx]
-
-    def __iter__(self) -> Iterator[NDArray]:
-        return self._dict.__iter__()
-
-    def __contains__(self, key: Any) -> bool:
-        return key in self._dict
-
-    def items(self) -> list[tuple[Any, NDArray]]:
-        # ensure that the items are ordered by the index of each key
-        return sorted(self._dict.items(), key=lambda item: item[1])
-
-    def keys(self) -> list[Any]:
-        # key are ordered by their corresponding index
-        return [key for key, _ in self.items()]
-
-    def values(self) -> list[NDArray]:
-        # values are returned in index order
-        return [value for value in self._array]
-
-    def get(self, key: Any, default: Any) -> Any:
-        try:
-            idx = self._dict[key]
-        except KeyError:
-            return default
-        else:
-            return self._array[idx]
-
-    def sample(self, keys: Iterable[Any]) -> NDArray:
-        idx = [self._dict[key] for key in keys]
-        return self._array[idx]
-
-    def as_array(self) -> NDArray:
-        return self._array
+def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:
+    return [f"kpc{scale[0]:.0f}t{scale[1]:.0f}" for scale in scales]
 
 
 def load_json(path):

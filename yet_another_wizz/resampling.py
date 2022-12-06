@@ -1,14 +1,68 @@
 from __future__ import annotations
 
 import itertools
-from collections.abc import Generator, Iterable
+from collections.abc import Collection, Generator, Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 from pandas import DataFrame, IntervalIndex
 
-from yet_another_wizz.utils import ArrayDict, TypePatchKey
+from yet_another_wizz.utils import TypePatchKey
+
+
+class ArrayDict(Mapping):
+
+    def __init__(
+        self,
+        keys: Collection[Any],
+        array: NDArray
+    ) -> None:
+        if len(array) != len(keys):
+            raise ValueError("number of keys and array length do not match")
+        self._array = array
+        self._dict = {key: idx for idx, key in enumerate(keys)}
+
+    def __len__(self) -> int:
+        return len(self._array)
+
+    def __getitem__(self, key: Any) -> NDArray:
+        idx = self._dict[key]
+        return self._array[idx]
+
+    def __iter__(self) -> Iterator[NDArray]:
+        return self._dict.__iter__()
+
+    def __contains__(self, key: Any) -> bool:
+        return key in self._dict
+
+    def items(self) -> list[tuple[Any, NDArray]]:
+        # ensure that the items are ordered by the index of each key
+        return sorted(self._dict.items(), key=lambda item: item[1])
+
+    def keys(self) -> list[Any]:
+        # key are ordered by their corresponding index
+        return [key for key, _ in self.items()]
+
+    def values(self) -> list[NDArray]:
+        # values are returned in index order
+        return [value for value in self._array]
+
+    def get(self, key: Any, default: Any) -> Any:
+        try:
+            idx = self._dict[key]
+        except KeyError:
+            return default
+        else:
+            return self._array[idx]
+
+    def sample(self, keys: Iterable[Any]) -> NDArray:
+        idx = [self._dict[key] for key in keys]
+        return self._array[idx]
+
+    def as_array(self) -> NDArray:
+        return self._array
 
 
 @dataclass(frozen=True, repr=False)
