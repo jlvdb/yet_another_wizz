@@ -64,6 +64,9 @@ class ArrayDict(Mapping):
     def as_array(self) -> NDArray:
         return self._array
 
+    def as_dataframe(self) -> DataFrame:
+        return DataFrame(self.as_array(), index=self.keys())
+
 
 @dataclass(frozen=True, repr=False)
 class PairCountData:
