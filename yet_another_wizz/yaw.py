@@ -9,11 +9,10 @@ from numpy.typing import ArrayLike, NDArray
 
 from yet_another_wizz.catalog import PatchCatalog, PatchCollection
 from yet_another_wizz.correlation import CorrelationFunction
+from yet_another_wizz.cosmology import TypeCosmology, get_default_cosmology, r_kpc_to_angle
 from yet_another_wizz.redshifts import BinFactory, NzTrue
 from yet_another_wizz.resampling import PairCountResult
-from yet_another_wizz.utils import (
-    ArrayDict, ParallelHelper, Timed, TypeCosmology, TypePatchKey, TypeScaleKey,
-    get_default_cosmology, r_kpc_to_angle)
+from yet_another_wizz.utils import ArrayDict, ParallelHelper, Timed, TypePatchKey, TypeScaleKey
 
 
 def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:

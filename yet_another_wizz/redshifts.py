@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
 from yet_another_wizz.correlation import CorrelationFunction
-from yet_another_wizz.utils import TypeCosmology, get_default_cosmology
+from yet_another_wizz.cosmology import TypeCosmology, get_default_cosmology
 
 
 class BinFactory:

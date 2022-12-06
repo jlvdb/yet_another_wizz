@@ -8,7 +8,7 @@ from collections.abc import Iterator, Sequence
 import astropandas as apd
 import numpy as np
 import pandas as pd
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 from pandas import DataFrame, Interval, IntervalIndex
 from scipy.spatial import distance_matrix
 

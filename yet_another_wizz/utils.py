@@ -4,22 +4,18 @@ import functools
 import json
 import multiprocessing
 import operator
-from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from timeit import default_timer
-from typing import Any, Union
-from typing_extensions import TypeAlias
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from astropy.cosmology import FLRW, Planck15
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 from pandas import DataFrame, IntervalIndex
 
 
-TypeCosmology: TypeAlias = Union[FLRW, "CustomCosmology"]
 TypePatchKey = tuple[int, int]
 TypeScaleKey = str
 
@@ -72,40 +68,6 @@ class Timed:
         delta = default_timer() - self.t
         if self.verbose:
             print(" - " + str(timedelta(seconds=round(delta))))
-
-
-def get_default_cosmology() -> FLRW:
-    return Planck15
-
-
-class CustomCosmology(ABC):
-    """
-    Can be used to implement a custom cosmology outside of astropy.cosmology
-    """
-
-    @abstractmethod
-    def to_format(self, format: str = "mapping") -> str:
-        # TODO: really necessary?
-        raise NotImplementedError
-
-    @abstractmethod
-    def comoving_distance(self, z: ArrayLike) -> ArrayLike:
-        raise NotImplementedError
-
-    @abstractmethod
-    def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike:
-        raise NotImplementedError
-
-
-def r_kpc_to_angle(
-    r_kpc: NDArray[np.float_],
-    z: float,
-    cosmology: TypeCosmology
-) -> tuple[float, float]:
-    """from kpc to degrees"""
-    f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
-    angle_rad = np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
-    return np.rad2deg(angle_rad)
 
 
 class UniformRandoms:
