@@ -8,7 +8,18 @@ import numpy as np
 from numpy.typing import NDArray
 from pandas import DataFrame, IntervalIndex
 
-from yet_another_wizz.utils import ArrayDict, PairCountData, TypePatchKey
+from yet_another_wizz.utils import ArrayDict, TypePatchKey
+
+
+@dataclass(frozen=True, repr=False)
+class PairCountData:
+    binning: IntervalIndex
+    count: NDArray[np.float_]
+    total: NDArray[np.float_]
+
+    def normalise(self) -> NDArray[np.float_]:
+        normalised = self.count / self.total
+        return DataFrame(data=normalised.T, index=self.binning)
 
 
 def bootstrap_iter(

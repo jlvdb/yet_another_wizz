@@ -13,22 +13,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from pandas import DataFrame, IntervalIndex
+from pandas import DataFrame
 
 
 TypePatchKey = tuple[int, int]
 TypeScaleKey = str
-
-
-@dataclass(frozen=True, repr=False)
-class PairCountData:
-    binning: IntervalIndex
-    count: NDArray[np.float_]
-    total: NDArray[np.float_]
-
-    def normalise(self) -> NDArray[np.float_]:
-        normalised = self.count / self.total
-        return DataFrame(data=normalised.T, index=self.binning)
 
 
 class LimitTracker:
