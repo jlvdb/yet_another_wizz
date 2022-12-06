@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gc
 import os
-from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 
 import astropandas as apd
@@ -43,10 +42,10 @@ class PatchCatalog:
             raise KeyError("right ascension column ('ra') is required")
         if "dec" not in data:
             raise KeyError("declination column ('dec') is required")
-        if not set(data.columns) <= set(["ra", "dec", "z", "weights"]):
+        if not set(data.columns) <= set(["ra", "dec", "redshift", "weights"]):
             raise KeyError(
                 "'data' contains unidentified columns, optional columns are "
-                "restricted to 'z' and 'weights'")
+                "restricted to 'redshift' and 'weights'")
         # if there is a file path, store the file
         if cachefile is not None:
             self.cachefile = cachefile
@@ -56,7 +55,7 @@ class PatchCatalog:
 
     def _init(self) -> None:
         self._len = len(self._data)
-        self._has_z = "z" in self._data
+        self._has_z = "redshift" in self._data
         self._has_weights = "weights" in self._data
         if self.has_weights():
             self._total = float(self.weights.sum())
@@ -126,7 +125,7 @@ class PatchCatalog:
         self._data = None
         gc.collect()
 
-    def has_z(self) -> bool:
+    def has_redshift(self) -> bool:
         return self._has_z
 
     def has_weights(self) -> bool:
@@ -153,10 +152,10 @@ class PatchCatalog:
         return self._data["dec"].to_numpy()
 
     @property
-    def z(self) -> NDArray[np.float_]:
+    def redshift(self) -> NDArray[np.float_]:
         self.require_loaded()
-        if self.has_z():
-            return self._data["z"].to_numpy()
+        if self.has_redshift():
+            return self._data["redshift"].to_numpy()
         else:
             return None
 
@@ -185,13 +184,14 @@ class PatchCatalog:
         z_bins: NDArray[np.float_],
         allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, PatchCatalog]]:
-        if not allow_no_redshift and not self.has_z():
+        if not allow_no_redshift and not self.has_redshift():
             raise ValueError("no redshifts for iteration provdided")
         if allow_no_redshift:
             for intv in IntervalIndex.from_breaks(z_bins):
                 yield intv, self
         else:
-            for intv, bin_data in self._data.groupby(pd.cut(self.z, z_bins)):
+            for intv, bin_data in self._data.groupby(
+                    pd.cut(self.redshift, z_bins)):
                 yield intv, PatchCatalog(self.id, bin_data)
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
@@ -209,7 +209,7 @@ class PatchCollection(Sequence):
         dec_name: str,
         patch_name: str,
         *,
-        z_name: str | None = None,
+        redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None
     ) -> None:
@@ -217,8 +217,8 @@ class PatchCollection(Sequence):
             raise ValueError("data catalog is empty")
         # check if the columns exist
         renames = {ra_name: "ra", dec_name: "dec"}
-        if z_name is not None:
-            renames[z_name] = "z"
+        if redshift_name is not None:
+            renames[redshift_name] = "redshift"
         if weight_name is not None:
             renames[weight_name] = "weights"
         for col_name, kind in renames.items():
@@ -248,7 +248,7 @@ class PatchCollection(Sequence):
                     kwargs["cachefile"] = os.path.join(
                         cache_directory, f"patch_{patch_id:.0f}.feather")
                 patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
-                limits.update(patch.z)
+                limits.update(patch.redshift)
                 if unload:
                     patch.unload()
                 patches[patch.id] = patch
@@ -263,17 +263,18 @@ class PatchCollection(Sequence):
         dec_name: str,
         patch_name: str,
         *,
-        z_name: str | None = None,
+        redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None
     ) -> PatchCatalog:
         columns = [
-            col for col in [ra_name, dec_name, patch_name, z_name, weight_name]
+            col for col in [
+                ra_name, dec_name, patch_name, redshift_name, weight_name]
             if col is not None]
         data = apd.read_auto(filepath, columns=columns)
         return cls(
             data, ra_name, dec_name, patch_name,
-            z_name=z_name,
+            redshift_name=redshift_name,
             weight_name=weight_name,
             cache_directory=cache_directory)
 
@@ -289,7 +290,7 @@ class PatchCollection(Sequence):
         for path in os.listdir(patch_directory):
             patch = PatchCatalog.from_cached(
                 os.path.join(patch_directory, path))
-            limits.update(patch.z)
+            limits.update(patch.redshift)
             patch.unload()
             new._patches[patch.id] = patch
         new._zmin, new._zmax = limits.get()
@@ -342,16 +343,16 @@ class PatchCollection(Sequence):
         # seems ok to drop the last patch if that is empty and therefore missing
         return max(self._patches.keys()) + 1
 
-    def has_z(self) -> bool:
-        return all(patch.has_z() for patch in iter(self))  # always equal
+    def has_redshift(self) -> bool:
+        return all(patch.has_redshift() for patch in iter(self))  # always equal
 
     def has_weights(self) -> bool:
         return all(patch.has_weights() for patch in iter(self))  # always equal
 
-    def get_z_min(self) -> float:
+    def get_min_redshift(self) -> float:
         return self._zmin
 
-    def get_z_max(self) -> float:
+    def get_max_redshift(self) -> float:
         return self._zmax
 
     @property
@@ -363,9 +364,10 @@ class PatchCollection(Sequence):
         return np.concatenate([patch.dec for patch in self.iter_loaded()])
 
     @property
-    def z(self) -> NDArray[np.float_]:
-        if self.has_z():
-            return np.concatenate([patch.z for patch in self.iter_loaded()])
+    def redshift(self) -> NDArray[np.float_]:
+        if self.has_redshift():
+            return np.concatenate([
+                patch.redshift for patch in self.iter_loaded()])
         else:
             return None
 

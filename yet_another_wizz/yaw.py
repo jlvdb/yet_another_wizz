@@ -103,9 +103,6 @@ class YetAnotherWizz(YetAnotherWizzBase):
                 self.scales, z_ref, self.cosmology).max()
         self._linkage = self.ref_rand.get_linkage(max_ang)
 
-    def _require_redshifts(self) -> None:
-        super()._require_redshifts()
-
     def _correlate(
         self,
         cat1: PatchCollection,
@@ -192,6 +189,3 @@ class YetAnotherWizz(YetAnotherWizzBase):
                 mask=mask,
                 binning=pd.IntervalIndex.from_breaks(self.binning))
         return result
-
-    def true_redshifts(self) -> NzTrue:
-        return super().true_redshifts()

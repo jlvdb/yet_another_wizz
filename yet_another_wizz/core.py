@@ -60,9 +60,9 @@ class YetAnotherWizzBase(ABC):
             self.binning = zbins
         elif n_zbins is not None:
             if zmin is None:
-                zmin = reference.get_z_min()
+                zmin = reference.get_min_redshift()
             if zmax is None:
-                zmax = reference.get_z_max()
+                zmax = reference.get_max_redshift()
             factory = BinFactory(zmin, zmax, n_zbins, cosmology)
             self.binning = factory.get(zbin_method)
         else:
@@ -72,9 +72,8 @@ class YetAnotherWizzBase(ABC):
             num_threads = os.cpu_count()
         self.num_threads = num_threads
 
-    @abstractmethod
     def _require_redshifts(self) -> None:
-        if not self.reference.has_z():
+        if not self.reference.has_redshift():
             raise ValueError("'reference' has no redshifts")
 
     def _check_patches(self) -> None:
@@ -167,19 +166,14 @@ class YetAnotherWizzBase(ABC):
             corrfuncs[scale_key] = CorrelationFunction(**kwargs)
         return corrfuncs
 
-    @abstractmethod
     def true_redshifts(self, progress: bool = False) -> NzTrue:
-        if self.unknown.has_z() is None:
+        if self.unknown.has_redshift() is None:
             raise ValueError("'unknown' has not redshifts provided")
         # compute the reshift histogram in each patch
         with Timed("processing true redshifts", progress):
             hist_counts = []
-            for patch in self.unknown:
-                is_loaded = patch.is_loaded()
-                patch.load()
+            for patch in self.unknown.iter_loaded():
                 counts, bins = np.histogram(
-                    patch.z, self.binning, weights=patch.weights)
+                    patch.redshift, self.binning, weights=patch.weights)
                 hist_counts.append(counts)
-                if not is_loaded:
-                    patch.unload()
         return NzTrue(np.array(hist_counts), bins)
