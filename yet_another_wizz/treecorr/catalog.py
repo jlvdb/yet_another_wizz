@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+import astropandas as apd
 import numpy as np
 from numpy.typing import NDArray
-from pandas import DataFrame, Interval, IntervalIndex
+from pandas import Interval, IntervalIndex
 from treecorr import Catalog
 
 from yet_another_wizz.utils import Timed
@@ -58,9 +59,9 @@ class BinnedCatalog(Catalog):
                 patch_centers=patch_centers, rng=rng, **kwargs)
 
     @classmethod
-    def from_dataframe(
+    def from_file(
         cls,
-        data: DataFrame,
+        filepath: str,
         patches: int | BinnedCatalog | str,
         ra: str,
         dec: str,
@@ -68,6 +69,15 @@ class BinnedCatalog(Catalog):
         w: str | None = None,
         **kwargs
     ) -> BinnedCatalog:
+        # determine the minimum set of columns required
+        columns = [
+            col for col in [ra, dec, redshift, w]
+            if col is not None]
+        if isinstance(patches, str):
+            columns.append(patches)
+        # load data
+        data = apd.read_auto(filepath, columns=columns)
+        # construct catalogue instance
         if isinstance(patches, int):
             kwargs.update(dict(npatch=patches))
         elif isinstance(patches, str):
@@ -92,6 +102,13 @@ class BinnedCatalog(Catalog):
         for patch in self.get_patches(low_mem=True):
             yield patch
 
+    def iter_loaded(self) -> Iterator[BinnedCatalog]:
+        for patch in iter(self):
+            yield patch
+
+    def is_loaded(self) -> bool:
+        return self.loaded
+
     def n_patches(self) -> int:
         return self.npatch
 
@@ -99,16 +116,20 @@ class BinnedCatalog(Catalog):
     def redshift(self) -> NDArray:
         return self.r
 
-    def has_z(self) -> bool:
+    @property
+    def weights(self) -> NDArray:
+        return self.w
+
+    def has_redshift(self) -> bool:
         return self.r is not None
 
-    def get_z_min(self) -> float:
+    def get_min_redshift(self) -> float:
         try:
             return self.redshift.min()
         except AttributeError:
             return None
 
-    def get_z_max(self) -> float:
+    def get_max_redshift(self) -> float:
         try:
             return self.redshift.max()
         except AttributeError:
@@ -124,9 +145,3 @@ class BinnedCatalog(Catalog):
             new = self.copy()
             new.select(bin_mask)
             yield interval, BinnedCatalog.from_catalog(new)
-
-    def patch_iter(self) -> Iterator[tuple[int, Catalog]]:
-        patch_ids = sorted(set(self.patch))
-        patches = self.get_patches()
-        for patch_id, patch in zip(patch_ids, patches):
-            yield patch_id, BinnedCatalog.from_catalog(patch)

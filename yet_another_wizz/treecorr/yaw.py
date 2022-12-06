@@ -61,10 +61,6 @@ class YetAnotherWizzTC(YetAnotherWizzBase):
             bin_slop=rbin_slop,
             num_threads=num_threads)
 
-    def _require_redshifts(self) -> None:
-        if self.reference.redshift is None:
-            raise ValueError("'reference' has no redshifts")
-
     def _correlate(
         self,
         cat1: BinnedCatalog,
@@ -90,15 +86,3 @@ class YetAnotherWizzTC(YetAnotherWizzBase):
         for scale_key, binned_result in result.items():
             result[scale_key] = PairCountResultTC.from_bins(binned_result)
         return result
-
-    def true_redshifts(self, progress: bool = False) -> NzTrue:
-        if self.unknown.redshift is None:
-            raise ValueError("'unknown' has not redshifts provided")
-        # compute the reshift histogram in each patch
-        with Timed("processing true redshifts", progress):
-            hist_counts = []
-            for _, patch_cat in self.unknown.patch_iter():
-                counts, bins = np.histogram(
-                    patch_cat.redshift, self.binning, weights=patch_cat.w)
-                hist_counts.append(counts)
-        return NzTrue(np.array(hist_counts), bins)
