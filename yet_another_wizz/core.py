@@ -113,14 +113,14 @@ class YetAnotherWizzBase(ABC):
         progress: bool = False
     ) -> dict[TypeScaleKey, CorrelationFunction]:
         if progress: print("crosscorrelating")
-        with Timed("    counting data-data pairs    ", progress):
+        with Timed("counting data-data pairs", progress):
             DD = self._correlate(self.reference, True, self.unknown, False)
-        with Timed("    counting data-random pairs  ", progress):
+        with Timed("counting data-random pairs", progress):
             DR = self._correlate(self.reference, True, self.unk_rand, False)
         if compute_rr:
-            with Timed("    counting random-data pairs  ", progress):
+            with Timed("counting random-data pairs", progress):
                 RD = self._correlate(self.ref_rand, True, self.unknown, False)
-            with Timed("    counting random-random pairs", progress):
+            with Timed("counting random-random pairs", progress):
                 RR = self._correlate(self.ref_rand, True, self.unk_rand, False)
         else:
             RD = None
@@ -150,12 +150,12 @@ class YetAnotherWizzBase(ABC):
             raise ValueError("'which' must be either 'reference' or 'unknown'")
         # run correlation
         if progress: print(f"autocorrelating {which}")
-        with Timed("    counting data-data pairs    ", progress):
+        with Timed("counting data-data pairs", progress):
             DD = self._correlate(data, True)
-        with Timed("    counting data-random pairs  ", progress):
+        with Timed("counting data-random pairs", progress):
             DR = self._correlate(data, True, random, True)
         if compute_rr:
-            with Timed("    counting random-random pairs", progress):
+            with Timed("counting random-random pairs", progress):
                 RR = self._correlate(random, True)
         else:
             RR = None
@@ -168,17 +168,18 @@ class YetAnotherWizzBase(ABC):
         return corrfuncs
 
     @abstractmethod
-    def true_redshifts(self) -> NzTrue:
+    def true_redshifts(self, progress: bool = False) -> NzTrue:
         if self.unknown.has_z() is None:
             raise ValueError("'unknown' has not redshifts provided")
         # compute the reshift histogram in each patch
-        hist_counts = []
-        for patch in self.unknown:
-            is_loaded = patch.is_loaded()
-            patch.load()
-            counts, bins = np.histogram(
-                patch.z, self.binning, weights=patch.weights)
-            hist_counts.append(counts)
-            if not is_loaded:
-                patch.unload()
+        with Timed("processing true redshifts", progress):
+            hist_counts = []
+            for patch in self.unknown:
+                is_loaded = patch.is_loaded()
+                patch.load()
+                counts, bins = np.histogram(
+                    patch.z, self.binning, weights=patch.weights)
+                hist_counts.append(counts)
+                if not is_loaded:
+                    patch.unload()
         return NzTrue(np.array(hist_counts), bins)
