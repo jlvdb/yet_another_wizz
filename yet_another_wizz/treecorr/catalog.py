@@ -100,7 +100,7 @@ class BinnedCatalog(Catalog):
 
     def __iter__(self) -> Iterator[BinnedCatalog]:
         for patch in self.get_patches(low_mem=True):
-            yield patch
+            yield BinnedCatalog.from_catalog(patch)
 
     def iter_loaded(self) -> Iterator[BinnedCatalog]:
         for patch in iter(self):
