@@ -521,5 +521,5 @@ class PatchLinkage:
         patches2 = []
         for id1, id2 in pairs:
             patches1.append(collection1[id1])
-            patches2.append(collection1[id2])
+            patches2.append(collection2[id2])
         return patches1, patches2
