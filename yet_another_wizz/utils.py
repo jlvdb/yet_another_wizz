@@ -42,14 +42,15 @@ class Timed:
 
     def __enter__(self) -> Timed:
         if self.verbose and self.msg is not None:
-            print(self.msg, end="")
+            print(f"-:--:-- {self.msg} ...", end="\r")
         self.t = default_timer()
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
         delta = default_timer() - self.t
         if self.verbose:
-            print(" - " + str(timedelta(seconds=round(delta))))
+            time = str(timedelta(seconds=round(delta)))
+            print(f"{time} {self.msg} - Done")
 
 
 def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:

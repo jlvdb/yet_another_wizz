@@ -7,6 +7,8 @@ from numpy.typing import NDArray
 from pandas import DataFrame, Interval, IntervalIndex
 from treecorr import Catalog
 
+from yet_another_wizz.utils import Timed
+
 
 def _iter_bin_masks(
     data: NDArray,
@@ -22,6 +24,38 @@ def _iter_bin_masks(
 
 
 class BinnedCatalog(Catalog):
+
+    def __init__(
+        self,
+        file_name=None,
+        config=None,
+        *,
+        num=0,
+        logger=None,
+        is_rand=False,
+        x=None,
+        y=None,
+        z=None,
+        ra=None,
+        dec=None,
+        r=None,
+        w=None,
+        wpos=None,
+        flag=None,
+        g1=None,
+        g2=None,
+        k=None,
+        patch=None,
+        patch_centers=None,
+        rng=None,
+        **kwargs
+    ) -> None:
+        with Timed("constructing patches"):
+            super().__init__(
+                file_name, config, num=num, logger=logger, is_rand=is_rand,
+                x=x, y=y, z=z, ra=ra, dec=dec, r=r, w=w, wpos=wpos,
+                flag=flag, g1=g1, g2=g2, k=k, patch=patch,
+                patch_centers=patch_centers, rng=rng, **kwargs)
 
     @classmethod
     def from_dataframe(
