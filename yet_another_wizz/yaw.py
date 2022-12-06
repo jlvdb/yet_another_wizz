@@ -98,7 +98,7 @@ class YetAnotherWizz(YetAnotherWizzBase):
         else:
             self._crosspatch = True
             # estimate maximum query radius at low, but non-zero redshift
-            z_ref = 0.1  # TODO: resonable? lower redshift => more overlap
+            z_ref = 0.05  # TODO: resonable? lower redshift => more overlap
             max_ang = r_kpc_to_angle(
                 self.scales, z_ref, self.cosmology).max()
         self._linkage = self.ref_rand.get_linkage(max_ang)
