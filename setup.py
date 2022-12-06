@@ -4,10 +4,7 @@ import os
 
 with open("README.md", "r") as f:
     long_description = f.read()
-with open("requirements.txt") as f:
-    install_requires = [pkg.strip() for pkg in f.readlines() if pkg.strip()]
-scripts = [
-    os.path.join("bin", fname) for fname in os.listdir("bin")]
+scripts = [os.path.join("bin", fname) for fname in os.listdir("bin")]
 
 setuptools.setup(
     name="yet_another_wizz",
@@ -19,4 +16,15 @@ setuptools.setup(
     url="https://github.com/jlvdb/yet_another_wizz",
     packages=setuptools.find_packages(),
     scripts=scripts,
-    install_requires=install_requires)
+    install_requires=[
+        "numpy",
+        "pyarrow",
+        "pandas",
+        "astropandas",
+        "scipy",
+        "astropy",
+        "matplotlib"],
+    extras_require={
+        "treecorr": [
+            "treecorr>=4.3"]}
+)

@@ -104,6 +104,7 @@ class Nz(ABC):
         n_boot: int = 500,
         ax: Axis | None = None,
         color: str | NDArray | None = None,
+        label: str | None = None,
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         **kwargs
@@ -120,7 +121,7 @@ class Nz(ABC):
         # plot
         if plot_kwargs is None:
             plot_kwargs = {}
-        plot_kwargs.update(dict(color=color))
+        plot_kwargs.update(dict(color=color, label=label))
         if ax is None:
             ax = plt.gca()
         if kind == "line":
@@ -194,14 +195,15 @@ class NzTrue(Nz):
         n_boot: int = 500,
         ax: Axis | None = None,
         color: str | NDArray | None = None,
+        label: str | None = None,
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         **kwargs
     ) -> None:
         super().plot(
             "line",
-            sample_method=sample_method, n_boot=n_boot,
-            ax=ax, color=color, xoffset=xoffset, plot_kwargs=plot_kwargs)
+            sample_method=sample_method, n_boot=n_boot, ax=ax, color=color,
+            label=label, xoffset=xoffset, plot_kwargs=plot_kwargs)
 
 
 class NzEstimator(Nz):
@@ -298,6 +300,7 @@ class NzEstimator(Nz):
         n_boot: int = 500,
         ax: Axis | None = None,
         color: str | NDArray | None = None,
+        label: str | None = None,
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -305,4 +308,5 @@ class NzEstimator(Nz):
             "ebar",
             estimator,
             sample_method=sample_method, n_boot=n_boot, global_norm=global_norm,
-            ax=ax, color=color, xoffset=xoffset, plot_kwargs=plot_kwargs)
+            ax=ax, color=color, label=label, xoffset=xoffset,
+            plot_kwargs=plot_kwargs)
