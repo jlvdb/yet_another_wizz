@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import itertools
 
-import numpy as np
 import treecorr
 from numpy.typing import ArrayLike, NDArray
 
 from yet_another_wizz.cosmology import TypeCosmology, r_kpc_to_angle
-from yet_another_wizz.redshifts import NzTrue
 from yet_another_wizz.treecorr.catalog import BinnedCatalog
 from yet_another_wizz.treecorr.resampling import PairCountResultTC
-from yet_another_wizz.utils import Timed, TypeScaleKey, scales_to_keys
+from yet_another_wizz.utils import TypeScaleKey, scales_to_keys
 from yet_another_wizz.yaw import YetAnotherWizzBase
 
 

@@ -65,13 +65,14 @@ class BinnedCatalog(Catalog):
         patches: int | BinnedCatalog | str,
         ra: str,
         dec: str,
+        *,
         redshift: str | None = None,
-        w: str | None = None,
+        weight: str | None = None,
         **kwargs
     ) -> BinnedCatalog:
         # determine the minimum set of columns required
         columns = [
-            col for col in [ra, dec, redshift, w]
+            col for col in [ra, dec, redshift, weight]
             if col is not None]
         if isinstance(patches, str):
             columns.append(patches)
@@ -85,7 +86,7 @@ class BinnedCatalog(Catalog):
         else:
             kwargs.update(dict(patch_centers=patches.patch_centers))
         r = None if redshift is None else data[redshift]
-        w = None if w is None else data[w]
+        w = None if weight is None else data[weight]
         new = cls(
             ra=data[ra], ra_units="degrees",
             dec=data[dec], dec_units="degrees",

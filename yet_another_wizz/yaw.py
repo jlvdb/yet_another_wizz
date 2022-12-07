@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import os
-from abc import ABC, abstractmethod
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,7 +10,6 @@ from yet_another_wizz.catalog import PatchCatalog, PatchCollection
 from yet_another_wizz.core import YetAnotherWizzBase
 from yet_another_wizz.cosmology import TypeCosmology, r_kpc_to_angle
 from yet_another_wizz.parallel import ParallelHelper
-from yet_another_wizz.redshifts import NzTrue
 from yet_another_wizz.resampling import ArrayDict, PairCountResult
 from yet_another_wizz.utils import TypePatchKey, TypeScaleKey, scales_to_keys
 
@@ -27,7 +23,7 @@ def count_pairs_thread(
     bin1: bool = True,
     bin2: bool = False,
     dist_weight_scale: float | None = None,
-    weight_res: int = 50
+    dist_weight_res: int = 50
 ) -> tuple[TypePatchKey, tuple[NDArray, NDArray], dict[TypeScaleKey, NDArray]]:
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
     # build trees
@@ -50,7 +46,7 @@ def count_pairs_thread(
         # counts since the angle for scales is chaning
         counts[:, i] = tree1.count(
             tree2, scales=r_kpc_to_angle(scales, intv.mid, cosmology),
-            dist_weight_scale=dist_weight_scale, weight_res=weight_res)
+            dist_weight_scale=dist_weight_scale, weight_res=dist_weight_res)
         totals1[i] = tree1.total
         totals2[i] = tree2.total
     counts = {key: count for key, count in zip(scales_to_keys(scales), counts)}

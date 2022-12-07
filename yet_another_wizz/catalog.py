@@ -259,23 +259,22 @@ class PatchCollection(Sequence):
     def from_file(
         cls,
         filepath: str,
-        ra_name: str,
-        dec_name: str,
-        patch_name: str,
+        patches: str,
+        ra: str,
+        dec: str,
         *,
-        redshift_name: str | None = None,
-        weight_name: str | None = None,
+        redshift: str | None = None,
+        weight: str | None = None,
         cache_directory: str | None = None
     ) -> PatchCatalog:
         columns = [
-            col for col in [
-                ra_name, dec_name, patch_name, redshift_name, weight_name]
+            col for col in [ra, dec, patches, redshift, weight]
             if col is not None]
         data = apd.read_auto(filepath, columns=columns)
         return cls(
-            data, ra_name, dec_name, patch_name,
-            redshift_name=redshift_name,
-            weight_name=weight_name,
+            data, ra, dec, patches,
+            redshift_name=redshift,
+            weight_name=weight,
             cache_directory=cache_directory)
 
     @classmethod
