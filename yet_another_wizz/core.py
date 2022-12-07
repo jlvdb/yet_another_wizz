@@ -166,14 +166,6 @@ class YetAnotherWizzBase(ABC):
             corrfuncs[scale_key] = CorrelationFunction(**kwargs)
         return corrfuncs
 
+    @abstractmethod
     def true_redshifts(self, progress: bool = False) -> NzTrue:
-        if self.unknown.has_redshift() is None:
-            raise ValueError("'unknown' has not redshifts provided")
-        # compute the reshift histogram in each patch
-        with Timed("processing true redshifts", progress):
-            hist_counts = []
-            for patch in self.unknown.iter_loaded():
-                counts, bins = np.histogram(
-                    patch.redshift, self.binning, weights=patch.weights)
-                hist_counts.append(counts)
-        return NzTrue(np.array(hist_counts), bins)
+        raise NotImplementedError

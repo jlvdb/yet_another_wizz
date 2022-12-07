@@ -10,8 +10,9 @@ from yet_another_wizz.catalog import PatchCatalog, PatchCollection
 from yet_another_wizz.core import YetAnotherWizzBase
 from yet_another_wizz.cosmology import TypeCosmology, r_kpc_to_angle
 from yet_another_wizz.parallel import ParallelHelper
+from yet_another_wizz.redshifts import NzTrue
 from yet_another_wizz.resampling import ArrayDict, PairCountResult
-from yet_another_wizz.utils import TypePatchKey, TypeScaleKey, scales_to_keys
+from yet_another_wizz.utils import Timed, TypePatchKey, TypeScaleKey, scales_to_keys
 
 
 def count_pairs_thread(
@@ -51,6 +52,18 @@ def count_pairs_thread(
         totals2[i] = tree2.total
     counts = {key: count for key, count in zip(scales_to_keys(scales), counts)}
     return (patch1.id, patch2.id), (totals1, totals2), counts
+
+
+def histogram_thread(
+    patch: PatchCatalog,
+    z_bins: NDArray[np.float_]
+) -> NDArray[np.float_]:
+    is_loaded = patch.is_loaded()
+    patch.load()
+    counts, _ = np.histogram(patch.redshift, z_bins, weights=patch.weights)
+    if not is_loaded:
+        patch.unload()
+    return counts
 
 
 class YetAnotherWizz(YetAnotherWizzBase):
@@ -185,3 +198,19 @@ class YetAnotherWizz(YetAnotherWizzBase):
                 mask=mask,
                 binning=pd.IntervalIndex.from_breaks(self.binning))
         return result
+
+    def true_redshifts(self, progress: bool = False) -> NzTrue:
+        if self.unknown.has_redshift() is None:
+            raise ValueError("'unknown' has not redshifts provided")
+        # compute the reshift histogram in each patch
+        pool = ParallelHelper(
+            function=histogram_thread,
+            n_items=self.n_patches(),
+            num_threads=min(self.n_patches(), self.num_threads))
+        # patch: PatchCatalog
+        pool.add_iterable(self.unknown)
+        # NDArray[np.float_]
+        pool.add_constant(self.binning)
+        with Timed("processing true redshifts", progress):
+            hist_counts = list(pool.iter_result())
+        return NzTrue(np.array(hist_counts), self.binning)

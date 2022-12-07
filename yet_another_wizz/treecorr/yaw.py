@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import itertools
 
+import numpy as np
 import treecorr
 from numpy.typing import ArrayLike, NDArray
 
 from yet_another_wizz.cosmology import TypeCosmology, r_kpc_to_angle
 from yet_another_wizz.treecorr.catalog import BinnedCatalog
+from yet_another_wizz.redshifts import NzTrue
 from yet_another_wizz.treecorr.resampling import PairCountResultTC
-from yet_another_wizz.utils import TypeScaleKey, scales_to_keys
+from yet_another_wizz.utils import Timed, TypeScaleKey, scales_to_keys
 from yet_another_wizz.yaw import YetAnotherWizzBase
 
 
@@ -84,3 +86,15 @@ class YetAnotherWizzTC(YetAnotherWizzBase):
         for scale_key, binned_result in result.items():
             result[scale_key] = PairCountResultTC.from_bins(binned_result)
         return result
+
+    def true_redshifts(self, progress: bool = False) -> NzTrue:
+        if self.unknown.has_redshift() is None:
+            raise ValueError("'unknown' has not redshifts provided")
+        # compute the reshift histogram in each patch
+        with Timed("processing true redshifts", progress):
+            hist_counts = []
+            for patch in self.unknown.iter_loaded():
+                counts, bins = np.histogram(
+                    patch.redshift, self.binning, weights=patch.weights)
+                hist_counts.append(counts)
+        return NzTrue(np.array(hist_counts), bins)
