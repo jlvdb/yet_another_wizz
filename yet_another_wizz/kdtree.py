@@ -84,7 +84,8 @@ class SphericalKDTree:
         Euclidean distance in (x, y, z) space.
         """
         dist_sky_rad = np.deg2rad(dist_sky)
-        dist_sphere = np.sqrt(2.0 - 2.0 * np.cos(dist_sky_rad))
+        # old: dist_sphere = np.sqrt(2.0 - 2.0 * np.cos(dist_sky_rad))
+        dist_sphere = 2.0 * np.sin(dist_sky_rad / 2.0)
         return dist_sphere
 
     @staticmethod
@@ -93,7 +94,8 @@ class SphericalKDTree:
         Converts Euclidean distance in (x, y, z) space to angular separation in
         celestial coordinates.
         """
-        dist_sky_rad = np.arccos(1.0 - dist_sphere**2 / 2.0)
+        # old: dist_sky_rad = np.arccos(1.0 - dist_sphere**2 / 2.0)
+        dist_sky_rad = 2.0 * np.arcsin(dist_sphere / 2.0)
         dist_sky = np.rad2deg(dist_sky_rad)
         return dist_sky
 
