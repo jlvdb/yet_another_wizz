@@ -68,6 +68,7 @@ class BinnedCatalog(Catalog):
         *,
         redshift: str | None = None,
         weight: str | None = None,
+        sparse: int | None = None,
         **kwargs
     ) -> BinnedCatalog:
         # determine the minimum set of columns required
@@ -78,6 +79,8 @@ class BinnedCatalog(Catalog):
             columns.append(patches)
         # load data
         data = apd.read_auto(filepath, columns=columns)
+        if sparse is not None:
+            data = data[::sparse]
         # construct catalogue instance
         if isinstance(patches, int):
             kwargs.update(dict(npatch=patches))

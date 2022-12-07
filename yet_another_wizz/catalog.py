@@ -265,12 +265,15 @@ class PatchCollection(Sequence):
         *,
         redshift: str | None = None,
         weight: str | None = None,
+        sparse: int | None = None,
         cache_directory: str | None = None
     ) -> PatchCatalog:
         columns = [
             col for col in [ra, dec, patches, redshift, weight]
             if col is not None]
         data = apd.read_auto(filepath, columns=columns)
+        if sparse is not None:
+            data = data[::sparse]
         return cls(
             data, ra, dec, patches,
             redshift_name=redshift,
