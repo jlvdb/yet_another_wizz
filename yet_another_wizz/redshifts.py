@@ -73,7 +73,7 @@ class Nz(ABC):
         return np.array([zbin.right - zbin.left for zbin in self.binning])
 
     @abstractmethod
-    def get(self, *args) -> Series:
+    def get(self) -> Series:
         raise NotImplementedError
 
     @abstractmethod
@@ -87,7 +87,6 @@ class Nz(ABC):
     @abstractmethod
     def get_samples(
         self,
-        *args,
         sample_method: str = "bootstrap",
         n_boot: int = 500,
         seed: int = 12345,
@@ -99,7 +98,6 @@ class Nz(ABC):
     def plot(
         self,
         kind: str,
-        *args,
         sample_method: str = "bootstrap",
         n_boot: int = 500,
         ax: Axis | None = None,
@@ -110,10 +108,10 @@ class Nz(ABC):
         **kwargs
     ) -> None:
         # compute plot data
-        y = self.get(*args)
+        y = self.get()
         z = [z.mid + xoffset for z in y.index]
         y_samp = self.get_samples(
-            *args, **kwargs, sample_method=sample_method, n_boot=n_boot)
+            **kwargs, sample_method=sample_method, n_boot=n_boot)
         if sample_method == "bootstrap":
             yerr = y_samp.std(axis=1)
         else:
@@ -149,7 +147,7 @@ class NzTrue(Nz):
     def binning(self) -> IntervalIndex:
         return IntervalIndex.from_breaks(self._binning)
 
-    def get(self, *args) -> Series:
+    def get(self) -> Series:
         Nz = self.counts.sum(axis=0)
         norm = Nz.sum() * self.dz
         return Series(Nz / norm, index=self.binning)
@@ -170,7 +168,6 @@ class NzTrue(Nz):
 
     def get_samples(
         self,
-        *args,
         sample_method: str = "bootstrap",
         n_boot: int = 500,
         seed: int = 12345,
@@ -190,7 +187,6 @@ class NzTrue(Nz):
 
     def plot(
         self,
-        *args,
         sample_method: str = "bootstrap",
         n_boot: int = 500,
         ax: Axis | None = None,
@@ -210,11 +206,13 @@ class NzEstimator(Nz):
 
     def __init__(
         self,
-        cross_corr: CorrelationFunction
+        cross_corr: CorrelationFunction,
+        estimator: str | None = None
     ) -> None:
         self.cross_corr = cross_corr
         self.ref_corr = None
         self.unk_corr = None
+        self.corr_corr_estimator = estimator
 
     @property
     def binning(self) -> IntervalIndex:
@@ -222,35 +220,36 @@ class NzEstimator(Nz):
 
     def add_reference_autocorr(
         self,
-        ref_corr: CorrelationFunction
+        ref_corr: CorrelationFunction,
+        estimator: str | None = None
     ) -> None:
         if not self.cross_corr.is_compatible(ref_corr):
             raise ValueError(
                 "redshift binning or number of patches do not match")
         self.ref_corr = ref_corr
+        self.ref_corr_estimator = estimator
 
     def add_unknown_autocorr(
         self,
-        unk_corr: CorrelationFunction
+        unk_corr: CorrelationFunction,
+        estimator: str | None = None
     ) -> None:
         if not self.cross_corr.is_compatible(unk_corr):
             raise ValueError(
                 "redshift binning or number of patches do not match")
         self.unk_corr = unk_corr
+        self.unk_corr_estimator = estimator
 
-    def get(
-        self,
-        estimator: str
-    ) -> Series:
-        cross_corr = self.cross_corr.get(estimator)
+    def get(self) -> Series:
+        cross_corr = self.cross_corr.get(self.corr_corr_estimator)
         if self.ref_corr is None:
             ref_corr = np.float64(1.0)
         else:
-            ref_corr = self.ref_corr.get(estimator)
+            ref_corr = self.ref_corr.get(self.ref_corr_estimator)
         if self.unk_corr is None:
             unk_corr = np.float64(1.0)
         else:
-            unk_corr = self.unk_corr.get(estimator)
+            unk_corr = self.unk_corr.get(self.unk_corr_estimator)
         return cross_corr / np.sqrt(self.dz**2 * ref_corr * unk_corr)
 
     def generate_bootstrap_patch_indices(
@@ -262,7 +261,6 @@ class NzEstimator(Nz):
 
     def get_samples(
         self,
-        estimator: str,
         *,
         global_norm: bool = False,
         sample_method: str = "bootstrap",
@@ -274,26 +272,27 @@ class NzEstimator(Nz):
         else:
             patch_idx = None
         kwargs = dict(
-            estimator=estimator,
             global_norm=global_norm,
             sample_method=sample_method,
             patch_idx=patch_idx)
-        cross_corr = self.cross_corr.get_samples(**kwargs)
+        cross_corr = self.cross_corr.get_samples(
+            estimator=self.corr_corr_estimator, **kwargs)
         if self.ref_corr is None:
             ref_corr = np.float64(1.0)
         else:
-            ref_corr = self.ref_corr.get_samples(**kwargs)
+            ref_corr = self.ref_corr.get_samples(
+                estimator=self.ref_corr_estimator, **kwargs)
         if self.unk_corr is None:
             unk_corr = np.float64(1.0)
         else:
-            unk_corr = self.unk_corr.get_samples(**kwargs)
+            unk_corr = self.unk_corr.get_samples(
+                estimator=self.unk_corr_estimator, **kwargs)
         N = len(cross_corr.columns)
         dz_sq = np.tile(self.dz**2, N).reshape((N, -1)).T
         return cross_corr / np.sqrt(dz_sq * ref_corr * unk_corr)
 
     def plot(
         self,
-        estimator: str,
         *,
         global_norm: bool = False,
         sample_method: str = "bootstrap",
@@ -306,7 +305,6 @@ class NzEstimator(Nz):
     ) -> None:
         super().plot(
             "ebar",
-            estimator,
             sample_method=sample_method, n_boot=n_boot, global_norm=global_norm,
             ax=ax, color=color, label=label, xoffset=xoffset,
             plot_kwargs=plot_kwargs)

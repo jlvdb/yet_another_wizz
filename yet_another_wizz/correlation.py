@@ -12,6 +12,10 @@ from matplotlib.axis import Axis
 from yet_another_wizz.resampling import PairCountData, PairCountResult
 
 
+class EstimatorNotAvailableError(Exception):
+    pass
+
+
 class CorrelationEstimator(ABC):
     variants: list[CorrelationEstimator] = []
 
@@ -183,19 +187,39 @@ class CorrelationFunction:
 
     def _check_and_select_estimator(
         self,
-        estimator: str
+        estimator: str | None
     ) -> CorrelationEstimator:
         options = self.estimators
+        if estimator is None:
+            for shortname in ["LS", "DP", "PH"]:  # preferred hierarchy
+                if shortname in options:
+                    estimator = shortname
+                    break
+        estimator = estimator.upper()
         if estimator not in options:
-            opts = ", ".join(sorted(options.keys()))
-            raise ValueError(
-                f"estimator '{estimator}' not available, options are: {opts}")
+            try:
+                index = [
+                    e.short for e in CorrelationEstimator.variants
+                ].index(estimator)
+                est_class = CorrelationEstimator.variants[index]
+            except ValueError:
+                raise ValueError("invalid estimator '{estimator}'")
+            # determine which pair counts are missing
+            for attr in fields(self):
+                name = attr.name
+                if not attr.init:
+                    continue
+                if getattr(self, name) is None and name in est_class.requires:
+                    raise EstimatorNotAvailableError(
+                        f"estimator requires {name}")
+            else:
+                raise RuntimeError()
         # select the correct estimator
         return options[estimator]()  # return estimator class instance
 
     def get(
         self,
-        estimator: str
+        estimator: str | None = None
     ) -> Series:
         estimator_func = self._check_and_select_estimator(estimator)
         requires = {
@@ -216,8 +240,8 @@ class CorrelationFunction:
 
     def get_samples(
         self,
-        estimator: str,
         *,
+        estimator: str | None = None,
         global_norm: bool = False,
         sample_method: str = "bootstrap",
         n_boot: int = 500,
@@ -247,8 +271,8 @@ class CorrelationFunction:
 
     def plot(
         self,
-        estimator: str,
         *,
+        estimator: str | None = None,
         global_norm: bool = False,
         sample_method: str = "bootstrap",
         n_boot: int = 500,
