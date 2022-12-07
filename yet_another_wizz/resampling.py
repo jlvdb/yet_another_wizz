@@ -167,11 +167,12 @@ class PairCountResult:
         for idx in range(self.npatch):  # leave-one-out iteration
             # we need to use the jackknife iterator twice
             patches = list(jackknife_iter(self.keys(), idx, mask=self.mask))
-            count.append(self.count.sample(patches).sum(axis=0))
+            idx = [self.count._dict[key] for key in patches]  # avoid repeating
+            count.append(self.count._array[idx].sum(axis=0))
             if global_norm:
                 total.append(global_total)
             else:
-                total.append(self.total.sample(patches).sum(axis=0))
+                total.append(self.total._array[idx].sum(axis=0))
         return PairCountData(
             binning=self.binning,
             count=np.array(count),
@@ -194,11 +195,12 @@ class PairCountResult:
         for idx in patch_idx:  # simplified leave-one-out iteration
             # we need to use the jackknife iterator twice
             patches = list(bootstrap_iter(idx, mask=self.mask))
-            count.append(self.count.sample(patches).sum(axis=0))
+            idx = [self.count._dict[key] for key in patches]  # avoid repeating
+            count.append(self.count._array[idx].sum(axis=0))
             if global_norm:
                 total.append(global_total)
             else:
-                total.append(self.total.sample(patches).sum(axis=0))
+                total.append(self.total._array[idx].sum(axis=0))
         return PairCountData(
             binning=self.binning,
             count=np.array(count),
