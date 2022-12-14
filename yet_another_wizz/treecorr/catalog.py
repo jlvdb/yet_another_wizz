@@ -14,7 +14,7 @@ from yet_another_wizz.utils import Timed
 def _iter_bin_masks(
     data: NDArray,
     bins: NDArray,
-    closed: str = "right"
+    closed: str = "left"
 ) -> Iterator[tuple[Interval, NDArray[np.bool_]]]:
     if closed not in ("left", "right"):
         raise ValueError("'closed' must be either of 'left', 'right'")

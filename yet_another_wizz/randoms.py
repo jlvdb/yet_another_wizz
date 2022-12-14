@@ -24,7 +24,11 @@ class UniformRandoms:
 
     @classmethod
     def from_catalogue(cls, cat) -> UniformRandoms:
-        raise NotImplementedError
+        return cls(
+            np.rad2deg(cat.ra.min()),
+            np.rad2deg(cat.ra.max()),
+            np.rad2deg(cat.dec.min()),
+            np.rad2deg(cat.dec.max()))
 
     @staticmethod
     def sky2cylinder(

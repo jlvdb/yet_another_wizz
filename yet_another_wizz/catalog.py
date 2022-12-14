@@ -187,7 +187,7 @@ class PatchCatalog:
         if not allow_no_redshift and not self.has_redshift():
             raise ValueError("no redshifts for iteration provdided")
         if allow_no_redshift:
-            for intv in IntervalIndex.from_breaks(z_bins):
+            for intv in IntervalIndex.from_breaks(z_bins, closed="left"):
                 yield intv, self
         else:
             for intv, bin_data in self._data.groupby(
