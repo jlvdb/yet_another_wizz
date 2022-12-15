@@ -35,7 +35,8 @@ class PatchCatalog:
         self,
         id: int,
         data: DataFrame,
-        cachefile: str | None = None
+        cachefile: str | None = None,
+        patch_center: NDArray[np.float_] | None = None
     ) -> None:
         self.id = id
         if "ra" not in data:
@@ -51,9 +52,12 @@ class PatchCatalog:
             self.cachefile = cachefile
             data.to_feather(cachefile)
         self._data = data
-        self._init()
+        self._init(patch_center)
 
-    def _init(self) -> None:
+    def _init(
+        self,
+        patch_center: NDArray[np.float_] | None = None
+    ) -> None:
         self._len = len(self._data)
         self._has_z = "redshift" in self._data
         self._has_weights = "weights" in self._data
@@ -70,10 +74,13 @@ class PatchCatalog:
             which = np.random.randint(0, self._len, size=SUBSET_SIZE)
             pos = self.pos[which]
         xyz = SphericalKDTree.position_sky2sphere(pos)
-        # compute mean coordinate, which will not be located on the unit sphere
-        mean_xyz = np.mean(xyz, axis=0)
-        # map back onto unit sphere
-        mean_sky = SphericalKDTree.position_sphere2sky(mean_xyz)
+        if patch_center is None:
+            # compute mean coordinate, which will not be located on unit sphere
+            mean_xyz = np.mean(xyz, axis=0)
+            # map back onto unit sphere
+            mean_sky = SphericalKDTree.position_sphere2sky(mean_xyz)
+        else:
+            mean_sky = patch_center
         self._center = SphericalKDTree.position_sky2sphere(mean_sky)
         # compute maximum distance to any of the data points
         radius_xyz = np.sqrt(np.sum((xyz - self.center)**2, axis=1)).max()
@@ -207,8 +214,10 @@ class PatchCollection(Sequence):
         data: DataFrame,
         ra_name: str,
         dec_name: str,
-        patch_name: str,
         *,
+        patch_name: str | None = None,
+        patch_centers: NDArray[np.float_] | None = None,
+        n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None
@@ -226,14 +235,38 @@ class PatchCollection(Sequence):
                 raise KeyError(f"column {kind}='{col_name}' not found in data")
         # check if patches should be written and unloaded from memory
         unload = cache_directory is not None
-        prefix = "constructing "
+        if patch_name is not None:
+            patch_mode = "dividing"
+        else:
+            if n_patches is None:
+                patch_mode = "creating"
+            else:
+                patch_mode = "applying"
         if unload:
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'")
-            prefix += "and caching "
+
+        # create new patches
+        if patch_mode != "dividing":
+            patch_name = "patch"  # the default name
+            raise NotImplementedError("no patch algorithm available")
+            if patch_mode == "creating":
+                patch_centers = ...
+                patch_ids = ...
+            elif patch_mode == "applying":
+                patch_ids = ...  # apply(patch_centers)
+            data[patch_name] = patch_ids
+            centers = {pid: pos for pid, pos in enumerate(patch_centers)}
+        else:
+            centers = dict()  # this can be empty
+
         # run groupby first to avoid any intermediate copies of full data
-        with Timed(prefix + "patches"):
+        if unload:
+            msg = f"{patch_mode} and caching patches"
+        else:
+            msg = f"{patch_mode} patches"
+        with Timed(msg):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
             for patch_id, patch_data in data.groupby(patch_name):
@@ -242,7 +275,8 @@ class PatchCollection(Sequence):
                 patch_data = patch_data.drop("patch", axis=1)
                 patch_data.rename(columns=renames, inplace=True)
                 patch_data.reset_index(drop=True, inplace=True)
-                kwargs = {}
+                # look up the center of the patch if given
+                kwargs = dict(patch_center=centers.get(patch_id))
                 if unload:
                     # data will be written as feather file and loaded on demand
                     kwargs["cachefile"] = os.path.join(
@@ -259,23 +293,34 @@ class PatchCollection(Sequence):
     def from_file(
         cls,
         filepath: str,
-        patches: str,
+        patches: int | PatchCollection | str,
         ra: str,
         dec: str,
         *,
         redshift: str | None = None,
         weight: str | None = None,
         sparse: int | None = None,
-        cache_directory: str | None = None
+        cache_directory: str | None = None,
+        file_ext: str | None = None,
+        **kwargs
     ) -> PatchCatalog:
-        columns = [
-            col for col in [ra, dec, patches, redshift, weight]
-            if col is not None]
-        data = apd.read_auto(filepath, columns=columns)
+        columns = [c for c in [ra, dec, redshift, weight] if c is not None]
+        if isinstance(patches, str):
+            columns.append(patches)
+            patch_kwarg = dict(patch_name=patches)
+        elif isinstance(patches, PatchCatalog):
+            patch_kwarg = dict(patch_centers=patches.centers)
+        elif isinstance(patches, PatchCatalog):
+            patch_kwarg = dict(npatches=patches)
+        else:
+            raise TypeError(
+                "'patches' must be either of type 'int', 'str', or "
+                "'PatchCollection'")
+        data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
         if sparse is not None:
             data = data[::sparse]
         return cls(
-            data, ra, dec, patches,
+            data, ra, dec, **patch_kwarg,
             redshift_name=redshift,
             weight_name=weight,
             cache_directory=cache_directory)
