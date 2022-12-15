@@ -7,12 +7,71 @@ from collections.abc import Iterator, Sequence
 import astropandas as apd
 import numpy as np
 import pandas as pd
+from scipy.cluster import vq
 from numpy.typing import NDArray
 from pandas import DataFrame, Interval, IntervalIndex
 from scipy.spatial import distance_matrix
 
-from yet_another_wizz.kdtree import SphericalKDTree
+from yet_another_wizz.kdtree import (
+    SphericalKDTree, distance_sphere2sky, position_sky2sphere,
+    position_sphere2sky)
 from yet_another_wizz.utils import LimitTracker, Timed, TypePatchKey
+
+
+# Determine patch centers with k-means clustering. The implementation in
+# treecorr is quite good, but might not be available. Implement a fallback using
+# the scipy.cluster module.
+try:
+    import treecorr
+
+    def treecorr_patches(
+        ra: NDArray[np.float_],
+        dec: NDArray[np.float_],
+        n_patches: int,
+        **kwargs
+    ) -> tuple[NDArray[np.float_], NDArray[np.int_]]:
+        cat = treecorr.Catalog(
+            ra=ra, ra_units="degrees",
+            dec=dec, dec_units="degrees",
+            npatch=n_patches)
+        centers = position_sphere2sky(cat.patch_centers)
+        patches = np.copy(cat.patch)
+        del cat  # might not be necessary
+        return centers, patches
+    
+    create_patches = treecorr_patches
+
+except ImportError:
+
+    def scipy_patches(
+        ra: NDArray[np.float_],
+        dec: NDArray[np.float_],
+        n_patches: int,
+        n_max: int = 500_000
+    ) -> tuple[NDArray[np.float_], NDArray[np.int_]]:
+        if len(ra) != len(dec):
+            raise ValueError("length of 'ra' and 'dec' does not match")
+        subset = np.random.randint(0, len(ra), size=min(n_max, len(xyz)))
+        # place on unit sphere to avoid coordinate distortions
+        xyz = position_sky2sphere(np.column_stack([ra[subset], dec[subset]]))
+        centers, _ = vq.kmeans2(xyz[subset], n_patches, minit="points")
+        centers = position_sphere2sky(centers)
+        patches = assign_patches(centers, ra, dec)
+        return centers, patches
+
+    create_patches = scipy_patches
+
+
+def assign_patches(
+    centers_ra_dec: NDArray[np.float_],
+    ra: NDArray[np.float_],
+    dec: NDArray[np.float_]
+) -> NDArray[np.int_]:
+    # place on unit sphere to avoid coordinate distortions
+    centers_xyz = position_sky2sphere(centers_ra_dec)
+    xyz = position_sky2sphere(np.column_stack([ra, dec]))
+    patches = vq.vq(xyz, centers_xyz)
+    return patches
 
 
 def patch_id_from_path(fpath: str) -> int:
@@ -85,17 +144,17 @@ class PatchCatalog:
             else:
                 which = np.random.randint(0, self._len, size=SUBSET_SIZE)
                 pos = self.pos[which]
-            xyz = SphericalKDTree.position_sky2sphere(pos)
+            xyz = position_sky2sphere(pos)
 
         if center is None:
             # compute mean coordinate, which will not be located on unit sphere
             mean_xyz = np.mean(xyz, axis=0)
             # map back onto unit sphere
-            mean_sky = SphericalKDTree.position_sphere2sky(mean_xyz)
-            self._center = SphericalKDTree.position_sky2sphere(mean_sky)
+            mean_sky = position_sphere2sky(mean_xyz)
+            self._center = position_sky2sphere(mean_sky)
         else:
             if len(center) == 2:
-                self._center = SphericalKDTree.position_sky2sphere(mean_sky)
+                self._center = position_sky2sphere(mean_sky)
             elif len(center) == 3:
                 self._center = center
             else:
@@ -104,7 +163,7 @@ class PatchCatalog:
         if center is None or radius is None:  # new center requires recomputing
             # compute maximum distance to any of the data points
             radius_xyz = np.sqrt(np.sum((xyz - self.center)**2, axis=1)).max()
-            radius = SphericalKDTree.distance_sphere2sky(radius_xyz)
+            radius = distance_sphere2sky(radius_xyz)
         self._radius = radius
 
     def __repr__(self) -> str:
@@ -499,8 +558,7 @@ class PatchCollection(Sequence):
         centers = self.centers  # in RA / Dec
         radii = self.radii  # in degrees, maximum distance measured from center
         # compute distance in degrees between all patch centers
-        dist_deg = SphericalKDTree.distance_sphere2sky(
-            distance_matrix(centers, centers))
+        dist_deg = distance_sphere2sky(distance_matrix(centers, centers))
         # compare minimum separation required for patchs to not overlap
         min_sep_deg = np.add.outer(radii, radii)
         # check which patches overlap when factoring in the query radius
