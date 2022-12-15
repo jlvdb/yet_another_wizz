@@ -15,6 +15,14 @@ from yet_another_wizz.kdtree import SphericalKDTree
 from yet_another_wizz.utils import LimitTracker, Timed, TypePatchKey
 
 
+def patch_id_from_path(fpath: str) -> int:
+    ext = ".feather"
+    if not fpath.endswith(ext):
+        raise NotAPatchFileError("input must be a .feather file")
+    prefix, patch_id = fpath[:-len(ext)].rsplit("_", 1)
+    return int(patch_id)
+
+
 class NotAPatchFileError(Exception):
     pass
 
@@ -36,7 +44,8 @@ class PatchCatalog:
         id: int,
         data: DataFrame,
         cachefile: str | None = None,
-        patch_center: NDArray[np.float_] | None = None
+        center: NDArray[np.float_] | None = None,
+        radius: float | None = None
     ) -> None:
         self.id = id
         if "ra" not in data:
@@ -52,11 +61,12 @@ class PatchCatalog:
             self.cachefile = cachefile
             data.to_feather(cachefile)
         self._data = data
-        self._init(patch_center)
+        self._init(center, radius)
 
     def _init(
         self,
-        patch_center: NDArray[np.float_] | None = None
+        center: NDArray[np.float_] | None = None,
+        radius: float | None = None
     ) -> None:
         self._len = len(self._data)
         self._has_z = "redshift" in self._data
@@ -65,26 +75,37 @@ class PatchCatalog:
             self._total = float(self.weights.sum())
         else:
             self._total = float(len(self))
+
         # precompute (estimate) the patch center and size since it is quite fast
         # and the data is still loaded
-        SUBSET_SIZE = 1000  # seems a reasonable value, fast but not too sparse
-        if self._len < SUBSET_SIZE:
-            pos = self.pos
-        else:
-            which = np.random.randint(0, self._len, size=SUBSET_SIZE)
-            pos = self.pos[which]
-        xyz = SphericalKDTree.position_sky2sphere(pos)
-        if patch_center is None:
+        if center is None or radius is None:
+            SUBSET_SIZE = 1000  # seems a reasonable, fast but not too sparse
+            if self._len < SUBSET_SIZE:
+                pos = self.pos
+            else:
+                which = np.random.randint(0, self._len, size=SUBSET_SIZE)
+                pos = self.pos[which]
+            xyz = SphericalKDTree.position_sky2sphere(pos)
+
+        if center is None:
             # compute mean coordinate, which will not be located on unit sphere
             mean_xyz = np.mean(xyz, axis=0)
             # map back onto unit sphere
             mean_sky = SphericalKDTree.position_sphere2sky(mean_xyz)
+            self._center = SphericalKDTree.position_sky2sphere(mean_sky)
         else:
-            mean_sky = patch_center
-        self._center = SphericalKDTree.position_sky2sphere(mean_sky)
-        # compute maximum distance to any of the data points
-        radius_xyz = np.sqrt(np.sum((xyz - self.center)**2, axis=1)).max()
-        self._radius = SphericalKDTree.distance_sphere2sky(radius_xyz)
+            if len(center) == 2:
+                self._center = SphericalKDTree.position_sky2sphere(mean_sky)
+            elif len(center) == 3:
+                self._center = center
+            else:
+                raise ValueError("'center' must be length 2 or 3")
+
+        if center is None or radius is None:  # new center requires recomputing
+            # compute maximum distance to any of the data points
+            radius_xyz = np.sqrt(np.sum((xyz - self.center)**2, axis=1)).max()
+            radius = SphericalKDTree.distance_sphere2sky(radius_xyz)
+        self._radius = radius
 
     def __repr__(self) -> str:
         s = self.__class__.__name__
@@ -95,14 +116,15 @@ class PatchCatalog:
         return self._len
 
     @classmethod
-    def from_cached(cls, cachefile: str) -> PatchCatalog:
-        ext = ".feather"
-        if not cachefile.endswith(ext):
-            raise NotAPatchFileError("input must be a .feather file")
-        prefix, patch_id = cachefile[:-len(ext)].rsplit("_", 1)
+    def from_cached(
+        cls,
+        cachefile: str,
+        center: NDArray[np.float_] | None = None,
+        radius: float | None = None
+    ) -> PatchCatalog:
         # create the data instance
         new = cls.__new__(cls)
-        new.id = int(patch_id)
+        new.id = patch_id_from_path(cachefile)
         new.cachefile = cachefile
         try:
             new._data = pd.read_feather(cachefile)
@@ -111,7 +133,7 @@ class PatchCatalog:
             if hasattr(e, "args"):
                 args = e.args
             raise NotAPatchFileError(*args)
-        new._init()
+        new._init(center, radius)
         return new
 
     def is_loaded(self) -> bool:
@@ -289,6 +311,15 @@ class PatchCollection(Sequence):
             self._zmin, self._zmax = limits.get()
             self._patches = patches
 
+        # also store the patch properties
+        if unload:
+            property_df = pd.DataFrame(dict(ids=self.ids))
+            for colname, values in zip("xyz", self.centers.T):
+                property_df[colname] = values
+            property_df["r"] = self.radii
+            fpath = os.path.join(cache_directory, "properties.feather")
+            property_df.to_feather(fpath)
+
     @classmethod
     def from_file(
         cls,
@@ -326,17 +357,31 @@ class PatchCollection(Sequence):
             cache_directory=cache_directory)
 
     @classmethod
-    def restore(
+    def from_cache(
         cls,
-        patch_directory: str
+        cache_directory: str
     ) -> PatchCollection:
         new = cls.__new__(cls)
+        # load the patch properties
+        fpath = os.path.join(cache_directory, "properties.feather")
+        property_df = pd.read_feather(fpath)
+        # transform data frame to dictionaries
+        ids = property_df["ids"]
+        centers = property_df[["x", "y", "z"]].to_numpy()
+        centers = {pid: center for pid, center in zip(ids, centers)}
+        radii = property_df["r"].to_numpy()
+        radii = {pid: radius for pid, radius in zip(ids, radii)}
         # load the patches
         limits = LimitTracker()
         new._patches = {}
-        for path in os.listdir(patch_directory):
+        for path in os.listdir(cache_directory):
+            if not path.startswith("patch"):
+                continue
+            patch_id = patch_id_from_path(path)
             patch = PatchCatalog.from_cached(
-                os.path.join(patch_directory, path))
+                os.path.join(cache_directory, path),
+                center=centers.get(patch_id),
+                radius=radii.get(patch_id))
             limits.update(patch.redshift)
             patch.unload()
             new._patches[patch.id] = patch
