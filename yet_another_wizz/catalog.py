@@ -359,7 +359,9 @@ class PatchCollection(Sequence):
             for patch_id, patch_data in data.groupby(patch_name):
                 if patch_id < 0:
                     raise ValueError("negative patch IDs are not supported")
-                patch_data = patch_data.drop("patch", axis=1)
+                # drop extra columns
+                patch_data = patch_data.drop(columns=[
+                    col for col in patch_data.columns if col not in renames])
                 patch_data.rename(columns=renames, inplace=True)
                 patch_data.reset_index(drop=True, inplace=True)
                 # look up the center of the patch if given
