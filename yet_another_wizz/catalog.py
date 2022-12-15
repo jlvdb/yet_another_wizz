@@ -280,7 +280,9 @@ class PatchCatalog:
         else:
             for intv, bin_data in self._data.groupby(
                     pd.cut(self.redshift, z_bins)):
-                yield intv, PatchCatalog(self.id, bin_data)
+                yield intv, PatchCatalog(
+                    self.id, bin_data,
+                    center=self._center, radius=self._radius)
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
         tree = SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)

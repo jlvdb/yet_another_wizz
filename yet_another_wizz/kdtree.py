@@ -80,7 +80,8 @@ class SphericalKDTree:
     ) -> None:
         # convert angular coordinates to 3D points on unit sphere
         assert(len(RA) == len(DEC))
-        pos_sphere = position_sky2sphere(np.column_stack([RA, DEC]))
+        pos_sphere = np.atleast_2d(
+            position_sky2sphere(np.column_stack([RA, DEC])))
         self.tree = cKDTree(pos_sphere, leafsize)
         if weights is None:
             self.weights = np.ones(len(pos_sphere))
@@ -114,9 +115,12 @@ class SphericalKDTree:
         rlog_edges = np.array(sorted(set(rlog_edges) | set(log_scales)))
         r_edges = 10 ** rlog_edges
         # count pairs
-        counts = self.tree.count_neighbors(
-            other.tree, distance_sky2sphere(r_edges), 
-            weights=(self.weights, other.weights), cumulative=False)
+        try:
+            counts = self.tree.count_neighbors(
+                other.tree, distance_sky2sphere(r_edges), 
+                weights=(self.weights, other.weights), cumulative=False)
+        except IndexError:
+            counts = np.zeros_like(r_edges)
         counts = counts[1:]  # discard counts with 0 < R <= r_min
         # apply the distance weights
         rlog_centers = (rlog_edges[:-1] + rlog_edges[1:]) / 2.0
