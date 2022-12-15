@@ -70,7 +70,7 @@ def assign_patches(
     # place on unit sphere to avoid coordinate distortions
     centers_xyz = position_sky2sphere(centers_ra_dec)
     xyz = position_sky2sphere(np.column_stack([ra, dec]))
-    patches = vq.vq(xyz, centers_xyz)
+    patches, _ = vq.vq(xyz, centers_xyz)
     return patches
 
 
@@ -154,7 +154,7 @@ class PatchCatalog:
             self._center = position_sky2sphere(mean_sky)
         else:
             if len(center) == 2:
-                self._center = position_sky2sphere(mean_sky)
+                self._center = position_sky2sphere(center)
             elif len(center) == 3:
                 self._center = center
             else:
@@ -319,10 +319,14 @@ class PatchCollection(Sequence):
         if patch_name is not None:
             patch_mode = "dividing"
         else:
-            if n_patches is None:
+            if n_patches is not None:
                 patch_mode = "creating"
-            else:
+            elif patch_centers is not None:
                 patch_mode = "applying"
+            else:
+                raise ValueError(
+                    "either of 'patch_name', 'patch_centers', or 'n_patches' "
+                    "must be provided")
         if unload:
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
@@ -330,13 +334,15 @@ class PatchCollection(Sequence):
 
         # create new patches
         if patch_mode != "dividing":
-            patch_name = "patch"  # the default name
-            raise NotImplementedError("no patch algorithm available")
             if patch_mode == "creating":
-                patch_centers = ...
-                patch_ids = ...
+                patch_centers, patch_ids = create_patches(
+                    data[ra_name].to_numpy(), data[dec_name].to_numpy(),
+                    n_patches)
             elif patch_mode == "applying":
-                patch_ids = ...  # apply(patch_centers)
+                patch_ids = assign_patches(
+                    patch_centers,
+                    data[ra_name].to_numpy(), data[dec_name].to_numpy())
+            patch_name = "patch"  # the default name
             data[patch_name] = patch_ids
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
@@ -357,7 +363,7 @@ class PatchCollection(Sequence):
                 patch_data.rename(columns=renames, inplace=True)
                 patch_data.reset_index(drop=True, inplace=True)
                 # look up the center of the patch if given
-                kwargs = dict(patch_center=centers.get(patch_id))
+                kwargs = dict(center=centers.get(patch_id))
                 if unload:
                     # data will be written as feather file and loaded on demand
                     kwargs["cachefile"] = os.path.join(
@@ -393,15 +399,16 @@ class PatchCollection(Sequence):
         cache_directory: str | None = None,
         file_ext: str | None = None,
         **kwargs
-    ) -> PatchCatalog:
+    ) -> PatchCollection:
         columns = [c for c in [ra, dec, redshift, weight] if c is not None]
         if isinstance(patches, str):
             columns.append(patches)
             patch_kwarg = dict(patch_name=patches)
-        elif isinstance(patches, PatchCatalog):
-            patch_kwarg = dict(patch_centers=patches.centers)
-        elif isinstance(patches, PatchCatalog):
-            patch_kwarg = dict(npatches=patches)
+        elif isinstance(patches, PatchCollection):
+            patch_kwarg = dict(
+                patch_centers=position_sphere2sky(patches.centers))
+        elif isinstance(patches, int):
+            patch_kwarg = dict(n_patches=patches)
         else:
             raise TypeError(
                 "'patches' must be either of type 'int', 'str', or "

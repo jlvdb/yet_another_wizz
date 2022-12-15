@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod, abstractproperty
 from typing import Any
 
@@ -250,7 +251,10 @@ class NzEstimator(Nz):
             unk_corr = np.float64(1.0)
         else:
             unk_corr = self.unk_corr.get(self.unk_corr_estimator)
-        return cross_corr / np.sqrt(self.dz**2 * ref_corr * unk_corr)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            estimate = cross_corr / np.sqrt(self.dz**2 * ref_corr * unk_corr)
+        return estimate
 
     def generate_bootstrap_patch_indices(
         self,
@@ -289,7 +293,10 @@ class NzEstimator(Nz):
                 estimator=self.unk_corr_estimator, **kwargs)
         N = len(cross_corr.columns)
         dz_sq = np.tile(self.dz**2, N).reshape((N, -1)).T
-        return cross_corr / np.sqrt(dz_sq * ref_corr * unk_corr)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            estimate = cross_corr / np.sqrt(dz_sq * ref_corr * unk_corr)
+        return estimate
 
     def plot(
         self,
