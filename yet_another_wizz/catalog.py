@@ -2,20 +2,23 @@ from __future__ import annotations
 
 import gc
 import os
+import shutil
 from collections.abc import Iterator, Sequence
 
-import astropandas as apd
 import numpy as np
 import pandas as pd
-from scipy.cluster import vq
+from astropy.io import fits as pyfits
 from numpy.typing import NDArray
 from pandas import DataFrame, Interval, IntervalIndex
+from scipy.cluster import vq
 from scipy.spatial import distance_matrix
 
 from yet_another_wizz.kdtree import (
     SphericalKDTree, distance_sphere2sky, position_sky2sphere,
     position_sphere2sky)
-from yet_another_wizz.utils import LimitTracker, Timed, TypePatchKey
+from yet_another_wizz.utils import (
+    DynamicAttribute, LimitTracker, Timed, TypePatchKey, array_groupby,
+    optional_attribute_path, read_blosc)
 
 
 # Determine patch centers with k-means clustering. The implementation in
@@ -75,24 +78,17 @@ def assign_patches(
 
 
 def patch_id_from_path(fpath: str) -> int:
-    ext = ".feather"
-    if not fpath.endswith(ext):
-        raise NotAPatchFileError("input must be a .feather file")
-    prefix, patch_id = fpath[:-len(ext)].rsplit("_", 1)
+    prefix, patch_id = fpath.rsplit("_", 1)
     return int(patch_id)
-
-
-class NotAPatchFileError(Exception):
-    pass
 
 
 class PatchCatalog:
 
     id = 0
-    cachefile = None
+    cachedir = None
     _data = DataFrame()
     _len = 0
-    _total = None
+    _total = 0.0
     _has_z = False
     _has_weights = False
     _center = None
@@ -101,40 +97,86 @@ class PatchCatalog:
     def __init__(
         self,
         id: int,
-        data: DataFrame,
-        cachefile: str | None = None,
+        ra: NDArray[np.float_],
+        dec: NDArray[np.float_],
+        redshift: NDArray[np.float_] | None = None,
+        weights: NDArray[np.float_] | None = None,
+        cachedir: str | None = None,
         center: NDArray[np.float_] | None = None,
         radius: float | None = None
     ) -> None:
         self.id = id
-        if "ra" not in data:
-            raise KeyError("right ascension column ('ra') is required")
-        if "dec" not in data:
-            raise KeyError("declination column ('dec') is required")
-        if not set(data.columns) <= set(["ra", "dec", "redshift", "weights"]):
-            raise KeyError(
-                "'data' contains unidentified columns, optional columns are "
-                "restricted to 'redshift' and 'weights'")
-        # if there is a file path, store the file
-        if cachefile is not None:
-            self.cachefile = cachefile
-            data.to_feather(cachefile)
-        self._data = data
+        if cachedir is not None:
+            if not os.path.exists(cachedir):
+                raise OSError(f"cache directory '{cachedir}' does not exist")
+        # check the input data
+        if len(ra) != len(dec):
+            raise ValueError("length of 'ra' and 'dec' does not match")
+        else:
+            self._len = len(ra)
+        self._has_z = redshift is not None
+        self._has_weights = weights is not None
+        if self._has_z:
+            if len(redshift) != self._len:
+                raise ValueError("length of 'redshift' does not match data")
+        if self._has_weights:
+            if len(weights) != self._len:
+                raise ValueError("length of 'weights' does not match data")
+        # compute the total weight
+        if self._has_weights:
+            self._total = float(np.sum(weights))
+        else:
+            self._total = float(self._len)
+        # set the primary attributes
+        if isinstance(ra, DynamicAttribute):
+            self._ra = ra
+        else:
+            self._ra = DynamicAttribute(
+                ra, optional_attribute_path(cachedir, "ra"))
+        if isinstance(dec, DynamicAttribute):
+            self._dec = dec
+        else:
+            self._dec = DynamicAttribute(
+                dec, optional_attribute_path(cachedir, "dec"))
+        # set the optional attributes
+        if isinstance(redshift, DynamicAttribute):
+            self._redshift = redshift
+        else:
+            self._redshift = DynamicAttribute(
+                redshift, optional_attribute_path(cachedir, "redshift"))
+        if isinstance(weights, DynamicAttribute):
+            self._weights = weights
+        else:
+            self._weights = DynamicAttribute(
+                weights, optional_attribute_path(cachedir, "weights"))
+        # determine the spatial properties of the patch
         self._init(center, radius)
+
+    @property
+    def ra(self) -> NDArray[np.float_]:
+        return self._ra.data
+
+    @property
+    def dec(self) -> NDArray[np.float_]:
+        return self._dec.data
+
+    @property
+    def pos(self) -> NDArray[np.float_]:
+        return np.column_stack([self._ra.data, self._dec.data])
+
+    @property
+    def redshift(self) -> NDArray[np.float_]:
+        return self._redshift.data
+
+    @property
+    def weights(self) -> NDArray[np.float_]:
+        return self._weights.data
 
     def _init(
         self,
         center: NDArray[np.float_] | None = None,
         radius: float | None = None
     ) -> None:
-        self._len = len(self._data)
-        self._has_z = "redshift" in self._data
-        self._has_weights = "weights" in self._data
-        if self.has_weights():
-            self._total = float(self.weights.sum())
-        else:
-            self._total = float(len(self))
-
         # precompute (estimate) the patch center and size since it is quite fast
         # and the data is still loaded
         if center is None or radius is None:
@@ -145,7 +187,6 @@ class PatchCatalog:
                 which = np.random.randint(0, self._len, size=SUBSET_SIZE)
                 pos = self.pos[which]
             xyz = position_sky2sphere(pos)
-
         if center is None:
             # compute mean coordinate, which will not be located on unit sphere
             mean_xyz = np.mean(xyz, axis=0)
@@ -158,18 +199,20 @@ class PatchCatalog:
             elif len(center) == 3:
                 self._center = center
             else:
-                raise ValueError("'center' must be length 2 or 3")
-
+                raise ValueError("'center' must be length 2 (RA/Dec) or 3 (xyz")
         if center is None or radius is None:  # new center requires recomputing
             # compute maximum distance to any of the data points
             radius_xyz = np.sqrt(np.sum((xyz - self.center)**2, axis=1)).max()
             radius = distance_sphere2sky(radius_xyz)
         self._radius = radius
+        # unload the data (if a cache directory is provided)
+        self.unload()
 
     def __repr__(self) -> str:
-        s = self.__class__.__name__
-        s += f"(id={self.id}, length={len(self)}, loaded={self.is_loaded()})"
-        return s
+        string = self.__class__.__name__
+        string += f"(id={self.id}, length={len(self)}, "
+        string += f"redshift={self._has_z}, weights={self._has_weights})"
+        return string
 
     def __len__(self) -> int:
         return self._len
@@ -177,40 +220,31 @@ class PatchCatalog:
     @classmethod
     def from_cached(
         cls,
-        cachefile: str,
+        cachedir: str,
         center: NDArray[np.float_] | None = None,
         radius: float | None = None
     ) -> PatchCatalog:
+        data_kwargs = dict()
+        for path in os.listdir(cachedir):
+            attr = os.path.splitext(path)[0]
+            data_kwargs[attr] = DynamicAttribute.from_file(
+                os.path.join(cachedir, path)).data
         # create the data instance
-        new = cls.__new__(cls)
-        new.id = patch_id_from_path(cachefile)
-        new.cachefile = cachefile
-        try:
-            new._data = pd.read_feather(cachefile)
-        except Exception as e:
-            args = ()
-            if hasattr(e, "args"):
-                args = e.args
-            raise NotAPatchFileError(*args)
-        new._init(center, radius)
-        return new
+        return cls(
+            patch_id_from_path(cachedir), **data_kwargs,
+            cachedir=cachedir, center=center, radius=radius)
 
-    def is_loaded(self) -> bool:
-        return self._data is not None
-
-    def require_loaded(self) -> None:
-        if not self.is_loaded():
-            raise AttributeError("data is not loaded")
-
-    def load(self, use_threads: bool = True) -> None:
-        if not self.is_loaded():
-            if self.cachefile is None:
-                raise ValueError("no datapath provided to load the data")
-            self._data = pd.read_feather(
-                self.cachefile, use_threads=use_threads)
+    def load(self) -> None:
+        self._ra.load()
+        self._dec.load()
+        self._redshift.load()
+        self._weights.load()
 
     def unload(self) -> None:
-        self._data = None
+        self._ra.unload()
+        self._dec.unload()
+        self._redshift.unload()
+        self._weights.unload()
         gc.collect()
 
     def has_redshift(self) -> bool:
@@ -220,47 +254,11 @@ class PatchCatalog:
         return self._has_weights
 
     @property
-    def data(self) -> DataFrame:
-        self.require_loaded()
-        return self._data
-
-    @property
-    def pos(self) -> NDArray[np.float_]:
-        self.require_loaded()
-        return self._data[["ra", "dec"]].to_numpy()
-
-    @property
-    def ra(self) -> NDArray[np.float_]:
-        self.require_loaded()
-        return self._data["ra"].to_numpy()
-
-    @property
-    def dec(self) -> NDArray[np.float_]:
-        self.require_loaded()
-        return self._data["dec"].to_numpy()
-
-    @property
-    def redshift(self) -> NDArray[np.float_]:
-        self.require_loaded()
-        if self.has_redshift():
-            return self._data["redshift"].to_numpy()
-        else:
-            return None
-
-    @property
-    def weights(self) -> NDArray[np.float_]:
-        self.require_loaded()
-        if self.has_weights():
-            return self._data["weights"].to_numpy()
-        else:
-            return None
-
-    @property
     def total(self) -> float:
         return self._total
 
     @property
-    def center(self) -> float:
+    def center(self) -> NDArray[np.float_]:
         return self._center
 
     @property
@@ -269,20 +267,17 @@ class PatchCatalog:
 
     def iter_bins(
         self,
-        z_bins: NDArray[np.float_],
-        allow_no_redshift: bool = False
+        z_bins: NDArray[np.float_]
     ) -> Iterator[tuple[Interval, PatchCatalog]]:
-        if not allow_no_redshift and not self.has_redshift():
+        if not self.has_redshift():
             raise ValueError("no redshifts for iteration provdided")
-        if allow_no_redshift:
-            for intv in IntervalIndex.from_breaks(z_bins, closed="left"):
-                yield intv, self
-        else:
-            for intv, bin_data in self._data.groupby(
-                    pd.cut(self.redshift, z_bins)):
-                yield intv, PatchCatalog(
-                    self.id, bin_data,
-                    center=self._center, radius=self._radius)
+        binning = IntervalIndex.from_breaks(z_bins, closed="left")
+        by = pd.cut(self.redshift, binning)
+        for intv, bin_data in array_groupby(
+                by, [self.ra, self.dec, self.redshift, self.weights]):
+            yield intv, PatchCatalog(
+                self.id, *bin_data,
+                center=self._center, radius=self._radius)
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
         tree = SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
@@ -294,31 +289,26 @@ class PatchCollection(Sequence):
 
     def __init__(
         self,
-        data: DataFrame,
-        ra_name: str,
-        dec_name: str,
+        ra: NDArray[np.float_],
+        dec: NDArray[np.float_],
         *,
-        patch_name: str | None = None,
+        patch: NDArray[np.int_] | None = None,
         patch_centers: NDArray[np.float_] | None = None,
         n_patches: int | None = None,
-        redshift_name: str | None = None,
-        weight_name: str | None = None,
-        cache_directory: str | None = None
+        redshift: NDArray[np.float_] | None = None,
+        weights: NDArray[np.float_] | None = None,
+        cachedir: str | None = None
     ) -> None:
-        if len(data) == 0:
-            raise ValueError("data catalog is empty")
-        # check if the columns exist
-        renames = {ra_name: "ra", dec_name: "dec"}
-        if redshift_name is not None:
-            renames[redshift_name] = "redshift"
-        if weight_name is not None:
-            renames[weight_name] = "weights"
-        for col_name, kind in renames.items():
-            if col_name not in data:
-                raise KeyError(f"column {kind}='{col_name}' not found in data")
+        if len(ra) != len(dec):
+            raise ValueError("length of 'ra' and 'dec' does not match")
+        for arg, values in zip(
+                ["patch", "redshift", "weights"], [patch, redshift, weights]):
+            if values is not None:
+                if len(values) != len(ra):
+                    raise ValueError(f"length of '{arg}' does not match data")
         # check if patches should be written and unloaded from memory
-        unload = cache_directory is not None
-        if patch_name is not None:
+        unload = cachedir is not None
+        if patch is not None:
             patch_mode = "dividing"
         else:
             if n_patches is not None:
@@ -327,25 +317,19 @@ class PatchCollection(Sequence):
                 patch_mode = "applying"
             else:
                 raise ValueError(
-                    "either of 'patch_name', 'patch_centers', or 'n_patches' "
+                    "either of 'patch', 'patch_centers', or 'n_patches' "
                     "must be provided")
         if unload:
-            if not os.path.exists(cache_directory):
+            if not os.path.exists(cachedir):
                 raise FileNotFoundError(
-                    f"patch directory does not exist: '{cache_directory}'")
+                    f"patch directory does not exist: '{cachedir}'")
 
         # create new patches
         if patch_mode != "dividing":
             if patch_mode == "creating":
-                patch_centers, patch_ids = create_patches(
-                    data[ra_name].to_numpy(), data[dec_name].to_numpy(),
-                    n_patches)
+                patch_centers, patch = create_patches(ra, dec, n_patches)
             elif patch_mode == "applying":
-                patch_ids = assign_patches(
-                    patch_centers,
-                    data[ra_name].to_numpy(), data[dec_name].to_numpy())
-            patch_name = "patch"  # the default name
-            data[patch_name] = patch_ids
+                patch = assign_patches(patch_centers, ra, dec)
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
             centers = dict()  # this can be empty
@@ -358,24 +342,21 @@ class PatchCollection(Sequence):
         with Timed(msg):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
-            for patch_id, patch_data in data.groupby(patch_name):
-                if patch_id < 0:
+            for pid, patch_data in array_groupby(
+                    patch, [ra, dec, redshift, weights]):
+                if pid < 0:
                     raise ValueError("negative patch IDs are not supported")
-                # drop extra columns
-                patch_data = patch_data.drop(columns=[
-                    col for col in patch_data.columns if col not in renames])
-                patch_data.rename(columns=renames, inplace=True)
-                patch_data.reset_index(drop=True, inplace=True)
                 # look up the center of the patch if given
-                kwargs = dict(center=centers.get(patch_id))
+                kwargs = dict(center=centers.get(pid))
                 if unload:
                     # data will be written as feather file and loaded on demand
-                    kwargs["cachefile"] = os.path.join(
-                        cache_directory, f"patch_{patch_id:.0f}.feather")
-                patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
-                limits.update(patch.redshift)
-                if unload:
-                    patch.unload()
+                    path = os.path.join(cachedir, f"patch_{pid:.0f}")
+                    if os.path.exists(path):
+                        shutil.rmtree(path)
+                    os.mkdir(path)
+                    kwargs["cachedir"] = path
+                patch = PatchCatalog(int(pid), *patch_data, **kwargs)
+                limits.update(patch_data[2])  # redshift
                 patches[patch.id] = patch
             self._zmin, self._zmax = limits.get()
             self._patches = patches
@@ -386,7 +367,7 @@ class PatchCollection(Sequence):
             for colname, values in zip("xyz", self.centers.T):
                 property_df[colname] = values
             property_df["r"] = self.radii
-            fpath = os.path.join(cache_directory, "properties.feather")
+            fpath = os.path.join(cachedir, "properties.feather")
             property_df.to_feather(fpath)
 
     @classmethod
@@ -398,16 +379,20 @@ class PatchCollection(Sequence):
         dec: str,
         *,
         redshift: str | None = None,
-        weight: str | None = None,
+        weights: str | None = None,
         sparse: int | None = None,
-        cache_directory: str | None = None,
-        file_ext: str | None = None,
-        **kwargs
+        cachedir: str | None = None
     ) -> PatchCollection:
-        columns = [c for c in [ra, dec, redshift, weight] if c is not None]
+        with pyfits.open(filepath) as fits:
+            HDU = 1
+            if sparse is not None:
+                data = fits[HDU].data[::sparse]
+            else:
+                data = fits[HDU].data[:]
+        # columns = [c for c in [ra, dec, redshift, weight] if c is not None]
         if isinstance(patches, str):
-            columns.append(patches)
-            patch_kwarg = dict(patch_name=patches)
+            # columns.append(patches)
+            patch_kwarg = dict(patch=data[patches])
         elif isinstance(patches, PatchCollection):
             patch_kwarg = dict(
                 patch_centers=position_sphere2sky(patches.centers))
@@ -417,20 +402,20 @@ class PatchCollection(Sequence):
             raise TypeError(
                 "'patches' must be either of type 'int', 'str', or "
                 "'PatchCollection'")
-        data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
-        if sparse is not None:
-            data = data[::sparse]
+        if redshift is not None:
+            redshift = data[redshift]
+        if weights is not None:
+            weights = data[weights]
         return cls(
-            data, ra, dec, **patch_kwarg,
-            redshift_name=redshift,
-            weight_name=weight,
-            cache_directory=cache_directory)
+            data[ra], data[dec], **patch_kwarg,
+            redshift=redshift, weights=weights, cachedir=cachedir)
 
     @classmethod
     def from_cache(
         cls,
         cache_directory: str
     ) -> PatchCollection:
+        raise NotImplementedError
         new = cls.__new__(cls)
         # load the patch properties
         fpath = os.path.join(cache_directory, "properties.feather")
@@ -460,10 +445,10 @@ class PatchCollection(Sequence):
 
     def __repr__(self):
         length = len(self)
-        loaded = sum(1 for patch in iter(self) if patch.is_loaded())
-        s = self.__class__.__name__
-        s += f"(patches={length}, loaded={loaded}/{length})"
-        return s
+        string = self.__class__.__name__
+        string += f"(patches={length}, redshift={self.has_redshift()}, "
+        string += f"weights={self.has_weights()})"
+        return string
 
     def __contains__(self, item: int) -> bool:
         return item in self._patches
@@ -481,17 +466,6 @@ class PatchCollection(Sequence):
     def __iter__(self) -> Iterator[PatchCatalog]:
         for patch_id in self.ids:
             yield self._patches[patch_id]
-
-    def iter_loaded(self) -> Iterator[PatchCatalog]:
-        for patch in iter(self):
-            loaded = patch.is_loaded()
-            patch.load()
-            yield patch
-            if not loaded:
-                patch.unload()
-
-    def is_loaded(self) -> bool:
-        return all([patch.is_loaded() for patch in iter(self)])
 
     def load(self) -> None:
         for patch in iter(self):
@@ -519,25 +493,23 @@ class PatchCollection(Sequence):
 
     @property
     def ra(self) -> NDArray[np.float_]:
-        return np.concatenate([patch.ra for patch in self.iter_loaded()])
+        return np.concatenate([patch.ra for patch in iter(self)])
 
     @property
     def dec(self) -> NDArray[np.float_]:
-        return np.concatenate([patch.dec for patch in self.iter_loaded()])
+        return np.concatenate([patch.dec for patch in iter(self)])
 
     @property
     def redshift(self) -> NDArray[np.float_]:
         if self.has_redshift():
-            return np.concatenate([
-                patch.redshift for patch in self.iter_loaded()])
+            return np.concatenate([patch.redshift for patch in iter(self)])
         else:
             return None
 
     @property
     def weights(self) -> NDArray[np.float_]:
         if self.has_weights():
-            return np.concatenate([
-                patch.weights for patch in self.iter_loaded()])
+            return np.concatenate([patch.weights for patch in iter(self)])
         else:
             return None
 
