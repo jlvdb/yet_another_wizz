@@ -12,7 +12,7 @@ class PdfMaker(BaseClass):
     _zmax = None
     _region_counts = None
 
-    def __init__(self, pair_counts, autocorr, verbose=True):
+    def __init__(self, pair_counts, autocorr, region_list, verbose=True):
         self._verbose = verbose
         if type(autocorr) is not bool:
             self._throwException(
@@ -34,7 +34,8 @@ class PdfMaker(BaseClass):
                 "pandas DataFrame", ValueError)
         self._zmin = self._pair_counts.z.min()
         self._zmax = self._pair_counts.z.max()
-        self.n_regions = len(self._pair_counts.region_idx.unique())
+        self.region_list = region_list
+        self.n_regions = len(region_list)
         self.setCosmology(name="default")
 
     @staticmethod
@@ -111,7 +112,7 @@ class PdfMaker(BaseClass):
     def collapsePairCounts(self, pair_counts, zbins):
         self._printMessage("collapsing pair counts by bin and region\n")
         pair_counts_regionized = pair_counts.groupby(
-            pair_counts.region_idx)
+            pd.Categorical(pair_counts.region_idx, categories=self.region_list))
         n_bins = len(zbins) - 1
         # create output arrays
         n_ref = np.empty((n_bins, self.n_regions), dtype=np.int32)
@@ -120,13 +121,18 @@ class PdfMaker(BaseClass):
         DR_sum = np.empty_like(z_sum)
         # collapse objects into region statistics
         for i, (reg_idx, region) in enumerate(pair_counts_regionized):
-            region_binned = region.groupby(
-                pd.cut(region.z, zbins))
-            for bin_idx, (zlimits, zbin) in enumerate(region_binned):
-                n_ref[bin_idx, i] = len(zbin)
-                z_sum[bin_idx, i] = zbin.z.sum()
-                DD_sum[bin_idx, i] = zbin.DD.sum()
-                DR_sum[bin_idx, i] = zbin.DR.sum()
+            if len(region) == 0:
+                n_ref[:, i] = 0
+                z_sum[:, i] = 0.0
+                DD_sum[:, i] = 0.0
+                DR_sum[:, i] = 0.0
+            else:
+                region_binned = region.groupby(pd.cut(region.z, zbins))
+                for bin_idx, (zlimits, zbin) in enumerate(region_binned):
+                    n_ref[bin_idx, i] = len(zbin)
+                    z_sum[bin_idx, i] = zbin.z.sum()
+                    DD_sum[bin_idx, i] = zbin.DD.sum()
+                    DR_sum[bin_idx, i] = zbin.DR.sum()
         counts_dict = {
             "n_reference": n_ref, "sum_redshifts": z_sum,
             "data_data": DD_sum, "data_random": DR_sum,
