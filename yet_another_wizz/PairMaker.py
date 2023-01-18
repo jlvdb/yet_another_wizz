@@ -40,11 +40,11 @@ class PairMaker(BaseClass):
             data["weights"] /= weights.mean()
         # set region indices
         if region_idx is not None:
-            data["region_idx"] = region_idx.astype(np.uint8)
+            data["region_idx"] = region_idx.astype(np.int_)
             # remove objects with negative indices
             data = data[data.region_idx >= 0]
         else:
-            data["region_idx"] = np.zeros(len(RA), dtype=np.uint8)
+            data["region_idx"] = np.zeros(len(RA), dtype=np.int_)
         return data
 
     def nRegions(self):
