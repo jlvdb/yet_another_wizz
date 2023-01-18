@@ -47,15 +47,22 @@ class PairMaker(BaseClass):
             data["region_idx"] = np.zeros(len(RA), dtype=np.int_)
         return data
 
-    def nRegions(self):
+    def getRegionList(self):
+        regions = []
         if self._random_data is not None:
-            return len(np.unique(self._random_data.region_idx))
+            regions.extend(np.unique(self._random_data.region_idx))
         if self._unknown_data is not None:
-            return len(np.unique(self._unknown_data.region_idx))
+            regions.extend(np.unique(self._unknown_data.region_idx))
         if self._reference_data is not None:
-            return len(np.unique(self._reference_data.region_idx))
-        else:
-            return 1
+            regions.extend(np.unique(self._reference_data.region_idx))
+        return sorted(set(regions))
+
+    def nRegions(self):
+        return len(self.getRegionList())
+
+    def getRegionGroupby(self, data):
+        by = pd.Categorical(data.region_idx, categories=self.getRegionList())
+        return data.groupby(by)
 
     def getMeta(self):
         meta_dict = {
@@ -150,13 +157,12 @@ class PairMaker(BaseClass):
         # create pool to find pairs DD
         poolDD = ThreadHelper(
             self.nRegions(), threads=min(self._threads, self.nRegions()))
-        poolDD.add_iterable(self.getReference().groupby("region_idx"))
+        poolDD.add_iterable(self.getRegionGroupby(self.getReference()))
         if regionize_unknown:
-            poolDD.add_iterable(self.getUnknown().groupby("region_idx"))
+            poolDD.add_iterable(self.getRegionGroupby(self.getUnknown()))
         else:
             poolDD.add_iterable([
-                (r, self.getUnknown())
-                for r in sorted(pd.unique(self.getReference().region_idx))])
+                (r, self.getUnknown()) for r in self.getRegionList()])
         poolDD.add_constant((rmin, rmax))
         poolDD.add_constant(comoving)
         poolDD.add_constant(self.cosmology)
@@ -164,13 +170,12 @@ class PairMaker(BaseClass):
         # create pool to find pairs DR
         poolDR = ThreadHelper(
             self.nRegions(), threads=min(self._threads, self.nRegions()))
-        poolDR.add_iterable(self.getReference().groupby("region_idx"))
+        poolDR.add_iterable(self.getRegionGroupby(self.getReference()))
         if regionize_unknown:
-            poolDR.add_iterable(self.getRandoms().groupby("region_idx"))
+            poolDR.add_iterable(self.getRegionGroupby(self.getRandoms()))
         else:
             poolDR.add_iterable([
-                (r, self.getRandoms())
-                for r in sorted(pd.unique(self.getReference().region_idx))])
+                (r, self.getRandoms()) for r in self.getRegionList()])
         poolDR.add_constant((rmin, rmax))
         poolDR.add_constant(comoving)
         poolDR.add_constant(self.cosmology)
@@ -183,10 +188,10 @@ class PairMaker(BaseClass):
         elif D_R_ratio == "local":
             n_D = np.asarray([
                 np.count_nonzero(self._unknown_data.region_idx == i)
-                for i in range(self.nRegions())])
+                for r in self.getRegionList()])
             n_R = np.asarray([
                 np.count_nonzero(self._random_data.region_idx == i)
-                for i in range(self.nRegions())])
+                for r in self.getRegionList()])
             D_R_ratio = n_D / n_R
         else:
             try:

@@ -214,7 +214,7 @@ if __name__ == "__main__":
         if args.cat_region is not None:
             endian_corrected = \
                 fits_data[args.cat_region].byteswap().newbyteorder()
-            data["region_idx"] = endian_corrected.astype(np.int16)
+            data["region_idx"] = endian_corrected.astype(np.int_)
     print("==> loading random objects")
     with pyfits.open(args.rand_file) as fits:
         fits_data = fits[args.rand_file_ext].data
@@ -228,7 +228,10 @@ if __name__ == "__main__":
         if args.rand_region is not None:
             endian_corrected = \
                 fits_data[args.rand_region].byteswap().newbyteorder()
-            rand["region_idx"] = endian_corrected.astype(np.int16)
+            rand["region_idx"] = endian_corrected.astype(np.int_)
+            region_list = sorted(rand["region_idx"].unique())
+        else:
+            region_list = [0]
     # get the number of spatial regions from the random data region indices
     n_regions = get_region_number(rand)
 
@@ -279,7 +282,8 @@ if __name__ == "__main__":
         regioncountsfile = scaledir.path_autocorr_file(
             ".json", suffix=args.output_suffix)
         try:
-            pdf = PdfMaker(paircount_file, autocorr=True)
+            pdf = PdfMaker(
+                paircount_file, autocorr=True, region_list=region_list)
             pdf.setCosmology(args.cosmology)
             pdf.setBinning(binning)
             pdf.writeRegionDict(regioncountsfile)

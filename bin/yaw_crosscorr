@@ -308,7 +308,8 @@ if __name__ == '__main__':
             # create region counts
             regioncountsfile = scaledir.path_crosscorr_file(
                 ".json", zlims=redshift)
-            pdf = PdfMaker(paircount_file, autocorr=False)
+            pdf = PdfMaker(
+                paircount_file, autocorr=False, region_list=est.getRegionList())
             pdf.setCosmology(args.cosmology)
             if args.ref_bin_type[0] == "adapt":
                 raise NotImplementedError()
