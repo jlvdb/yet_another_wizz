@@ -189,10 +189,10 @@ class PairMaker(BaseClass):
                 len(self.getUnknown()) / len(self.getRandoms()))
         elif D_R_ratio == "local":
             n_D = np.asarray([
-                np.count_nonzero(self._unknown_data.region_idx == i)
+                np.count_nonzero(self._unknown_data.region_idx == r)
                 for r in self.getRegionList()])
             n_R = np.asarray([
-                np.count_nonzero(self._random_data.region_idx == i)
+                np.count_nonzero(self._random_data.region_idx == r)
                 for r in self.getRegionList()])
             D_R_ratio = n_D / n_R
         else:
