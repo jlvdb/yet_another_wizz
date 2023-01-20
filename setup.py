@@ -11,7 +11,7 @@ scripts = [
 
 setuptools.setup(
     name="yet_another_wizz",
-    version="1.0",
+    version="1.2",
     author="Jan Luca van den Busch",
     description="Implementation of the Schmidt et al. (2013) clustering redshift method and wrapper scripts to produce cross-correlation (CC) redshifts.",
     long_description=long_description,
