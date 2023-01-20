@@ -7,9 +7,10 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from yet_another_wizz.catalog import PatchCollection
+from yet_another_wizz.core.config import BinFactory
 from yet_another_wizz.correlation import CorrelationFunction
 from yet_another_wizz.cosmology import TypeCosmology, get_default_cosmology
-from yet_another_wizz.redshifts import BinFactory, NzTrue
+from yet_another_wizz.redshifts import NzTrue
 from yet_another_wizz.resampling import PairCountResult
 from yet_another_wizz.utils import Timed, TypeScaleKey
 

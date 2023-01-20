@@ -11,55 +11,6 @@ from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
 from yet_another_wizz.correlation import CorrelationFunction
-from yet_another_wizz.cosmology import TypeCosmology, get_default_cosmology
-
-
-class BinFactory:
-
-    def __init__(
-        self,
-        zmin: float,
-        zmax: float,
-        nbins: int,
-        cosmology: TypeCosmology | None = None
-    ):
-        if zmin >= zmax:
-            raise ValueError("'zmin' >= 'zmax'")
-        if cosmology is None:
-            cosmology = get_default_cosmology()
-        self.cosmology = cosmology
-        self.zmin = zmin
-        self.zmax = zmax
-        self.nbins = nbins
-
-    def linear(self) -> NDArray[np.float_]:
-        return np.linspace(self.zmin, self.zmax, self.nbins + 1)
-
-    def comoving(self) -> NDArray[np.float_]:
-        cbinning = np.linspace(
-            self.cosmology.comoving_distance(self.zmin).value,
-            self.cosmology.comoving_distance(self.zmax).value,
-            self.nbins + 1)
-        # construct a spline mapping from comoving distance to redshift
-        zarray = np.linspace(0, 10.0, 5000)
-        carray = self.cosmology.comoving_distance(zarray).value
-        return np.interp(cbinning, xp=carray, fp=zarray)  # redshift @ cbinning
-
-    def logspace(self) -> NDArray[np.float_]:
-        logbinning = np.linspace(
-            np.log(1.0 + self.zmin), np.log(1.0 + self.zmax), self.nbins + 1)
-        return np.exp(logbinning) - 1.0
-
-    @staticmethod
-    def check(zbins: NDArray[np.float_]) -> None:
-        if np.any(np.diff(zbins) <= 0):
-            raise ValueError("redshift bins are not monotonicaly increasing")
-
-    def get(self, method: str) -> NDArray[np.float_]:
-        try:
-            return getattr(self, method)()
-        except AttributeError:
-            raise ValueError(f"invalid binning method '{method}'")
 
 
 class Nz(ABC):

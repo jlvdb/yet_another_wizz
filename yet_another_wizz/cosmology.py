@@ -9,9 +9,6 @@ from astropy.cosmology import FLRW, Planck15
 from numpy.typing import ArrayLike, NDArray
 
 
-TypeCosmology: TypeAlias = Union[FLRW, "CustomCosmology"]
-
-
 def get_default_cosmology() -> FLRW:
     return Planck15
 
@@ -33,6 +30,9 @@ class CustomCosmology(ABC):
     @abstractmethod
     def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike:
         raise NotImplementedError
+
+
+TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
 
 
 def r_kpc_to_angle(
