@@ -195,12 +195,15 @@ class Catalog(CatalogBase):
         for path in os.listdir(cache_directory):
             if not path.startswith("patch"):
                 continue
+            abspath = os.path.join(cache_directory, path)
+            if not os.path.isfile(abspath):
+                continue
             patch_id = patch_id_from_path(path)
             patch = PatchCatalog.from_cached(
-                os.path.join(cache_directory, path),
+                abspath,
                 center=centers.get(patch_id),
                 radius=radii.get(patch_id))
-            limits.update(patch.redshift)
+            limits.update(patch.redshifts)
             patch.unload()
             new._patches[patch.id] = patch
         new._zmin, new._zmax = limits.get()
