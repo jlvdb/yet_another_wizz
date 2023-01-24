@@ -9,7 +9,7 @@ from pandas import DataFrame, IntervalIndex, Series
 from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
-from yet_another_wizz.resampling import PairCountData, PairCountResult
+from yet_another_wizz.core.resampling import PairCountData, PairCountResult
 
 
 class EstimatorNotAvailableError(Exception):
@@ -284,7 +284,7 @@ class CorrelationFunction:
         z = [z.mid for z in self.binning]
         y = self.get(estimator)
         y_samp = self.get_samples(
-            estimator, global_norm=global_norm,
+            estimator=estimator, global_norm=global_norm,
             sample_method=sample_method, n_boot=n_boot)
         if sample_method == "bootstrap":
             yerr = y_samp.std(axis=1)

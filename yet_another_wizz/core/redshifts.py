@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
-from yet_another_wizz.correlation import CorrelationFunction
+from yet_another_wizz.core.correlation import CorrelationFunction
 
 
 class Nz(ABC):

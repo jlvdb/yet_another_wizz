@@ -6,7 +6,7 @@ from typing import Any, get_args
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from yet_another_wizz.cosmology import TypeCosmology, get_default_cosmology
+from yet_another_wizz.core.cosmology import TypeCosmology, get_default_cosmology
 
 
 class BinFactory:
@@ -63,8 +63,8 @@ class Configuration:
         self,
         *,
         # measurement scales
-        rmin: ArrayLike,
-        rmax: ArrayLike,
+        rmin: ArrayLike,  # kpc
+        rmax: ArrayLike,  # kpc
         weight_scale: float | None = None,
         resolution: int = 50,
         rbin_slop: float | None = None,  # treecorr only
@@ -74,7 +74,7 @@ class Configuration:
         zmax: float | None = None,
         nbins: int | None = None,
         method: str = "linear",
-        zbins: NDArray | None = None,
+        zbins: NDArray[np.float_] | None = None,
         # others
         num_threads: int | None = None,
         crosspatch: bool = True  # scipy only
@@ -93,13 +93,35 @@ class Configuration:
                     "either 'zbins' or 'zmin', 'zmax', 'nbins' are required")
             self.generate_redshift_bins(zmin, zmax, nbins, method)
         else:
-            self.method = "manual"
             self.set_redshift_bins(zbins)
+            self.method = "manual"
 
         if num_threads is None:
             num_threads = os.cpu_count()
         self.num_threads = num_threads
         self.crosspatch = crosspatch
+
+    @property
+    def scales(self) -> NDArray[np.float_]:
+        return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
+
+    def __repr__(self) -> str:
+        name = self.__class__.__name__
+        try:
+            cosmology = self.cosmology.name
+        except AttributeError:
+            cosmology = repr(self.cosmology)
+        cosm = f"cosmology={cosmology}"
+        scales = [f"{int(s[0])}-{int(s[1])}" for s in self.scales]
+        scales = f"scales=[{', '.join(scales)}], "
+        if self.weight_scale is not None:
+            scales += f"weight_scale={self.weight_scale}, "
+            scales += f"resolution={self.resolution}, "
+        scales += f"rbin_slop={self.rbin_slop}"
+        zbins = f"zmin={self.zmin}, zmax={self.zmax}, nbins={self.nbins}, "
+        zbins += f"method={self.method}"
+        extra = f"num_theads={self.num_threads}, crosspatch={self.crosspatch}"
+        return f"{name}:\n    {cosm}\n    {scales}\n    {zbins}\n    {extra}"
 
     def set_cosmology(self, cosmology: TypeCosmology) -> None:
         if not isinstance(cosmology, get_args(TypeCosmology)):
@@ -142,10 +164,10 @@ class Configuration:
         factory = BinFactory(zmin, zmax, nbins, self.cosmology)
         zbins = factory.get(method)
 
-        self.method = method
         self.set_redshift_bins(zbins)
+        self.method = method
 
-    def set_redshift_bins(self, zbins: NDArray):
+    def set_redshift_bins(self, zbins: NDArray[np.float_]):
         zbins = np.asarray(zbins)
         if len(zbins) < 2:
             raise ValueError("'zbins' must have at least two edges")

@@ -1,5 +1,5 @@
-from .catalog import PatchCatalog, PatchCollection
-from .cosmology import get_default_cosmology
 from .randoms import UniformRandoms
-from .redshifts import NzEstimator, NzTrue
-from .yaw import YetAnotherWizz
+from .core.config import Configuration
+from .core.correlation import CorrelationFunction
+from .core.redshifts import NzEstimator
+from .yaw import autocorrelate, crosscorrelate

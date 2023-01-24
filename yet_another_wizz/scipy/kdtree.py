@@ -1,70 +1,11 @@
 from __future__ import annotations
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 from scipy.spatial import cKDTree
 
-
-def position_sky2sphere(RA_DEC: NDArray[np.float_]) -> NDArray[np.float_]:
-    """
-    Maps celestial coordinates (degrees) onto a unit-sphere in three
-    dimensions (x, y, z).
-    """
-    # unpack data and compute intermediate values
-    ra_dec_rad = np.deg2rad(np.atleast_2d(RA_DEC))
-    ra = ra_dec_rad[:, 0]
-    dec = ra_dec_rad[:, 1]
-    cos_dec = np.cos(dec)
-    # transform
-    pos_sphere = np.empty((len(ra_dec_rad), 3))
-    pos_sphere[:, 0] = np.cos(ra) * cos_dec
-    pos_sphere[:, 1] = np.sin(ra) * cos_dec
-    pos_sphere[:, 2] = np.sin(dec)
-    return np.squeeze(pos_sphere)
-
-
-def position_sphere2sky(xyz: NDArray[np.float_]) -> NDArray[np.float_]:
-    """
-    Maps Euclidean coordinates (x, y, z) onto celestial coordinates
-    (RA, Dec) in degrees.
-    """
-    # unpack data and compute intermediate values
-    xyz = np.atleast_2d(xyz)
-    x = xyz[:, 0]
-    y = xyz[:, 1]
-    z = xyz[:, 2]
-    x2 = x * x
-    y2 = y * y
-    z2 = z * z
-    r_d3 = np.sqrt(x2 + y2 + z2)
-    r_d2 = np.sqrt(x2 + y2)
-    # transform
-    pos_sky = np.empty((len(xyz), 2))
-    pos_sky[:, 0] = np.rad2deg(np.sign(y) * np.arccos(x / r_d2))
-    pos_sky[:, 1] = np.rad2deg(np.sign(y) * np.arcsin(z / r_d3))
-    return np.squeeze(pos_sky)
-
-
-def distance_sky2sphere(dist_sky: ArrayLike) -> ArrayLike:
-    """
-    Converts angular separation in celestial coordinates to the
-    Euclidean distance in (x, y, z) space.
-    """
-    dist_sky_rad = np.deg2rad(dist_sky)
-    # old: dist_sphere = np.sqrt(2.0 - 2.0 * np.cos(dist_sky_rad))
-    dist_sphere = 2.0 * np.sin(dist_sky_rad / 2.0)
-    return dist_sphere
-
-
-def distance_sphere2sky(dist_sphere: ArrayLike) -> ArrayLike:
-    """
-    Converts Euclidean distance in (x, y, z) space to angular separation in
-    celestial coordinates.
-    """
-    # old: dist_sky_rad = np.arccos(1.0 - dist_sphere**2 / 2.0)
-    dist_sky_rad = 2.0 * np.arcsin(dist_sphere / 2.0)
-    dist_sky = np.rad2deg(dist_sky_rad)
-    return dist_sky
+from yet_another_wizz.core.coordinates import (
+    position_sky2sphere, distance_sky2sphere)
 
 
 class SphericalKDTree:
