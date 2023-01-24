@@ -316,10 +316,10 @@ class PatchLinkage:
             collection1, collection2)
         # compute the product of the total weight per patch
         totals1 = np.zeros(n_patches)
-        for i, total in zip(collection1.ids, collection1.totals):
+        for i, total in zip(collection1.ids, collection1.get_totals()):
             totals1[i] = total
         totals2 = np.zeros(n_patches)
-        for i, total in zip(collection2.ids, collection2.totals):
+        for i, total in zip(collection2.ids, collection2.get_totals()):
             totals2[i] = total
         totals = np.multiply.outer(totals1, totals2)
         if auto:
