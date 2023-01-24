@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import warnings
 from collections.abc import Iterator
 
 import numpy as np
@@ -41,7 +42,7 @@ class Catalog(CatalogBase):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: NDArray[np.float_] | None = None,
+        patch_centers: Catalog | NDArray[np.float_] | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -55,12 +56,22 @@ class Catalog(CatalogBase):
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'")
-        if isinstance(n_patches, int):
+        if n_patches is not None:
             kwargs["npatch"] = n_patches
-        elif isinstance(patch_name, str):
+        elif patch_name is not None:
             kwargs["patch"] = data[patch_name]
-        else:
+        # TODO: different convention of patch centers in TC and SC
+        elif isinstance(patch_centers, Catalog):
+            kwargs["patch_centers"] = patch_centers._catalog.get_patch_centers()
+        elif patch_centers is not None:
+            warnings.warn(
+                "treecorr and scipy versions of the Catalog class have "
+                "different representations of patch centers internally")
             kwargs["patch_centers"] = patch_centers
+        else:
+            raise ValueError(
+                "either of 'patch_name', 'patch_centers', or 'n_patches' "
+                "must be provided")
         self._catalog = TreeCorrCatalog(
             ra=data[ra_name], ra_units="degrees",
             dec=data[dec_name], dec_units="degrees",

@@ -12,6 +12,7 @@ from pandas import DataFrame
 
 from yet_another_wizz.core.catalog import CatalogBase, PatchLinkage
 from yet_another_wizz.core.config import Configuration
+from yet_another_wizz.core.coordinates import position_sphere2sky
 from yet_another_wizz.core.cosmology import TypeCosmology, r_kpc_to_angle
 from yet_another_wizz.core.parallel import ParallelHelper
 from yet_another_wizz.core.redshifts import NzTrue
@@ -83,7 +84,7 @@ class Catalog(CatalogBase):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: NDArray[np.float_] | None = None,
+        patch_centers: Catalog | NDArray[np.float_] | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -126,6 +127,8 @@ class Catalog(CatalogBase):
                     data[ra_name].to_numpy(), data[dec_name].to_numpy(),
                     n_patches)
             elif patch_mode == "applying":
+                if isinstance(patch_centers, Catalog):
+                    patch_centers = position_sphere2sky(patch_centers.centers)
                 patch_ids = assign_patches(
                     patch_centers,
                     data[ra_name].to_numpy(), data[dec_name].to_numpy())
