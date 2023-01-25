@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import functools
+import logging
 import multiprocessing
 from collections.abc import Callable, Collection, Iterator
 from typing import Any
+
+
+logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
 def _threadwrapper(arg_tuple, function):
@@ -61,6 +65,8 @@ class ParallelHelper:
         Apply the accumulated arguments to a function in a pool of threads.
         The threads are blocking until all results are received.
         """
+        logger.debug(
+            f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
         if self._num_threads > 1:
             with multiprocessing.Pool(self._num_threads) as pool:
                 results = pool.starmap(self.function, zip(*self.args))
@@ -73,6 +79,8 @@ class ParallelHelper:
         Apply the accumulated arguments to a function in a pool of threads.
         The results are processed unordered and yielded as an iterator.
         """
+        logger.debug(
+            f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
         function = functools.partial(_threadwrapper, function=self.function)
         if self._num_threads > 1:
             with multiprocessing.Pool(self._num_threads) as pool:

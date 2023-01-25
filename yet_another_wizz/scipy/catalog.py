@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import os
 from collections.abc import Iterator
 
@@ -18,10 +19,13 @@ from yet_another_wizz.core.parallel import ParallelHelper
 from yet_another_wizz.core.redshifts import NzTrue
 from yet_another_wizz.core.resampling import ArrayDict, PairCountResult
 from yet_another_wizz.core.utils import (
-    LimitTracker, Timed, TypePatchKey, TypeScaleKey, scales_to_keys)
+    LimitTracker, TimedLog, TypePatchKey, TypeScaleKey, scales_to_keys)
 
 from yet_another_wizz.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
+
+
+logger = logging.getLogger(__name__)
 
 
 def _count_pairs_thread(
@@ -119,6 +123,7 @@ class Catalog(CatalogBase):
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'")
+            self.logger.info(f"using cache directory '{cache_directory}'")
 
         # create new patches
         if patch_mode != "dividing":
@@ -126,24 +131,23 @@ class Catalog(CatalogBase):
                 patch_centers, patch_ids = create_patches(
                     data[ra_name].to_numpy(), data[dec_name].to_numpy(),
                     n_patches)
+                log_msg = f"creating {n_patches} patches"
             elif patch_mode == "applying":
                 if isinstance(patch_centers, Catalog):
                     patch_centers = position_sphere2sky(patch_centers.centers)
                 patch_ids = assign_patches(
                     patch_centers,
                     data[ra_name].to_numpy(), data[dec_name].to_numpy())
+                log_msg = f"applying {n_patches} patches from external data"
             patch_name = "patch"  # the default name
             data[patch_name] = patch_ids
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
+            log_msg = f"splitting data into predefined patches"
             centers = dict()  # this can be empty
 
         # run groupby first to avoid any intermediate copies of full data
-        if unload:
-            msg = f"{patch_mode} and caching patches"
-        else:
-            msg = f"{patch_mode} patches"
-        with Timed(msg):
+        with TimedLog(self.logger.debug, log_msg):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
             for patch_id, patch_data in data.groupby(patch_name):
@@ -182,6 +186,7 @@ class Catalog(CatalogBase):
         cls,
         cache_directory: str
     ) -> Catalog:
+        cls.info(f"restoring from cache directory '{cache_directory}'")
         new = cls.__new__(cls)
         # load the patch properties
         fpath = os.path.join(cache_directory, "properties.feather")
@@ -239,10 +244,12 @@ class Catalog(CatalogBase):
         return all([patch.is_loaded() for patch in self._patches.values()])
 
     def load(self) -> None:
+        super().load()
         for patch in self._patches.values():
             patch.load()
 
     def unload(self) -> None:
+        super().unload()
         for patch in self._patches.values():
             patch.unload()
 
@@ -308,6 +315,8 @@ class Catalog(CatalogBase):
         other: Catalog | None = None,
         linkage: PatchLinkage | None = None
     ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
+        super().correlate(config, binned, other, linkage)
+
         auto = other is None
         if not auto and not isinstance(other, Catalog):
             raise TypeError
@@ -400,6 +409,8 @@ class Catalog(CatalogBase):
         return result
 
     def true_redshifts(self, config: Configuration) -> NzTrue:
+        super().true_redshifts(config)
+
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
         # compute the reshift histogram in each patch
@@ -411,6 +422,5 @@ class Catalog(CatalogBase):
         pool.add_iterable(list(self))
         # NDArray[np.float_]
         pool.add_constant(config.zbins)
-        with Timed("processing true redshifts"):
-            hist_counts = list(pool.iter_result())
+        hist_counts = list(pool.iter_result())
         return NzTrue(np.array(hist_counts), config.zbins)

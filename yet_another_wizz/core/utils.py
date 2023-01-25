@@ -4,6 +4,7 @@ import json
 import operator
 from datetime import timedelta
 from timeit import default_timer
+from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -30,31 +31,39 @@ class LimitTracker:
         return vmin, vmax
 
 
-class Timed:
+class TimedLog:
 
     def __init__(
         self,
-        msg: str | None = None,
-        verbose: bool = True
+        logging_callback: Callable,
+        msg: str | None = None
     ) -> None:
-        self.verbose = verbose
+        self.callback = logging_callback
         self.msg = msg
 
-    def __enter__(self) -> Timed:
-        if self.verbose and self.msg is not None:
-            print(f"-:--:-- {self.msg} ...", end="\r")
+    def __enter__(self) -> TimedLog:
         self.t = default_timer()
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
         delta = default_timer() - self.t
-        if self.verbose:
-            time = str(timedelta(seconds=round(delta)))
-            print(f"{time} {self.msg} - Done")
+        time = str(timedelta(seconds=round(delta)))
+        self.callback(f"{self.msg} - done {time}")
 
 
 def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:
     return [f"kpc{scale[0]:.0f}t{scale[1]:.0f}" for scale in scales]
+
+
+def long_num_format(x: float) -> str:
+    x = float(f"{x:.3g}")
+    exp = 0
+    while abs(x) >= 1000:
+        exp += 1
+        x /= 1000.0
+    prefix = str(x).rstrip("0").rstrip(".")
+    suffix = ["", "K", "M", "B", "T"][exp]
+    return prefix + suffix
 
 
 def load_json(path):

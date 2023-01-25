@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import os
 import warnings
 from collections.abc import Iterator
@@ -17,7 +18,10 @@ from yet_another_wizz.core.coordinates import (
 from yet_another_wizz.core.cosmology import r_kpc_to_angle
 from yet_another_wizz.core.redshifts import NzTrue
 from yet_another_wizz.core.resampling import PairCountResult
-from yet_another_wizz.core.utils import Timed, TypeScaleKey, scales_to_keys
+from yet_another_wizz.core.utils import TimedLog, TypeScaleKey, scales_to_keys
+
+
+logger = logging.getLogger(__name__)
 
 
 def _iter_bin_masks(
@@ -48,7 +52,6 @@ class Catalog(CatalogBase):
         weight_name: str | None = None,
         cache_directory: str | None = None
     ) -> None:
-
         # construct the underlying TreeCorr catalogue
         kwargs = dict()
         if cache_directory is not None:
@@ -56,28 +59,36 @@ class Catalog(CatalogBase):
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'")
+            self.logger.info(f"using cache directory '{cache_directory}'")
+
         if n_patches is not None:
             kwargs["npatch"] = n_patches
+            log_msg = f"creating {n_patches} patches"
         elif patch_name is not None:
             kwargs["patch"] = data[patch_name]
+            log_msg = f"splitting data into predefined patches"
         # TODO: different convention of patch centers in TC and SC
         elif isinstance(patch_centers, Catalog):
             kwargs["patch_centers"] = patch_centers._catalog.get_patch_centers()
+            log_msg = f"applying {n_patches} patches from external data"
         elif patch_centers is not None:
-            warnings.warn(
+            self.logger.warn(
                 "treecorr and scipy versions of the Catalog class have "
                 "different representations of patch centers internally")
             kwargs["patch_centers"] = patch_centers
+            log_msg = f"applying {n_patches} patches from external data"
         else:
             raise ValueError(
                 "either of 'patch_name', 'patch_centers', or 'n_patches' "
                 "must be provided")
-        self._catalog = TreeCorrCatalog(
-            ra=data[ra_name], ra_units="degrees",
-            dec=data[dec_name], dec_units="degrees",
-            r=None if redshift_name is None else data[redshift_name],
-            w=None if weight_name is None else data[weight_name],
-            **kwargs)
+
+        with TimedLog(self.logger.debug, log_msg):
+            self._catalog = TreeCorrCatalog(
+                ra=data[ra_name], ra_units="degrees",
+                dec=data[dec_name], dec_units="degrees",
+                r=None if redshift_name is None else data[redshift_name],
+                w=None if weight_name is None else data[weight_name],
+                **kwargs)
 
         if cache_directory is not None:
             self.unload()
@@ -119,9 +130,11 @@ class Catalog(CatalogBase):
         return self._catalog.loaded
 
     def load(self) -> None:
+        super().load()
         self._catalog.load()
 
     def unload(self) -> None:
+        super().unload()
         self._catalog.unload()
 
     def has_redshifts(self) -> bool:
@@ -187,6 +200,17 @@ class Catalog(CatalogBase):
             radii.append(distance_sphere2sky(radius_xyz))
         return np.array(radii)
 
+    def bin_iter(
+        self,
+        z_bins: NDArray[np.float_],
+    ) -> Iterator[tuple[Interval, Catalog]]:
+        if not self.has_redshifts():
+            raise ValueError("no redshifts for iteration provided")
+        for interval, bin_mask in _iter_bin_masks(self.redshifts, z_bins):
+            new = self._catalog.copy()
+            new.select(bin_mask)
+            yield interval, self.__class__.from_treecorr(new)
+
     def correlate(
         self,
         config: Configuration,
@@ -194,6 +218,8 @@ class Catalog(CatalogBase):
         other: Catalog = None,
         linkage: PatchLinkage | None = None
     ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
+        super().correlate(config, binned, other, linkage)
+
         auto = other is None
         if not auto and not isinstance(other, Catalog):
             raise TypeError
@@ -215,6 +241,7 @@ class Catalog(CatalogBase):
                 cats2 = itertools.repeat((None, other))
 
         # iterate the bins and compute the correlation
+        self.logger.debug(f"running treecorr on {config.num_threads} threads")
         result = {scale_key: [] for scale_key in scales_to_keys(config.scales)}
         for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
             scales = r_kpc_to_angle(config.scales, intv.mid, config.cosmology)
@@ -234,26 +261,16 @@ class Catalog(CatalogBase):
                 result[scale_key] = PairCountResult.from_bins(binned_result)
         return result
 
-    def bin_iter(
-        self,
-        z_bins: NDArray[np.float_],
-    ) -> Iterator[tuple[Interval, Catalog]]:
-        if not self.has_redshifts():
-            raise ValueError("no redshifts for iteration provided")
-        for interval, bin_mask in _iter_bin_masks(self.redshifts, z_bins):
-            new = self._catalog.copy()
-            new.select(bin_mask)
-            yield interval, self.__class__.from_treecorr(new)
-
     def true_redshifts(self, config: Configuration) -> NzTrue:
+        super().true_redshifts(config)
+
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
         # compute the reshift histogram in each patch
-        with Timed("processing true redshifts"):
-            hist_counts = []
-            for patch in iter(self):
-                print(patch)
-                counts, bins = np.histogram(
-                    patch.redshifts, config.zbins, weights=patch.weights)
-                hist_counts.append(counts)
+        hist_counts = []
+        for patch in iter(self):
+            print(patch)
+            counts, bins = np.histogram(
+                patch.redshifts, config.zbins, weights=patch.weights)
+            hist_counts.append(counts)
         return NzTrue(np.array(hist_counts), bins)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod, abstractproperty
 from collections.abc import Iterator
 from typing import Any
@@ -15,10 +16,16 @@ from yet_another_wizz.core.coordinates import (
 from yet_another_wizz.core.cosmology import r_kpc_to_angle
 from yet_another_wizz.core.redshifts import NzTrue
 from yet_another_wizz.core.resampling import PairCountResult
-from yet_another_wizz.core.utils import TypePatchKey, TypeScaleKey
+from yet_another_wizz.core.utils import (
+    TypePatchKey, TypeScaleKey, long_num_format)
+
+
+logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
 class CatalogBase(ABC):
+
+    logger = logging.getLogger("yet_another_wizz.Catalog")
 
     @classmethod
     def from_file(
@@ -50,8 +57,11 @@ class CatalogBase(ABC):
         else:
             raise TypeError(
                 "'patches' must be either of type 'int', 'str', or 'Catalog'")
+
+        cls.logger.info(f"reading catalog file '{filepath}'")
         data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
         if sparse is not None:
+            cls.logger.debug(f"sparse sampling data {sparse}x")
             data = data[::sparse]
         return cls(
             data, ra, dec, **patch_kwarg,
@@ -106,14 +116,14 @@ class CatalogBase(ABC):
         """
         Load data from a disk cache into memory.
         """
-        pass
+        self.logger.debug("bulk loading catalog")
 
     @abstractmethod
     def unload(self) -> None:
         """
         Unload data from memory if a disk cache is provided.
         """
-        pass
+        self.logger.debug("bulk unloading catalog")
 
     @abstractmethod
     def has_redshifts(self) -> bool:
@@ -207,7 +217,11 @@ class CatalogBase(ABC):
         other: CatalogBase = None,
         linkage: PatchLinkage | None = None
     ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
-        pass
+        n1 = long_num_format(len(self))
+        n2 = long_num_format(len(self) if other is None else len(other))
+        self.logger.debug(
+            f"correlating with {'' if binned else 'un'}binned catalog "
+            f"({n1}x{n2}) in {config.nbins} redshift bins")
 
     @abstractmethod
     def true_redshifts(
@@ -217,7 +231,7 @@ class CatalogBase(ABC):
         """
         Compute the a redshift distribution histogram.
         """
-        pass
+        self.logger.debug("computing true redshift distribution")
 
 
 class PatchLinkage:
@@ -234,13 +248,6 @@ class PatchLinkage:
         config: Configuration,
         catalog: CatalogBase
     ) -> PatchLinkage:
-        centers = catalog.centers  # in RA / Dec
-        radii = catalog.radii  # radian, maximum distance measured from center
-        # compute distance between all patch centers
-        dist = distance_sphere2sky(distance_matrix(centers, centers))
-        # compare minimum separation required for patchs to not overlap
-        min_sep_deg = np.add.outer(radii, radii)
-
         # determine the additional overlap from the spatial query
         if config.crosspatch:
             # estimate maximum query radius at low, but non-zero redshift
@@ -250,11 +257,22 @@ class PatchLinkage:
         else:
             max_query_radius = 0.0  # only relevenat for cross-patch
 
+        logger.debug(f"computing patch linkage with {max_query_radius=}")
+        centers = catalog.centers  # in RA / Dec
+        radii = catalog.radii  # radian, maximum distance measured from center
+        # compute distance between all patch centers
+        dist = distance_sphere2sky(distance_matrix(centers, centers))
+        # compare minimum separation required for patchs to not overlap
+        min_sep_deg = np.add.outer(radii, radii)
+
         # check which patches overlap when factoring in the query radius
         overlaps = (dist - max_query_radius) < min_sep_deg
         patch_pairs = []
         for id1, overlap in enumerate(overlaps):
             patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
+        logger.debug(
+            f"found {len(patch_pairs)} patch links "
+            f"for {catalog.n_patches()} patches")
         return cls(patch_pairs)
 
     def __len__(self) -> int:

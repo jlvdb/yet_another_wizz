@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 import warnings
 from abc import ABC, abstractmethod, abstractproperty
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from pandas import DataFrame, IntervalIndex, Series
@@ -10,7 +11,12 @@ from numpy.typing import NDArray
 from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
-from yet_another_wizz.core.correlation import CorrelationFunction
+if TYPE_CHECKING:
+    from yet_another_wizz.core.correlation import CorrelationFunction
+from yet_another_wizz.core.utils import TimedLog
+
+
+logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
 class Nz(ABC):
@@ -105,6 +111,7 @@ class NzTrue(Nz):
         return IntervalIndex.from_breaks(self._binning)
 
     def get(self) -> Series:
+        logger.debug("computing redshift distribution")
         Nz = self.counts.sum(axis=0)
         norm = Nz.sum() * self.dz
         return Series(Nz / norm, index=self.binning)
@@ -130,13 +137,16 @@ class NzTrue(Nz):
         seed: int = 12345,
         **kwargs
     ) -> DataFrame:
-        if sample_method == "bootstrap":
-            patch_idx = self.generate_bootstrap_patch_indices(n_boot, seed)
-        elif sample_method == "jackknife":
-            patch_idx = self.generate_jackknife_patch_indices()
-        Nz_boot = np.sum(self.counts[patch_idx], axis=1)
-        nz_boot = Nz_boot / (
-            Nz_boot.sum(axis=1)[:, np.newaxis] * self.dz[np.newaxis, :])
+        with TimedLog(
+                logger.debug,
+                f"computing redshift distribution {sample_method} samples"):
+            if sample_method == "bootstrap":
+                patch_idx = self.generate_bootstrap_patch_indices(n_boot, seed)
+            elif sample_method == "jackknife":
+                patch_idx = self.generate_jackknife_patch_indices()
+            Nz_boot = np.sum(self.counts[patch_idx], axis=1)
+            nz_boot = Nz_boot / (
+                Nz_boot.sum(axis=1)[:, np.newaxis] * self.dz[np.newaxis, :])
         return DataFrame(
             index=self.binning,
             columns=np.arange(len(patch_idx)),
@@ -206,6 +216,7 @@ class NzEstimator(Nz):
         self.unk_corr_estimator = estimator
 
     def get(self) -> Series:
+        logger.debug("estimating clustering redshifts")
         cross_corr = self.cross_corr.get(self.corr_corr_estimator)
         if self.ref_corr is None:
             ref_corr = np.float64(1.0)
@@ -235,31 +246,34 @@ class NzEstimator(Nz):
         n_boot: int = 500,
         seed: int = 12345
     ) -> DataFrame:
-        if sample_method == "bootstrap":
-            patch_idx = self.generate_bootstrap_patch_indices(n_boot, seed)
-        else:
-            patch_idx = None
-        kwargs = dict(
-            global_norm=global_norm,
-            sample_method=sample_method,
-            patch_idx=patch_idx)
-        cross_corr = self.cross_corr.get_samples(
-            estimator=self.corr_corr_estimator, **kwargs)
-        if self.ref_corr is None:
-            ref_corr = np.float64(1.0)
-        else:
-            ref_corr = self.ref_corr.get_samples(
-                estimator=self.ref_corr_estimator, **kwargs)
-        if self.unk_corr is None:
-            unk_corr = np.float64(1.0)
-        else:
-            unk_corr = self.unk_corr.get_samples(
-                estimator=self.unk_corr_estimator, **kwargs)
-        N = len(cross_corr.columns)
-        dz_sq = np.tile(self.dz**2, N).reshape((N, -1)).T
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            estimate = cross_corr / np.sqrt(dz_sq * ref_corr * unk_corr)
+        with TimedLog(
+                logger.debug,
+                f"estimated clustering redshift {sample_method} samples"):
+            if sample_method == "bootstrap":
+                patch_idx = self.generate_bootstrap_patch_indices(n_boot, seed)
+            else:
+                patch_idx = None
+            kwargs = dict(
+                global_norm=global_norm,
+                sample_method=sample_method,
+                patch_idx=patch_idx)
+            cross_corr = self.cross_corr.get_samples(
+                estimator=self.corr_corr_estimator, **kwargs)
+            if self.ref_corr is None:
+                ref_corr = np.float64(1.0)
+            else:
+                ref_corr = self.ref_corr.get_samples(
+                    estimator=self.ref_corr_estimator, **kwargs)
+            if self.unk_corr is None:
+                unk_corr = np.float64(1.0)
+            else:
+                unk_corr = self.unk_corr.get_samples(
+                    estimator=self.unk_corr_estimator, **kwargs)
+            N = len(cross_corr.columns)
+            dz_sq = np.tile(self.dz**2, N).reshape((N, -1)).T
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                estimate = cross_corr / np.sqrt(dz_sq * ref_corr * unk_corr)
         return estimate
 
     def plot(

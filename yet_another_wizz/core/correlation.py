@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass, field, fields
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -9,7 +11,13 @@ from pandas import DataFrame, IntervalIndex, Series
 from matplotlib import pyplot as plt
 from matplotlib.axis import Axis
 
+from yet_another_wizz.core.catalog import CatalogBase, PatchLinkage
+from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.core.resampling import PairCountData, PairCountResult
+from yet_another_wizz.core.utils import TimedLog, TypeScaleKey
+
+
+logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
 class EstimatorNotAvailableError(Exception):
@@ -229,6 +237,8 @@ class CorrelationFunction:
         estimator: str | None = None
     ) -> Series:
         estimator_func = self._check_and_select_estimator(estimator)
+        logger.debug(
+            f"computing correlation with {estimator_func.short} estimator")
         requires = {
             kind: getattr(self, kind).get()
             for kind in estimator_func.requires}
@@ -254,6 +264,10 @@ class CorrelationFunction:
         n_boot: int = 500,
         patch_idx: NDArray[np.int_] | None = None
     ) -> DataFrame:
+        estimator_func = self._check_and_select_estimator(estimator)
+        logger.debug(
+            f"computing {sample_method} samples with "
+            f"{estimator_func.short} estimator")
         # set up the sampling method
         valid_methods = ("bootstrap", "jackknife")
         if sample_method not in valid_methods:
@@ -265,8 +279,7 @@ class CorrelationFunction:
             method=sample_method,
             global_norm=global_norm,
             patch_idx=patch_idx)
-        # select the sampling method and generate optional bootstrap samples
-        estimator_func = self._check_and_select_estimator(estimator)
+        # generate samples
         requires = {
             kind: getattr(self, kind).get_samples(**sample_kwargs)
             for kind in estimator_func.requires}
@@ -300,3 +313,105 @@ class CorrelationFunction:
         kwargs = dict(fmt=".", ls="none")
         kwargs.update(scatter_kwargs)
         ax.errorbar(z, y, yerr, **kwargs)
+
+
+
+def _create_dummy_counts(
+    counts: Any | dict[TypeScaleKey, Any]
+) -> dict[TypeScaleKey, None]:
+    if isinstance(counts, dict):
+        dummy = {scale_key: None for scale_key in counts}
+    else:
+        dummy = None
+    return dummy
+
+
+def autocorrelate(
+    config: Configuration,
+    data: CatalogBase,
+    random: CatalogBase,
+    compute_rr: bool = True
+) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
+    """
+    Compute the angular autocorrelation amplitude in bins of redshift. Requires
+    object redshifts.
+    """
+    logger.info(
+        f"running autocorrelation ({len(config.scales)} scales, "
+        f"{config.scales.min()}<r<={config.scales.max()})")
+    linkage = PatchLinkage.from_setup(config, random)
+    with TimedLog(logger.info, f"counting data-data pairs"):
+        DD = data.correlate(
+            config, binned=True, linkage=linkage)
+    with TimedLog(logger.info, f"counting data-random pairs"):
+        DR = data.correlate(
+            config, binned=True, other=random, linkage=linkage)
+    if compute_rr:
+        with TimedLog(logger.info, f"counting random-random pairs"):
+            RR = random.correlate(
+                config, binned=True, linkage=linkage)
+    else:
+        RR = _create_dummy_counts(DD)
+
+    if isinstance(DD, dict):
+        result = {
+            scale: CorrelationFunction(dd=DD[scale], dr=DR[scale], rr=RR[scale])
+            for scale in DD}
+    else:
+        result = CorrelationFunction(dd=DD, dr=DR, rr=RR)
+    return result
+
+
+def crosscorrelate(
+    config: Configuration,
+    reference: CatalogBase,
+    unknown: CatalogBase,
+    *,
+    ref_rand: CatalogBase | None = None,
+    unk_rand: CatalogBase | None = None
+) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
+    """
+    Compute the angular cross-correlation amplitude in bins of redshift with
+    another catalogue instance. Requires object redshifts in this catalogue
+    instance.
+    """
+    compute_dr = unk_rand is not None
+    compute_rd = ref_rand is not None
+    compute_rr = compute_dr and compute_rd
+    if not compute_rd and not compute_dr:
+        raise ValueError("no randoms provided")
+
+    logger.info(
+        f"running crosscorrelation ({len(config.scales)} scales, "
+        f"{config.scales.min()}<r<={config.scales.max()})")
+    linkage = PatchLinkage.from_setup(config, unknown)
+    with TimedLog(logger.info, f"counting data-data pairs"):
+        DD = reference.correlate(
+            config, binned=False, other=unknown, linkage=linkage)
+    if compute_dr:
+        with TimedLog(logger.info, f"counting data-random pairs"):
+            DR = reference.correlate(
+                config, binned=False, other=unk_rand, linkage=linkage)
+    else:
+        DR = _create_dummy_counts(DD)
+    if compute_rd:
+        with TimedLog(logger.info, f"counting random-data pairs"):
+            RD = ref_rand.correlate(
+                config, binned=False, other=unknown, linkage=linkage)
+    else:
+        RD = _create_dummy_counts(DD)
+    if compute_rr:
+        with TimedLog(logger.info, f"counting random-random pairs"):
+            RR = ref_rand.correlate(
+                config, binned=False, other=unk_rand, linkage=linkage)
+    else:
+        RR = _create_dummy_counts(DD)
+
+    if isinstance(DD, dict):
+        result = {
+            scale: CorrelationFunction(
+                dd=DD[scale], dr=DR[scale], rd=RD[scale], rr=RR[scale])
+            for scale in DD}
+    else:
+        result = CorrelationFunction(dd=DD, dr=DR, rd=RD, rr=RR)
+    return result
