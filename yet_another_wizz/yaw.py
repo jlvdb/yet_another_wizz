@@ -19,7 +19,7 @@ def autocorrelate(
     data: CatalogBase,
     random: CatalogBase,
     compute_rr: bool = True
-) -> dict[TypeScaleKey, CorrelationFunction]:
+) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
     """
     Compute the angular autocorrelation amplitude in bins of redshift. Requires
     object redshifts.
@@ -38,13 +38,13 @@ def autocorrelate(
     else:
         RR = _create_dummy_counts(DD)
 
-    corrfuncs = {
-        scale_key: CorrelationFunction(
-            dd=DD[scale_key],
-            dr=DR[scale_key],
-            rr=RR[scale_key])
-        for scale_key in DD}
-    return corrfuncs
+    if isinstance(DD, dict):
+        result = {
+            scale: CorrelationFunction(dd=DD[scale], dr=DR[scale], rr=RR[scale])
+            for scale in DD}
+    else:
+        result = CorrelationFunction(dd=DD, dr=DR, rr=RR)
+    return result
 
 
 def crosscorrelate(
@@ -54,7 +54,7 @@ def crosscorrelate(
     *,
     ref_rand: CatalogBase | None = None,
     unk_rand: CatalogBase | None = None
-) -> dict[TypeScaleKey, CorrelationFunction]:
+) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
     """
     Compute the angular cross-correlation amplitude in bins of redshift with
     another catalogue instance. Requires object redshifts in this catalogue
@@ -90,11 +90,11 @@ def crosscorrelate(
     else:
         RR = _create_dummy_counts(DD)
 
-    corrfuncs = {
-        scale_key: CorrelationFunction(
-            dd=DD[scale_key],
-            dr=DR[scale_key],
-            rd=RD[scale_key],
-            rr=RR[scale_key])
-        for scale_key in DD}
-    return corrfuncs
+    if isinstance(DD, dict):
+        result = {
+            scale: CorrelationFunction(
+                dd=DD[scale], dr=DR[scale], rd=RD[scale], rr=RR[scale])
+            for scale in DD}
+    else:
+        result = CorrelationFunction(dd=DD, dr=DR, rd=RD, rr=RR)
+    return result

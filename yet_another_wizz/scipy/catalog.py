@@ -307,7 +307,7 @@ class Catalog(CatalogBase):
         binned: bool,
         other: Catalog | None = None,
         linkage: PatchLinkage | None = None
-    ) -> dict[TypeScaleKey, PairCountResult]:
+    ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
         auto = other is None
         if not auto and not isinstance(other, Catalog):
             raise TypeError
@@ -394,6 +394,9 @@ class Catalog(CatalogBase):
                 total=ArrayDict(keys, total),
                 mask=mask,
                 binning=pd.IntervalIndex.from_breaks(config.zbins))
+        # drop the dictionary if there is only one scale
+        if len(result) == 1:
+            result = tuple(result.values())[0]
         return result
 
     def true_redshifts(self, config: Configuration) -> NzTrue:

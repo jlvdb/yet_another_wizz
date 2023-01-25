@@ -206,7 +206,7 @@ class CatalogBase(ABC):
         binned: bool,
         other: CatalogBase = None,
         linkage: PatchLinkage | None = None
-    ) -> dict[TypeScaleKey, PairCountResult]:
+    ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
         pass
 
     @abstractmethod

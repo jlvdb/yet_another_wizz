@@ -193,7 +193,7 @@ class Catalog(CatalogBase):
         binned: bool,
         other: Catalog = None,
         linkage: PatchLinkage | None = None
-    ) -> dict[TypeScaleKey, PairCountResult]:
+    ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
         auto = other is None
         if not auto and not isinstance(other, Catalog):
             raise TypeError
@@ -227,8 +227,11 @@ class Catalog(CatalogBase):
                     None if bin_cat2 is None else bin_cat2.to_treecorr())
                 result[scale_key].append(
                     PairCountResult.from_nncorrelation(intv, correlation))
-        for scale_key, binned_result in result.items():
-            result[scale_key] = PairCountResult.from_bins(binned_result)
+        if len(result) == 1:
+            result = PairCountResult.from_bins(tuple(result.values()[0]))
+        else:
+            for scale_key, binned_result in result.items():
+                result[scale_key] = PairCountResult.from_bins(binned_result)
         return result
 
     def bin_iter(
