@@ -260,6 +260,17 @@ class PatchLinkage:
     def __len__(self) -> int:
         return len(self.pairs)
 
+    def __repr__(self) -> str:
+        name = self.__class__.__name__
+        return f"{name}(npatches={self.n_patches()}, pairs={len(self)})"
+
+    def n_patches(self) -> int:
+        patches = set()
+        for p1, p2 in self.pairs:
+            patches.add(p1)
+            patches.add(p2)
+        return len(patches)
+
     def get_pairs(
         self,
         auto: bool,
@@ -278,12 +289,11 @@ class PatchLinkage:
     def _parse_collections(
         collection1: CatalogBase,
         collection2: CatalogBase | None = None
-    ) -> tuple[bool, CatalogBase, CatalogBase, int]:
+    ) -> tuple[bool, CatalogBase, CatalogBase]:
         auto = collection2 is None
         if auto:
             collection2 = collection1
-        n_patches = max(collection1.n_patches(), collection2.n_patches())
-        return auto, collection1, collection2, n_patches
+        return auto, collection1, collection2
 
     def get_matrix(
         self,
@@ -291,10 +301,11 @@ class PatchLinkage:
         collection2: CatalogBase | None = None,
         crosspatch: bool = True
     ) -> NDArray[np.bool_]:
-        auto, collection1, collection2, n_patches = self._parse_collections(
+        auto, collection1, collection2 = self._parse_collections(
             collection1, collection2)
         pairs = self.get_pairs(auto, crosspatch)
         # make a boolean matrix indicating the exisiting patch combinations
+        n_patches = self.n_patches()
         matrix = np.zeros((n_patches, n_patches), dtype=np.bool_)
         for pair in pairs:
             matrix[pair] = True
@@ -306,9 +317,10 @@ class PatchLinkage:
         collection2: CatalogBase | None = None,
         crosspatch: bool = True
     ) -> NDArray[np.bool_]:
-        auto, collection1, collection2, n_patches = self._parse_collections(
+        auto, collection1, collection2 = self._parse_collections(
             collection1, collection2)
         # make a boolean mask indicating all patch combinations
+        n_patches = self.n_patches()
         shape = (n_patches, n_patches)
         if crosspatch:
             mask = np.ones(shape, dtype=np.bool_)
@@ -324,8 +336,9 @@ class PatchLinkage:
         collection2: CatalogBase | None = None,
         crosspatch: bool = True
     ) -> NDArray[np.float_]:
-        auto, collection1, collection2, n_patches = self._parse_collections(
+        auto, collection1, collection2 = self._parse_collections(
             collection1, collection2)
+        n_patches = self.n_patches()
         # compute the product of the total weight per patch
         totals1 = np.zeros(n_patches)
         for i, total in zip(collection1.ids, collection1.get_totals()):
@@ -345,7 +358,7 @@ class PatchLinkage:
         collection2: CatalogBase | None = None,
         crosspatch: bool = True
     ) -> tuple[list[CatalogBase], list[CatalogBase]]:
-        auto, collection1, collection2, n_patches = self._parse_collections(
+        auto, collection1, collection2 = self._parse_collections(
             collection1, collection2)
         pairs = self.get_pairs(auto, crosspatch)
         # generate the patch lists

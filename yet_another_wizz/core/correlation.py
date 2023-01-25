@@ -147,6 +147,13 @@ class CorrelationFunction:
             if np.any(pairs.binning != self.dd.binning):
                 raise ValueError(f"binning of '{kind}' and 'dd' does not match")
 
+    def __repr__(self) -> str:
+        name = self.__class__.__name__
+        pairs = f"dd=True, dr={self.dr is not None}, "
+        pairs += f"rd={self.rd is not None}, rr={self.rr is not None}"
+        other = f"npatches={self.npatch}, nbins={len(self.binning)}"
+        return f"{name}({pairs}, {other})"
+
     def write(self, fpath: str) -> None:
         raise NotImplementedError  # TODO
 

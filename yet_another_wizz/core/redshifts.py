@@ -95,6 +95,11 @@ class NzTrue(Nz):
         self.counts = patch_counts
         self._binning = binning
 
+    def __repr__(self):
+        name = self.__class__.__name__
+        total = self.counts.sum()
+        return f"{name}(nbins={len(self.binning)}, count={total})"
+
     @property
     def binning(self) -> IntervalIndex:
         return IntervalIndex.from_breaks(self._binning)
@@ -165,6 +170,14 @@ class NzEstimator(Nz):
         self.ref_corr = None
         self.unk_corr = None
         self.corr_corr_estimator = estimator
+
+    def __repr__(self):
+        name = self.__class__.__name__
+        data = f"w_ss={self.ref_corr is not None}, "
+        data += f"w_pp={self.unk_corr is not None}"
+        binning = ", ".join(f"{b:.2f}" for b in self.binning.left)
+        binning += f", {self.binning[-1].right:.2f}"
+        return f"{name}(nbins={len(self.binning)}, w_sp=True, {data})"
 
     @property
     def binning(self) -> IntervalIndex:

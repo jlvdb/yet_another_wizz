@@ -7,6 +7,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from yet_another_wizz.core.cosmology import TypeCosmology, get_default_cosmology
+from yet_another_wizz.core.utils import scales_to_keys
 
 
 class BinFactory:
@@ -112,8 +113,7 @@ class Configuration:
         except AttributeError:
             cosmology = repr(self.cosmology)
         cosm = f"cosmology={cosmology}"
-        scales = [f"{int(s[0])}-{int(s[1])}" for s in self.scales]
-        scales = f"scales=[{', '.join(scales)}], "
+        scales = f"scales=[{', '.join(scales_to_keys(self.scales))}], "
         if self.weight_scale is not None:
             scales += f"weight_scale={self.weight_scale}, "
             scales += f"resolution={self.resolution}, "
