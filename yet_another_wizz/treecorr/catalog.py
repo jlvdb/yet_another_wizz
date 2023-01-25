@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import itertools
+import logging
+import os
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
-import astropandas as apd
 import numpy as np
 from numpy.typing import NDArray
-from pandas import Interval, IntervalIndex
-from treecorr import Catalog
+import pandas as pd
+from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
 
-from yet_another_wizz.utils import Timed
+from yet_another_wizz.core.catalog import CatalogBase
+from yet_another_wizz.core.config import Configuration
+from yet_another_wizz.core.coordinates import (
+    distance_sphere2sky, position_sky2sphere, position_sphere2sky)
+from yet_another_wizz.core.cosmology import r_kpc_to_angle
+from yet_another_wizz.core.redshifts import NzTrue
+from yet_another_wizz.core.resampling import PairCountResult
+from yet_another_wizz.core.utils import TimedLog, TypeScaleKey, scales_to_keys
+
+if TYPE_CHECKING:
+    from pandas import DataFrame, Interval
+    from yet_another_wizz.core.catalog import PatchLinkage
+
+
+logger = logging.getLogger(__name__)
 
 
 def _iter_bin_masks(
@@ -18,134 +35,246 @@ def _iter_bin_masks(
 ) -> Iterator[tuple[Interval, NDArray[np.bool_]]]:
     if closed not in ("left", "right"):
         raise ValueError("'closed' must be either of 'left', 'right'")
-    intervals = IntervalIndex.from_breaks(bins, closed=closed)
+    intervals = pd.IntervalIndex.from_breaks(bins, closed=closed)
     bin_ids = np.digitize(data, bins, right=(closed=="right"))
     for i, interval in zip(range(1, len(bins)), intervals):
         yield interval, bin_ids==i
 
 
-class BinnedCatalog(Catalog):
+class Catalog(CatalogBase):
 
     def __init__(
         self,
-        file_name=None,
-        config=None,
+        data: DataFrame,
+        ra_name: str,
+        dec_name: str,
         *,
-        num=0,
-        logger=None,
-        is_rand=False,
-        x=None,
-        y=None,
-        z=None,
-        ra=None,
-        dec=None,
-        r=None,
-        w=None,
-        wpos=None,
-        flag=None,
-        g1=None,
-        g2=None,
-        k=None,
-        patch=None,
-        patch_centers=None,
-        rng=None,
-        **kwargs
+        patch_name: str | None = None,
+        patch_centers: Catalog | NDArray[np.float_] | None = None,
+        n_patches: int | None = None,
+        redshift_name: str | None = None,
+        weight_name: str | None = None,
+        cache_directory: str | None = None
     ) -> None:
-        with Timed("constructing patches"):
-            super().__init__(
-                file_name, config, num=num, logger=logger, is_rand=is_rand,
-                x=x, y=y, z=z, ra=ra, dec=dec, r=r, w=w, wpos=wpos,
-                flag=flag, g1=g1, g2=g2, k=k, patch=patch,
-                patch_centers=patch_centers, rng=rng, **kwargs)
+        # construct the underlying TreeCorr catalogue
+        kwargs = dict()
+        if cache_directory is not None:
+            kwargs["save_patch_dir"] = cache_directory
+            if not os.path.exists(cache_directory):
+                raise FileNotFoundError(
+                    f"patch directory does not exist: '{cache_directory}'")
+            self.logger.info(f"using cache directory '{cache_directory}'")
 
-    @classmethod
-    def from_file(
-        cls,
-        filepath: str,
-        patches: int | BinnedCatalog | str,
-        ra: str,
-        dec: str,
-        *,
-        redshift: str | None = None,
-        weight: str | None = None,
-        sparse: int | None = None,
-        **kwargs
-    ) -> BinnedCatalog:
-        # determine the minimum set of columns required
-        columns = [
-            col for col in [ra, dec, redshift, weight]
-            if col is not None]
-        if isinstance(patches, str):
-            columns.append(patches)
-        # load data
-        data = apd.read_auto(filepath, columns=columns)
-        if sparse is not None:
-            data = data[::sparse]
-        # construct catalogue instance
-        if isinstance(patches, int):
-            kwargs.update(dict(npatch=patches))
-        elif isinstance(patches, str):
-            kwargs.update(dict(patch=data[patches]))
+        if n_patches is not None:
+            kwargs["npatch"] = n_patches
+            log_msg = f"creating {n_patches} patches"
+        elif patch_name is not None:
+            kwargs["patch"] = data[patch_name]
+            log_msg = f"splitting data into predefined patches"
+        # TODO: different convention of patch centers in TC and SC
+        elif isinstance(patch_centers, Catalog):
+            kwargs["patch_centers"] = patch_centers._catalog.get_patch_centers()
+            log_msg = f"applying {n_patches} patches from external data"
+        elif patch_centers is not None:
+            self.logger.warn(
+                "treecorr and scipy versions of the Catalog class have "
+                "different representations of patch centers internally")
+            kwargs["patch_centers"] = patch_centers
+            log_msg = f"applying {n_patches} patches from external data"
         else:
-            kwargs.update(dict(patch_centers=patches.patch_centers))
-        r = None if redshift is None else data[redshift]
-        w = None if weight is None else data[weight]
-        new = cls(
-            ra=data[ra], ra_units="degrees",
-            dec=data[dec], dec_units="degrees",
-            r=r, w=w, **kwargs)
-        return new
+            raise ValueError(
+                "either of 'patch_name', 'patch_centers', or 'n_patches' "
+                "must be provided")
+
+        with TimedLog(self.logger.debug, log_msg):
+            self._catalog = TreeCorrCatalog(
+                ra=data[ra_name], ra_units="degrees",
+                dec=data[dec_name], dec_units="degrees",
+                r=None if redshift_name is None else data[redshift_name],
+                w=None if weight_name is None else data[weight_name],
+                **kwargs)
+
+        if cache_directory is not None:
+            self.unload()
 
     @classmethod
-    def from_catalog(cls, cat: Catalog) -> BinnedCatalog:
+    def from_treecorr(cls, cat: TreeCorrCatalog) -> Catalog:
         new = cls.__new__(cls)
-        new.__dict__ = cat.__dict__
+        new._catalog = cat
         return new
 
-    def __iter__(self) -> Iterator[BinnedCatalog]:
-        for patch in self.get_patches(low_mem=True):
-            yield BinnedCatalog.from_catalog(patch)
+    def to_treecorr(self) -> TreeCorrCatalog:
+        return self._catalog
 
-    def iter_loaded(self) -> Iterator[BinnedCatalog]:
-        for patch in iter(self):
-            yield patch
+    def __len__(self) -> int:
+        return self._catalog.ntot
 
-    def is_loaded(self) -> bool:
-        return self.loaded
+    def _make_patches(self) -> None:
+        c = self._catalog
+        low_mem = (not self.is_loaded()) and (c.save_patch_dir is not None)
+        c.get_patches(low_mem=low_mem)
+
+    def __getitem__(self, item: int) -> Catalog:
+        self._make_patches()
+        return self._catalog._patches[item]
+
+    @property
+    def ids(self) -> list[int]:
+        return list(range(self.n_patches()))
 
     def n_patches(self) -> int:
-        return self.npatch
+        return self._catalog.npatch
+
+    def __iter__(self) -> Iterator[TreeCorrCatalog]:
+        self._make_patches()
+        for patch in self._catalog._patches:
+            yield self.__class__.from_treecorr(patch)
+
+    def is_loaded(self) -> bool:
+        return self._catalog.loaded
+
+    def load(self) -> None:
+        super().load()
+        self._catalog.load()
+
+    def unload(self) -> None:
+        super().unload()
+        self._catalog.unload()
+
+    def has_redshifts(self) -> bool:
+        return self.redshifts is not None
 
     @property
-    def redshift(self) -> NDArray:
-        return self.r
+    def ra(self) -> NDArray[np.float_]:
+        return self._catalog.ra
 
     @property
-    def weights(self) -> NDArray:
-        return self.w
+    def dec(self) -> NDArray[np.float_]:
+        return self._catalog.dec
 
-    def has_redshift(self) -> bool:
-        return self.r is not None
+    @property
+    def redshifts(self) -> NDArray[np.float_] | None:
+        return self._catalog.r
+
+    @property
+    def weights(self) -> NDArray[np.float_]:
+        return self._catalog.w
+
+    @property
+    def patch(self) -> NDArray[np.int_]:
+        return self._catalog.patch
 
     def get_min_redshift(self) -> float:
-        try:
-            return self.redshift.min()
-        except AttributeError:
-            return None
+        if not hasattr(self, "_zmin"):
+            if self.has_redshifts():
+                self._zmin = self.redshifts.min()
+            else:
+                self._zmin = None
+        return self._zmin
 
     def get_max_redshift(self) -> float:
-        try:
-            return self.redshift.max()
-        except AttributeError:
-            return None
+        if not hasattr(self, "_zmax"):
+            if self.has_redshifts():
+                self._zmax = self.redshifts.max()
+            else:
+                self._zmax = None
+        return self._zmax
+
+    @property
+    def total(self) -> float:
+        return self._catalog.sumw
+
+    def get_totals(self) -> NDArray[np.float_]:
+        return np.array([patch.sumw for patch in iter(self)])
+
+    @property
+    def centers(self) -> NDArray[np.float_]:
+        # TODO: figure out why double transform is necessary
+        centers = position_sky2sphere(
+            position_sphere2sky(self._catalog.get_patch_centers()))
+        return centers
+
+    @property
+    def radii(self) -> NDArray[np.float_]:
+        radii = []
+        for patch, center in zip(iter(self), self.centers):
+            ra_dec = np.transpose([patch.ra, patch.dec])
+            xyz = position_sky2sphere(ra_dec)
+            radius_xyz = np.sqrt(np.sum((xyz - center)**2, axis=1)).max()
+            radii.append(distance_sphere2sky(radius_xyz))
+        return np.array(radii)
 
     def bin_iter(
         self,
         z_bins: NDArray[np.float_],
     ) -> Iterator[tuple[Interval, Catalog]]:
-        if self.redshift is None:
+        if not self.has_redshifts():
             raise ValueError("no redshifts for iteration provided")
-        for interval, bin_mask in _iter_bin_masks(self.redshift, z_bins):
-            new = self.copy()
+        for interval, bin_mask in _iter_bin_masks(self.redshifts, z_bins):
+            new = self._catalog.copy()
             new.select(bin_mask)
-            yield interval, BinnedCatalog.from_catalog(new)
+            yield interval, self.__class__.from_treecorr(new)
+
+    def correlate(
+        self,
+        config: Configuration,
+        binned: bool,
+        other: Catalog = None,
+        linkage: PatchLinkage | None = None
+    ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
+        super().correlate(config, binned, other, linkage)
+
+        auto = other is None
+        if not auto and not isinstance(other, Catalog):
+            raise TypeError
+        nncorr_config = dict(
+            sep_units="radian",
+            metric="Arc",
+            nbins=(1 if config.weight_scale is None else config.resolution),
+            bin_slop=config.rbin_slop,
+            num_threads=config.num_threads)
+
+        # bin the catalogues if necessary
+        cats1 = self.bin_iter(config.zbins)
+        if auto:
+            cats2 = itertools.repeat((None, None))
+        else:
+            if binned:
+                cats2 = other.bin_iter(config.zbins)
+            else:
+                cats2 = itertools.repeat((None, other))
+
+        # iterate the bins and compute the correlation
+        self.logger.debug(f"running treecorr on {config.num_threads} threads")
+        result = {scale_key: [] for scale_key in scales_to_keys(config.scales)}
+        for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
+            scales = r_kpc_to_angle(config.scales, intv.mid, config.cosmology)
+            for scale_key, (ang_min, ang_max) in zip(
+                    scales_to_keys(config.scales), scales):
+                correlation = NNCorrelation(
+                    min_sep=ang_min, max_sep=ang_max, **nncorr_config)
+                correlation.process(
+                    bin_cat1.to_treecorr(),
+                    None if bin_cat2 is None else bin_cat2.to_treecorr())
+                result[scale_key].append(
+                    PairCountResult.from_nncorrelation(intv, correlation))
+        if len(result) == 1:
+            result = PairCountResult.from_bins(tuple(result.values())[0])
+        else:
+            for scale_key, binned_result in result.items():
+                result[scale_key] = PairCountResult.from_bins(binned_result)
+        return result
+
+    def true_redshifts(self, config: Configuration) -> NzTrue:
+        super().true_redshifts(config)
+
+        if not self.has_redshifts():
+            raise ValueError("catalog has no redshifts")
+        # compute the reshift histogram in each patch
+        hist_counts = []
+        for patch in iter(self):
+            print(patch)
+            counts, bins = np.histogram(
+                patch.redshifts, config.zbins, weights=patch.weights)
+            hist_counts.append(counts)
+        return NzTrue(np.array(hist_counts), bins)

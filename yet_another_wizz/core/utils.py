@@ -4,9 +4,12 @@ import json
 import operator
 from datetime import timedelta
 from timeit import default_timer
+from typing import TYPE_CHECKING,  Callable
 
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 TypePatchKey = tuple[int, int]
@@ -30,47 +33,36 @@ class LimitTracker:
         return vmin, vmax
 
 
-class Timed:
+class TimedLog:
 
     def __init__(
         self,
-        msg: str | None = None,
-        verbose: bool = True
+        logging_callback: Callable,
+        msg: str | None = None
     ) -> None:
-        self.verbose = verbose
+        self.callback = logging_callback
         self.msg = msg
 
-    def __enter__(self) -> Timed:
-        if self.verbose and self.msg is not None:
-            print(f"-:--:-- {self.msg} ...", end="\r")
+    def __enter__(self) -> TimedLog:
         self.t = default_timer()
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
         delta = default_timer() - self.t
-        if self.verbose:
-            time = str(timedelta(seconds=round(delta)))
-            print(f"{time} {self.msg} - Done")
+        time = str(timedelta(seconds=round(delta)))
+        self.callback(f"{self.msg} - done {time}")
 
 
 def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:
     return [f"kpc{scale[0]:.0f}t{scale[1]:.0f}" for scale in scales]
 
 
-def load_json(path):
-    with open(path) as f:
-        data_dict = json.load(f)
-        # convert lists to numpy arrays
-        for key, value in data_dict.items():
-            if type(value) is list:
-                data_dict[key] = np.array(value)
-    return data_dict
-
-
-def dump_json(data, path, preview=False):
-    kwargs = dict(indent=4, default=operator.methodcaller("tolist"))
-    if preview:
-        print(json.dumps(data, **kwargs))
-    else:
-        with open(path, "w") as f:
-            json.dump(data, f, **kwargs)
+def long_num_format(x: float) -> str:
+    x = float(f"{x:.3g}")
+    exp = 0
+    while abs(x) >= 1000:
+        exp += 1
+        x /= 1000.0
+    prefix = str(x).rstrip("0").rstrip(".")
+    suffix = ["", "K", "M", "B", "T"][exp]
+    return prefix + suffix

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import TYPE_CHECKING, Union
 from typing_extensions import TypeAlias
 
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
-from numpy.typing import ArrayLike, NDArray
 
-
-TypeCosmology: TypeAlias = Union[FLRW, "CustomCosmology"]
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, NDArray
 
 
 def get_default_cosmology() -> FLRW:
@@ -35,12 +34,14 @@ class CustomCosmology(ABC):
         raise NotImplementedError
 
 
+TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
+
+
 def r_kpc_to_angle(
     r_kpc: NDArray[np.float_],
     z: float,
     cosmology: TypeCosmology
 ) -> tuple[float, float]:
-    """from kpc to degrees"""
+    """from kpc to radian"""
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
-    angle_rad = np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
-    return np.rad2deg(angle_rad)
+    return np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import multiprocessing
 
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
-from pandas import DataFrame
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    from pandas import DataFrame
 
 
 class UniformRandoms:
@@ -23,7 +27,7 @@ class UniformRandoms:
         self.rng = np.random.SeedSequence(seed)
 
     @classmethod
-    def from_catalogue(cls, cat) -> UniformRandoms:
+    def from_catalog(cls, cat) -> UniformRandoms:
         return cls(
             np.rad2deg(cat.ra.min()),
             np.rad2deg(cat.ra.max()),
@@ -81,7 +85,7 @@ def _generate_uniform_randoms(
     x = np.random.uniform(inst.x_min, inst.x_max, size)
     y = np.random.uniform(inst.y_min, inst.y_max, size)
     ra, dec = UniformRandoms.cylinder2sky(x, y).T
-    rand = DataFrame({names[0]: ra, names[1]: dec})
+    rand = pd.DataFrame({names[0]: ra, names[1]: dec})
     # generate random draw
     if draw_from is not None:
         N = None
