@@ -86,6 +86,7 @@ class CatalogBase(ABC):
     def __len__(self) -> int:
         pass
 
+    @abstractmethod
     def __getitem__(self, item: int) -> Any:
         pass
 
@@ -191,6 +192,7 @@ class CatalogBase(ABC):
         """
         pass
 
+    @abstractmethod
     def get_totals(self) -> NDArray[np.float_]:
         """
         Get the sum of object weights per patch.

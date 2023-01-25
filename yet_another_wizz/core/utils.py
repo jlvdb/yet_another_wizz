@@ -66,22 +66,3 @@ def long_num_format(x: float) -> str:
     prefix = str(x).rstrip("0").rstrip(".")
     suffix = ["", "K", "M", "B", "T"][exp]
     return prefix + suffix
-
-
-def load_json(path):
-    with open(path) as f:
-        data_dict = json.load(f)
-        # convert lists to numpy arrays
-        for key, value in data_dict.items():
-            if type(value) is list:
-                data_dict[key] = np.array(value)
-    return data_dict
-
-
-def dump_json(data, path, preview=False):
-    kwargs = dict(indent=4, default=operator.methodcaller("tolist"))
-    if preview:
-        print(json.dumps(data, **kwargs))
-    else:
-        with open(path, "w") as f:
-            json.dump(data, f, **kwargs)
