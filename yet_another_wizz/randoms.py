@@ -23,7 +23,7 @@ class UniformRandoms:
         self.rng = np.random.SeedSequence(seed)
 
     @classmethod
-    def from_catalogue(cls, cat) -> UniformRandoms:
+    def from_catalog(cls, cat) -> UniformRandoms:
         return cls(
             np.rad2deg(cat.ra.min()),
             np.rad2deg(cat.ra.max()),
