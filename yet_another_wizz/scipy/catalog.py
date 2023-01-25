@@ -295,35 +295,29 @@ class Catalog(CatalogBase):
 
     @property
     def centers(self) -> NDArray[np.float_]:
-        return np.array([patch.center for patch in iter(self)])
+        return np.array([self._patches[pid].center for pid in self.ids])
 
     @property
     def radii(self) -> NDArray[np.float_]:
-        return np.array([patch.radius for patch in iter(self)])
+        return np.array([self._patches[pid].radius for pid in self.ids])
 
     def correlate(
         self,
         config: Configuration,
         binned: bool,
-        other: Catalog | None = None
+        other: Catalog | None = None,
+        linkage: PatchLinkage | None = None
     ) -> dict[TypeScaleKey, PairCountResult]:
         auto = other is None
         if not auto and not isinstance(other, Catalog):
             raise TypeError
 
-        # generate the patch linkage (sufficiently close patches)
-        if config.crosspatch:
-            # estimate maximum query radius at low, but non-zero redshift
-            z_ref = 0.05  # TODO: resonable? lower redshift => more overlap
-            max_ang_rad = r_kpc_to_angle(
-                config.scales, z_ref, config.cosmology).max()
-        else:
-            max_ang_rad = 0.0  # only relevenat for cross-patch
-        cat_for_linkage = self
-        if not auto:
-            if len(other) > len(self):
-                cat_for_linkage = other
-        linkage = PatchLinkage.from_catalog(cat_for_linkage, max_ang_rad)
+        if linkage is None:
+            cat_for_linkage = self
+            if not auto:
+                if len(other) > len(self):
+                    cat_for_linkage = other
+            linkage = PatchLinkage.from_setup(config, cat_for_linkage)
         patch1_list, patch2_list = linkage.get_patches(
             self, other, config.crosspatch)
         n_jobs = len(patch1_list)

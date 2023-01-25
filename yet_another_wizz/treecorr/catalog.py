@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from pandas import DataFrame, Interval, IntervalIndex
 from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
 
-from yet_another_wizz.core.catalog import CatalogBase
+from yet_another_wizz.core.catalog import CatalogBase, PatchLinkage
 from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
@@ -191,7 +191,8 @@ class Catalog(CatalogBase):
         self,
         config: Configuration,
         binned: bool,
-        other: Catalog = None
+        other: Catalog = None,
+        linkage: PatchLinkage | None = None
     ) -> dict[TypeScaleKey, PairCountResult]:
         auto = other is None
         if not auto and not isinstance(other, Catalog):

@@ -12,6 +12,7 @@ from scipy.spatial import distance_matrix
 from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.core.coordinates import (
     distance_sphere2sky, position_sphere2sky)
+from yet_another_wizz.core.cosmology import r_kpc_to_angle
 from yet_another_wizz.core.redshifts import NzTrue
 from yet_another_wizz.core.resampling import PairCountResult
 from yet_another_wizz.core.utils import TypePatchKey, TypeScaleKey
@@ -203,7 +204,8 @@ class CatalogBase(ABC):
         self,
         config: Configuration,
         binned: bool,
-        other: CatalogBase = None
+        other: CatalogBase = None,
+        linkage: PatchLinkage | None = None
     ) -> dict[TypeScaleKey, PairCountResult]:
         pass
 
@@ -227,10 +229,10 @@ class PatchLinkage:
         self.pairs = patch_tuples
 
     @classmethod
-    def from_catalog(
+    def from_setup(
         cls,
-        catalog: CatalogBase,
-        max_query_radius: float
+        config: Configuration,
+        catalog: CatalogBase
     ) -> PatchLinkage:
         centers = catalog.centers  # in RA / Dec
         radii = catalog.radii  # radian, maximum distance measured from center
@@ -238,6 +240,16 @@ class PatchLinkage:
         dist = distance_sphere2sky(distance_matrix(centers, centers))
         # compare minimum separation required for patchs to not overlap
         min_sep_deg = np.add.outer(radii, radii)
+
+        # determine the additional overlap from the spatial query
+        if config.crosspatch:
+            # estimate maximum query radius at low, but non-zero redshift
+            z_ref = max(0.05, config.zmin)
+            max_query_radius = r_kpc_to_angle(
+                config.scales, z_ref, config.cosmology).max()
+        else:
+            max_query_radius = 0.0  # only relevenat for cross-patch
+
         # check which patches overlap when factoring in the query radius
         overlaps = (dist - max_query_radius) < min_sep_deg
         patch_pairs = []
