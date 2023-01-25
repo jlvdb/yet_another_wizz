@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from yet_another_wizz.core.catalog import CatalogBase
+from yet_another_wizz.core.catalog import CatalogBase, PatchLinkage
 from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.core.correlation import CorrelationFunction
 from yet_another_wizz.core.utils import Timed, TypeScaleKey
@@ -25,13 +25,16 @@ def autocorrelate(
     object redshifts.
     """
     print(f"autocorrelating")
+    linkage = PatchLinkage.from_setup(config, random)
     with Timed("counting data-data pairs"):
-        DD = data.correlate(config, binned=True)
+        DD = data.correlate(
+            config, binned=True, linkage=linkage)
     with Timed("counting data-random pairs"):
-        DR = data.correlate(config, binned=True, other=random)
+        DR = data.correlate(
+            config, binned=True, other=random, linkage=linkage)
     if compute_rr:
         with Timed("counting random-random pairs"):
-            RR = random.correlate(config, binned=True)
+            RR = random.correlate(config, binned=True, linkage=linkage)
     else:
         RR = _create_dummy_counts(DD)
 
@@ -64,21 +67,26 @@ def crosscorrelate(
         raise ValueError("no randoms provided")
 
     print("crosscorrelating")
+    linkage = PatchLinkage.from_setup(config, unknown)
     with Timed("counting data-data pairs"):
-        DD = reference.correlate(config, binned=False, other=unknown)
+        DD = reference.correlate(
+            config, binned=False, other=unknown, linkage=linkage)
     if compute_dr:
         with Timed("counting data-random pairs"):
-            DR = reference.correlate(config, binned=False, other=unk_rand)
+            DR = reference.correlate(
+                config, binned=False, other=unk_rand, linkage=linkage)
     else:
         DR = _create_dummy_counts(DD)
     if compute_rd:
         with Timed("counting random-data pairs"):
-            RD = ref_rand.correlate(config, binned=False, other=unknown)
+            RD = ref_rand.correlate(
+                config, binned=False, other=unknown, linkage=linkage)
     else:
         RD = _create_dummy_counts(DD)
     if compute_rr:
         with Timed("counting random-random pairs"):
-            RR = ref_rand.correlate(config, binned=False, other=unk_rand)
+            RR = ref_rand.correlate(
+                config, binned=False, other=unk_rand, linkage=linkage)
     else:
         RR = _create_dummy_counts(DD)
 
@@ -86,6 +94,7 @@ def crosscorrelate(
         scale_key: CorrelationFunction(
             dd=DD[scale_key],
             dr=DR[scale_key],
+            rd=RD[scale_key],
             rr=RR[scale_key])
         for scale_key in DD}
     return corrfuncs
