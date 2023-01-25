@@ -9,9 +9,13 @@ from yet_another_wizz.core.utils import Timed, TypeScaleKey
 
 
 def _create_dummy_counts(
-    counts_dict: dict[TypeScaleKey, Any]
+    counts: Any | dict[TypeScaleKey, Any]
 ) -> dict[TypeScaleKey, None]:
-    return {scale_key: None for scale_key in counts_dict}
+    if isinstance(counts, dict):
+        dummy = {scale_key: None for scale_key in counts}
+    else:
+        dummy = None
+    return dummy
 
 
 def autocorrelate(

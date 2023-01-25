@@ -228,7 +228,7 @@ class Catalog(CatalogBase):
                 result[scale_key].append(
                     PairCountResult.from_nncorrelation(intv, correlation))
         if len(result) == 1:
-            result = PairCountResult.from_bins(tuple(result.values()[0]))
+            result = PairCountResult.from_bins(tuple(result.values())[0])
         else:
             for scale_key, binned_result in result.items():
                 result[scale_key] = PairCountResult.from_bins(binned_result)
