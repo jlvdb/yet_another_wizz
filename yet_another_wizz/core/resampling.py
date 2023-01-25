@@ -3,14 +3,16 @@ from __future__ import annotations
 import itertools
 from collections.abc import Collection, Generator, Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
-from pandas import DataFrame, Interval, IntervalIndex
+import pandas as pd
 from treecorr import NNCorrelation
 
-from yet_another_wizz.core.utils import TypePatchKey
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    from pandas import DataFrame, Interval, IntervalIndex
+    from yet_another_wizz.core.utils import TypePatchKey
 
 
 class ArrayDict(Mapping):
@@ -66,7 +68,7 @@ class ArrayDict(Mapping):
         return self._array
 
     def as_dataframe(self) -> DataFrame:
-        return DataFrame(self.as_array(), index=self.keys())
+        return pd.DataFrame(self.as_array(), index=self.keys())
 
 
 @dataclass(frozen=True, repr=False)
@@ -77,7 +79,7 @@ class PairCountData:
 
     def normalise(self) -> NDArray[np.float_]:
         normalised = self.count / self.total
-        return DataFrame(data=normalised.T, index=self.binning)
+        return pd.DataFrame(data=normalised.T, index=self.binning)
 
 
 def bootstrap_iter(
@@ -141,7 +143,7 @@ class PairCountResult:
             count=ArrayDict(keys, count),
             total=ArrayDict(keys, total),
             mask=correlation._ok,
-            binning=IntervalIndex([interval]))
+            binning=pd.IntervalIndex([interval]))
 
     @classmethod
     def from_bins(
@@ -166,7 +168,7 @@ class PairCountResult:
                 raise IndexError("number of bins is inconsistent")
 
         # check the ordering of the bins based on the provided intervals
-        binning = IntervalIndex.from_tuples([
+        binning = pd.IntervalIndex.from_tuples([
             zbin.binning.to_tuples()[0]  # contains just one entry
             for zbin in zbins])
         if not binning.is_non_overlapping_monotonic:
@@ -196,13 +198,13 @@ class PairCountResult:
         return len(self.binning)
 
     def get_patch_count(self) -> DataFrame:
-        return DataFrame(
+        return pd.DataFrame(
             index=self.binning,
             columns=self.keys(),
             data=self.count.as_array().T)
 
     def get_patch_total(self) -> DataFrame:
-        return DataFrame(
+        return pd.DataFrame(
             index=self.binning,
             columns=self.keys(),
             data=self.total.as_array().T)

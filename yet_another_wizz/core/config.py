@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import os
-from typing import Any, get_args
+from typing import TYPE_CHECKING, Any, get_args
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 
 from yet_another_wizz.core.cosmology import TypeCosmology, get_default_cosmology
 from yet_another_wizz.core.utils import scales_to_keys
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, NDArray
 
 
 class BinFactory:

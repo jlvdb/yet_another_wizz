@@ -3,18 +3,22 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass, field, fields
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numpy.typing import NDArray
-from pandas import DataFrame, IntervalIndex, Series
 from matplotlib import pyplot as plt
-from matplotlib.axis import Axis
 
-from yet_another_wizz.core.catalog import CatalogBase, PatchLinkage
-from yet_another_wizz.core.config import Configuration
-from yet_another_wizz.core.resampling import PairCountData, PairCountResult
-from yet_another_wizz.core.utils import TimedLog, TypeScaleKey
+from yet_another_wizz.core.catalog import PatchLinkage
+from yet_another_wizz.core.utils import TimedLog
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    from matplotlib.axis import Axis
+    from pandas import DataFrame, IntervalIndex, Series
+    from yet_another_wizz.core.catalog import CatalogBase
+    from yet_another_wizz.core.config import Configuration
+    from yet_another_wizz.core.resampling import PairCountData, PairCountResult
+    from yet_another_wizz.core.utils import TypeScaleKey
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))

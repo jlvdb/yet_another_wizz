@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import TYPE_CHECKING, Union
 from typing_extensions import TypeAlias
 
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
-from numpy.typing import ArrayLike, NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, NDArray
 
 
 def get_default_cosmology() -> FLRW:

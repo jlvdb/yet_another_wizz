@@ -6,14 +6,16 @@ from abc import ABC, abstractmethod, abstractproperty
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from pandas import DataFrame, IntervalIndex, Series
-from numpy.typing import NDArray
+import pandas as pd
 from matplotlib import pyplot as plt
-from matplotlib.axis import Axis
+
+from yet_another_wizz.core.utils import TimedLog
 
 if TYPE_CHECKING:
+    from matplotlib.axis import Axis
+    from numpy.typing import NDArray
+    from pandas import DataFrame, IntervalIndex, Series
     from yet_another_wizz.core.correlation import CorrelationFunction
-from yet_another_wizz.core.utils import TimedLog
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -108,13 +110,13 @@ class NzTrue(Nz):
 
     @property
     def binning(self) -> IntervalIndex:
-        return IntervalIndex.from_breaks(self._binning)
+        return pd.IntervalIndex.from_breaks(self._binning)
 
     def get(self) -> Series:
         logger.debug("computing redshift distribution")
         Nz = self.counts.sum(axis=0)
         norm = Nz.sum() * self.dz
-        return Series(Nz / norm, index=self.binning)
+        return pd.Series(Nz / norm, index=self.binning)
 
     def generate_bootstrap_patch_indices(
         self,
@@ -147,7 +149,7 @@ class NzTrue(Nz):
             Nz_boot = np.sum(self.counts[patch_idx], axis=1)
             nz_boot = Nz_boot / (
                 Nz_boot.sum(axis=1)[:, np.newaxis] * self.dz[np.newaxis, :])
-        return DataFrame(
+        return pd.DataFrame(
             index=self.binning,
             columns=np.arange(len(patch_idx)),
             data=nz_boot.T)

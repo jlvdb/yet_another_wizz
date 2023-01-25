@@ -3,21 +3,24 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod, abstractproperty
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import astropandas as apd
 import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import distance_matrix
 
-from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.core.coordinates import (
     distance_sphere2sky, position_sphere2sky)
 from yet_another_wizz.core.cosmology import r_kpc_to_angle
-from yet_another_wizz.core.redshifts import NzTrue
-from yet_another_wizz.core.resampling import PairCountResult
-from yet_another_wizz.core.utils import (
-    TypePatchKey, TypeScaleKey, long_num_format)
+from yet_another_wizz.core.utils import long_num_format
+
+if TYPE_CHECKING:
+    from yet_another_wizz.core.config import Configuration
+    from yet_another_wizz.core.redshifts import NzTrue
+    from yet_another_wizz.core.resampling import PairCountResult
+    from yet_another_wizz.core.utils import (
+        TypePatchKey, TypeScaleKey)
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))

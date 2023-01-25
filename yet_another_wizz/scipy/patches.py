@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import gc
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
-from pandas import DataFrame, Interval, IntervalIndex
 from scipy.cluster import vq
 
 from yet_another_wizz.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
 
 from yet_another_wizz.scipy.kdtree import SphericalKDTree
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    from pandas import DataFrame, Interval
 
 
 class NotAPatchFileError(Exception):
@@ -31,7 +34,7 @@ class PatchCatalog:
 
     id = 0
     cachefile = None
-    _data = DataFrame()
+    _data = pd.DataFrame()
     _len = 0
     _total = None
     _has_z = False
@@ -220,7 +223,7 @@ class PatchCatalog:
         if not allow_no_redshift and not self.has_redshifts():
             raise ValueError("no redshifts for iteration provdided")
         if allow_no_redshift:
-            for intv in IntervalIndex.from_breaks(z_bins, closed="left"):
+            for intv in pd.IntervalIndex.from_breaks(z_bins, closed="left"):
                 yield intv, self
         else:
             for intv, bin_data in self._data.groupby(

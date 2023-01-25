@@ -3,15 +3,15 @@ from __future__ import annotations
 import itertools
 import logging
 import os
-import warnings
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
-from pandas import DataFrame, Interval, IntervalIndex
+import pandas as pd
 from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
 
-from yet_another_wizz.core.catalog import CatalogBase, PatchLinkage
+from yet_another_wizz.core.catalog import CatalogBase
 from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
@@ -19,6 +19,10 @@ from yet_another_wizz.core.cosmology import r_kpc_to_angle
 from yet_another_wizz.core.redshifts import NzTrue
 from yet_another_wizz.core.resampling import PairCountResult
 from yet_another_wizz.core.utils import TimedLog, TypeScaleKey, scales_to_keys
+
+if TYPE_CHECKING:
+    from pandas import DataFrame, Interval
+    from yet_another_wizz.core.catalog import PatchLinkage
 
 
 logger = logging.getLogger(__name__)
@@ -31,7 +35,7 @@ def _iter_bin_masks(
 ) -> Iterator[tuple[Interval, NDArray[np.bool_]]]:
     if closed not in ("left", "right"):
         raise ValueError("'closed' must be either of 'left', 'right'")
-    intervals = IntervalIndex.from_breaks(bins, closed=closed)
+    intervals = pd.IntervalIndex.from_breaks(bins, closed=closed)
     bin_ids = np.digitize(data, bins, right=(closed=="right"))
     for i, interval in zip(range(1, len(bins)), intervals):
         yield interval, bin_ids==i

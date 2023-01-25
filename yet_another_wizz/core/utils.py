@@ -4,10 +4,12 @@ import json
 import operator
 from datetime import timedelta
 from timeit import default_timer
-from typing import Callable
+from typing import TYPE_CHECKING,  Callable
 
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 TypePatchKey = tuple[int, int]

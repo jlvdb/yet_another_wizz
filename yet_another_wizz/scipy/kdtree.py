@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
-from numpy.typing import NDArray
 from scipy.spatial import cKDTree
 
 from yet_another_wizz.core.coordinates import (
     position_sky2sphere, distance_sky2sphere)
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 class SphericalKDTree:
