@@ -25,6 +25,7 @@ class SharedArray:
     @staticmethod
     def _get_mp_type(dtype: DTypeLike | str) -> str:
         type_map = {
+            "|b1": "b",  # no bool correspondance, but same number of bytes
             "i1": "h", "u1": "H",
             "i2": "i", "u2": "I",
             "i4": "l", "u4": "L",
