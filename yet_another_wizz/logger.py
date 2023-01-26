@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
-from timeit import default_timer
 import sys
+from datetime import timedelta
+from timeit import default_timer
 from typing import Callable
 
 
