@@ -17,10 +17,11 @@ from yet_another_wizz.core.parallel import ParallelHelper
 from yet_another_wizz.core.redshifts import NzTrue
 from yet_another_wizz.core.resampling import ArrayDict, PairCountResult
 from yet_another_wizz.core.utils import (
-    LimitTracker, TimedLog, TypePatchKey, TypeScaleKey, scales_to_keys)
+    LimitTracker, TypePatchKey, TypeScaleKey, scales_to_keys)
 
 from yet_another_wizz.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
+from yet_another_wizz.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -143,6 +144,7 @@ class Catalog(CatalogBase):
                 patch_ids = assign_patches(
                     patch_centers,
                     data[ra_name].to_numpy(), data[dec_name].to_numpy())
+                n_patches = len(patch_centers)
                 log_msg = f"applying {n_patches} patches from external data"
             patch_name = "patch"  # the default name
             data[patch_name] = patch_ids
@@ -152,7 +154,7 @@ class Catalog(CatalogBase):
             centers = dict()  # this can be empty
 
         # run groupby first to avoid any intermediate copies of full data
-        with TimedLog(self.logger.debug, log_msg):
+        with TimedLog(self.logger.info, log_msg):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
             for patch_id, patch_data in data.groupby(patch_name):
@@ -273,7 +275,7 @@ class Catalog(CatalogBase):
     def redshifts(self) -> NDArray[np.float_] | None:
         if self.has_redshifts():
             return np.concatenate([
-                patch.redshift for patch in iter(self)])
+                patch.redshifts for patch in iter(self)])
         else:
             return None
 

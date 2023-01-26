@@ -9,7 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from yet_another_wizz.core.catalog import PatchLinkage
-from yet_another_wizz.core.utils import TimedLog
+from yet_another_wizz.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
