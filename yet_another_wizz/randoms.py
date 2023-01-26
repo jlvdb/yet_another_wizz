@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
-
-import multiprocessing
 
 import numpy as np
 import pandas as pd
 
+from yet_another_wizz.core.parallel import (
+    POOL_SHARE, ParallelHelper, SharedArray)
+from yet_another_wizz.core.utils import long_num_format
+from yet_another_wizz.logger import TimedLog
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame
+    from yet_another_wizz.core.catalog import CatalogBase
+
+
+logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
 class UniformRandoms:
@@ -27,12 +35,17 @@ class UniformRandoms:
         self.rng = np.random.SeedSequence(seed)
 
     @classmethod
-    def from_catalog(cls, cat) -> UniformRandoms:
+    def from_catalog(
+        cls,
+        cat: CatalogBase,
+        seed: int = 12345
+    ) -> UniformRandoms:
         return cls(
             np.rad2deg(cat.ra.min()),
             np.rad2deg(cat.ra.max()),
             np.rad2deg(cat.dec.min()),
-            np.rad2deg(cat.dec.max()))
+            np.rad2deg(cat.dec.max()),
+            seed=seed)
 
     @staticmethod
     def sky2cylinder(
@@ -59,47 +72,81 @@ class UniformRandoms:
         draw_from: dict[str, NDArray] | None = None,
         n_threads: int = 1
     ) -> DataFrame:
-        seeds = self.rng.spawn(n_threads)
-        if size <= 100 * n_threads:
+
+        # seeds for threads
+        if size <= 100 * n_threads:  # there is some kind of floor
             n_threads = 1
-        sizes = np.diff(np.linspace(0, size, n_threads+1).astype(np.int_))
-        args = []
-        for i in range(n_threads):
-            args.append([self, seeds[i], sizes[i], names, draw_from])
-        with multiprocessing.Pool(n_threads) as pool:
-            chunks = pool.starmap(_generate_uniform_randoms, args)
-        return pd.concat(chunks)
+        seeds = self.rng.spawn(n_threads)
+        # distribute load
+        idx_break = np.linspace(0, size, n_threads+1).astype(np.int_)
+        start = idx_break[:-1]
+        end = idx_break[1:]
+
+        # create output arrays
+        shares = dict(
+            ra=SharedArray.empty((size,), "f8"),
+            dec=SharedArray.empty((size,), "f8"))
+        if draw_from is not None:
+            shares["in"] = {
+                key: SharedArray.from_numpy(array)
+                for key, array in draw_from.items()}
+            shares["out"] = {
+                key: SharedArray.empty((size,), array.dtype)
+                for key, array in draw_from.items()}
+        if names is None:
+            names = ["ra", "dec"]
+
+        # process
+        msg = f"generate ({long_num_format(size)} uniform randoms)"
+        with TimedLog(logger.info, msg):
+            with ParallelHelper(_generate_uniform_randoms, n_threads) as pool:
+                pool.shares = shares  # assign in bulk
+                pool.add_constant(self)
+                pool.add_iterable(seeds)
+                pool.add_iterable(start)
+                pool.add_iterable(end)
+                pool.result()  # output direclty pasted into shared arrays
+                # convert to dataframe
+                rand = pd.DataFrame({
+                    names[0]: pool.shares["ra"].to_numpy(copy=True),
+                    names[1]: pool.shares["dec"].to_numpy(copy=True)})
+                for col, data in pool.shares["out"].items():
+                    rand[col] = data.to_numpy(copy=True)
+                # will delete shared arrays after this
+        return rand
 
 
 def _generate_uniform_randoms(
     inst: UniformRandoms,
     seed: np.random.SeedSequence,
-    size: int,
-    names: list[str, str] | None = None,
-    draw_from: dict[str, NDArray] | None = None
-) -> DataFrame:
+    start: int,
+    end: int
+) -> int:
     rng = np.random.default_rng(seed)
-    if names is None:
-        names = ["ra", "dec"]
+    size = end - start
+    ra = POOL_SHARE["ra"].to_numpy()
+    dec = POOL_SHARE["dec"].to_numpy()
     # generate positions
-    x = np.random.uniform(inst.x_min, inst.x_max, size)
-    y = np.random.uniform(inst.y_min, inst.y_max, size)
-    ra, dec = UniformRandoms.cylinder2sky(x, y).T
-    rand = pd.DataFrame({names[0]: ra, names[1]: dec})
+    x = rng.uniform(inst.x_min, inst.x_max, size)
+    y = rng.uniform(inst.y_min, inst.y_max, size)
+    ra_dec = UniformRandoms.cylinder2sky(x, y)
+    ra[start:end] = ra_dec[:, 0]
+    dec[start:end] = ra_dec[:, 1]
     # generate random draw
-    if draw_from is not None:
+    if "in" in POOL_SHARE:
         N = None
-        for col in draw_from.values():
+        for col, data in POOL_SHARE["in"].items():
             if N is None:
-                if len(col.shape) > 1:
+                if len(data.shape) > 1:
                     raise ValueError("data to draw from must be 1-dimensional")
-                N = len(col)
+                N = len(data)
             else:
-                if len(col) != N:
+                if len(data) != N:
                     raise ValueError(
                         "length of columns to draw from does not match")
         draw_idx = rng.integers(0, N, size=size)
         # draw and insert data
-        for key, col in draw_from.items():
-            rand[key] = col[draw_idx]
-    return rand
+        for col, data in POOL_SHARE["in"].items():
+            rand = POOL_SHARE["out"][col].to_numpy()
+            rand[start:end] = data.to_numpy()[draw_idx]
+    return size
