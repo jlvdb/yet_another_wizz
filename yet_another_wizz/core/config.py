@@ -4,7 +4,9 @@ import os
 from typing import TYPE_CHECKING, Any, get_args
 
 import numpy as np
+import yaml
 
+from yet_another_wizz import __version__
 from yet_another_wizz.core.cosmology import TypeCosmology, get_default_cosmology
 from yet_another_wizz.core.utils import scales_to_keys
 
@@ -61,6 +63,8 @@ class BinFactory:
 
 
 class Configuration:
+
+    version = __version__
 
     def __init__(
         self,
@@ -181,9 +185,6 @@ class Configuration:
         self.zmax = zbins[-1]
         self.nbins = len(zbins) - 1
 
-    def get_version(self):
-        raise NotImplementedError
-
     def as_dict(self) -> dict[str, Any]:
         values = {}
         for attr in dir(self):
@@ -193,3 +194,10 @@ class Configuration:
             if not callable(attribute):
                 values[attr] = attribute
         return values
+
+    @classmethod
+    def from_yaml(cls, path: str) -> Configuration:
+        raise NotImplementedError
+
+    def to_yaml(self, path: str) -> None:
+        raise NotImplementedError
