@@ -1,5 +1,5 @@
 # gloabl imports
-from .. import core
+from .. import __version__, core
 from ..randoms import UniformRandoms
 from ..core.config import Configuration
 from ..core.correlation import autocorrelate, crosscorrelate
