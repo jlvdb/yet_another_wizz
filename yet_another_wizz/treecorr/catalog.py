@@ -18,7 +18,9 @@ from yet_another_wizz.core.coordinates import (
 from yet_another_wizz.core.cosmology import r_kpc_to_angle
 from yet_another_wizz.core.redshifts import NzTrue
 from yet_another_wizz.core.resampling import PairCountResult
-from yet_another_wizz.core.utils import TimedLog, TypeScaleKey, scales_to_keys
+from yet_another_wizz.core.utils import TypeScaleKey, scales_to_keys
+
+from yet_another_wizz.logger import TimedLog
 
 if TYPE_CHECKING:
     from pandas import DataFrame, Interval
@@ -74,19 +76,21 @@ class Catalog(CatalogBase):
         # TODO: different convention of patch centers in TC and SC
         elif isinstance(patch_centers, Catalog):
             kwargs["patch_centers"] = patch_centers._catalog.get_patch_centers()
+            n_patches = patch_centers.n_patches()
             log_msg = f"applying {n_patches} patches from external data"
         elif patch_centers is not None:
             self.logger.warn(
                 "treecorr and scipy versions of the Catalog class have "
                 "different representations of patch centers internally")
             kwargs["patch_centers"] = patch_centers
+            n_patches = len(patch_centers)
             log_msg = f"applying {n_patches} patches from external data"
         else:
             raise ValueError(
                 "either of 'patch_name', 'patch_centers', or 'n_patches' "
                 "must be provided")
 
-        with TimedLog(self.logger.debug, log_msg):
+        with TimedLog(self.logger.info, log_msg):
             self._catalog = TreeCorrCatalog(
                 ra=data[ra_name], ra_units="degrees",
                 dec=data[dec_name], dec_units="degrees",
