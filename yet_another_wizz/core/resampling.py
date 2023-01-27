@@ -5,6 +5,7 @@ from collections.abc import Collection, Generator, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import h5py
 import numpy as np
 import pandas as pd
 from treecorr import NNCorrelation
@@ -13,6 +14,9 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval, IntervalIndex
     from yet_another_wizz.core.utils import TypePatchKey
+
+
+_compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 
 class ArrayDict(Mapping):
@@ -69,6 +73,20 @@ class ArrayDict(Mapping):
 
     def as_dataframe(self) -> DataFrame:
         return pd.DataFrame(self.as_array(), index=self.keys())
+
+
+def arraydict_to_hdf(array: ArrayDict, dest: h5py.Group) -> None:
+    # we use tuple keys, pairs of ints
+    keys = np.array(array.keys())
+    dest.create_dataset("keys", data=keys, **_compression)
+    dest.create_dataset("data", data=array._array, **_compression)
+
+
+def arraydict_from_hdf(source: h5py.Group) -> ArrayDict:
+    # we use tuple keys, pairs of ints
+    keys = [tuple(key) for key in source["keys"][:]]
+    data = source["data"][:]
+    return ArrayDict(keys, data)
 
 
 @dataclass(frozen=True, repr=False)
@@ -289,3 +307,26 @@ class PairCountResult:
             raise NotImplementedError(
                 f"sampling method '{method}' not implemented")
         return samples
+
+    @classmethod
+    def from_hdf(cls, source: h5py.Group) -> PairCountResult:
+        npatch = source["npatch"][()]
+        mask = source["mask"][:]
+        count = arraydict_from_hdf(source["count"])
+        total = arraydict_from_hdf(source["total"])
+        dset = source["binning"]
+        left, right = dset[:].T
+        binning = pd.IntervalIndex.from_arrays(
+            left, right, closed=dset.attrs["closed"])
+        return cls(npatch, count, total, mask, binning)
+
+    def to_hdf(self, dest: h5py.Group) -> None:
+        dest.create_dataset("npatch", data=self.npatch)  # scalar
+        arraydict_to_hdf(self.count, dest["count"])
+        arraydict_to_hdf(self.total, dest["total"])
+        dest.create_dataset("mask", data=self.mask, **_compression)
+        binning = np.column_stack([
+            self.binning.left.values, self.binning.right.values])
+        dset = dest.create_dataset(
+            "binning", data=binning, **_compression)
+        dset.attrs["closed"] = self.binning.closed

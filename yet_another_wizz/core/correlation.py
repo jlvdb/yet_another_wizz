@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
+import h5py
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -166,13 +167,6 @@ class CorrelationFunction:
         other = f"npatches={self.npatch}, nbins={len(self.binning)}"
         return f"{name}({pairs}, {other})"
 
-    def write(self, fpath: str) -> None:
-        raise NotImplementedError  # TODO
-
-    @classmethod
-    def load(self, fpath: str) -> CorrelationFunction:
-        raise NotImplementedError  # TODO
-
     @property
     def binning(self) -> IntervalIndex:
         return self.dd.binning
@@ -318,6 +312,28 @@ class CorrelationFunction:
         kwargs.update(scatter_kwargs)
         ax.errorbar(z, y, yerr, **kwargs)
 
+    @classmethod
+    def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrelationFunction:
+        def _try_load(group: h5py.Group) -> PairCountResult | None:
+            try:
+                return PairCountResult.from_hdf(group)
+            except KeyError:
+                return None
+
+        dd = PairCountResult.from_hdf(source["data_data"])
+        dr = _try_load(source["data_random"])
+        rd = _try_load(source["random_data"])
+        rr = _try_load(source["random_random"])
+        npatch = tuple(source["npatch"][:])
+        return CorrelationFunction(dd, dr, rd, rr, npatch)
+
+    def to_hdf(self, dest: h5py.File | h5py.Group) -> None:
+        self.dd.to_hdf(dest["dd"])
+        for kind in ("dr", "rd", "rr"):
+            data: PairCountResult | None = getattr(self, kind)
+            if data is not None:
+                data.to_hdf(dest[kind])
+        dest.create_dataset("npatch", data=self.npatch)
 
 
 def _create_dummy_counts(
