@@ -192,7 +192,7 @@ class Catalog(CatalogBase):
         cls,
         cache_directory: str
     ) -> Catalog:
-        cls.info(f"restoring from cache directory '{cache_directory}'")
+        cls.logger.info(f"restoring from cache directory '{cache_directory}'")
         new = cls.__new__(cls)
         # load the patch properties
         fpath = os.path.join(cache_directory, "properties.feather")
