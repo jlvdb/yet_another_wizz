@@ -20,54 +20,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
-class BinFactory:
-
-    def __init__(
-        self,
-        zmin: float,
-        zmax: float,
-        nbins: int,
-        cosmology: TypeCosmology | None = None
-    ):
-        if zmin >= zmax:
-            raise ValueError("'zmin' >= 'zmax'")
-        if cosmology is None:
-            cosmology = get_default_cosmology()
-        self.cosmology = cosmology
-        self.zmin = zmin
-        self.zmax = zmax
-        self.nbins = nbins
-
-    def linear(self) -> NDArray[np.float_]:
-        return np.linspace(self.zmin, self.zmax, self.nbins + 1)
-
-    def comoving(self) -> NDArray[np.float_]:
-        cbinning = np.linspace(
-            self.cosmology.comoving_distance(self.zmin).value,
-            self.cosmology.comoving_distance(self.zmax).value,
-            self.nbins + 1)
-        # construct a spline mapping from comoving distance to redshift
-        zarray = np.linspace(0, 10.0, 5000)
-        carray = self.cosmology.comoving_distance(zarray).value
-        return np.interp(cbinning, xp=carray, fp=zarray)  # redshift @ cbinning
-
-    def logspace(self) -> NDArray[np.float_]:
-        logbinning = np.linspace(
-            np.log(1.0 + self.zmin), np.log(1.0 + self.zmax), self.nbins + 1)
-        return np.exp(logbinning) - 1.0
-
-    @staticmethod
-    def check(zbins: NDArray[np.float_]) -> None:
-        if np.any(np.diff(zbins) <= 0):
-            raise ValueError("redshift bins must be monotonicaly increasing")
-
-    def get(self, method: str) -> NDArray[np.float_]:
-        try:
-            return getattr(self, method)()
-        except AttributeError:
-            raise ValueError(f"invalid binning method '{method}'")
-
-
 class ConfigurationError(Exception):
     pass
 
@@ -88,6 +40,14 @@ def _parse_section_error(exception: Exception, section: str) -> NoReturn:
     raise
 
 
+def _array_equal(arr1: NDArray, arr2: NDArray) -> bool:
+    return (
+        isinstance(arr1, np.ndarray) and
+        isinstance(arr2, np.ndarray) and
+        arr1.shape == arr2.shape and
+        (arr1 == arr2).all())
+
+
 def _check_version(version: str) -> None:
     msg = "configuration has be generated on a new version than installed: "
     msg += f"{version} > {__version__}"
@@ -102,14 +62,6 @@ def _check_version(version: str) -> None:
         # check if this is a subversion
         if len(other) > len(this):
             raise ConfigurationError(msg)
-
-
-def _array_equal(arr1: NDArray, arr2: NDArray) -> bool:
-    return (
-        isinstance(arr1, np.ndarray) and
-        isinstance(arr2, np.ndarray) and
-        arr1.shape == arr2.shape and
-        (arr1 == arr2).all())
 
 
 def _cosmology_to_yaml(cosmology: TypeCosmology) -> str:
@@ -139,25 +91,6 @@ def _parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
         raise ConfigurationError(
             f"'cosmology' must be instance of: {which}")
     return cosmology
-
-
-def _is_manual_binning(
-    zbins,
-    *auto_args,
-    require: bool = True,
-    warn: bool = True
-) -> bool:
-    has_no_auto_args = any(val is None for val in auto_args)
-    if zbins is None:
-        if has_no_auto_args and require:
-            raise ConfigurationError(
-                "either 'zbins' or 'zmin', 'zmax', 'nbins' are required")
-        return False
-    else:
-        if not has_no_auto_args and warn:
-            logger.warn(
-                "'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
-        return True
 
 
 @dataclass(frozen=True)
@@ -213,6 +146,73 @@ class ScalesConfig:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _is_manual_binning(
+    zbins,
+    *auto_args,
+    require: bool = True,
+    warn: bool = True
+) -> bool:
+    has_no_auto_args = any(val is None for val in auto_args)
+    if zbins is None:
+        if has_no_auto_args and require:
+            raise ConfigurationError(
+                "either 'zbins' or 'zmin', 'zmax', 'nbins' are required")
+        return False
+    else:
+        if not has_no_auto_args and warn:
+            logger.warn(
+                "'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
+        return True
+
+
+class BinFactory:
+
+    def __init__(
+        self,
+        zmin: float,
+        zmax: float,
+        nbins: int,
+        cosmology: TypeCosmology | None = None
+    ):
+        if zmin >= zmax:
+            raise ValueError("'zmin' >= 'zmax'")
+        if cosmology is None:
+            cosmology = get_default_cosmology()
+        self.cosmology = cosmology
+        self.zmin = zmin
+        self.zmax = zmax
+        self.nbins = nbins
+
+    def linear(self) -> NDArray[np.float_]:
+        return np.linspace(self.zmin, self.zmax, self.nbins + 1)
+
+    def comoving(self) -> NDArray[np.float_]:
+        cbinning = np.linspace(
+            self.cosmology.comoving_distance(self.zmin).value,
+            self.cosmology.comoving_distance(self.zmax).value,
+            self.nbins + 1)
+        # construct a spline mapping from comoving distance to redshift
+        zarray = np.linspace(0, 10.0, 5000)
+        carray = self.cosmology.comoving_distance(zarray).value
+        return np.interp(cbinning, xp=carray, fp=zarray)  # redshift @ cbinning
+
+    def logspace(self) -> NDArray[np.float_]:
+        logbinning = np.linspace(
+            np.log(1.0 + self.zmin), np.log(1.0 + self.zmax), self.nbins + 1)
+        return np.exp(logbinning) - 1.0
+
+    @staticmethod
+    def check(zbins: NDArray[np.float_]) -> None:
+        if np.any(np.diff(zbins) <= 0):
+            raise ValueError("redshift bins must be monotonicaly increasing")
+
+    def get(self, method: str) -> NDArray[np.float_]:
+        try:
+            return getattr(self, method)()
+        except AttributeError:
+            raise ValueError(f"invalid binning method '{method}'")
 
 
 @dataclass(frozen=True)
