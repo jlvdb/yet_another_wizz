@@ -25,7 +25,9 @@ class Input:
     def to_dict(self):
         result = {}
         for key, value in asdict(self).items():
-            if isinstance(value, Path):
+            if value is None:
+                continue
+            elif isinstance(value, Path):
                 result[key] = str(value)
             else:
                 result[key] = value
@@ -61,13 +63,16 @@ class InputRegister:
                 "allowed characters in 'identifier' are alpha-numeric and '-_'")
         if identifier in self._entries and not force:
             raise KeyError(f"identifier '{identifier}' already exists")
+        if not isinstance(entry, Input):
+            raise TypeError(
+                f"input entries must be of type '{Input}', got '{type(entry)}'")
         self._entries[identifier] = entry
 
     def get(self, identifier: str) -> Input:
         try:
             return self._entries[identifier]
         except KeyError as e:
-            e.args = (f"input identifier '{identifier}' does not exist")
+            e.args = (f"input identifier '{identifier}' does not exist",)
             raise
 
 
