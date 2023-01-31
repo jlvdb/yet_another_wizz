@@ -180,48 +180,56 @@ class Setup:
         print(yaml.dump(self.jobs))
 
 
+def _setup_path(path: Path) -> Path:
+    return path.joinpath("setup.yaml")
+
+
 class ProjectDirectory:
 
     def __init__(self, path: Path | str) -> None:
-        self.path = Path(path).expanduser()
-        self._setup = Setup(self.setup_file)
+        self._path = Path(path).expanduser()
+        if not self.path.exists():
+            raise FileNotFoundError(
+                f"project directory '{self.path}' does not exist")
+        self._setup = Setup(_setup_path(self.path))
+        # create any missing directories
+        self.counts_dir.mkdir(exist_ok=True)
+        self.estimate_dir.mkdir(exist_ok=True)
 
     @classmethod
     def create(
         cls,
         path: Path | str,
         config: Configuration,
-        cachepath: Path | str,
+        cachepath: Path | str | None = None,
         backend: str = "scipy"
     ) -> ProjectDirectory:
-        new = cls.__new__(cls)
-        new.path = Path(path).expanduser()
-        new.path.mkdir(parents=True, exist_ok=False)
-        new._setup = Setup.create(
-            new.setup_file, config=config, cachepath=cachepath, backend=backend)
-        return new
+        path = Path(path).expanduser()
+        path.mkdir(parents=True, exist_ok=False)
+        if cachepath is None:
+            cachepath = path.joinpath("cache")
+        Setup.create(
+            _setup_path(path), config=config,
+            cachepath=cachepath, backend=backend)
+        return cls(path)
 
     @property
-    def setup_file(self) -> Path:
-        return self.path.joinpath("setup.yaml")
+    def path(self) -> Path:
+        return self._path
 
     @property
     def setup(self) -> Setup:
         return self._setup
 
     @property
-    def cache_dir(self) -> Path:
-        return self._setup.cachepath
-
-    @property
     def counts_dir(self) -> Path:
-        return self.path.joinpath()
+        return self.path.joinpath("paircounts")
 
     def list_counts_scales(self) -> list(str):
         return [path.name for path in self.counts_dir.iterdir()]
 
     def get_counts(self, scale_key: str) -> CountsDirectory:
-        path = self.cache_dir.joinpath(scale_key)
+        path = self.counts_dir.joinpath(scale_key)
         if not path.exists():
             raise ValueError(f"counts for scale '{scale_key}' do not exist")
         return CountsDirectory(path)
@@ -234,7 +242,7 @@ class ProjectDirectory:
         return [path.name for path in self.estimate_dir.iterdir()]
 
     def get_estimate(self, scale_key: str) -> EstimateDirectory:
-        path = self.cache_dir.joinpath(scale_key)
+        path = self.estimate_dir.joinpath(scale_key)
         if not path.exists():
             raise ValueError(f"estimate for scale '{scale_key}' does not exist")
         return EstimateDirectory(path)
