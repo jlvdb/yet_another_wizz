@@ -16,6 +16,7 @@ from yet_another_wizz.core.cosmology import r_kpc_to_angle
 from yet_another_wizz.core.utils import long_num_format
 
 if TYPE_CHECKING:
+    from pandas import DataFrame
     from yet_another_wizz.core.config import Configuration
     from yet_another_wizz.core.redshifts import NzTrue
     from yet_another_wizz.core.resampling import PairCountResult
@@ -29,6 +30,22 @@ logger = logging.getLogger(__name__.replace(".core.", "."))
 class CatalogBase(ABC):
 
     logger = logging.getLogger("yet_another_wizz.Catalog")
+
+    @abstractmethod
+    def __init__(
+        self,
+        data: DataFrame,
+        ra_name: str,
+        dec_name: str,
+        *,
+        patch_name: str | None = None,
+        patch_centers: CatalogBase | NDArray[np.float_] | None = None,
+        n_patches: int | None = None,
+        redshift_name: str | None = None,
+        weight_name: str | None = None,
+        cache_directory: str | None = None
+    ) -> None:
+        raise NotImplementedError
 
     @classmethod
     def from_file(

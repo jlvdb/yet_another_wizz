@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from yet_another_wizz.core.cosmology import TypeCosmology
 
 
-
 logger = logging.getLogger(__name__)
 
 
