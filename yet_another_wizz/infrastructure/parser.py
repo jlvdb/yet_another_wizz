@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from typing import Callable
+from pathlib import Path
 
 from astropy.cosmology import available as cosmology_avaliable
 
 from yet_another_wizz import __version__
-from yet_another_wizz.infrastructure.data import InputParser
-from yet_another_wizz.infrastructure import jobs
+from yet_another_wizz.infrastructure.data import Input, Path_exists
 
 
 def create_subparser(
@@ -25,12 +24,88 @@ def create_subparser(
         help="show additional information in terminal, repeat to show debug messages")
     if wdir:
         parser.add_argument(
-            "wdir", metavar="<path>", help="project directory, must exist")
+            "wdir", metavar="<path>", type=Path_exists,
+            help="project directory, must exist")
     if threads:
         parser.add_argument(
             "--threads", type=int, metavar="<int>",
             help="number of threads to use (default: from configuration)")
     return parser
+
+
+def add_input_parser(
+    parser: argparse.ArgumentParser,
+    title: str,
+    prefix: str,
+    required: bool = False,
+    add_index: bool = False,
+    require_z: bool = False
+):
+    # create an argument group for the parser
+    opt = "" if required else " (optional)"
+    group = parser.add_argument_group(
+        title=title, description=f"specify the {title} input file{opt}")
+    group.add_argument(
+        f"--{prefix}-path", required=required, type=Path_exists,
+        metavar="<file>",
+        help="input file path")
+    group.add_argument(
+        f"--{prefix}-ra", required=required, metavar="<str>",
+        help="column name of right ascension")
+    group.add_argument(
+        f"--{prefix}-dec", required=required, metavar="<str>",
+        help="column name of declination")
+    group.add_argument(
+        f"--{prefix}-z", metavar="<str>", required=(required and require_z),
+        help="column name of redshift")
+    group.add_argument(
+        f"--{prefix}-w", metavar="<str>",
+        help="column name of object weight")
+    group.add_argument(
+        f"--{prefix}-patch", metavar="<str>",
+        help="column name of patch assignment index")
+    if add_index:
+        group.add_argument(
+            f"--{prefix}-idx", type=int, metavar="<int>",
+            help="integer index to identify the bin (default: auto)")
+    group.add_argument(
+        f"--{prefix}-cache", action="store_true",
+        help="cache the data in the project's cache directory")
+
+
+def get_input_from_args(
+    prefix: str,
+    args,
+    require_z: bool = False
+) -> Input | None:
+    # mapping of parser argument name suffix to in Input class argument
+    suffix_to_kwarg = dict(
+        path="filepath", ra="ra", dec="dec", z="redshift",
+        w="weight", patch="patches", cache="cache", idx="index")
+    # get all entries in args that match the given prefix
+    args_subset = {}
+    for arg, value in vars(args).items():
+        if arg.startswith(f"{prefix}_"):
+            suffix = arg[len(prefix)+1:]
+            args_subset[suffix] = value
+    # the argument group can be optional
+    if args_subset["path"] is None:
+        return None
+    else:
+        # check for optionally required arguments not known to the parser
+        required = ["ra", "dec"]
+        if require_z:
+            required.append("z")
+        for suffix in required:
+            if suffix not in args_subset:
+                arg = f"--{prefix}-{suffix}"
+                raise ValueError(f"the following arguments are required: {arg}")
+        # return the Input instance
+        kwargs = {}
+        for suffix, value in args_subset.items():
+            kw_name = suffix_to_kwarg[suffix]
+            kwargs[kw_name] = value
+        return Input(**kwargs)
 
 
 parser = argparse.ArgumentParser(
@@ -52,7 +127,8 @@ parser_init = create_subparser(
     description="Initialise and create a project directory with a configuration. Specify the reference sample data and optionally randoms.",
     wdir=False, threads=False)
 parser_init.add_argument(  # manual since special help text
-    "wdir", metavar="<path>", help="project directory, must not exist")
+    "wdir", metavar="<path>", type=Path,
+    help="project directory, must not exist")
 
 parser_init.add_argument(
     "--backend", choices=("scipy", "treecorr"), default="scipy",
@@ -61,11 +137,9 @@ parser_init.add_argument(
     "--cosmology", choices=cosmology_avaliable, default="Planck15",
     help="cosmological model used for distance calculations (see astropy.cosmology, default: %(default)s)")
 
-ref_argnames = InputParser(
-    parser_init, "reference (data)", prefix="ref-", required=True, require_z=True)
+add_input_parser(parser_init, "reference (data)", prefix="ref", required=True, require_z=True)
 
-rand_argnames = InputParser(
-    parser_init, "reference (random)", prefix="rand-", required=False)
+add_input_parser(parser_init, "reference (random)", prefix="rand", required=False, require_z=True)
 
 group_scales = parser_init.add_argument_group(
     title="measurement scales",
@@ -78,7 +152,7 @@ group_scales.add_argument(
     help="(list of) upper scale cut in kpc (pyhsical, default: %(default)s)")
 group_scales.add_argument(
     "--rweight", type=float, metavar="<float>",
-    help="weight galaxy pairs by [separation]**[weight_scale] (default: no weight)")
+    help="weight galaxy pairs by separation [separation]**[--rweight] (default: no weight)")
 group_scales.add_argument(
     "--rbin-num", type=int, metavar="<int>",
     help="radial resolution (number of log bins) to compute separation weights for galaxy pairs (default: %(default)s")
@@ -87,10 +161,10 @@ group_bins = parser_init.add_argument_group(
     title="redshift binning",
     description="sets the redshift binning for the clustering redshifts")
 group_bins.add_argument(
-    "--zmax", default=0.01, type=float, metavar="<float>",
+    "--zmin", default=0.01, type=float, metavar="<float>",
     help="lower redshift limit (default: %(default)s)")
 group_bins.add_argument(
-    "--zmin", default=3.0, type=float, metavar="<float>",
+    "--zmax", default=3.0, type=float, metavar="<float>",
     help="upper redshift limit (default: %(default)s)")
 group_bins.add_argument(
     "--zbin-num", default=30, type=int, metavar="<int>",
@@ -109,6 +183,9 @@ group_backend.add_argument(
 group_backend.add_argument(
     "--no-crosspatch", action="store_true",
     help="disable counting pairs across patch boundaries (scipy backend only)")
+group_backend.add_argument(
+    "--cache-path", metavar="<path>", type=Path,
+    help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
 group_backend.add_argument(
     "--threads", type=int, metavar="<int>",
     help="default number of threads to use if not specified (default: all)")

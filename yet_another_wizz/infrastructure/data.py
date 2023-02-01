@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import argparse
 import string
-from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import NoReturn
 
 
 @dataclass(frozen=True)
@@ -83,77 +81,3 @@ def Path_exists(path: str) -> Path:
     if not filepath.is_file():
         raise argparse.ArgumentTypeError(f"path '{path}' is not a file")
     return filepath
-
-
-class InputParser:
-
-    def __init__(
-        self,
-        parser: argparse.ArgumentParser,
-        title: str,
-        prefix: str = "",
-        required: bool = False,
-        add_index: bool = False,
-        require_z: bool = False
-    ) -> None:
-        self.parser = parser
-        # create mapping of Input argument names to parser name space
-        kwarg_parser_names = dict(
-            filepath="path", ra="ra", dec="dec", redshift="z",
-            weight="w", patches="patch", cache="cache")
-        self.kwarg_parser_map = {
-            kwarg: f"{prefix}{name}".replace("-", "_")
-            for kwarg, name in kwarg_parser_names.items()}
-        self.require_z = require_z
-        # create an argument group for the parser
-        opt = "" if required else " (optional)"
-        group = parser.add_argument_group(
-            title=title, description=f"specify the {title} input file{opt}")
-        group.add_argument(
-            f"--{prefix}path", required=required, type=Path_exists,
-            metavar="<file>",
-            help="input file path")
-        group.add_argument(
-            f"--{prefix}ra", required=required, metavar="<str>",
-            help="column name of right ascension")
-        group.add_argument(
-            f"--{prefix}dec", required=required, metavar="<str>",
-            help="column name of declination")
-        group.add_argument(
-            f"--{prefix}z", metavar="<str>", required=(required and require_z),
-            help="column name of redshift")
-        group.add_argument(
-            f"--{prefix}w", metavar="<str>",
-            help="column name of object weight")
-        group.add_argument(
-            f"--{prefix}patch", metavar="<str>",
-            help="column name of patch assignment index")
-        if add_index:
-            kwarg_parser_names["index"] = "idx"
-            group.add_argument(
-                f"--{prefix}idx", type=int, metavar="<int>",
-                help="integer index to identify the bin (default: auto)")
-        group.add_argument(
-            f"--{prefix}cache", action="store_true",
-            help="cache the data in the project's cache directory")
-
-    def raise_required_missing_error(self, name) -> NoReturn:
-        option = self.kwarg_parser_map[name].replace("_", "-")
-        raise self.parser.error(
-            f"the following arguments are required: --{option}")
-
-    def parse(self, args: Sequence[str] | None = None) -> Input | None:
-        args = self.parser.parse_args(args)
-        kwargs = {}
-        for kw_name, parse_name in self.kwarg_parser_map.items():
-            kwargs[kw_name] = getattr(args, parse_name)
-        if kwargs["filepath"] is None:
-            return None
-        else:
-            required = ["ra", "dec"]
-            if self.require_z:
-                required.append("z")
-            for name in required:
-                if kwargs[name] is None:
-                    self.raise_required_missing_error(name)
-            return Input(**kwargs)

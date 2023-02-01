@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib
 import warnings
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, NoReturn
@@ -14,7 +13,7 @@ from yet_another_wizz.core.config import Configuration
 
 from yet_another_wizz.infrastructure.data import InputRegister
 from yet_another_wizz.infrastructure.directories import (
-    CountsDirectory, EstimateDirectory)
+    CacheDirectory, CountsDirectory, EstimateDirectory)
 
 if TYPE_CHECKING:
     from yet_another_wizz.core.catalog import CatalogBase
@@ -33,22 +32,6 @@ def _parse_section_error(exception: Exception, section: str) -> NoReturn:
     if isinstance(exception, KeyError):
         raise SetupError(f"missing section '{section}'") from exception
     raise
-
-
-@dataclass
-class DataCache:
-    path: Path | None
-    restoring_support: bool
-
-    def __post_init__(self) -> None:
-        if self.defined:
-            self.path = Path(self.path)
-            self.path.mkdir(exist_ok=True, parents=True)
-
-    @property
-    def defined(self) -> bool:
-        return self.path is not None
-
 
 
 class Setup:
@@ -75,9 +58,12 @@ class Setup:
             data = setup["data"]
         except KeyError as e:
             _parse_section_error(e, "data")
-        self.cache = DataCache(
-            path=data.get("cachepath"),
-            restoring_support=hasattr(self.backend.Catalog, "from_cache"))
+        cachepath = data.get("cachepath")
+        if cachepath is None:
+            self.cache = None
+        else:
+            self.cache = CacheDirectory(cachepath)
+            self.cache.mkdir(exist_ok=True, parents=True)
         self.catalogs = InputRegister.from_dict(
             data.get("catalogs", dict()))
         # job list
@@ -99,7 +85,10 @@ class Setup:
         # config can be copied
         new.config = config
         # set up the data management
-        new.cachepath = cachepath
+        if cachepath is None:
+            new.cache = None
+        else:
+            new.cache = CacheDirectory(cachepath)
         new.catalogs = InputRegister()
         # job list
         new.jobs = []
@@ -115,7 +104,7 @@ class Setup:
         setup = dict(
             configuration=self.config.to_dict(),
             data=dict(
-                cachepath=str(self.cache.path) if self.cache.defined else None,
+                cachepath=str(self.cache) if self.cache is not None else None,
                 catalogs=self.catalogs.to_dict()),
             backend=self.backend_name)
         if len(self.jobs) > 0:
@@ -132,9 +121,13 @@ class Setup:
                     f"yet_another_wizz.{self.backend_name}")
             except ImportError as e:
                 raise InvalidBackendError(
-                    f"backend '{self.backend_name}' does not exist, "
+                    f"backend '{self.backend_name}' invalid or "
                     "yet_another_wizz import failed") from e
         return self._backend
+
+    @property
+    def cache_restore_supported(self) -> bool:
+        return hasattr(self.backend.Catalog, "from_cache")
 
     def add_catalog(
         self,
@@ -214,6 +207,12 @@ class ProjectDirectory:
             _setup_path(path), config=config,
             cachepath=cachepath, backend=backend)
         return cls(path)
+
+    def __enter__(self) -> Setup:
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self.setup.write()
 
     @property
     def path(self) -> Path:
