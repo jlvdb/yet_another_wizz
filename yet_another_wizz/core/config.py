@@ -30,13 +30,15 @@ def _parse_section_error(exception: Exception, section: str) -> NoReturn:
         if "__init__() got an unexpected keyword argument" in msg:
             item = msg.split("'")[1]
             raise ConfigurationError(
-                f"encountered unknown option '{item}' in section '{section}'")
+                f"encountered unknown option '{item}' in section '{section}'"
+            ) from exception
         elif "missing" in msg:
             item = msg.split("'")[1]
             raise ConfigurationError(
-                f"missing option '{item}' in section '{section}'")
+                f"missing option '{item}' in section '{section}'"
+            ) from exception
     elif isinstance(exception, KeyError):
-        raise ConfigurationError(f"missing section '{section}'")
+        raise ConfigurationError(f"missing section '{section}'") from exception
     raise
 
 
@@ -211,8 +213,8 @@ class BinFactory:
     def get(self, method: str) -> NDArray[np.float_]:
         try:
             return getattr(self, method)()
-        except AttributeError:
-            raise ValueError(f"invalid binning method '{method}'")
+        except AttributeError as e:
+            raise ValueError(f"invalid binning method '{method}'") from e
 
 
 @dataclass(frozen=True)

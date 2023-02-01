@@ -139,7 +139,7 @@ class PatchCatalog:
             args = ()
             if hasattr(e, "args"):
                 args = e.args
-            raise NotAPatchFileError(*args)
+            raise NotAPatchFileError(*args) from e
         new._init(center, radius)
         return new
 

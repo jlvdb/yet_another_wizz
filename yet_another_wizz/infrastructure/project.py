@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import warnings
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -30,7 +31,7 @@ class SetupError(Exception):
 
 def _parse_section_error(exception: Exception, section: str) -> NoReturn:
     if isinstance(exception, KeyError):
-        raise SetupError(f"missing section '{section}'")
+        raise SetupError(f"missing section '{section}'") from exception
     raise
 
 
@@ -129,10 +130,10 @@ class Setup:
             try:
                 self._backend = importlib.import_module(
                     f"yet_another_wizz.{self.backend_name}")
-            except ImportError:
+            except ImportError as e:
                 raise InvalidBackendError(
                     f"backend '{self.backend_name}' does not exist, "
-                    "yet_another_wizz import failed")
+                    "yet_another_wizz import failed") from e
         return self._backend
 
     def add_catalog(
@@ -176,8 +177,9 @@ class Setup:
     def add_job(self, job) -> None:
         self.jobs.append(job)
 
-    def list_jobs(self) -> None:
-        print(yaml.dump(self.jobs))
+    def iter_jobs(self) -> Iterator:
+        for job in self.jobs:
+            yield job
 
 
 def _setup_path(path: Path) -> Path:

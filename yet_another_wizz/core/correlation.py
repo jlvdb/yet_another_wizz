@@ -215,8 +215,8 @@ class CorrelationFunction:
                     e.short for e in CorrelationEstimator.variants
                 ].index(estimator)
                 est_class = CorrelationEstimator.variants[index]
-            except ValueError:
-                raise ValueError("invalid estimator '{estimator}'")
+            except ValueError as e:
+                raise ValueError("invalid estimator '{estimator}'") from e
             # determine which pair counts are missing
             for attr in fields(self):
                 name = attr.name

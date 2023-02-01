@@ -35,9 +35,10 @@ class SharedArray:
             dtype = np.dtype(dtype)
         try:
             return type_map[dtype.str.strip("<>")]
-        except KeyError:
+        except KeyError as e:
             raise NotImplementedError(
-                f"cannot convert numpy dtype '{dtype.str}' to RawArray")
+                f"cannot convert numpy dtype '{dtype.str}' to RawArray"
+            ) from e
 
     def __len__(self) -> int:
         return self.shape[0]
