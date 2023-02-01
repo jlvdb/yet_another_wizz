@@ -12,46 +12,48 @@ from yet_another_wizz.infrastructure import jobs
 
 def create_subparser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    callback: Callable,
     name: str,
     help: str,
     description: str,
-    wdir: bool = True
-) -> None:
+    wdir: bool = True,
+    threads: bool = True
+) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         name=name, help=help, description=description)
-    parser.set_defaults(func=callback)
+    parser.add_argument(
+        "-v", "--verbose", action="count", default=0,
+        help="control verbosity to terminal, repeat to show debug messages")
     if wdir:
         parser.add_argument(
             "wdir", metavar="<directory>", help="project directory, must exist")
+    if threads:
+        parser.add_argument(
+            "--threads", type=int, metavar="<int>",
+            help="number of threads to use (default: from configuration)")
     return parser
 
 
 parser = argparse.ArgumentParser(
-    prog="yet_another_wizz",
-    description="Modular clustering redshift pipeline.",
-    epilog="cite arXiv:XXXX.XXXX")
+    description="yet_another_wizz: modular clustering redshift pipeline.",
+    epilog="Thank you for using yet_another_wizz. Please consider citing 'A&A 642, A200 (2020)' when publishing results obtained with this code.")
 parser.add_argument(
-    "--version", action="version", version=f"%(prog)s v{__version__}")
+    "--version", action="version", version=f"yet_another_wizz v{__version__}")
 subparsers = parser.add_subparsers(
-    title="submodules",
-    description="The pipeline is split into submodules which perform specifc tasks, which are listed below.")
+    title="modules",
+    description="The pipeline is split into modules which perform specifc tasks as listed below. Each module has its own dedicated --help command.",
+    dest="job")
 
 #### INIT ######################################################################
 
 parser_init = create_subparser(
     subparsers,
-    callback=jobs.init,
     name="init",
-    help="initialise and create a project directory with a configuration",
-    description="initialise and create a project directory with a configuration",
-    wdir=False)
-parser.add_argument(  # manual since special help text
+    help="initialise and configure a new a project directory",
+    description="Initialise and create a project directory with a configuration. Specify the reference sample data and optionally randoms.",
+    wdir=False, threads=False)
+parser_init.add_argument(  # manual since special help text
     "wdir", metavar="<directory>", help="project directory, must not exist")
 
-parser_init.add_argument(
-    "--threads", type=int, metavar="<int>",
-    help="default number of threads to use if not specified (default: all)")
 parser_init.add_argument(
     "--backend", choices=("scipy", "treecorr"), default="scipy",
     help="backend used for pair counting (default: %(default)s)")
@@ -107,12 +109,47 @@ group_backend.add_argument(
 group_backend.add_argument(
     "--no-crosspatch", action="store_true",
     help="disable counting pairs across patch boundaries (scipy backend only)")
+group_backend.add_argument(
+    "--threads", type=int, metavar="<int>",
+    help="default number of threads to use if not specified (default: all)")
 
-#### CROSSCORR #################################################################
+#### CROSS #####################################################################
 
-parser_crosscorr = create_subparser(
+parser_cross = create_subparser(
     subparsers,
-    callback=jobs.crosscorr,
-    name="crosscorr",
-    help="TODO",
-    description="TODO")
+    name="cross",
+    help="measure angular cross-correlation functions",
+    description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.")
+
+#### AUTO ######################################################################
+
+parser_auto = create_subparser(
+    subparsers,
+    name="auto",
+    help="measure angular autocorrelation functions",
+    description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.")
+
+#### MERGE #####################################################################
+
+parser_merge = create_subparser(
+    subparsers,
+    name="merge",
+    help="merge correlation functions from different project directories",
+    description="TODO: Scope currently unclear.")
+parser_merge.add_argument("k")
+
+#### NZ ########################################################################
+
+parser_nz = create_subparser(
+    subparsers,
+    name="nz",
+    help="compute clustering clustering redshift estimates for the unknown data",
+    description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.")
+
+#### RUN #######################################################################
+
+parser_run = create_subparser(
+    subparsers,
+    name="run",
+    help="perform tasks specified in a setup file",
+    description="Read a job list and configuration from a setup file (e.g. as generated by init). Apply the jobs to the specified data samples.")
