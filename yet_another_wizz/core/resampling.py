@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, Any
 import h5py
 import numpy as np
 import pandas as pd
-from treecorr import NNCorrelation
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval, IntervalIndex
+    from treecorr import NNCorrelation
     from yet_another_wizz.core.utils import TypePatchKey
 
 
