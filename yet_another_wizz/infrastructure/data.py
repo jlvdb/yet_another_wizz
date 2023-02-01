@@ -93,7 +93,8 @@ class InputParser:
         title: str,
         prefix: str = "",
         required: bool = False,
-        add_index: bool = False
+        add_index: bool = False,
+        require_z: bool = False
     ) -> None:
         self.parser = parser
         # create mapping of Input argument names to parser name space
@@ -103,6 +104,7 @@ class InputParser:
         self.kwarg_parser_map = {
             kwarg: f"{prefix}{name}".replace("-", "_")
             for kwarg, name in kwarg_parser_names.items()}
+        self.require_z = require_z
         # create an argument group for the parser
         opt = "" if required else " (optional)"
         group = parser.add_argument_group(
@@ -118,7 +120,7 @@ class InputParser:
             f"--{prefix}dec", required=required, metavar="<str>",
             help="column name of declination")
         group.add_argument(
-            f"--{prefix}z", metavar="<str>",
+            f"--{prefix}z", metavar="<str>", required=(required and require_z),
             help="column name of redshift")
         group.add_argument(
             f"--{prefix}w", metavar="<str>",
@@ -148,7 +150,10 @@ class InputParser:
         if kwargs["filepath"] is None:
             return None
         else:
-            for name in ("ra", "dec"):
+            required = ["ra", "dec"]
+            if self.require_z:
+                required.append("z")
+            for name in required:
                 if kwargs[name] is None:
                     self.raise_required_missing_error(name)
             return Input(**kwargs)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Callable
+from typing import Any, Callable
 
 from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.logger import get_logger
@@ -56,8 +56,13 @@ def auto(args):
 
 
 @logged
+def cache(args):
+    project = ProjectDirectory(args.wdir)
+    raise NotImplementedError
+
+
+@logged
 def merge(args):
-    print("a")
     raise NotImplementedError
 
 
@@ -67,7 +72,11 @@ def nz(args):
     raise NotImplementedError
 
 
-@logged
-def run(args):
+def run_from_setup(*args, **kwargs) -> Any:
     project = ProjectDirectory(args.wdir)
     raise NotImplementedError
+
+
+@logged
+def run(args):
+    run_from_setup(**args)
