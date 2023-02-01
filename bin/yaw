@@ -9,7 +9,7 @@ def main():
         parser.print_usage()
     else:  # run
         job = getattr(jobs, args.job)
-        job(args)
+        job(parser, args)
 
 
 if __name__ == "__main__":

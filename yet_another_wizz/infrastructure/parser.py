@@ -74,8 +74,9 @@ def add_input_parser(
 
 
 def get_input_from_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
     prefix: str,
-    args,
     require_z: bool = False
 ) -> Input | None:
     # mapping of parser argument name suffix to in Input class argument
@@ -85,7 +86,7 @@ def get_input_from_args(
     # get all entries in args that match the given prefix
     args_subset = {}
     for arg, value in vars(args).items():
-        if arg.startswith(f"{prefix}_"):
+        if arg.startswith(f"{prefix}_") and value is not None:
             suffix = arg[len(prefix)+1:]
             args_subset[suffix] = value
     # the argument group can be optional
@@ -99,7 +100,8 @@ def get_input_from_args(
         for suffix in required:
             if suffix not in args_subset:
                 arg = f"--{prefix}-{suffix}"
-                raise ValueError(f"the following arguments are required: {arg}")
+                raise parser.error(
+                    f"the following arguments are required: {arg}")
         # return the Input instance
         kwargs = {}
         for suffix, value in args_subset.items():

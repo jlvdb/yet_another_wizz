@@ -12,20 +12,20 @@ from yet_another_wizz.infrastructure.parser import get_input_from_args
 
 def logged(func: Callable) -> Callable:
     @wraps(func)
-    def with_logging(args):
+    def with_logging(parser, args):
         levels = {0: "warn", 1: "info", 2: "debug"}
         logger = get_logger(levels[args.verbose], plain=False)
         # TODO: add log file at args.wdir.joinpath("events.log")
         logger.info("running job xyz")
         try:
-            return func(args)
+            return func(parser, args)
         except Exception:
             logger.exception("an unexpected error occured")
     return with_logging
 
 
 @logged
-def init(args):
+def init(parser, args):
     # parse the configuration
     config = Configuration.create(
         cosmology=args.cosmology,
@@ -38,9 +38,9 @@ def init(args):
         args.wdir, config, cachepath=args.cache_path, backend=args.backend
     ) as project:
         # get the data catalog and the optional random catalog
-        input_ref = get_input_from_args("ref", args, require_z=True)
+        input_ref = get_input_from_args(parser, args, "ref", require_z=True)
         project.setup.add_catalog("reference", input_ref)
-        input_rand = get_input_from_args("rand", args, require_z=True)
+        input_rand = get_input_from_args(parser, args, "rand", require_z=True)
         if input_rand:
             project.setup.add_catalog("ref_rand", input_rand)
         return
@@ -48,30 +48,30 @@ def init(args):
 
 
 @logged
-def cross(args):
+def cross(parser, args):
+    with ProjectDirectory(args.wdir) as project:
+        print(project.setup)
+
+
+@logged
+def auto(parser, args):
     with ProjectDirectory(args.wdir) as project:
         raise NotImplementedError
 
 
 @logged
-def auto(args):
+def cache(parser, args):
     with ProjectDirectory(args.wdir) as project:
         raise NotImplementedError
 
 
 @logged
-def cache(args):
-    with ProjectDirectory(args.wdir) as project:
-        raise NotImplementedError
-
-
-@logged
-def merge(args):
+def merge(parser, args):
     raise NotImplementedError
 
 
 @logged
-def nz(args):
+def nz(parser, args):
     with ProjectDirectory(args.wdir) as project:
         raise NotImplementedError
 
@@ -82,5 +82,5 @@ def run_from_setup(*args, **kwargs) -> Any:
 
 
 @logged
-def run(args):
+def run(parser, args):
     run_from_setup(**args)
