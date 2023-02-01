@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import os
+import shutil
+import textwrap
 from abc import ABC, abstractmethod, abstractproperty
 from collections.abc import Iterator
 from pathlib import Path, _posix_flavour, _windows_flavour
 from typing import Any
+
+from yet_another_wizz.core.utils import bytes_format
 
 
 def _get_numeric_suffix(path: Path) -> int:
@@ -13,8 +17,58 @@ def _get_numeric_suffix(path: Path) -> int:
     return int(num)
 
 
-class Directory(ABC, Path):
+class Directory(Path):
+    # seems to be the easiest way to subclass pathlib.Path
     _flavour = _windows_flavour if os.name == 'nt' else _posix_flavour
+
+
+class CacheDirectory(Directory):
+
+    def _generate_filenames(self, base: str) -> dict[str, Path]:
+        tags = ("data", "rand")
+        return {tag: Path(self.joinpath(f"{base}.{tag}")) for tag in tags}
+
+    def get_reference(self) -> dict[str, Path]:
+        return self._generate_filenames("reference")
+
+    def get_unknown(self, bin_idx: int) -> dict[str, Path]:
+        return self._generate_filenames(f"unknown_{bin_idx}")
+
+    def get_bin_indices(self) -> set(int):
+        return set(
+            _get_numeric_suffix(path)
+            for path in self.iterdir()
+            if path.name.startswith("unknown"))
+
+    def summary(self) -> None:
+        sizes = dict()
+        for path in self.iterdir():
+            if path.is_dir():
+                sizes[path.name] = ("d", sum(
+                    file.stat().st_size for file in path.rglob("*")))
+            else:
+                sizes[path.name] = ("f", path.stat().st_size)
+        print(f"cache path: {self}")
+        width = min(30, max(len(name) for name in sizes))
+        for i, name in enumerate(sorted(sizes), 1):
+            print_name = textwrap.shorten(name, width=width, placeholder="...")
+            kind, bytes = sizes[name]
+            bytes_fmt = bytes_format(bytes)
+            print(f"{kind}> {print_name:{width}s}{bytes_fmt:>10s}")
+
+    def drop(self, name: str) -> None:
+        path = self.joinpath(name)
+        if path.is_dir():
+            shutil.rmtree(str(path))
+        else:
+            path.unlink()
+
+    def drop_all(self) -> None:
+        for path in self.iterdir():
+            self.drop(path.name)
+
+
+class DataDirectory(Directory, ABC):
 
     @abstractproperty
     def _cross_prefix(self) -> str:
@@ -57,7 +111,7 @@ class Directory(ABC, Path):
             yield idx, self.get_auto(idx)
 
 
-class CountsDirectory(Directory):
+class CountsDirectory(DataDirectory):
 
     _cross_prefix = "cross"
     _auto_prefix = "auto_unknown"
@@ -72,7 +126,7 @@ class CountsDirectory(Directory):
         return Path(self.joinpath(f"{self._cross_prefix}_{bin_idx}.hdf"))
 
 
-class EstimateDirectory(Directory):
+class EstimateDirectory(DataDirectory):
 
     _cross_prefix = "nz_unknown"
     _auto_prefix = "auto_unknown"

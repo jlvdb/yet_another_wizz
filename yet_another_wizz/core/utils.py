@@ -42,3 +42,14 @@ def long_num_format(x: float) -> str:
     prefix = str(x).rstrip("0").rstrip(".")
     suffix = ["", "K", "M", "B", "T"][exp]
     return prefix + suffix
+
+
+def bytes_format(x: float) -> str:
+    x = float(f"{x:.3g}")
+    exp = 0
+    while abs(x) >= 1024:
+        exp += 1
+        x /= 1024.0
+    prefix = f"{x:.3f}"[:4].rstrip("0").rstrip(".")
+    suffix = ["B ", "KB", "MB", "GB", "TB"][exp]
+    return prefix + suffix
