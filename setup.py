@@ -32,6 +32,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     scripts=scripts,
     install_requires=[
+        "typing_extensions",
         "numpy",
         "pyarrow",
         "h5py",
