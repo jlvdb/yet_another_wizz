@@ -253,11 +253,12 @@ class Catalog(CatalogBase):
         self.logger.debug(
             f"running treecorr on {config.backend.thread_num} threads")
         result = {
-            scale_key: [] for scale_key in scales_to_keys(config.scales.scales)}
+            scale_key: [] for scale_key in config.scales.dict_keys()}
         for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
-            scales = r_kpc_to_angle(config.scales.scales, intv.mid, config.cosmology)
+            scales = r_kpc_to_angle(
+                config.scales.scales, intv.mid, config.cosmology)
             for scale_key, (ang_min, ang_max) in zip(
-                    scales_to_keys(config.scales.scales), scales):
+                    config.scales.dict_keys(), scales):
                 correlation = NNCorrelation(
                     min_sep=ang_min, max_sep=ang_max, **nncorr_config)
                 correlation.process(

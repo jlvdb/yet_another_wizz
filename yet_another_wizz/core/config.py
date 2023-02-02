@@ -12,6 +12,7 @@ import yaml
 
 from yet_another_wizz import __version__
 from yet_another_wizz.core.cosmology import TypeCosmology, get_default_cosmology
+from yet_another_wizz.core.utils import scales_to_keys
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
@@ -144,6 +145,9 @@ class ScalesConfig:
     @property
     def scales(self) -> NDArray[np.float_]:
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
+
+    def dict_keys(self) -> list[str]:
+        return scales_to_keys(self.scales)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

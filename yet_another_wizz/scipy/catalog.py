@@ -365,7 +365,7 @@ class Catalog(CatalogBase):
         # execute, unpack the data
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
-        count_dict = {key: {} for key in scales_to_keys(config.scales.scales)}
+        count_dict = {key: {} for key in config.scales.dict_keys()}
         for (id1, id2), (total1, total2), counts in pool.iter_result():
             # record total weight per bin, overwriting OK since identical
             totals1[id1] = total1
