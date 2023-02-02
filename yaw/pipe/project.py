@@ -258,8 +258,9 @@ class ProjectDirectory:
     def __enter__(self) -> ProjectDirectory:
         return self
 
-    def __exit__(self, *args, **kwargs) -> None:
-        self.setup.write()
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+        if exc_type is None:
+            self.setup.write()
 
     @property
     def path(self) -> Path:
