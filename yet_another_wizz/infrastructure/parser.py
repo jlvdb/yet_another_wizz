@@ -215,6 +215,12 @@ parser_auto = create_subparser(
     name="auto",
     help="measure angular autocorrelation functions",
     description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.")
+parser_auto.add_argument(
+    "--which", choices=("ref", "unk"), default="ref",
+    help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
+parser_auto.add_argument(
+    "--no-rr", action="store_true",
+    help="do not compute random-random pair counts")
 
 
 #### CACHE #####################################################################

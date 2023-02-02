@@ -3,6 +3,8 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any, Callable
 
+import h5py
+
 from yet_another_wizz.core.config import Configuration
 from yet_another_wizz.logger import get_logger
 
@@ -57,16 +59,41 @@ def cross(parser, args):
         unknown = project.setup.load_unknown("data", 0)
         unk_rand = project.setup.load_unknown("rand", 0)
         # run crosscorrelation
-        cf = project.setup.backend.crosscorrelate(
-            project.setup.config,
-            reference, unknown, ref_rand=ref_rand, unk_rand=unk_rand)
-        print(cf)
+        if args.no_rr:
+            kwargs = dict(unk_rand=unk_rand)
+        else:
+            kwargs = dict(ref_rand=ref_rand, unk_rand=unk_rand)
+        cfs = project.setup.backend.crosscorrelate(
+            project.setup.config, reference, unknown, **kwargs)
+        if not isinstance(cfs, dict):
+            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+        # write to disk
+        for scale_key, cf in cfs.items():
+            fpath = project.counts_dir.get_cross(0)
+            with h5py.File(str(fpath), mode="w") as fh:
+                cf.to_hdf(fh)
 
 
 @logged
 def auto(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        raise NotImplementedError
+        # load the data
+        if args.which == "ref":
+            data = project.setup.load_reference("data")
+            rand = project.setup.load_reference("rand")
+        else:
+            data = project.setup.load_unknown("data", 0)
+            rand = project.setup.load_unknown("rand", 0)
+        # run autocorrelation
+        cfs = project.setup.backend.autocorrelate(
+            project.setup.config, data, rand, compute_rr=(not args.no_rr))
+        if not isinstance(cfs, dict):
+            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+        # write to disk
+        for scale_key, cf in cfs.items():
+            fpath = project.counts_dir.get_auto_reference()
+            with h5py.File(str(fpath), mode="w") as fh:
+                cf.to_hdf(fh)
 
 
 @logged
@@ -83,7 +110,15 @@ def merge(parser, args):
 @logged
 def nz(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        raise NotImplementedError
+        with h5py.File(str(project.counts_dir.get_cross(0))) as fh:
+            w_sp = project.setup.backend.core.correlation.CorrelationFunction.from_hdf(fh)
+        with h5py.File(str(project.counts_dir.get_auto_reference())) as fh:
+            w_ss = project.setup.backend.core.correlation.CorrelationFunction.from_hdf(fh)
+        est = project.setup.backend.NzEstimator(w_sp)
+        est.add_reference_autocorr(w_ss)
+        import matplotlib.pyplot as plt
+        est.plot()
+        plt.show()
 
 
 def run_from_setup(*args, **kwargs) -> Any:
