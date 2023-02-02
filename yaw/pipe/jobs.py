@@ -124,7 +124,14 @@ def auto(parser, args):
 def cache(parser, args):
     with ProjectDirectory(args.wdir) as project:
         cachedir = project.setup.cache
-        cachedir.summary()
+        if args.drop is None:
+            cachedir.summary()
+        else:  # delete entries
+            if len(args.drop) == 0:
+                cachedir.drop_all()
+            else:
+                for name in args.drop:
+                    cachedir.drop(name)
 
 
 @logged

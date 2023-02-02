@@ -31,7 +31,7 @@ def create_subparser(
         parser.add_argument(
             "--threads", type=int, metavar="<int>",
             help="number of threads to use (default: from configuration)")
-    if threads:
+    if progress:
         parser.add_argument(
             "--progress", action="store_true",
             help="show a progress bar if the backend supports it")
@@ -267,7 +267,12 @@ parser_auto = create_subparser(
     subparsers,
     name="cache",
     help="mange or clean up cache directories",
-    description="Get information about a project's cache directory (location, size, etc.) or remove entries.")
+    description="Get a summary of the project's cache directory (location, size, etc.) or remove entries with --drop.",
+    threads=False,
+    progress=False)
+parser_auto.add_argument(
+    "--drop", nargs="*", metavar="<str>",
+    help="drop a specific entry from the cache or drop all entries if no argument is provided")
 
 #### MERGE #####################################################################
 

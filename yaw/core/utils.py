@@ -50,6 +50,6 @@ def bytes_format(x: float) -> str:
     while abs(x) >= 1024:
         exp += 1
         x /= 1024.0
-    prefix = f"{x:.3f}"[:4].rstrip("0").rstrip(".")
+    prefix = f"{x:.3f}"[:4].rstrip(".")
     suffix = ["B ", "KB", "MB", "GB", "TB"][exp]
     return prefix + suffix

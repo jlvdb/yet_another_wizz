@@ -21,6 +21,30 @@ class Directory(Path):
     # seems to be the easiest way to subclass pathlib.Path
     _flavour = _windows_flavour if os.name == 'nt' else _posix_flavour
 
+    def summary(self) -> None:
+        sizes = dict()
+        for path in self.iterdir():
+            if path.is_dir():
+                sizes[path.name] = ("d", sum(
+                    file.stat().st_size for file in path.rglob("*")))
+            else:
+                sizes[path.name] = ("f", path.stat().st_size)
+        print(f"cache path: {self}")
+        if len(sizes) == 0:
+            width = 10
+            total = bytes_format(0)
+        else:
+            width = min(30, max(len(name) for name in sizes))
+            for i, name in enumerate(sorted(sizes), 1):
+                print_name = textwrap.shorten(
+                    name, width=width, placeholder="...")
+                kind, bytes = sizes[name]
+                bytes_fmt = bytes_format(bytes)
+                print(f"{kind}> {print_name:{width}s}{bytes_fmt:>10s}")
+            total = bytes_format(sum(b for _, b in sizes.values()))
+        print("-" * (width + 13))
+        print(f"{'total':{width+3}s}{total:>10s}")
+
 
 class CacheDirectory(Directory):
 
@@ -39,22 +63,6 @@ class CacheDirectory(Directory):
             _get_numeric_suffix(path)
             for path in self.iterdir()
             if path.name.startswith("unknown"))
-
-    def summary(self) -> None:
-        sizes = dict()
-        for path in self.iterdir():
-            if path.is_dir():
-                sizes[path.name] = ("d", sum(
-                    file.stat().st_size for file in path.rglob("*")))
-            else:
-                sizes[path.name] = ("f", path.stat().st_size)
-        print(f"cache path: {self}")
-        width = min(30, max(len(name) for name in sizes))
-        for i, name in enumerate(sorted(sizes), 1):
-            print_name = textwrap.shorten(name, width=width, placeholder="...")
-            kind, bytes = sizes[name]
-            bytes_fmt = bytes_format(bytes)
-            print(f"{kind}> {print_name:{width}s}{bytes_fmt:>10s}")
 
     def drop(self, name: str) -> None:
         path = self.joinpath(name)
