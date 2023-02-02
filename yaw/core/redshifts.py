@@ -183,6 +183,18 @@ class NzEstimator(Nz):
         self.unk_corr = None
         self.corr_corr_estimator = estimator
 
+    @classmethod
+    def with_default_estimators(
+        cls,
+        cross_corr: CorrelationFunction,
+        ref_corr: CorrelationFunction | None = None,
+        unk_corr: CorrelationFunction | None = None
+    ) -> NzEstimator:
+        new = cls(cross_corr)
+        new.add_reference_autocorr(ref_corr)
+        new.add_unknown_autocorr(unk_corr)
+        return new
+
     def __repr__(self):
         name = self.__class__.__name__
         data = f"w_ss={self.ref_corr is not None}, "

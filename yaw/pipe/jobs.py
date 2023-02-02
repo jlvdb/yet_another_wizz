@@ -142,14 +142,39 @@ def merge(parser, args):
 @logged
 def nz(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        with h5py.File(str(project.counts_dir.get_cross(0))) as fh:
-            w_sp = project.setup.backend.core.correlation.CorrelationFunction.from_hdf(fh)
-        with h5py.File(str(project.counts_dir.get_auto_reference())) as fh:
-            w_ss = project.setup.backend.core.correlation.CorrelationFunction.from_hdf(fh)
-        est = project.setup.backend.NzEstimator(w_sp)
-        est.add_reference_autocorr(w_ss)
-        import matplotlib.pyplot as plt
-        est.plot()
+        # iterate scales
+        for scale_key in project.list_counts_scales():
+            counts_dir = project.get_counts(scale_key)
+            est_dir = project.get_estimate(scale_key, create=True)
+            # iterate bins
+            for idx in counts_dir.get_cross_indices():
+                # load w_sp
+                path = counts_dir.get_cross(idx)
+                with h5py.File(str(path)) as fh:
+                    w_sp = project.setup.backend.CorrelationFunction.from_hdf(fh)
+                est = project.setup.backend.NzEstimator(w_sp)
+                # load w_ss
+                path = counts_dir.get_auto_reference()
+                if path.exists():
+                    with h5py.File(str(path)) as fh:
+                        w_ss = project.setup.backend.CorrelationFunction.from_hdf(fh)
+                    est.add_reference_autocorr(w_ss)
+                # load w_pp
+                path = counts_dir.get_auto(idx)
+                if path.exists():
+                    with h5py.File(str(path)) as fh:
+                        w_pp = project.setup.backend.CorrelationFunction.from_hdf(fh)
+                    est.add_unknown_autocorr(w_pp)
+
+                # just for now to actually generate samples
+                import matplotlib.pyplot as plt
+                ax = plt.gca()
+                est.plot(ax=ax)
+
+                # write to disk
+                for kind, path in est_dir.get_cross(idx).items():
+                    print(f"   mock writing {kind}: {path}")
+
         plt.show()
 
 
