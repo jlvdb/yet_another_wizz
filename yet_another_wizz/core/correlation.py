@@ -10,6 +10,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from yet_another_wizz.core.catalog import PatchLinkage
+from yet_another_wizz.core.resampling import PairCountResult
 from yet_another_wizz.logger import TimedLog
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from pandas import DataFrame, IntervalIndex, Series
     from yet_another_wizz.core.catalog import CatalogBase
     from yet_another_wizz.core.config import Configuration
-    from yet_another_wizz.core.resampling import PairCountData, PairCountResult
+    from yet_another_wizz.core.resampling import PairCountData
     from yet_another_wizz.core.utils import TypeScaleKey
 
 
@@ -141,7 +142,7 @@ class CorrelationFunction:
     dr: PairCountResult | None = field(default=None)
     rd: PairCountResult | None = field(default=None)
     rr: PairCountResult | None = field(default=None)
-    npatch: tuple(int, int) = field(init=False)
+    npatch: int = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "npatch", self.dd.npatch)  # since frozen=True
@@ -314,26 +315,27 @@ class CorrelationFunction:
 
     @classmethod
     def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrelationFunction:
-        def _try_load(group: h5py.Group) -> PairCountResult | None:
+        def _try_load(root: h5py.Group, name: str) -> PairCountResult | None:
             try:
-                return PairCountResult.from_hdf(group)
+                return PairCountResult.from_hdf(root[name])
             except KeyError:
                 return None
 
         dd = PairCountResult.from_hdf(source["data_data"])
-        dr = _try_load(source["data_random"])
-        rd = _try_load(source["random_data"])
-        rr = _try_load(source["random_random"])
-        npatch = tuple(source["npatch"][:])
-        return CorrelationFunction(dd, dr, rd, rr, npatch)
+        dr = _try_load(source, "data_random")
+        rd = _try_load(source, "random_data")
+        rr = _try_load(source, "random_random")
+        return cls(dd, dr, rd, rr)
 
     def to_hdf(self, dest: h5py.File | h5py.Group) -> None:
-        group = dest.create_group("dd")
+        group = dest.create_group("data_data")
         self.dd.to_hdf(group)
-        for kind in ("dr", "rd", "rr"):
+        group_names = dict(
+            dr="data_random", rd="random_data", rr="random_random")
+        for kind, name in group_names.items():
             data: PairCountResult | None = getattr(self, kind)
             if data is not None:
-                group = dest.create_group(kind)
+                group = dest.create_group(name)
                 data.to_hdf(group)
         dest.create_dataset("npatch", data=self.npatch)
 
