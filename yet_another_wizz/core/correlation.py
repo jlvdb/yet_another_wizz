@@ -328,11 +328,13 @@ class CorrelationFunction:
         return CorrelationFunction(dd, dr, rd, rr, npatch)
 
     def to_hdf(self, dest: h5py.File | h5py.Group) -> None:
-        self.dd.to_hdf(dest["dd"])
+        group = dest.create_group("dd")
+        self.dd.to_hdf(group)
         for kind in ("dr", "rd", "rr"):
             data: PairCountResult | None = getattr(self, kind)
             if data is not None:
-                data.to_hdf(dest[kind])
+                group = dest.create_group(kind)
+                data.to_hdf(group)
         dest.create_dataset("npatch", data=self.npatch)
 
 

@@ -322,8 +322,8 @@ class PairCountResult:
 
     def to_hdf(self, dest: h5py.Group) -> None:
         dest.create_dataset("npatch", data=self.npatch)  # scalar
-        arraydict_to_hdf(self.count, dest["count"])
-        arraydict_to_hdf(self.total, dest["total"])
+        arraydict_to_hdf(self.count, dest.create_group("count"))
+        arraydict_to_hdf(self.total, dest.create_group("total"))
         dest.create_dataset("mask", data=self.mask, **_compression)
         binning = np.column_stack([
             self.binning.left.values, self.binning.right.values])
