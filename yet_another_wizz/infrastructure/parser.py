@@ -6,7 +6,8 @@ from pathlib import Path
 from astropy.cosmology import available as cosmology_avaliable
 
 from yet_another_wizz import __version__
-from yet_another_wizz.infrastructure.data import Input, Path_exists
+from yet_another_wizz.infrastructure.data import (
+    Input, Directory_exists, Path_exists)
 
 
 def create_subparser(
@@ -24,7 +25,7 @@ def create_subparser(
         help="show additional information in terminal, repeat to show debug messages")
     if wdir:
         parser.add_argument(
-            "wdir", metavar="<path>", type=Path_exists,
+            "wdir", metavar="<directory>", type=Directory_exists,
             help="project directory, must exist")
     if threads:
         parser.add_argument(
@@ -199,6 +200,10 @@ parser_cross = create_subparser(
     name="cross",
     help="measure angular cross-correlation functions",
     description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.")
+
+add_input_parser(parser_cross, "unknown (data)", prefix="unk", required=True)
+
+add_input_parser(parser_cross, "unknown (random)", prefix="rand", required=False)
 
 #### AUTO ######################################################################
 
