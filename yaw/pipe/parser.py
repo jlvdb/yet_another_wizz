@@ -15,7 +15,8 @@ def create_subparser(
     help: str,
     description: str,
     wdir: bool = True,
-    threads: bool = True
+    threads: bool = True,
+    progress: bool = False
 ) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         name=name, help=help, description=description)
@@ -30,6 +31,10 @@ def create_subparser(
         parser.add_argument(
             "--threads", type=int, metavar="<int>",
             help="number of threads to use (default: from configuration)")
+    if threads:
+        parser.add_argument(
+            "--progress", action="store_true",
+            help="show a progress bar if the backend supports it")
     return parser
 
 
@@ -198,7 +203,8 @@ parser_cross = create_subparser(
     subparsers,
     name="cross",
     help="measure angular cross-correlation functions",
-    description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.")
+    description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.",
+    progress=True)
 parser_cross.add_argument(
     "--no-rr", action="store_true",
     help="do not compute random-random pair counts, even if both randoms are available")
@@ -213,7 +219,8 @@ parser_auto = create_subparser(
     subparsers,
     name="auto",
     help="measure angular autocorrelation functions",
-    description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.")
+    description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.",
+    progress=True)
 parser_auto.add_argument(
     "--which", choices=("ref", "unk"), default="ref",
     help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")

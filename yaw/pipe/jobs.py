@@ -18,7 +18,7 @@ def logged(func: Callable) -> Callable:
         levels = {0: "warn", 1: "info", 2: "debug"}
         logger = get_logger(levels[args.verbose], plain=False)
         # TODO: add log file at args.wdir.joinpath("events.log")
-        logger.info("running job xyz")
+        logger.info(f"running job '{func.__name__}'")
         try:
             return func(parser, args)
         except Exception:
@@ -59,10 +59,9 @@ def cross(parser, args):
         unknown = project.setup.load_unknown("data", 0)
         unk_rand = project.setup.load_unknown("rand", 0)
         # run crosscorrelation
-        if args.no_rr:
-            kwargs = dict(unk_rand=unk_rand)
-        else:
-            kwargs = dict(ref_rand=ref_rand, unk_rand=unk_rand)
+        kwargs = dict(unk_rand=unk_rand, progress=args.progress)
+        if not args.no_rr:
+            kwargs["unk_rand"] = unk_rand
         cfs = project.setup.backend.crosscorrelate(
             project.setup.config, reference, unknown, **kwargs)
         if not isinstance(cfs, dict):
@@ -86,7 +85,8 @@ def auto(parser, args):
             rand = project.setup.load_unknown("rand", 0)
         # run autocorrelation
         cfs = project.setup.backend.autocorrelate(
-            project.setup.config, data, rand, compute_rr=(not args.no_rr))
+            project.setup.config, data, rand,
+            compute_rr=(not args.no_rr), progress=args.progress)
         if not isinstance(cfs, dict):
             cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
         # write to disk
