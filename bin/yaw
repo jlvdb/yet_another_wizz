@@ -4,7 +4,7 @@ from yet_another_wizz.infrastructure import jobs
 
 
 def main():
-    args = parser.parse_args() 
+    args = parser.parse_args()
     if args.job is None:
         parser.print_usage()
     else:  # run

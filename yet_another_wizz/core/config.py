@@ -25,15 +25,14 @@ class ConfigurationError(Exception):
 
 
 def _parse_section_error(exception: Exception, section: str) -> NoReturn:
+    msg = exception.args[0]
+    item = msg.split("'")[1]
     if isinstance(exception, TypeError):
-        msg = exception.args[0]
         if "__init__() got an unexpected keyword argument" in msg:
-            item = msg.split("'")[1]
             raise ConfigurationError(
                 f"encountered unknown option '{item}' in section '{section}'"
             ) from exception
         elif "missing" in msg:
-            item = msg.split("'")[1]
             raise ConfigurationError(
                 f"missing option '{item}' in section '{section}'"
             ) from exception
