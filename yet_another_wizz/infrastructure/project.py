@@ -28,6 +28,10 @@ class SetupError(Exception):
     pass
 
 
+class MissingCatalogError(Exception):
+    pass
+
+
 def _parse_section_error(exception: Exception, section: str) -> NoReturn:
     if isinstance(exception, KeyError):
         raise SetupError(f"missing section '{section}'") from exception
@@ -129,40 +133,83 @@ class Setup:
     def cache_restore_supported(self) -> bool:
         return hasattr(self.backend.Catalog, "from_cache")
 
-    def add_catalog(
+    def set_reference(
         self,
-        identifier: str,
-        entry: Input,
-        force: bool = False
+        data: Input,
+        rand: Input | None = None
     ) -> None:
-        self.catalogs.add(identifier, entry, force)
+        self.catalogs.set_reference(data, rand)
+    
+    def add_unknown(
+        self,
+        bin_idx: int,
+        data: Input,
+        rand: Input | None = None
+    ) -> None:
+        self.catalogs.add_unknown(bin_idx, data, rand)
 
-    def load_catalog(self, identifier: str) -> CatalogBase:
-        entry = self.catalogs.get(identifier)
+    def _load_catalog(
+        self,
+        sample: str,
+        kind: str,
+        bin_idx: int | None = None
+    ) -> CatalogBase:
+        # get the correct sample type
+        if sample == "reference":
+            inputs = self.catalogs.get_reference()
+        elif sample == "unknown":
+            if bin_idx is None:
+                raise ValueError("no 'bin_idx' provided")
+            inputs = self.catalogs.get_unknown(bin_idx)
+        else:
+            raise ValueError("'sample' must be either of 'reference'/'unknown'")
+        # get the correct sample kind
+        try:
+            input = inputs[kind]
+        except KeyError as e:
+            raise ValueError("'kind' must be either of 'data'/'rand'") from e
+        if input is None:
+            if kind == "rand":
+                kind = "random"
+            bin_info = f" bin {bin_idx} " if bin_idx is not None else " "
+            raise MissingCatalogError(
+                f"no {sample} {kind}{bin_info}catalog specified")
+
         # get arguments for Catalog.from_file()
-        kwargs = entry.to_dict()
+        kwargs = input.to_dict()
         kwargs.pop("index", None)
-        kwargs.pop("cache", None)
-
-        # perform file operations
-        if not self.cache.defined:
+        kwargs.pop("cache", False)
+        # attempt to load the catalog into memory
+        if self.cache is None:
             # no cache available
-            if entry.cache:
+            if input.cache:
                 warnings.warn(
                     "no cache directory provided, cannot cache catalog")
             catalog = self.backend.Catalog.from_file(**kwargs)
 
         else:
-            # cache available
-            cache_entry = self.cache.path.joinpath(identifier)
-            exists = cache_entry.exists()
-            if self.cache.restoring_support and exists and entry.cache:
+            # cache available, get object path
+            if sample == "reference":
+                cachepath = self.cache.get_reference()[kind]
+            else:
+                cachepath = self.cache.get_unknown(bin_idx)[kind]
+            exists = cachepath.exists()
+            if self.cache_restore_supported and exists and input.cache:
                 # already cached and backend supports restoring
-                catalog = self.backend.Catalog.from_cache(cache_entry)
+                catalog = self.backend.Catalog.from_cache(cachepath)
             else:
                 # no caching requested or not supported
+                if input.cache:
+                    kwargs["cache_directory"] = str(cachepath)
+                    cachepath.mkdir(exist_ok=True)
                 catalog = self.backend.Catalog.from_file(**kwargs)
         return catalog
+
+    def load_reference(self, kind: str) -> CatalogBase:
+        return self._load_catalog("reference", kind)
+
+    def load_unknown(self, kind: str, bin_idx: int) -> dict[str, Path]:
+        return self._load_catalog("unknown", kind, bin_idx=bin_idx)
 
     def list_catalogs(self) -> None:
         print(yaml.dump(self.catalogs.to_dict()))
@@ -208,7 +255,7 @@ class ProjectDirectory:
             cachepath=cachepath, backend=backend)
         return cls(path)
 
-    def __enter__(self) -> Setup:
+    def __enter__(self) -> ProjectDirectory:
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
