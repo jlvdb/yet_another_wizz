@@ -39,18 +39,28 @@ def init(parser, args):
     ) as project:
         # get the data catalog and the optional random catalog
         input_ref = get_input_from_args(parser, args, "ref", require_z=True)
-        project.setup.add_catalog("reference", input_ref)
         input_rand = get_input_from_args(parser, args, "rand", require_z=True)
-        if input_rand:
-            project.setup.add_catalog("ref_rand", input_rand)
-        return
+        project.setup.set_reference(data=input_ref, rand=input_rand)
         # TODO: patches
 
 
 @logged
 def cross(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        print(project.setup)
+        # get the data catalog and the optional random catalog
+        input_unk = get_input_from_args(parser, args, "unk", require_z=False)
+        input_rand = get_input_from_args(parser, args, "rand", require_z=False)
+        project.setup.add_unknown(0, data=input_unk, rand=input_rand)
+        # load the data
+        reference = project.setup.load_reference("data")
+        ref_rand = project.setup.load_reference("rand")
+        unknown = project.setup.load_unknown("data", 0)
+        unk_rand = project.setup.load_unknown("rand", 0)
+        # run crosscorrelation
+        cf = project.setup.backend.crosscorrelate(
+            project.setup.config,
+            reference, unknown, ref_rand=ref_rand, unk_rand=unk_rand)
+        print(cf)
 
 
 @logged
