@@ -18,7 +18,6 @@ class Input:
     redshift: str | None = field(default=None)
     weight: str | None = field(default=None)
     patches: str | None = field(default=None)
-    index: int | None = field(default=None)
     cache: bool | None = field(default=False)
 
     def __post_init__(self):
@@ -259,7 +258,7 @@ class InputRegister:
             result[key] = input
         return result
 
-    def get_bin_indices(self) -> set(int):
+    def get_bin_indices(self) -> set[int]:
         for inputs in self._unknown.values():
             return inputs.get_bin_indices()
         return set()

@@ -52,54 +52,79 @@ def cross(parser, args):
         # get the data catalog and the optional random catalog
         input_unk = get_input_from_args(parser, args, "unk", require_z=False)
         input_rand = get_input_from_args(parser, args, "rand", require_z=False)
-        project.setup.add_unknown(0, data=input_unk, rand=input_rand)
-        # load the data
+        if input_unk.get_bin_indices() != input_rand.get_bin_indices():
+            raise ValueError("bin indices for data and randoms do not match")
+        for idx in input_unk.get_bin_indices():
+            project.setup.add_unknown(
+                idx, data=input_unk.get(idx), rand=input_rand.get(idx))
+        # load the reference data, load unknown data on demand
+        kwargs = dict(progress=args.progress)
         reference = project.setup.load_reference("data")
-        ref_rand = project.setup.load_reference("rand")
-        unknown = project.setup.load_unknown("data", 0)
-        unk_rand = project.setup.load_unknown("rand", 0)
-        # run crosscorrelation
-        kwargs = dict(unk_rand=unk_rand, progress=args.progress)
         if not args.no_rr:
-            kwargs["unk_rand"] = unk_rand
-        cfs = project.setup.backend.crosscorrelate(
-            project.setup.config, reference, unknown, **kwargs)
-        if not isinstance(cfs, dict):
-            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
-        # write to disk
-        for scale_key, cf in cfs.items():
-            fpath = project.counts_dir.get_cross(0)
-            with h5py.File(str(fpath), mode="w") as fh:
-                cf.to_hdf(fh)
-
+            kwargs["ref_rand"] = project.setup.load_reference("rand")
+        # iterate the bins
+        for idx in project.setup.catalogs.get_bin_indices():
+            # load the data
+            unknown = project.setup.load_unknown("data", idx)
+            unk_rand = project.setup.load_unknown("rand", idx)
+            # run crosscorrelation
+            cfs = project.setup.backend.crosscorrelate(
+                project.setup.config, reference, unknown,
+                unk_rand=unk_rand, **kwargs)
+            if not isinstance(cfs, dict):
+                cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+            # write to disk
+            for scale_key, cf in cfs.items():
+                counts_dir = project.get_counts(scale_key, create=True)
+                fpath = counts_dir.get_cross(idx)
+                with h5py.File(str(fpath), mode="w") as fh:
+                    cf.to_hdf(fh)
 
 @logged
 def auto(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        # load the data
         if args.which == "ref":
+            # load the data
             data = project.setup.load_reference("data")
             rand = project.setup.load_reference("rand")
+            # run autocorrelation
+            cfs = project.setup.backend.autocorrelate(
+                project.setup.config, data, rand,
+                compute_rr=(not args.no_rr), progress=args.progress)
+            if not isinstance(cfs, dict):
+                cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+            # write to disk
+            for scale_key, cf in cfs.items():
+                counts_dir = project.get_counts(scale_key, create=True)
+                fpath = counts_dir.get_auto_reference()
+                with h5py.File(str(fpath), mode="w") as fh:
+                    cf.to_hdf(fh)
+
         else:
-            data = project.setup.load_unknown("data", 0)
-            rand = project.setup.load_unknown("rand", 0)
-        # run autocorrelation
-        cfs = project.setup.backend.autocorrelate(
-            project.setup.config, data, rand,
-            compute_rr=(not args.no_rr), progress=args.progress)
-        if not isinstance(cfs, dict):
-            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
-        # write to disk
-        for scale_key, cf in cfs.items():
-            fpath = project.counts_dir.get_auto_reference()
-            with h5py.File(str(fpath), mode="w") as fh:
-                cf.to_hdf(fh)
+            # iterate the bins
+            for idx in project.setup.catalogs.get_bin_indices():
+                # load the data
+                data = project.setup.load_unknown("data", idx)
+                rand = project.setup.load_unknown("rand", idx)
+                # run autocorrelation
+                cfs = project.setup.backend.autocorrelate(
+                    project.setup.config, data, rand,
+                    compute_rr=(not args.no_rr), progress=args.progress)
+                if not isinstance(cfs, dict):
+                    cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+                # write to disk
+                for scale_key, cf in cfs.items():
+                    counts_dir = project.get_counts(scale_key, create=True)
+                    fpath = counts_dir.get_auto(idx)
+                    with h5py.File(str(fpath), mode="w") as fh:
+                        cf.to_hdf(fh)
 
 
 @logged
 def cache(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        raise NotImplementedError
+        cachedir = project.setup.cache
+        cachedir.summary()
 
 
 @logged

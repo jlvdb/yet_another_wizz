@@ -177,7 +177,6 @@ class Setup:
 
         # get arguments for Catalog.from_file()
         kwargs = input.to_dict()
-        kwargs.pop("index", None)
         kwargs.pop("cache", False)
         # attempt to load the catalog into memory
         if self.cache is None:
@@ -271,18 +270,35 @@ class ProjectDirectory:
         return self._setup
 
     @property
-    def counts_dir(self) -> CountsDirectory:
-        return CountsDirectory(self.path.joinpath("paircounts"))
+    def counts_dir(self) -> Path:
+        return self.path.joinpath("paircounts")
+
+    def get_counts(
+        self,
+        scale_key: str,
+        create: bool = False
+    ) -> CountsDirectory:
+        path = self.counts_dir.joinpath(scale_key)
+        if create:
+            path.mkdir(exist_ok=True)
+        return CountsDirectory(path)
+
+    def list_counts_scales(self) -> list(str):
+        return [path.name for path in self.counts_dir.iterdir()]
 
     @property
-    def estimate_dir(self) -> EstimateDirectory:
+    def estimate_dir(self) -> Path:
         return self.path.joinpath("estimate")
+
+    def get_estimate(
+        self,
+        scale_key: str,
+        create: bool = False
+    ) -> EstimateDirectory:
+        path = self.estimate_dir.joinpath(scale_key)
+        if create:
+            path.mkdir(exist_ok=True)
+        return EstimateDirectory(path)
 
     def list_estimate_scales(self) -> list(str):
         return [path.name for path in self.estimate_dir.iterdir()]
-
-    def get_estimate(self, scale_key: str) -> EstimateDirectory:
-        path = self.estimate_dir.joinpath(scale_key)
-        if not path.exists():
-            raise ValueError(f"estimate for scale '{scale_key}' does not exist")
-        return EstimateDirectory(path)

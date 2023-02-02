@@ -6,7 +6,7 @@ from pathlib import Path
 from astropy.cosmology import available as cosmology_avaliable
 
 from yaw import __version__
-from yaw.pipe.data import Input, Directory_exists, Path_exists
+from yaw.pipe.data import BinnedInput, Input, Directory_exists, Path_exists
 
 
 def create_subparser(
@@ -43,17 +43,23 @@ def add_input_parser(
     title: str,
     prefix: str,
     required: bool = False,
-    add_index: bool = False,
+    binned: bool = False,
     require_z: bool = False
 ):
     # create an argument group for the parser
     opt = "" if required else " (optional)"
     group = parser.add_argument_group(
         title=title, description=f"specify the {title} input file{opt}")
-    group.add_argument(
-        f"--{prefix}-path", required=required, type=Path_exists,
-        metavar="<file>",
-        help="input file path")
+    if binned:
+        group.add_argument(
+            f"--{prefix}-path", required=required, nargs="+", type=Path_exists,
+            metavar="<file>",
+            help="(list of) input file paths (e.g. if the data sample is binned tomographically)")
+    else:
+        group.add_argument(
+            f"--{prefix}-path", required=required, type=Path_exists,
+            metavar="<file>",
+            help="input file path")
     group.add_argument(
         f"--{prefix}-ra", required=required, metavar="<str>",
         help="column name of right ascension")
@@ -69,10 +75,10 @@ def add_input_parser(
     group.add_argument(
         f"--{prefix}-patch", metavar="<str>",
         help="column name of patch assignment index")
-    if add_index:
+    if binned:
         group.add_argument(
-            f"--{prefix}-idx", type=int, metavar="<int>",
-            help="integer index to identify the bin (default: auto)")
+            f"--{prefix}-idx", type=int, metavar="<int>", nargs="+",
+            help=f"integer index to identify the input files (or bins) provided with [--{prefix}-path] (default: 0, 1, ...)")
     group.add_argument(
         f"--{prefix}-cache", action="store_true",
         help="cache the data in the project's cache directory")
@@ -83,7 +89,7 @@ def get_input_from_args(
     args: argparse.Namespace,
     prefix: str,
     require_z: bool = False
-) -> Input | None:
+) -> BinnedInput | Input | None:
     # mapping of parser argument name suffix to in Input class argument
     suffix_to_kwarg = dict(
         path="filepath", ra="ra", dec="dec", z="redshift",
@@ -94,10 +100,19 @@ def get_input_from_args(
         if arg.startswith(f"{prefix}_") and value is not None:
             suffix = arg[len(prefix)+1:]
             args_subset[suffix] = value
+
     # the argument group can be optional
-    if args_subset["path"] is None:
+    if args_subset.get("path") is None:
+        # check that there are no other arguments provided in the group
+        if not all(value is None or isinstance(value, bool) for value in args_subset.values()):
+            print(args_subset)
+            raise parser.error(
+                f"the following arguments are required if any other "
+                f"--{prefix}-* is provided: --{prefix}-path")
         return None
+
     else:
+        binned = (not isinstance(args_subset["path"], (Path, str)))
         # check for optionally required arguments not known to the parser
         required = ["ra", "dec"]
         if require_z:
@@ -107,12 +122,29 @@ def get_input_from_args(
                 arg = f"--{prefix}-{suffix}"
                 raise parser.error(
                     f"the following arguments are required: {arg}")
-        # return the Input instance
+        # return the (Binned)Input instance
         kwargs = {}
         for suffix, value in args_subset.items():
             kw_name = suffix_to_kwarg[suffix]
             kwargs[kw_name] = value
-        return Input(**kwargs)
+        idx = kwargs.pop("index", None)
+        if binned:
+            # check the --*-idx argument
+            paths = args_subset["path"]
+            if idx is not None:
+                if len(idx) != len(paths):
+                    raise parser.error(
+                        f"number of file paths [--{prefix}-path] and "
+                        f"indices [--{prefix}-idx] do not match")
+                if len(idx) != len(set(idx)):
+                    raise parser.error(f"indices [--{prefix}-idx] not unique")
+            else:
+                idx = range(len(paths))
+            # update the key word arguments with a dict: idx -> path
+            kwargs["filepath"] = {i: path for i, path in zip(idx, paths)}
+            return BinnedInput.from_dict(kwargs)
+        else:
+            return Input.from_dict(kwargs)
 
 
 parser = argparse.ArgumentParser(
@@ -209,9 +241,9 @@ parser_cross.add_argument(
     "--no-rr", action="store_true",
     help="do not compute random-random pair counts, even if both randoms are available")
 
-add_input_parser(parser_cross, "unknown (data)", prefix="unk", required=True)
+add_input_parser(parser_cross, "unknown (data)", prefix="unk", required=True, binned=True)
 
-add_input_parser(parser_cross, "unknown (random)", prefix="rand", required=False)
+add_input_parser(parser_cross, "unknown (random)", prefix="rand", required=False, binned=True)
 
 #### AUTO ######################################################################
 

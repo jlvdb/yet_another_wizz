@@ -279,7 +279,7 @@ class PatchLinkage:
         else:
             max_query_radius = 0.0  # only relevenat for cross-patch
 
-        logger.debug(f"computing patch linkage with {max_query_radius=}")
+        logger.debug(f"computing patch linkage with {max_query_radius=:.3e}")
         centers = catalog.centers  # in RA / Dec
         radii = catalog.radii  # radian, maximum distance measured from center
         # compute distance between all patch centers
