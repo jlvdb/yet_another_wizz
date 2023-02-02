@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from yaw.core.catalog import CatalogBase
 from yaw.core.config import Configuration
@@ -319,7 +320,8 @@ class Catalog(CatalogBase):
         config: Configuration,
         binned: bool,
         other: Catalog | None = None,
-        linkage: PatchLinkage | None = None
+        linkage: PatchLinkage | None = None,
+        progress: bool = False
     ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
         super().correlate(config, binned, other, linkage)
 
@@ -366,7 +368,12 @@ class Catalog(CatalogBase):
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
         count_dict = {key: {} for key in config.scales.dict_keys()}
-        for (id1, id2), (total1, total2), counts in pool.iter_result():
+        result_iter = pool.iter_result()
+        if progress:
+            result_iter = tqdm(
+                result_iter, total=pool.n_jobs(), delay=0.5,
+                leave=False, smoothing=0.15, unit="jobs")
+        for (id1, id2), (total1, total2), counts in result_iter:
             # record total weight per bin, overwriting OK since identical
             totals1[id1] = total1
             totals2[id2] = total2

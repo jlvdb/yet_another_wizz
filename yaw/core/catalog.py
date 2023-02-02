@@ -236,7 +236,8 @@ class CatalogBase(ABC):
         config: Configuration,
         binned: bool,
         other: CatalogBase = None,
-        linkage: PatchLinkage | None = None
+        linkage: PatchLinkage | None = None,
+        progress: bool = False
     ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
         n1 = long_num_format(len(self))
         n2 = long_num_format(len(self) if other is None else len(other))

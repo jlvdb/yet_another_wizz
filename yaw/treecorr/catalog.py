@@ -224,7 +224,8 @@ class Catalog(CatalogBase):
         config: Configuration,
         binned: bool,
         other: Catalog = None,
-        linkage: PatchLinkage | None = None
+        linkage: PatchLinkage | None = None,
+        progress: bool = False
     ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
         super().correlate(config, binned, other, linkage)
 

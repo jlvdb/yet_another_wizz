@@ -354,7 +354,8 @@ def autocorrelate(
     config: Configuration,
     data: CatalogBase,
     random: CatalogBase,
-    compute_rr: bool = True
+    compute_rr: bool = True,
+    progress: bool = False
 ) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
     """
     Compute the angular autocorrelation amplitude in bins of redshift. Requires
@@ -364,16 +365,14 @@ def autocorrelate(
         f"running autocorrelation ({len(config.scales.scales)} scales, "
         f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
     linkage = PatchLinkage.from_setup(config, random)
+    kwargs = dict(linkage=linkage, progress=progress)
     with TimedLog(logger.info, f"counting data-data pairs"):
-        DD = data.correlate(
-            config, binned=True, linkage=linkage)
+        DD = data.correlate(config, binned=True, **kwargs)
     with TimedLog(logger.info, f"counting data-random pairs"):
-        DR = data.correlate(
-            config, binned=True, other=random, linkage=linkage)
+        DR = data.correlate(config, binned=True, other=random, **kwargs)
     if compute_rr:
         with TimedLog(logger.info, f"counting random-random pairs"):
-            RR = random.correlate(
-                config, binned=True, linkage=linkage)
+            RR = random.correlate(config, binned=True, **kwargs)
     else:
         RR = _create_dummy_counts(DD)
 
@@ -392,7 +391,8 @@ def crosscorrelate(
     unknown: CatalogBase,
     *,
     ref_rand: CatalogBase | None = None,
-    unk_rand: CatalogBase | None = None
+    unk_rand: CatalogBase | None = None,
+    progress: bool = False
 ) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
     """
     Compute the angular cross-correlation amplitude in bins of redshift with
@@ -409,25 +409,26 @@ def crosscorrelate(
         f"running crosscorrelation ({len(config.scales.scales)} scales, "
         f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
     linkage = PatchLinkage.from_setup(config, unknown)
+    kwargs = dict(linkage=linkage, progress=progress)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = reference.correlate(
-            config, binned=False, other=unknown, linkage=linkage)
+            config, binned=False, other=unknown, **kwargs)
     if compute_dr:
         with TimedLog(logger.info, f"counting data-random pairs"):
             DR = reference.correlate(
-                config, binned=False, other=unk_rand, linkage=linkage)
+                config, binned=False, other=unk_rand, **kwargs)
     else:
         DR = _create_dummy_counts(DD)
     if compute_rd:
         with TimedLog(logger.info, f"counting random-data pairs"):
             RD = ref_rand.correlate(
-                config, binned=False, other=unknown, linkage=linkage)
+                config, binned=False, other=unknown, **kwargs)
     else:
         RD = _create_dummy_counts(DD)
     if compute_rr:
         with TimedLog(logger.info, f"counting random-random pairs"):
             RR = ref_rand.correlate(
-                config, binned=False, other=unk_rand, linkage=linkage)
+                config, binned=False, other=unk_rand, **kwargs)
     else:
         RR = _create_dummy_counts(DD)
 
