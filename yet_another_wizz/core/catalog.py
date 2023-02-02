@@ -243,7 +243,7 @@ class CatalogBase(ABC):
         n2 = long_num_format(len(self) if other is None else len(other))
         self.logger.debug(
             f"correlating with {'' if binned else 'un'}binned catalog "
-            f"({n1}x{n2}) in {config.nbins} redshift bins")
+            f"({n1}x{n2}) in {config.binning.zbin_num} redshift bins")
 
     @abstractmethod
     def true_redshifts(
@@ -271,11 +271,11 @@ class PatchLinkage:
         catalog: CatalogBase
     ) -> PatchLinkage:
         # determine the additional overlap from the spatial query
-        if config.crosspatch:
+        if config.backend.crosspatch:
             # estimate maximum query radius at low, but non-zero redshift
-            z_ref = max(0.05, config.zmin)
+            z_ref = max(0.05, config.binning.zmin)
             max_query_radius = r_kpc_to_angle(
-                config.scales, z_ref, config.cosmology).max()
+                config.scales.scales, z_ref, config.cosmology).max()
         else:
             max_query_radius = 0.0  # only relevenat for cross-patch
 

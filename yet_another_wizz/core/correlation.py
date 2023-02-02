@@ -357,8 +357,8 @@ def autocorrelate(
     object redshifts.
     """
     logger.info(
-        f"running autocorrelation ({len(config.scales)} scales, "
-        f"{config.scales.min()}<r<={config.scales.max()})")
+        f"running autocorrelation ({len(config.scales.scales)} scales, "
+        f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
     linkage = PatchLinkage.from_setup(config, random)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = data.correlate(
@@ -402,8 +402,8 @@ def crosscorrelate(
         raise ValueError("no randoms provided")
 
     logger.info(
-        f"running crosscorrelation ({len(config.scales)} scales, "
-        f"{config.scales.min()}<r<={config.scales.max()})")
+        f"running crosscorrelation ({len(config.scales.scales)} scales, "
+        f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
     linkage = PatchLinkage.from_setup(config, unknown)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = reference.correlate(

@@ -157,7 +157,7 @@ group_scales.add_argument(
     "--rweight", type=float, metavar="<float>",
     help="weight galaxy pairs by separation [separation]**[--rweight] (default: no weight)")
 group_scales.add_argument(
-    "--rbin-num", type=int, metavar="<int>",
+    "--rbin-num", type=int, metavar="<int>", default=50,
     help="radial resolution (number of log bins) to compute separation weights for galaxy pairs (default: %(default)s")
 
 group_bins = parser_init.add_argument_group(
@@ -181,7 +181,7 @@ group_backend = parser_init.add_argument_group(
     title="backend specific",
     description="parameters that are specific to pair counting backends")
 group_backend.add_argument(
-    "--rbin-slop", type=float, metavar="<float>",
+    "--rbin-slop", type=float, metavar="<float>", default=0.01,
     help="treecorr 'rbin_slop' parameter (treecorr backend only), note that there is only a single radial bin if [--rweight] is not specified, otherwise [--rbin-num] bins")
 group_backend.add_argument(
     "--no-crosspatch", action="store_true",

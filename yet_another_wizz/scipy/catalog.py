@@ -334,38 +334,38 @@ class Catalog(CatalogBase):
                     cat_for_linkage = other
             linkage = PatchLinkage.from_setup(config, cat_for_linkage)
         patch1_list, patch2_list = linkage.get_patches(
-            self, other, config.crosspatch)
+            self, other, config.backend.crosspatch)
         n_jobs = len(patch1_list)
 
         # prepare job scheduling
         pool = ParallelHelper(
             function=_count_pairs_thread,
-            n_items=n_jobs, num_threads=min(n_jobs, config.num_threads))
+            n_items=n_jobs, num_threads=min(n_jobs, config.backend.thread_num))
         # patch1: PatchCatalog
         pool.add_iterable(patch1_list)
         # patch2: PatchCatalog
         pool.add_iterable(patch2_list)
         # scales: NDArray[np.float_]
-        pool.add_constant(config.scales)
+        pool.add_constant(config.scales.scales)
         # cosmology: TypeCosmology
         pool.add_constant(config.cosmology)
         # z_bins: NDArray[np.float_]
-        pool.add_constant(config.zbins)
+        pool.add_constant(config.binning.zbins)
         # bin1: bool
         pool.add_constant(True)
         # bin2: bool
         pool.add_constant(binned if other is not None else True)
         # dist_weight_scale: float | None
-        pool.add_constant(config.weight_scale)
+        pool.add_constant(config.scales.rweight)
         # weight_res: int
-        pool.add_constant(config.resolution)
+        pool.add_constant(config.scales.rbin_num)
 
-        n_bins = len(config.zbins) - 1
+        n_bins = len(config.binning.zbins) - 1
         n_patches = self.n_patches()
         # execute, unpack the data
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
-        count_dict = {key: {} for key in scales_to_keys(config.scales)}
+        count_dict = {key: {} for key in scales_to_keys(config.scales.scales)}
         for (id1, id2), (total1, total2), counts in pool.iter_result():
             # record total weight per bin, overwriting OK since identical
             totals1[id1] = total1
@@ -375,7 +375,7 @@ class Catalog(CatalogBase):
                 count_dict[scale_key][(id1, id2)] = count
 
         # get mask of all used cross-patch combinations, upper triangle if auto
-        mask = linkage.get_mask(self, other, config.crosspatch)
+        mask = linkage.get_mask(self, other, config.backend.crosspatch)
         keys = [
             tuple(key) for key in np.indices((n_patches, n_patches))[:, mask].T]
 
@@ -408,7 +408,7 @@ class Catalog(CatalogBase):
                 count=ArrayDict(keys, count),
                 total=ArrayDict(keys, total),
                 mask=mask,
-                binning=pd.IntervalIndex.from_breaks(config.zbins))
+                binning=pd.IntervalIndex.from_breaks(config.binning.zbins))
         # drop the dictionary if there is only one scale
         if len(result) == 1:
             result = tuple(result.values())[0]
@@ -423,10 +423,10 @@ class Catalog(CatalogBase):
         pool = ParallelHelper(
             function=_histogram_thread,
             n_items=self.n_patches(),
-            num_threads=min(self.n_patches(), config.num_threads))
+            num_threads=min(self.n_patches(), config.backend.thread_num))
         # patch: PatchCatalog
         pool.add_iterable(list(self))
         # NDArray[np.float_]
-        pool.add_constant(config.zbins)
+        pool.add_constant(config.binning.zbin_num)
         hist_counts = list(pool.iter_result())
-        return NzTrue(np.array(hist_counts), config.zbins)
+        return NzTrue(np.array(hist_counts), config.binning.zbins)

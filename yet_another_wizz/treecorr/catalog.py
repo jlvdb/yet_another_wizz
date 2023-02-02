@@ -234,27 +234,30 @@ class Catalog(CatalogBase):
         nncorr_config = dict(
             sep_units="radian",
             metric="Arc",
-            nbins=(1 if config.weight_scale is None else config.resolution),
-            bin_slop=config.rbin_slop,
-            num_threads=config.num_threads)
+            nbins=(
+                1 if config.scales.rweight is None else config.scales.rbin_num),
+            bin_slop=config.backend.rbin_slop,
+            num_threads=config.backend.thread_num)
 
         # bin the catalogues if necessary
-        cats1 = self.bin_iter(config.zbins)
+        cats1 = self.bin_iter(config.binning.zbins)
         if auto:
             cats2 = itertools.repeat((None, None))
         else:
             if binned:
-                cats2 = other.bin_iter(config.zbins)
+                cats2 = other.bin_iter(config.binning.zbins)
             else:
                 cats2 = itertools.repeat((None, other))
 
         # iterate the bins and compute the correlation
-        self.logger.debug(f"running treecorr on {config.num_threads} threads")
-        result = {scale_key: [] for scale_key in scales_to_keys(config.scales)}
+        self.logger.debug(
+            f"running treecorr on {config.backend.thread_num} threads")
+        result = {
+            scale_key: [] for scale_key in scales_to_keys(config.scales.scales)}
         for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
-            scales = r_kpc_to_angle(config.scales, intv.mid, config.cosmology)
+            scales = r_kpc_to_angle(config.scales.scales, intv.mid, config.cosmology)
             for scale_key, (ang_min, ang_max) in zip(
-                    scales_to_keys(config.scales), scales):
+                    scales_to_keys(config.scales.scales), scales):
                 correlation = NNCorrelation(
                     min_sep=ang_min, max_sep=ang_max, **nncorr_config)
                 correlation.process(
@@ -279,6 +282,6 @@ class Catalog(CatalogBase):
         for patch in iter(self):
             print(patch)
             counts, bins = np.histogram(
-                patch.redshifts, config.zbins, weights=patch.weights)
+                patch.redshifts, config.binning.zbins, weights=patch.weights)
             hist_counts.append(counts)
         return NzTrue(np.array(hist_counts), bins)

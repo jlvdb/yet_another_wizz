@@ -352,7 +352,7 @@ class Configuration:
         thread_num: int | None = None,
         crosspatch: bool = True,
         rbin_slop: float = 0.01
-    ) -> None:
+    ) -> Configuration:
         cosmology = _parse_cosmology(cosmology)
         scales = ScalesConfig(
             rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
