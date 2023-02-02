@@ -270,8 +270,8 @@ class ProjectDirectory:
         return self._setup
 
     @property
-    def counts_dir(self) -> Path:
-        return self.path.joinpath("paircounts")
+    def counts_dir(self) -> CountsDirectory:
+        return CountsDirectory(self.path.joinpath("paircounts"))
 
     def list_counts_scales(self) -> list(str):
         return [path.name for path in self.counts_dir.iterdir()]

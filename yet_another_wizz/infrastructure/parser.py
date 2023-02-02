@@ -200,6 +200,9 @@ parser_cross = create_subparser(
     name="cross",
     help="measure angular cross-correlation functions",
     description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.")
+parser_cross.add_argument(
+    "--no-rr", action="store_true",
+    help="do not compute random-random pair counts, even if both randoms are available")
 
 add_input_parser(parser_cross, "unknown (data)", prefix="unk", required=True)
 
@@ -212,6 +215,7 @@ parser_auto = create_subparser(
     name="auto",
     help="measure angular autocorrelation functions",
     description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.")
+
 
 #### CACHE #####################################################################
 
