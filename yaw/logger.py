@@ -9,7 +9,7 @@ from typing import Callable
 
 class OnlyYAWFilter(logging.Filter):
     def filter(self, record):
-        return "yet_another_wizz" in record.name
+        return "yaw" in record.name
 
 
 def get_logger(
@@ -26,7 +26,7 @@ def get_logger(
     handler.setLevel(level)
     handler.addFilter(OnlyYAWFilter())
     logging.basicConfig(level=level, handlers=[handler])
-    return logging.getLogger("yet_another_wizz")
+    return logging.getLogger("yaw")
 
 
 class TimedLog:

@@ -9,15 +9,15 @@ from typing import TYPE_CHECKING, NoReturn
 
 import yaml
 
-from yet_another_wizz.core.config import Configuration
+from yaw.core.config import Configuration
 
-from yet_another_wizz.infrastructure.data import InputRegister
-from yet_another_wizz.infrastructure.directories import (
+from yaw.pipe.data import InputRegister
+from yaw.pipe.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory)
 
 if TYPE_CHECKING:
-    from yet_another_wizz.core.catalog import CatalogBase
-    from yet_another_wizz.infrastructure.data import Input
+    from yaw.core.catalog import CatalogBase
+    from yaw.pipe.data import Input
 
 
 class InvalidBackendError(Exception):
@@ -122,11 +122,11 @@ class Setup:
         if self._backend is None:
             try:
                 self._backend = importlib.import_module(
-                    f"yet_another_wizz.{self.backend_name}")
+                    f"yaw.{self.backend_name}")
             except ImportError as e:
                 raise InvalidBackendError(
                     f"backend '{self.backend_name}' invalid or "
-                    "yet_another_wizz import failed") from e
+                    "yaw import failed") from e
         return self._backend
 
     @property
@@ -272,15 +272,6 @@ class ProjectDirectory:
     @property
     def counts_dir(self) -> CountsDirectory:
         return CountsDirectory(self.path.joinpath("paircounts"))
-
-    def list_counts_scales(self) -> list(str):
-        return [path.name for path in self.counts_dir.iterdir()]
-
-    def get_counts(self, scale_key: str) -> CountsDirectory:
-        path = self.counts_dir.joinpath(scale_key)
-        if not path.exists():
-            raise ValueError(f"counts for scale '{scale_key}' do not exist")
-        return CountsDirectory(path)
 
     @property
     def estimate_dir(self) -> EstimateDirectory:

@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from yet_another_wizz.core.coordinates import (
-    position_sky2sphere, distance_sky2sphere)
+from yaw.core.coordinates import position_sky2sphere, distance_sky2sphere
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

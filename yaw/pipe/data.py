@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import string
-from collections.abc import Sequence
 from dataclasses import _MISSING_TYPE, asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any
 
 
 class InputCatalogError(Exception):

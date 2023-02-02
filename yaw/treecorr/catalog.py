@@ -11,20 +11,20 @@ from numpy.typing import NDArray
 import pandas as pd
 from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
 
-from yet_another_wizz.core.catalog import CatalogBase
-from yet_another_wizz.core.config import Configuration
-from yet_another_wizz.core.coordinates import (
+from yaw.core.catalog import CatalogBase
+from yaw.core.config import Configuration
+from yaw.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
-from yet_another_wizz.core.cosmology import r_kpc_to_angle
-from yet_another_wizz.core.redshifts import NzTrue
-from yet_another_wizz.core.resampling import PairCountResult
-from yet_another_wizz.core.utils import TypeScaleKey, scales_to_keys
+from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.redshifts import NzTrue
+from yaw.core.resampling import PairCountResult
+from yaw.core.utils import TypeScaleKey
 
-from yet_another_wizz.logger import TimedLog
+from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from pandas import DataFrame, Interval
-    from yet_another_wizz.core.catalog import PatchLinkage
+    from yaw.core.catalog import PatchLinkage
 
 
 logger = logging.getLogger(__name__)

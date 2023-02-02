@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval, IntervalIndex
     from treecorr import NNCorrelation
-    from yet_another_wizz.core.utils import TypePatchKey
+    from yaw.core.utils import TypePatchKey
 
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)

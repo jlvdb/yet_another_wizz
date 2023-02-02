@@ -5,11 +5,11 @@ from typing import Any, Callable
 
 import h5py
 
-from yet_another_wizz.core.config import Configuration
-from yet_another_wizz.logger import get_logger
+from yaw.core.config import Configuration
+from yaw.logger import get_logger
 
-from yet_another_wizz.infrastructure.project import ProjectDirectory
-from yet_another_wizz.infrastructure.parser import get_input_from_args
+from yaw.pipe.project import ProjectDirectory
+from yaw.pipe.parser import get_input_from_args
 
 
 def logged(func: Callable) -> Callable:

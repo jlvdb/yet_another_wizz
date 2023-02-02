@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from pathlib import Path, _posix_flavour, _windows_flavour
 from typing import Any
 
-from yet_another_wizz.core.utils import bytes_format
+from yaw.core.utils import bytes_format
 
 
 def _get_numeric_suffix(path: Path) -> int:

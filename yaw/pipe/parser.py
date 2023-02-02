@@ -5,9 +5,8 @@ from pathlib import Path
 
 from astropy.cosmology import available as cosmology_avaliable
 
-from yet_another_wizz import __version__
-from yet_another_wizz.infrastructure.data import (
-    Input, Directory_exists, Path_exists)
+from yaw import __version__
+from yaw.pipe.data import Input, Directory_exists, Path_exists
 
 
 def create_subparser(

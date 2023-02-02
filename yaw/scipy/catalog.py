@@ -9,25 +9,25 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yet_another_wizz.core.catalog import CatalogBase
-from yet_another_wizz.core.config import Configuration
-from yet_another_wizz.core.coordinates import position_sphere2sky
-from yet_another_wizz.core.cosmology import r_kpc_to_angle
-from yet_another_wizz.core.parallel import ParallelHelper
-from yet_another_wizz.core.redshifts import NzTrue
-from yet_another_wizz.core.resampling import ArrayDict, PairCountResult
-from yet_another_wizz.core.utils import (
+from yaw.core.catalog import CatalogBase
+from yaw.core.config import Configuration
+from yaw.core.coordinates import position_sphere2sky
+from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.parallel import ParallelHelper
+from yaw.core.redshifts import NzTrue
+from yaw.core.resampling import ArrayDict, PairCountResult
+from yaw.core.utils import (
     LimitTracker, TypePatchKey, TypeScaleKey, scales_to_keys)
 
-from yet_another_wizz.scipy.patches import (
+from yaw.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
-from yet_another_wizz.logger import TimedLog
+from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame
-    from yet_another_wizz.core.catalog import PatchLinkage
-    from yet_another_wizz.core.cosmology import TypeCosmology
+    from yaw.core.catalog import PatchLinkage
+    from yaw.core.cosmology import TypeCosmology
 
 
 logger = logging.getLogger(__name__)

@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yet_another_wizz.core.parallel import (
+from yaw.core.parallel import (
     POOL_SHARE, ParallelHelper, SharedArray)
-from yet_another_wizz.core.utils import long_num_format
-from yet_another_wizz.logger import TimedLog
+from yaw.core.utils import long_num_format
+from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame
-    from yet_another_wizz.core.catalog import CatalogBase
+    from yaw.core.catalog import CatalogBase
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))

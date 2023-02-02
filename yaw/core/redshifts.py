@@ -9,13 +9,13 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from yet_another_wizz.logger import TimedLog
+from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from matplotlib.axis import Axis
     from numpy.typing import NDArray
     from pandas import DataFrame, IntervalIndex, Series
-    from yet_another_wizz.core.correlation import CorrelationFunction
+    from yaw.core.correlation import CorrelationFunction
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))

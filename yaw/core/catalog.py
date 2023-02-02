@@ -10,17 +10,16 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import distance_matrix
 
-from yet_another_wizz.core.coordinates import (
-    distance_sphere2sky, position_sphere2sky)
-from yet_another_wizz.core.cosmology import r_kpc_to_angle
-from yet_another_wizz.core.utils import long_num_format
+from yaw.core.coordinates import distance_sphere2sky, position_sphere2sky
+from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:
     from pandas import DataFrame
-    from yet_another_wizz.core.config import Configuration
-    from yet_another_wizz.core.redshifts import NzTrue
-    from yet_another_wizz.core.resampling import PairCountResult
-    from yet_another_wizz.core.utils import (
+    from yaw.core.config import Configuration
+    from yaw.core.redshifts import NzTrue
+    from yaw.core.resampling import PairCountResult
+    from yaw.core.utils import (
         TypePatchKey, TypeScaleKey)
 
 
@@ -29,7 +28,7 @@ logger = logging.getLogger(__name__.replace(".core.", "."))
 
 class CatalogBase(ABC):
 
-    logger = logging.getLogger("yet_another_wizz.Catalog")
+    logger = logging.getLogger("yaw.Catalog")
 
     @abstractmethod
     def __init__(

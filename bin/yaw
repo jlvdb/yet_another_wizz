@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from yet_another_wizz.infrastructure.parser import parser
-from yet_another_wizz.infrastructure import jobs
+from yaw.pipe.parser import parser
+from yaw.pipe import jobs
 
 
 def main():

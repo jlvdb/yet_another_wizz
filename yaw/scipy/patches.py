@@ -8,10 +8,10 @@ import numpy as np
 import pandas as pd
 from scipy.cluster import vq
 
-from yet_another_wizz.core.coordinates import (
+from yaw.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
 
-from yet_another_wizz.scipy.kdtree import SphericalKDTree
+from yaw.scipy.kdtree import SphericalKDTree
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

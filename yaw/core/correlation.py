@@ -9,18 +9,18 @@ import h5py
 import numpy as np
 from matplotlib import pyplot as plt
 
-from yet_another_wizz.core.catalog import PatchLinkage
-from yet_another_wizz.core.resampling import PairCountResult
-from yet_another_wizz.logger import TimedLog
+from yaw.core.catalog import PatchLinkage
+from yaw.core.resampling import PairCountResult
+from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from matplotlib.axis import Axis
     from pandas import DataFrame, IntervalIndex, Series
-    from yet_another_wizz.core.catalog import CatalogBase
-    from yet_another_wizz.core.config import Configuration
-    from yet_another_wizz.core.resampling import PairCountData
-    from yet_another_wizz.core.utils import TypeScaleKey
+    from yaw.core.catalog import CatalogBase
+    from yaw.core.config import Configuration
+    from yaw.core.resampling import PairCountData
+    from yaw.core.utils import TypeScaleKey
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))

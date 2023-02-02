@@ -10,9 +10,9 @@ import astropy.cosmology
 import numpy as np
 import yaml
 
-from yet_another_wizz import __version__
-from yet_another_wizz.core.cosmology import TypeCosmology, get_default_cosmology
-from yet_another_wizz.core.utils import scales_to_keys
+from yaw import __version__
+from yaw.core.cosmology import TypeCosmology, get_default_cosmology
+from yaw.core.utils import scales_to_keys
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
