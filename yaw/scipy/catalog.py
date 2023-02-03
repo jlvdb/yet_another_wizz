@@ -372,7 +372,7 @@ class Catalog(CatalogBase):
         if progress:
             result_iter = tqdm(
                 result_iter, total=pool.n_jobs(), delay=0.5,
-                leave=None, smoothing=0.15, unit="jobs")
+                leave=None, smoothing=0.05, unit="jobs")
         for (id1, id2), (total1, total2), counts in result_iter:
             # record total weight per bin, overwriting OK since identical
             totals1[id1] = total1

@@ -15,7 +15,7 @@ def create_subparser(
     help: str,
     description: str,
     wdir: bool = True,
-    threads: bool = True,
+    threads: bool = False,
     progress: bool = False
 ) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
@@ -236,7 +236,8 @@ parser_cross = create_subparser(
     name="cross",
     help="measure angular cross-correlation functions",
     description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.",
-    progress=True)
+    progress=True,
+    threads=True)
 parser_cross.add_argument(
     "--no-rr", action="store_true",
     help="do not compute random-random pair counts, even if both randoms are available")
@@ -252,7 +253,8 @@ parser_auto = create_subparser(
     name="auto",
     help="measure angular autocorrelation functions",
     description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.",
-    progress=True)
+    progress=True,
+    threads=True)
 parser_auto.add_argument(
     "--which", choices=("ref", "unk"), default="ref",
     help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
@@ -268,7 +270,6 @@ parser_auto = create_subparser(
     name="cache",
     help="mange or clean up cache directories",
     description="Get a summary of the project's cache directory (location, size, etc.) or remove entries with --drop.",
-    threads=False,
     progress=False)
 parser_auto.add_argument(
     "--drop", nargs="*", metavar="<str>",
@@ -288,7 +289,8 @@ parser_nz = create_subparser(
     subparsers,
     name="nz",
     help="compute clustering clustering redshift estimates for the unknown data",
-    description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.")
+    description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.",
+    threads=True)
 
 #### RUN #######################################################################
 

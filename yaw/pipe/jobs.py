@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Callable
 
@@ -10,6 +11,15 @@ from yaw.logger import get_logger
 
 from yaw.pipe.project import ProjectDirectory
 from yaw.pipe.parser import get_input_from_args
+
+
+def config_with_threads(
+    config: Configuration,
+    threads: int | None = None
+) -> Configuration:
+    if threads is not None:
+        return config.modify(thread_num=threads)
+    return config
 
 
 def logged(func: Callable) -> Callable:
@@ -46,6 +56,38 @@ def init(parser, args):
         # TODO: patches
 
 
+def crosscorrelation(
+    project: ProjectDirectory,
+    no_rr: bool = False,
+    progress: bool = False,
+    threads: bool | None = None
+) -> None:
+    # load the reference data, load unknown data on demand
+    kwargs = dict(progress=progress)
+    reference = project.setup.load_reference("data")
+    if not no_rr:
+        kwargs["ref_rand"] = project.setup.load_reference("rand")
+    # iterate the bins
+    for idx in project.setup.catalogs.get_bin_indices():
+        # load the data
+        unknown = project.setup.load_unknown("data", idx)
+        unk_rand = project.setup.load_unknown("rand", idx)
+        # run crosscorrelation
+        cfs = project.setup.backend.crosscorrelate(
+            config_with_threads(project.setup.config, threads),
+            reference, unknown,
+            unk_rand=unk_rand, **kwargs)
+        if not isinstance(cfs, dict):
+            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+        del unknown, unk_rand
+        # write to disk
+        for scale_key, cf in cfs.items():
+            counts_dir = project.get_counts(scale_key, create=True)
+            fpath = counts_dir.get_cross(idx)
+            with h5py.File(str(fpath), mode="w") as fh:
+                cf.to_hdf(fh)
+
+
 @logged
 def cross(parser, args):
     with ProjectDirectory(args.wdir) as project:
@@ -57,81 +99,93 @@ def cross(parser, args):
         for idx in input_unk.get_bin_indices():
             project.setup.add_unknown(
                 idx, data=input_unk.get(idx), rand=input_rand.get(idx))
-        # load the reference data, load unknown data on demand
-        kwargs = dict(progress=args.progress)
-        reference = project.setup.load_reference("data")
-        if not args.no_rr:
-            kwargs["ref_rand"] = project.setup.load_reference("rand")
-        # iterate the bins
-        for idx in project.setup.catalogs.get_bin_indices():
-            # load the data
-            unknown = project.setup.load_unknown("data", idx)
-            unk_rand = project.setup.load_unknown("rand", idx)
-            # run crosscorrelation
-            cfs = project.setup.backend.crosscorrelate(
-                project.setup.config, reference, unknown,
-                unk_rand=unk_rand, **kwargs)
-            if not isinstance(cfs, dict):
-                cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
-            # write to disk
-            for scale_key, cf in cfs.items():
-                counts_dir = project.get_counts(scale_key, create=True)
-                fpath = counts_dir.get_cross(idx)
-                with h5py.File(str(fpath), mode="w") as fh:
-                    cf.to_hdf(fh)
+        crosscorrelation(
+            project, no_rr=args.no_rr,
+            progress=args.progress, threads=args.threads)
+
+
+def autocorrelation_reference(
+    project: ProjectDirectory,
+    no_rr: bool = False,
+    progress: bool = False,
+    threads: bool | None = None
+) -> None:
+    # load the data
+    data = project.setup.load_reference("data")
+    rand = project.setup.load_reference("rand")
+    # run autocorrelation
+    cfs = project.setup.backend.autocorrelate(
+        config_with_threads(project.setup.config, threads),
+        data, rand, compute_rr=(not no_rr), progress=progress)
+    if not isinstance(cfs, dict):
+        cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+    del data, rand
+    # write to disk
+    for scale_key, cf in cfs.items():
+        counts_dir = project.get_counts(scale_key, create=True)
+        fpath = counts_dir.get_auto_reference()
+        with h5py.File(str(fpath), mode="w") as fh:
+            cf.to_hdf(fh)
+
+
+def autocorrelation_unknown(
+    project: ProjectDirectory,
+    no_rr: bool = False,
+    progress: bool = False,
+    threads: bool | None = None
+) -> None:
+    # iterate the bins
+    for idx in project.setup.catalogs.get_bin_indices():
+        # load the data
+        data = project.setup.load_unknown("data", idx)
+        rand = project.setup.load_unknown("rand", idx)
+        # run autocorrelation
+        cfs = project.setup.backend.autocorrelate(
+            config_with_threads(project.setup.config, threads),
+            data, rand, compute_rr=(not no_rr), progress=progress)
+        if not isinstance(cfs, dict):
+            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+        del data, rand
+        # write to disk
+        for scale_key, cf in cfs.items():
+            counts_dir = project.get_counts(scale_key, create=True)
+            fpath = counts_dir.get_auto(idx)
+            with h5py.File(str(fpath), mode="w") as fh:
+                cf.to_hdf(fh)
+
 
 @logged
 def auto(parser, args):
     with ProjectDirectory(args.wdir) as project:
         if args.which == "ref":
-            # load the data
-            data = project.setup.load_reference("data")
-            rand = project.setup.load_reference("rand")
-            # run autocorrelation
-            cfs = project.setup.backend.autocorrelate(
-                project.setup.config, data, rand,
-                compute_rr=(not args.no_rr), progress=args.progress)
-            if not isinstance(cfs, dict):
-                cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
-            # write to disk
-            for scale_key, cf in cfs.items():
-                counts_dir = project.get_counts(scale_key, create=True)
-                fpath = counts_dir.get_auto_reference()
-                with h5py.File(str(fpath), mode="w") as fh:
-                    cf.to_hdf(fh)
-
+            autocorrelation_reference(
+                project, no_rr=args.no_rr,
+                progress=args.progress, threads=args.threads)
         else:
-            # iterate the bins
-            for idx in project.setup.catalogs.get_bin_indices():
-                # load the data
-                data = project.setup.load_unknown("data", idx)
-                rand = project.setup.load_unknown("rand", idx)
-                # run autocorrelation
-                cfs = project.setup.backend.autocorrelate(
-                    project.setup.config, data, rand,
-                    compute_rr=(not args.no_rr), progress=args.progress)
-                if not isinstance(cfs, dict):
-                    cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
-                # write to disk
-                for scale_key, cf in cfs.items():
-                    counts_dir = project.get_counts(scale_key, create=True)
-                    fpath = counts_dir.get_auto(idx)
-                    with h5py.File(str(fpath), mode="w") as fh:
-                        cf.to_hdf(fh)
+            autocorrelation_unknown(
+                project, no_rr=args.no_rr,
+                progress=args.progress, threads=args.threads)
+
+
+def manage_cache(
+    project: ProjectDirectory,
+    drop: list[str] | None = None
+) -> None:
+    cachedir = project.setup.cache
+    if drop is None:
+        cachedir.summary()
+    else:  # delete entries
+        if len(drop) == 0:
+            cachedir.drop_all()
+        else:
+            for name in drop:
+                cachedir.drop(name)
 
 
 @logged
 def cache(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        cachedir = project.setup.cache
-        if args.drop is None:
-            cachedir.summary()
-        else:  # delete entries
-            if len(args.drop) == 0:
-                cachedir.drop_all()
-            else:
-                for name in args.drop:
-                    cachedir.drop(name)
+        manage_cache(project, drop=args.drop)
 
 
 @logged
@@ -139,43 +193,65 @@ def merge(parser, args):
     raise NotImplementedError
 
 
+def nz_estimate(
+    project: ProjectDirectory
+) -> None:
+    import matplotlib.pyplot as plt
+    from math import ceil
+
+    # iterate scales
+    for scale_key in project.list_counts_scales():
+        counts_dir = project.get_counts(scale_key)
+        est_dir = project.get_estimate(scale_key, create=True)
+        # iterate bins
+        bin_indices = counts_dir.get_cross_indices()
+
+        nbins = len(bin_indices)
+        ncols = 3
+        fig, axes = plt.subplots(
+            ceil(nbins / ncols), ncols, sharex=True, sharey=True)
+        for ax, idx in zip(axes.flatten(), bin_indices):
+
+            # load w_sp
+            path = counts_dir.get_cross(idx)
+            with h5py.File(str(path)) as fh:
+                w_sp = project.setup.backend.CorrelationFunction.from_hdf(fh)
+            est = project.setup.backend.NzEstimator(w_sp)
+            # load w_ss
+            path = counts_dir.get_auto_reference()
+            if path.exists():
+                with h5py.File(str(path)) as fh:
+                    w_ss = project.setup.backend.CorrelationFunction.from_hdf(fh)
+                est.add_reference_autocorr(w_ss)
+            # load w_pp
+            path = counts_dir.get_auto(idx)
+            if path.exists():
+                with h5py.File(str(path)) as fh:
+                    w_pp = project.setup.backend.CorrelationFunction.from_hdf(fh)
+                est.add_unknown_autocorr(w_pp)
+
+            # just for now to actually generate samples
+            est.plot(ax=ax)
+            try:
+                data = project.setup.load_unknown("data", idx)
+            except Exception:
+                pass
+            else:
+                nz = data.true_redshifts(project.setup.config)
+                nz.plot(ax=ax, color="k")
+
+            # write to disk
+            for kind, path in est_dir.get_cross(idx).items():
+                print(f"   mock writing {kind}: {path}")
+        fig.tight_layout()
+        fig.savefig(str(project.path.joinpath(f"{scale_key}.pdf")))
+
+
 @logged
 def nz(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        # iterate scales
-        for scale_key in project.list_counts_scales():
-            counts_dir = project.get_counts(scale_key)
-            est_dir = project.get_estimate(scale_key, create=True)
-            # iterate bins
-            for idx in counts_dir.get_cross_indices():
-                # load w_sp
-                path = counts_dir.get_cross(idx)
-                with h5py.File(str(path)) as fh:
-                    w_sp = project.setup.backend.CorrelationFunction.from_hdf(fh)
-                est = project.setup.backend.NzEstimator(w_sp)
-                # load w_ss
-                path = counts_dir.get_auto_reference()
-                if path.exists():
-                    with h5py.File(str(path)) as fh:
-                        w_ss = project.setup.backend.CorrelationFunction.from_hdf(fh)
-                    est.add_reference_autocorr(w_ss)
-                # load w_pp
-                path = counts_dir.get_auto(idx)
-                if path.exists():
-                    with h5py.File(str(path)) as fh:
-                        w_pp = project.setup.backend.CorrelationFunction.from_hdf(fh)
-                    est.add_unknown_autocorr(w_pp)
+        nz_estimate(project)
 
-                # just for now to actually generate samples
-                import matplotlib.pyplot as plt
-                ax = plt.gca()
-                est.plot(ax=ax)
-
-                # write to disk
-                for kind, path in est_dir.get_cross(idx).items():
-                    print(f"   mock writing {kind}: {path}")
-
-        plt.show()
 
 
 def run_from_setup(*args, **kwargs) -> Any:
@@ -186,3 +262,21 @@ def run_from_setup(*args, **kwargs) -> Any:
 @logged
 def run(parser, args):
     run_from_setup(**args)
+
+
+@dataclass(frozen=True)
+class Job:
+
+    name: str
+    args: dict[str, Any]
+
+    def get_job(self) -> Callable:
+        options = dict(
+            cross=crosscorrelation,
+            cache=manage_cache,
+            nz=nz_estimate)
+        return options[self.name]
+
+    def run(self) -> Any:
+        func = self.get_job()
+        return func()
