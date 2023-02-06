@@ -330,3 +330,12 @@ class PairCountResult:
         dset = dest.create_dataset(
             "binning", data=binning, **_compression)
         dset.attrs["closed"] = self.binning.closed
+
+    @classmethod
+    def from_file(cls, path: str) -> PairCountResult:
+        with h5py.File(path) as f:
+            return cls.from_hdf(f)
+
+    def to_file(self, path: str) -> None:
+        with h5py.File(path, mode="w") as f:
+            self.to_hdf(f)

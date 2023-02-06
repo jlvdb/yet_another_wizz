@@ -339,6 +339,15 @@ class CorrelationFunction:
                 data.to_hdf(group)
         dest.create_dataset("npatch", data=self.npatch)
 
+    @classmethod
+    def from_file(cls, path: str) -> CorrelationFunction:
+        with h5py.File(path) as f:
+            return cls.from_hdf(f)
+
+    def to_file(self, path: str) -> None:
+        with h5py.File(path, mode="w") as f:
+            self.to_hdf(f)
+
 
 def _create_dummy_counts(
     counts: Any | dict[TypeScaleKey, Any]
