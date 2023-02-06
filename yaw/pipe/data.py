@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import _MISSING_TYPE, asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any

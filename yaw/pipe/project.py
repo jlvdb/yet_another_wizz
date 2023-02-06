@@ -443,3 +443,91 @@ class ProjectDirectory:
 
     def list_estimate_scales(self) -> list(str):
         return [path.name for path in self.estimate_dir.iterdir()]
+
+
+def runner(
+    project: ProjectDirectory,
+    cross_kwargs: dict[str, Any] | None = None,
+    auto_ref_kwargs: dict[str, Any] | None = None,
+    auto_unk_kwargs: dict[str, Any] | None = None,
+    nz_kwargs: dict[str, Any] | None = None,
+    cache_kwargs: dict[str, Any] | None = None,
+    progress: bool = False,
+    threads: int | None = None
+) -> None:
+    if threads is not None:
+        config = project.config.modify(thread_num=threads)
+    else:
+        config = project.config
+
+    # load the reference sample
+    if cross_kwargs or auto_ref_kwargs:
+        reference = project.load_reference("data")
+        ref_rand = project.load_reference("rand")
+
+    # run reference autocorrelation
+    if auto_ref_kwargs:
+        cfs = project.backend.autocorrelate(
+            config, reference, ref_rand,
+            compute_rr=(not auto_ref_kwargs["no_rr"]),
+            progress=progress)
+        if not isinstance(cfs, dict):
+            cfs = {config.scales.dict_keys()[0]: cfs}
+        for scale_key, cf in cfs.items():
+            counts_dir = project.get_counts(scale_key, create=True)
+            cf.to_file(str(counts_dir.get_auto_reference()))
+
+    # iterate the unknown sample bins
+    if cross_kwargs or auto_unk_kwargs or nz_kwargs:
+        for idx in project.get_bin_indices():
+
+            # load bin of the unknown sample
+            unknown = project.load_unknown("data", idx)
+            unk_rand = project.load_unknown("rand", idx)
+
+            # run crosscorrelation
+            if cross_kwargs:
+                cfs = project.backend.crosscorrelate(
+                    config, reference, unknown,
+                    ref_rand=ref_rand if not cross_kwargs["no_rr"] else None,
+                    unk_rand=unk_rand,
+                    progress=progress)
+                if not isinstance(cfs, dict):
+                    cfs = {config.scales.dict_keys()[0]: cfs}
+                for scale_key, cf in cfs.items():
+                    counts_dir = project.get_counts(scale_key, create=True)
+                    cf.to_file(str(counts_dir.get_cross(idx)))
+
+            # run unknown autocorrelation
+            if auto_unk_kwargs:
+                cfs = project.backend.autocorrelate(
+                    config, unknown, unk_rand,
+                    compute_rr=(not auto_unk_kwargs["no_rr"]),
+                    progress=progress)
+                if not isinstance(cfs, dict):
+                    cfs = {config.scales.dict_keys()[0]: cfs}
+                for scale_key, cf in cfs.items():
+                    counts_dir = project.get_counts(scale_key, create=True)
+                    cf.to_file(str(counts_dir.get_auto(idx)))
+
+            # measure true z
+            if nz_kwargs:
+                unknown.true_redshift(config)
+
+            # remove any loaded data sample
+            del unknown, unk_rand
+    if cross_kwargs or auto_ref_kwargs:
+        del reference, ref_rand
+
+    # clean up cached data
+    if cache_kwargs:
+        drop = cache_kwargs["drop"]
+        cachedir = project.get_cache()
+        if drop is None:
+            cachedir.summary()
+        else:  # delete entries
+            if len(drop) == 0:
+                cachedir.drop_all()
+            else:
+                for name in drop:
+                    cachedir.drop(name)
