@@ -6,7 +6,25 @@ from pathlib import Path
 from astropy.cosmology import available as cosmology_avaliable
 
 from yaw import __version__
-from yaw.pipe.data import BinnedInput, Input, Directory_exists, Path_exists
+from yaw.pipe.data import BinnedInput, Input
+
+
+def Directory_exists(path: str) -> Path:
+    filepath = Path(path)
+    if not filepath.exists():
+        raise argparse.ArgumentTypeError(f"file '{path}' not found")
+    if not filepath.is_dir():
+        raise argparse.ArgumentTypeError(f"path '{path}' is not a directory")
+    return filepath
+
+
+def Path_exists(path: str) -> Path:
+    filepath = Path(path)
+    if not filepath.exists():
+        raise argparse.ArgumentTypeError(f"file '{path}' not found")
+    if not filepath.is_file():
+        raise argparse.ArgumentTypeError(f"path '{path}' is not a file")
+    return filepath
 
 
 def create_subparser(

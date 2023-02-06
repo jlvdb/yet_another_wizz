@@ -262,21 +262,3 @@ class InputRegister:
         for inputs in self._unknown.values():
             return inputs.get_bin_indices()
         return set()
-
-
-def Directory_exists(path: str) -> Path:
-    filepath = Path(path)
-    if not filepath.exists():
-        raise argparse.ArgumentTypeError(f"file '{path}' not found")
-    if not filepath.is_dir():
-        raise argparse.ArgumentTypeError(f"path '{path}' is not a directory")
-    return filepath
-
-
-def Path_exists(path: str) -> Path:
-    filepath = Path(path)
-    if not filepath.exists():
-        raise argparse.ArgumentTypeError(f"file '{path}' not found")
-    if not filepath.is_file():
-        raise argparse.ArgumentTypeError(f"path '{path}' is not a file")
-    return filepath
