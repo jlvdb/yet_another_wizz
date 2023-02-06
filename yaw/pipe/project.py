@@ -191,13 +191,28 @@ def _write_setup_file(
     catalogs: InputRegister,
     backend_name: str,
 ) -> None:
+    # parse the setup into a YAML string
     setup = dict(
         configuration=config.to_dict(),
         data=dict(
             cachepath=str(cache_dir) if cache_dir is not None else None,
             catalogs=catalogs.to_dict()),
         backend=backend_name)
-    string = yaml.dump(setup)
+    lines = yaml.dump(setup).split("\n")
+    # some postprocessing for better readibility
+    indent = " " * 4
+    string = "# yet_another_wizz setup configuration (auto generated)\n"
+    for i, line in enumerate(lines):
+        stripped = line.strip(" ")
+        if len(stripped) == 0:
+            continue
+        n_spaces = len(line) - len(stripped)
+        n_indent = n_spaces // 2
+        if n_indent == 0:
+            string += f"\n{line}\n"
+        else:
+            string += f"{indent * n_indent}{stripped}\n"
+    # write to setup file
     with open(path, "w") as f:
         f.write(string)
 
