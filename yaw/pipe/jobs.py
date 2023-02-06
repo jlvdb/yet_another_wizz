@@ -13,13 +13,104 @@ from yaw.pipe.project import ProjectDirectory
 from yaw.pipe.parser import get_input_from_args
 
 
-def config_with_threads(
+def _config_with_threads(
     config: Configuration,
     threads: int | None = None
 ) -> Configuration:
     if threads is not None:
         return config.modify(thread_num=threads)
     return config
+
+
+def _runner(
+    project: ProjectDirectory,
+    cross_kwargs: dict[str, Any] | None = None,
+    auto_ref_kwargs: dict[str, Any] | None = None,
+    auto_unk_kwargs: dict[str, Any] | None = None,
+    nz_kwargs: dict[str, Any] | None = None,
+    cache_kwargs: dict[str, Any] | None = None,
+    progress: bool = False,
+    threads: bool | None = None
+) -> None:
+    config = _config_with_threads(project.config, threads)
+
+    # load the reference sample
+    if cross_kwargs or auto_ref_kwargs:
+        reference = project.load_reference("data")
+        ref_rand = project.load_reference("rand")
+
+    # run reference autocorrelation
+    if auto_ref_kwargs:
+        cfs = project.backend.autocorrelate(
+            config, reference, ref_rand,
+            compute_rr=(not auto_ref_kwargs["no_rr"]),
+            progress=progress)
+        if not isinstance(cfs, dict):
+            cfs = {project.config.scales.dict_keys()[0]: cfs}
+        for scale_key, cf in cfs.items():
+            counts_dir = project.get_counts(scale_key, create=True)
+            fpath = counts_dir.get_auto_reference()
+            with h5py.File(str(fpath), mode="w") as fh:
+                cf.to_hdf(fh)
+
+    # iterate the unknown sample bins
+    if cross_kwargs or auto_unk_kwargs or nz_kwargs:
+        for idx in project.get_bin_indices():
+
+            # load bin of the unknown sample
+            unknown = project.load_unknown("data", idx)
+            unk_rand = project.load_unknown("rand", idx)
+
+            # run crosscorrelation
+            if cross_kwargs:
+                cfs = project.backend.crosscorrelate(
+                    config, reference, unknown,
+                    ref_rand=ref_rand if not cross_kwargs["no_rr"] else None,
+                    unk_rand=unk_rand,
+                    progress=progress)
+                if not isinstance(cfs, dict):
+                    cfs = {project.config.scales.dict_keys()[0]: cfs}
+                for scale_key, cf in cfs.items():
+                    counts_dir = project.get_counts(scale_key, create=True)
+                    fpath = counts_dir.get_cross(idx)
+                    with h5py.File(str(fpath), mode="w") as fh:
+                        cf.to_hdf(fh)
+
+            # run unknown autocorrelation
+            if auto_unk_kwargs:
+                cfs = project.backend.autocorrelate(
+                    config, unknown, unk_rand,
+                    compute_rr=(not auto_unk_kwargs["no_rr"]),
+                    progress=progress)
+                if not isinstance(cfs, dict):
+                    cfs = {project.config.scales.dict_keys()[0]: cfs}
+                for scale_key, cf in cfs.items():
+                    counts_dir = project.get_counts(scale_key, create=True)
+                    fpath = counts_dir.get_auto(idx)
+                    with h5py.File(str(fpath), mode="w") as fh:
+                        cf.to_hdf(fh)
+
+            # measure true z
+            if nz_kwargs:
+                unknown.true_redshift(project.config)
+
+            # remove any loaded data sample
+            del unknown, unk_rand
+    if cross_kwargs or auto_ref_kwargs:
+        del reference, ref_rand
+
+    # clean up cached data
+    if cache_kwargs:
+        drop = cache_kwargs["drop"]
+        cachedir = project.get_cache()
+        if drop is None:
+            cachedir.summary()
+        else:  # delete entries
+            if len(drop) == 0:
+                cachedir.drop_all()
+            else:
+                for name in drop:
+                    cachedir.drop(name)
 
 
 def logged(func: Callable) -> Callable:
@@ -54,112 +145,6 @@ def init(parser, args):
         # TODO: patches
 
 
-def runner(
-    project: ProjectDirectory,
-    cross_kwargs: dict[str, Any] | None = None,
-    auto_ref_kwargs: dict[str, Any] | None = None,
-    auto_unk_kwargs: dict[str, Any] | None = None,
-    nz_kwargs: dict[str, Any] | None = None,
-    cache_kwargs: dict[str, Any] | None = None,
-    progress: bool = False,
-    threads: bool | None = None
-) -> None:
-
-    if cross_kwargs or auto_ref_kwargs:
-        # load the data
-        data = project.load_reference("data")
-        rand = project.load_reference("rand")
-    # run autocorrelation
-    cfs = project.backend.autocorrelate(
-        config_with_threads(project.config, threads),
-        data, rand, compute_rr=(not no_rr), progress=progress)
-    if not isinstance(cfs, dict):
-        cfs = {project.config.scales.dict_keys()[0]: cfs}
-    del data, rand
-    # write to disk
-    for scale_key, cf in cfs.items():
-        counts_dir = project.get_counts(scale_key, create=True)
-        fpath = counts_dir.get_auto_reference()
-        with h5py.File(str(fpath), mode="w") as fh:
-            cf.to_hdf(fh)
-
-    # load the reference data, load unknown data on demand
-    kwargs = dict(progress=progress)
-    reference = project.load_reference("data")
-    if not no_rr:
-        kwargs["ref_rand"] = project.load_reference("rand")
-    # iterate the bins
-    for idx in project.get_bin_indices():
-        # load the data
-        unknown = project.load_unknown("data", idx)
-        unk_rand = project.load_unknown("rand", idx)
-        # run crosscorrelation
-        cfs = project.backend.crosscorrelate(
-            config_with_threads(project.config, threads),
-            reference, unknown,
-            unk_rand=unk_rand, **kwargs)
-        if not isinstance(cfs, dict):
-            cfs = {project.config.scales.dict_keys()[0]: cfs}
-
-        # write to disk
-        for scale_key, cf in cfs.items():
-            counts_dir = project.get_counts(scale_key, create=True)
-            fpath = counts_dir.get_cross(idx)
-            with h5py.File(str(fpath), mode="w") as fh:
-                cf.to_hdf(fh)
-
-        # run autocorrelation
-        cfs = project.backend.autocorrelate(
-            config_with_threads(project.config, threads),
-            unknown, unk_rand, compute_rr=(not no_rr), progress=progress)
-        if not isinstance(cfs, dict):
-            cfs = {project.config.scales.dict_keys()[0]: cfs}
-
-        # write to disk
-        for scale_key, cf in cfs.items():
-            counts_dir = project.get_counts(scale_key, create=True)
-            fpath = counts_dir.get_auto(idx)
-            with h5py.File(str(fpath), mode="w") as fh:
-                cf.to_hdf(fh)
-
-        # true z
-        unknown.true_redshift(project.config)
-
-        del unknown, unk_rand
-
-
-def crosscorrelation(
-    project: ProjectDirectory,
-    no_rr: bool = False,
-    progress: bool = False,
-    threads: bool | None = None
-) -> None:
-    # load the reference data, load unknown data on demand
-    kwargs = dict(progress=progress)
-    reference = project.load_reference("data")
-    if not no_rr:
-        kwargs["ref_rand"] = project.load_reference("rand")
-    # iterate the bins
-    for idx in project.get_bin_indices():
-        # load the data
-        unknown = project.load_unknown("data", idx)
-        unk_rand = project.load_unknown("rand", idx)
-        # run crosscorrelation
-        cfs = project.backend.crosscorrelate(
-            config_with_threads(project.config, threads),
-            reference, unknown,
-            unk_rand=unk_rand, **kwargs)
-        if not isinstance(cfs, dict):
-            cfs = {project.config.scales.dict_keys()[0]: cfs}
-        del unknown, unk_rand
-        # write to disk
-        for scale_key, cf in cfs.items():
-            counts_dir = project.get_counts(scale_key, create=True)
-            fpath = counts_dir.get_cross(idx)
-            with h5py.File(str(fpath), mode="w") as fh:
-                cf.to_hdf(fh)
-
-
 @logged
 def cross(parser, args):
     with ProjectDirectory(args.wdir) as project:
@@ -171,87 +156,22 @@ def cross(parser, args):
         for idx in input_unk.get_bin_indices():
             project.add_unknown(
                 idx, data=input_unk.get(idx), rand=input_rand.get(idx))
-        crosscorrelation(
-            project, no_rr=args.no_rr,
+        # run correlations
+        _runner(
+            project, cross_kwargs=dict(no_rr=args.no_rr),
             progress=args.progress, threads=args.threads)
-
-
-def autocorrelation_reference(
-    project: ProjectDirectory,
-    no_rr: bool = False,
-    progress: bool = False,
-    threads: bool | None = None
-) -> None:
-    # load the data
-    data = project.load_reference("data")
-    rand = project.load_reference("rand")
-    # run autocorrelation
-    cfs = project.backend.autocorrelate(
-        config_with_threads(project.config, threads),
-        data, rand, compute_rr=(not no_rr), progress=progress)
-    if not isinstance(cfs, dict):
-        cfs = {project.config.scales.dict_keys()[0]: cfs}
-    del data, rand
-    # write to disk
-    for scale_key, cf in cfs.items():
-        counts_dir = project.get_counts(scale_key, create=True)
-        fpath = counts_dir.get_auto_reference()
-        with h5py.File(str(fpath), mode="w") as fh:
-            cf.to_hdf(fh)
-
-
-def autocorrelation_unknown(
-    project: ProjectDirectory,
-    no_rr: bool = False,
-    progress: bool = False,
-    threads: bool | None = None
-) -> None:
-    # iterate the bins
-    for idx in project.get_bin_indices():
-        # load the data
-        data = project.load_unknown("data", idx)
-        rand = project.load_unknown("rand", idx)
-        # run autocorrelation
-        cfs = project.backend.autocorrelate(
-            config_with_threads(project.config, threads),
-            data, rand, compute_rr=(not no_rr), progress=progress)
-        if not isinstance(cfs, dict):
-            cfs = {project.config.scales.dict_keys()[0]: cfs}
-        del data, rand
-        # write to disk
-        for scale_key, cf in cfs.items():
-            counts_dir = project.get_counts(scale_key, create=True)
-            fpath = counts_dir.get_auto(idx)
-            with h5py.File(str(fpath), mode="w") as fh:
-                cf.to_hdf(fh)
 
 
 @logged
 def auto(parser, args):
     with ProjectDirectory(args.wdir) as project:
+        # run correlations
+        kwargs = dict(progress=args.progress, threads=args.threads)
         if args.which == "ref":
-            autocorrelation_reference(
-                project, no_rr=args.no_rr,
-                progress=args.progress, threads=args.threads)
+            kwargs["auto_ref_kwargs"] = dict(no_rr=args.no_rr)
         else:
-            autocorrelation_unknown(
-                project, no_rr=args.no_rr,
-                progress=args.progress, threads=args.threads)
-
-
-def manage_cache(
-    project: ProjectDirectory,
-    drop: list[str] | None = None
-) -> None:
-    cachedir = project.get_cache()
-    if drop is None:
-        cachedir.summary()
-    else:  # delete entries
-        if len(drop) == 0:
-            cachedir.drop_all()
-        else:
-            for name in drop:
-                cachedir.drop(name)
+            kwargs["auto_unk_kwargs"] = dict(no_rr=args.no_rr)
+        _runner(project, **kwargs)
 
 
 def nz_estimate(
@@ -318,7 +238,6 @@ def nz(parser, args):
         nz_estimate(project)
 
 
-
 def run_from_setup(*args, **kwargs) -> Any:
     with ProjectDirectory(args.wdir) as project:
         raise NotImplementedError
@@ -332,7 +251,7 @@ def run(parser, args):
 @logged
 def cache(parser, args):
     with ProjectDirectory(args.wdir) as project:
-        manage_cache(project, drop=args.drop)
+        _runner(project, cache_kwargs=dict(drop=args.drop))
 
 
 @logged
