@@ -44,15 +44,13 @@ def init(parser, args):
         rmin=args.rmin, rmax=args.rmax, rweight=args.rweight, rbin_num=args.rbin_num,
         zmin=args.zmin, zmax=args.zmax, zbin_num=args.zbin_num, method=args.method,
         thread_num=args.threads, crosspatch=(not args.no_crosspatch), rbin_slop=args.rbin_slop)
-    if args.cache_path is None:
-        args.cache_path = args.wdir.joinpath("cache").expanduser().absolute()
     with ProjectDirectory.create(
         args.wdir, config, cachepath=args.cache_path, backend=args.backend
     ) as project:
         # get the data catalog and the optional random catalog
         input_ref = get_input_from_args(parser, args, "ref", require_z=True)
         input_rand = get_input_from_args(parser, args, "rand", require_z=True)
-        project.setup.set_reference(data=input_ref, rand=input_rand)
+        project.set_reference(data=input_ref, rand=input_rand)
         # TODO: patches
 
 
@@ -67,16 +65,16 @@ def runner(
     threads: bool | None = None
 ) -> None:
 
-    if cross_kwargs or auto_ref_kwargs
-    # load the data
-    data = project.setup.load_reference("data")
-    rand = project.setup.load_reference("rand")
+    if cross_kwargs or auto_ref_kwargs:
+        # load the data
+        data = project.load_reference("data")
+        rand = project.load_reference("rand")
     # run autocorrelation
-    cfs = project.setup.backend.autocorrelate(
-        config_with_threads(project.setup.config, threads),
+    cfs = project.backend.autocorrelate(
+        config_with_threads(project.config, threads),
         data, rand, compute_rr=(not no_rr), progress=progress)
     if not isinstance(cfs, dict):
-        cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+        cfs = {project.config.scales.dict_keys()[0]: cfs}
     del data, rand
     # write to disk
     for scale_key, cf in cfs.items():
@@ -87,21 +85,21 @@ def runner(
 
     # load the reference data, load unknown data on demand
     kwargs = dict(progress=progress)
-    reference = project.setup.load_reference("data")
+    reference = project.load_reference("data")
     if not no_rr:
-        kwargs["ref_rand"] = project.setup.load_reference("rand")
+        kwargs["ref_rand"] = project.load_reference("rand")
     # iterate the bins
-    for idx in project.setup.catalogs.get_bin_indices():
+    for idx in project.get_bin_indices():
         # load the data
-        unknown = project.setup.load_unknown("data", idx)
-        unk_rand = project.setup.load_unknown("rand", idx)
+        unknown = project.load_unknown("data", idx)
+        unk_rand = project.load_unknown("rand", idx)
         # run crosscorrelation
-        cfs = project.setup.backend.crosscorrelate(
-            config_with_threads(project.setup.config, threads),
+        cfs = project.backend.crosscorrelate(
+            config_with_threads(project.config, threads),
             reference, unknown,
             unk_rand=unk_rand, **kwargs)
         if not isinstance(cfs, dict):
-            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+            cfs = {project.config.scales.dict_keys()[0]: cfs}
 
         # write to disk
         for scale_key, cf in cfs.items():
@@ -111,11 +109,11 @@ def runner(
                 cf.to_hdf(fh)
 
         # run autocorrelation
-        cfs = project.setup.backend.autocorrelate(
-            config_with_threads(project.setup.config, threads),
+        cfs = project.backend.autocorrelate(
+            config_with_threads(project.config, threads),
             unknown, unk_rand, compute_rr=(not no_rr), progress=progress)
         if not isinstance(cfs, dict):
-            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+            cfs = {project.config.scales.dict_keys()[0]: cfs}
 
         # write to disk
         for scale_key, cf in cfs.items():
@@ -125,7 +123,7 @@ def runner(
                 cf.to_hdf(fh)
 
         # true z
-        unknown.true_redshift(project.setup.config)
+        unknown.true_redshift(project.config)
 
         del unknown, unk_rand
 
@@ -138,21 +136,21 @@ def crosscorrelation(
 ) -> None:
     # load the reference data, load unknown data on demand
     kwargs = dict(progress=progress)
-    reference = project.setup.load_reference("data")
+    reference = project.load_reference("data")
     if not no_rr:
-        kwargs["ref_rand"] = project.setup.load_reference("rand")
+        kwargs["ref_rand"] = project.load_reference("rand")
     # iterate the bins
-    for idx in project.setup.catalogs.get_bin_indices():
+    for idx in project.get_bin_indices():
         # load the data
-        unknown = project.setup.load_unknown("data", idx)
-        unk_rand = project.setup.load_unknown("rand", idx)
+        unknown = project.load_unknown("data", idx)
+        unk_rand = project.load_unknown("rand", idx)
         # run crosscorrelation
-        cfs = project.setup.backend.crosscorrelate(
-            config_with_threads(project.setup.config, threads),
+        cfs = project.backend.crosscorrelate(
+            config_with_threads(project.config, threads),
             reference, unknown,
             unk_rand=unk_rand, **kwargs)
         if not isinstance(cfs, dict):
-            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+            cfs = {project.config.scales.dict_keys()[0]: cfs}
         del unknown, unk_rand
         # write to disk
         for scale_key, cf in cfs.items():
@@ -171,7 +169,7 @@ def cross(parser, args):
         if input_unk.get_bin_indices() != input_rand.get_bin_indices():
             raise ValueError("bin indices for data and randoms do not match")
         for idx in input_unk.get_bin_indices():
-            project.setup.add_unknown(
+            project.add_unknown(
                 idx, data=input_unk.get(idx), rand=input_rand.get(idx))
         crosscorrelation(
             project, no_rr=args.no_rr,
@@ -185,14 +183,14 @@ def autocorrelation_reference(
     threads: bool | None = None
 ) -> None:
     # load the data
-    data = project.setup.load_reference("data")
-    rand = project.setup.load_reference("rand")
+    data = project.load_reference("data")
+    rand = project.load_reference("rand")
     # run autocorrelation
-    cfs = project.setup.backend.autocorrelate(
-        config_with_threads(project.setup.config, threads),
+    cfs = project.backend.autocorrelate(
+        config_with_threads(project.config, threads),
         data, rand, compute_rr=(not no_rr), progress=progress)
     if not isinstance(cfs, dict):
-        cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+        cfs = {project.config.scales.dict_keys()[0]: cfs}
     del data, rand
     # write to disk
     for scale_key, cf in cfs.items():
@@ -209,16 +207,16 @@ def autocorrelation_unknown(
     threads: bool | None = None
 ) -> None:
     # iterate the bins
-    for idx in project.setup.catalogs.get_bin_indices():
+    for idx in project.get_bin_indices():
         # load the data
-        data = project.setup.load_unknown("data", idx)
-        rand = project.setup.load_unknown("rand", idx)
+        data = project.load_unknown("data", idx)
+        rand = project.load_unknown("rand", idx)
         # run autocorrelation
-        cfs = project.setup.backend.autocorrelate(
-            config_with_threads(project.setup.config, threads),
+        cfs = project.backend.autocorrelate(
+            config_with_threads(project.config, threads),
             data, rand, compute_rr=(not no_rr), progress=progress)
         if not isinstance(cfs, dict):
-            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+            cfs = {project.config.scales.dict_keys()[0]: cfs}
         del data, rand
         # write to disk
         for scale_key, cf in cfs.items():
@@ -245,7 +243,7 @@ def manage_cache(
     project: ProjectDirectory,
     drop: list[str] | None = None
 ) -> None:
-    cachedir = project.setup.cache
+    cachedir = project.get_cache()
     if drop is None:
         cachedir.summary()
     else:  # delete entries
@@ -274,35 +272,36 @@ def nz_estimate(
         nbins = len(bin_indices)
         ncols = 3
         fig, axes = plt.subplots(
-            ceil(nbins / ncols), ncols, figsize=(10, 8), sharex=True, sharey=True)
+            ceil(nbins / ncols), ncols,
+            figsize=(10, 8), sharex=True, sharey=True)
         for ax, idx in zip(axes.flatten(), bin_indices):
 
             # load w_sp
             path = counts_dir.get_cross(idx)
             with h5py.File(str(path)) as fh:
-                w_sp = project.setup.backend.CorrelationFunction.from_hdf(fh)
-            est = project.setup.backend.NzEstimator(w_sp)
+                w_sp = project.backend.CorrelationFunction.from_hdf(fh)
+            est = project.backend.NzEstimator(w_sp)
             # load w_ss
             path = counts_dir.get_auto_reference()
             if path.exists():
                 with h5py.File(str(path)) as fh:
-                    w_ss = project.setup.backend.CorrelationFunction.from_hdf(fh)
+                    w_ss = project.backend.CorrelationFunction.from_hdf(fh)
                 est.add_reference_autocorr(w_ss)
             # load w_pp
             path = counts_dir.get_auto(idx)
             if path.exists():
                 with h5py.File(str(path)) as fh:
-                    w_pp = project.setup.backend.CorrelationFunction.from_hdf(fh)
+                    w_pp = project.backend.CorrelationFunction.from_hdf(fh)
                 est.add_unknown_autocorr(w_pp)
 
             # just for now to actually generate samples
             est.plot(ax=ax)
             try:
-                data = project.setup.load_unknown("data", idx)
+                data = project.load_unknown("data", idx)
             except Exception:
                 pass
             else:
-                nz = data.true_redshifts(project.setup.config)
+                nz = data.true_redshifts(project.config)
                 nz.plot(ax=ax, color="k")
 
             # write to disk

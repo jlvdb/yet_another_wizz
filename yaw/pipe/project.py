@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import warnings
-from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, NoReturn
@@ -38,23 +37,86 @@ def _parse_section_error(exception: Exception, section: str) -> NoReturn:
     raise
 
 
-class Setup:
+def _write_setup_file(
+    path: Path | str,
+    config: Configuration,
+    cache_dir: Path | str | None,
+    catalogs: InputRegister,
+    backend_name: str,
+) -> None:
+    setup = dict(
+        configuration=config.to_dict(),
+        data=dict(
+            cachepath=str(cache_dir) if cache_dir is not None else None,
+            catalogs=catalogs.to_dict()),
+        backend=backend_name)
+    string = yaml.dump(setup)
+    with open(path, "w") as f:
+        f.write(string)
 
-    def __init__(self, setupfile: Path | str) -> None:
-        # read the setup file
-        self._path = str(setupfile)
-        self.reload()
 
-    def reload(self) -> None:
-        with open(self.path) as f:
+class ProjectDirectory:
+
+    def __init__(self, path: Path | str) -> None:
+        self._path = Path(path).expanduser()
+        if not self.path.exists():
+            raise FileNotFoundError(
+                f"project directory '{self.path}' does not exist")
+        if not self.setup_file.exists:
+            raise FileNotFoundError(
+                f"setup file '{self.setup_file}' does not exist")
+        self.setup_reload()
+        # create any missing directories
+        self.counts_dir.mkdir(exist_ok=True)
+        self.estimate_dir.mkdir(exist_ok=True)
+
+    @classmethod
+    def create(
+        cls,
+        path: Path | str,
+        config: Configuration,
+        cachepath: Path | str | None = None,
+        backend: str = "scipy"
+    ) -> ProjectDirectory:
+        new = cls.__new__(cls)  # access to path attributes
+        new._path = Path(path).expanduser()
+        new._path.mkdir(parents=True, exist_ok=False)
+        if cachepath is None:
+            cachepath = new._path.joinpath("cache")
+        # create the setup file
+        _write_setup_file(
+            new.setup_file,
+            config=config,
+            cache_dir=cachepath,
+            catalogs=InputRegister(),
+            backend_name=backend)
+        return cls(path)
+
+    def __enter__(self) -> ProjectDirectory:
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+        if exc_type is None:
+            self.setup_write()
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def setup_file(self) -> Path:
+        return self._path.joinpath("setup.yaml")
+
+    def setup_reload(self) -> None:
+        with open(self.setup_file) as f:
             setup = yaml.safe_load(f.read())
         # get the backend first which is used to import the backend package
-        self.backend_name = setup["backend"]
+        self._backend_name = setup["backend"]
         self._backend = None
         self.backend  # try to import
         # configuration is straight forward
         try:
-            self.config = Configuration.from_dict(setup["configuration"])
+            self._config = Configuration.from_dict(setup["configuration"])
         except KeyError as e:
             _parse_section_error(e, "configuration")
         # set up the data management
@@ -63,82 +125,41 @@ class Setup:
         except KeyError as e:
             _parse_section_error(e, "data")
         cachepath = data.get("cachepath")
-        if cachepath is None:
-            self.cache = None
-        else:
-            self.cache = CacheDirectory(cachepath)
-            self.cache.mkdir(exist_ok=True, parents=True)
-        self.catalogs = InputRegister.from_dict(
+        self._cache = CacheDirectory(cachepath)
+        self._cache.mkdir(exist_ok=True, parents=True)
+        self._inputs = InputRegister.from_dict(
             data.get("catalogs", dict()))
-        # job list
-        self.jobs: list = setup.get("jobs", [])
 
-    @classmethod
-    def create(
-        cls,
-        setupfile: Path | str,
-        config: Configuration,
-        cachepath: Path | str | None = None,
-        backend: str = "scipy"
-    ) -> Setup:
-        new = cls.__new__(cls)
-        new._path = setupfile
-        if new.path.exists():
-            raise FileExistsError(f"setup file '{new.path}' already exists")
-        new.backend_name = backend
-        # config can be copied
-        new.config = config
-        # set up the data management
-        if cachepath is None:
-            new.cache = None
-        else:
-            new.cache = CacheDirectory(cachepath)
-        new.catalogs = InputRegister()
-        # job list
-        new.jobs = []
-        new.write()
-        new.reload()
-        return new
-
-    @property
-    def path(self) -> Path:
-        return Path(self._path)
-
-    def write(self) -> None:
-        setup = dict(
-            configuration=self.config.to_dict(),
-            data=dict(
-                cachepath=str(self.cache) if self.cache is not None else None,
-                catalogs=self.catalogs.to_dict()),
-            backend=self.backend_name)
-        if len(self.jobs) > 0:
-            setup["jobs"] = self.jobs
-        string = yaml.dump(setup)
-        with open(self.path, "w") as f:
-            f.write(string)
+    def setup_write(self) -> None:
+        _write_setup_file(
+            self.setup_file,
+            config=self.config,
+            cache_dir=self.cache_dir,
+            catalogs=self._inputs,
+            backend_name=self._backend_name)
 
     @property
     def backend(self) -> ModuleType:
         if self._backend is None:
             try:
                 self._backend = importlib.import_module(
-                    f"yaw.{self.backend_name}")
+                    f"yaw.{self._backend_name}")
             except ImportError as e:
                 raise InvalidBackendError(
-                    f"backend '{self.backend_name}' invalid or "
+                    f"backend '{self._backend_name}' invalid or "
                     "yaw import failed") from e
         return self._backend
 
     @property
-    def cache_restore_supported(self) -> bool:
-        return hasattr(self.backend.Catalog, "from_cache")
+    def config(self) -> Configuration:
+        return self._config
 
     def set_reference(
         self,
         data: Input,
         rand: Input | None = None
     ) -> None:
-        self.catalogs.set_reference(data, rand)
+        self._inputs.set_reference(data, rand)
     
     def add_unknown(
         self,
@@ -146,7 +167,7 @@ class Setup:
         data: Input,
         rand: Input | None = None
     ) -> None:
-        self.catalogs.add_unknown(bin_idx, data, rand)
+        self._inputs.add_unknown(bin_idx, data, rand)
 
     def _load_catalog(
         self,
@@ -156,11 +177,11 @@ class Setup:
     ) -> CatalogBase:
         # get the correct sample type
         if sample == "reference":
-            inputs = self.catalogs.get_reference()
+            inputs = self._inputs.get_reference()
         elif sample == "unknown":
             if bin_idx is None:
                 raise ValueError("no 'bin_idx' provided")
-            inputs = self.catalogs.get_unknown(bin_idx)
+            inputs = self._inputs.get_unknown(bin_idx)
         else:
             raise ValueError("'sample' must be either of 'reference'/'unknown'")
         # get the correct sample kind
@@ -179,7 +200,7 @@ class Setup:
         kwargs = input.to_dict()
         kwargs.pop("cache", False)
         # attempt to load the catalog into memory
-        if self.cache is None:
+        if self.get_cache() is None:
             # no cache available
             if input.cache:
                 warnings.warn(
@@ -189,9 +210,9 @@ class Setup:
         else:
             # cache available, get object path
             if sample == "reference":
-                cachepath = self.cache.get_reference()[kind]
+                cachepath = self._cache.get_reference()[kind]
             else:
-                cachepath = self.cache.get_unknown(bin_idx)[kind]
+                cachepath = self._cache.get_unknown(bin_idx)[kind]
             exists = cachepath.exists()
             if self.cache_restore_supported and exists and input.cache:
                 # already cached and backend supports restoring
@@ -210,64 +231,22 @@ class Setup:
     def load_unknown(self, kind: str, bin_idx: int) -> CatalogBase:
         return self._load_catalog("unknown", kind, bin_idx=bin_idx)
 
-    def list_catalogs(self) -> None:
-        print(yaml.dump(self.catalogs.to_dict()))
+    def get_bin_indices(self) -> set[int]:
+        return self._inputs.get_bin_indices()
 
-    def add_job(self, job) -> None:
-        self.jobs.append(job)
-
-    def iter_jobs(self) -> Iterator:
-        for job in self.jobs:
-            yield job
-
-
-def _setup_path(path: Path) -> Path:
-    return path.joinpath("setup.yaml")
-
-
-class ProjectDirectory:
-
-    def __init__(self, path: Path | str) -> None:
-        self._path = Path(path).expanduser()
-        if not self.path.exists():
-            raise FileNotFoundError(
-                f"project directory '{self.path}' does not exist")
-        self._setup = Setup(_setup_path(self.path))
-        # create any missing directories
-        self.counts_dir.mkdir(exist_ok=True)
-        self.estimate_dir.mkdir(exist_ok=True)
-
-    @classmethod
-    def create(
-        cls,
-        path: Path | str,
-        config: Configuration,
-        cachepath: Path | str | None = None,
-        backend: str = "scipy"
-    ) -> ProjectDirectory:
-        path = Path(path).expanduser()
-        path.mkdir(parents=True, exist_ok=False)
-        if cachepath is None:
-            cachepath = path.joinpath("cache")
-        Setup.create(
-            _setup_path(path), config=config,
-            cachepath=cachepath, backend=backend)
-        return cls(path)
-
-    def __enter__(self) -> ProjectDirectory:
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
-        if exc_type is None:
-            self.setup.write()
+    def show_catalogs(self) -> None:
+        print(yaml.dump(self._inputs.to_dict()))
 
     @property
-    def path(self) -> Path:
-        return self._path
+    def cache_dir(self) -> Path:
+        return Path(self._cache)
 
     @property
-    def setup(self) -> Setup:
-        return self._setup
+    def cache_restore_supported(self) -> bool:
+        return hasattr(self.backend.Catalog, "from_cache")
+
+    def get_cache(self) -> CacheDirectory:
+        return self._cache
 
     @property
     def counts_dir(self) -> Path:
