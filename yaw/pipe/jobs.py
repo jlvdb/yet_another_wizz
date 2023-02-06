@@ -56,6 +56,80 @@ def init(parser, args):
         # TODO: patches
 
 
+def runner(
+    project: ProjectDirectory,
+    cross_kwargs: dict[str, Any] | None = None,
+    auto_ref_kwargs: dict[str, Any] | None = None,
+    auto_unk_kwargs: dict[str, Any] | None = None,
+    nz_kwargs: dict[str, Any] | None = None,
+    cache_kwargs: dict[str, Any] | None = None,
+    progress: bool = False,
+    threads: bool | None = None
+) -> None:
+
+    if cross_kwargs or auto_ref_kwargs
+    # load the data
+    data = project.setup.load_reference("data")
+    rand = project.setup.load_reference("rand")
+    # run autocorrelation
+    cfs = project.setup.backend.autocorrelate(
+        config_with_threads(project.setup.config, threads),
+        data, rand, compute_rr=(not no_rr), progress=progress)
+    if not isinstance(cfs, dict):
+        cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+    del data, rand
+    # write to disk
+    for scale_key, cf in cfs.items():
+        counts_dir = project.get_counts(scale_key, create=True)
+        fpath = counts_dir.get_auto_reference()
+        with h5py.File(str(fpath), mode="w") as fh:
+            cf.to_hdf(fh)
+
+    # load the reference data, load unknown data on demand
+    kwargs = dict(progress=progress)
+    reference = project.setup.load_reference("data")
+    if not no_rr:
+        kwargs["ref_rand"] = project.setup.load_reference("rand")
+    # iterate the bins
+    for idx in project.setup.catalogs.get_bin_indices():
+        # load the data
+        unknown = project.setup.load_unknown("data", idx)
+        unk_rand = project.setup.load_unknown("rand", idx)
+        # run crosscorrelation
+        cfs = project.setup.backend.crosscorrelate(
+            config_with_threads(project.setup.config, threads),
+            reference, unknown,
+            unk_rand=unk_rand, **kwargs)
+        if not isinstance(cfs, dict):
+            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+
+        # write to disk
+        for scale_key, cf in cfs.items():
+            counts_dir = project.get_counts(scale_key, create=True)
+            fpath = counts_dir.get_cross(idx)
+            with h5py.File(str(fpath), mode="w") as fh:
+                cf.to_hdf(fh)
+
+        # run autocorrelation
+        cfs = project.setup.backend.autocorrelate(
+            config_with_threads(project.setup.config, threads),
+            unknown, unk_rand, compute_rr=(not no_rr), progress=progress)
+        if not isinstance(cfs, dict):
+            cfs = {project.setup.config.scales.dict_keys()[0]: cfs}
+
+        # write to disk
+        for scale_key, cf in cfs.items():
+            counts_dir = project.get_counts(scale_key, create=True)
+            fpath = counts_dir.get_auto(idx)
+            with h5py.File(str(fpath), mode="w") as fh:
+                cf.to_hdf(fh)
+
+        # true z
+        unknown.true_redshift(project.setup.config)
+
+        del unknown, unk_rand
+
+
 def crosscorrelation(
     project: ProjectDirectory,
     no_rr: bool = False,
@@ -182,20 +256,11 @@ def manage_cache(
                 cachedir.drop(name)
 
 
-@logged
-def cache(parser, args):
-    with ProjectDirectory(args.wdir) as project:
-        manage_cache(project, drop=args.drop)
-
-
-@logged
-def merge(parser, args):
-    raise NotImplementedError
-
-
 def nz_estimate(
     project: ProjectDirectory
 ) -> None:
+    import matplotlib
+    matplotlib.use("agg")
     import matplotlib.pyplot as plt
     from math import ceil
 
@@ -209,7 +274,7 @@ def nz_estimate(
         nbins = len(bin_indices)
         ncols = 3
         fig, axes = plt.subplots(
-            ceil(nbins / ncols), ncols, sharex=True, sharey=True)
+            ceil(nbins / ncols), ncols, figsize=(10, 8), sharex=True, sharey=True)
         for ax, idx in zip(axes.flatten(), bin_indices):
 
             # load w_sp
@@ -244,6 +309,7 @@ def nz_estimate(
             for kind, path in est_dir.get_cross(idx).items():
                 print(f"   mock writing {kind}: {path}")
         fig.tight_layout()
+        fig.subplots_adjust(wspace=0.0, hspace=0.0)
         fig.savefig(str(project.path.joinpath(f"{scale_key}.pdf")))
 
 
@@ -262,6 +328,21 @@ def run_from_setup(*args, **kwargs) -> Any:
 @logged
 def run(parser, args):
     run_from_setup(**args)
+
+
+@logged
+def cache(parser, args):
+    with ProjectDirectory(args.wdir) as project:
+        manage_cache(project, drop=args.drop)
+
+
+@logged
+def merge(parser, args):
+    # case: config and reference equal
+    #     copy output files together into one directory if unknown bins are exclusive sets
+    # case: config and unknown bins equal
+    #     attempt to merge pair counts and recompute n(z) estimate
+    raise NotImplementedError
 
 
 @dataclass(frozen=True)

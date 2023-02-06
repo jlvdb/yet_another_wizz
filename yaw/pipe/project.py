@@ -207,7 +207,7 @@ class Setup:
     def load_reference(self, kind: str) -> CatalogBase:
         return self._load_catalog("reference", kind)
 
-    def load_unknown(self, kind: str, bin_idx: int) -> dict[str, Path]:
+    def load_unknown(self, kind: str, bin_idx: int) -> CatalogBase:
         return self._load_catalog("unknown", kind, bin_idx=bin_idx)
 
     def list_catalogs(self) -> None:
