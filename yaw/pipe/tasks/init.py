@@ -9,7 +9,6 @@ from yaw.core.config import Configuration
 from yaw.pipe.parser import (
     add_input_parser, create_subparser, get_input_from_args, subparsers)
 from yaw.pipe.project import ProjectDirectory
-from yaw.pipe.tasks.core import logged
 
 
 parser_init = create_subparser(
@@ -83,8 +82,7 @@ group_backend.add_argument(
     help="default number of threads to use if not specified (default: all)")
 
 
-@logged
-def init(args):
+def init(args) -> None:
     # parse the configuration
     config = Configuration.create(
         cosmology=args.cosmology,

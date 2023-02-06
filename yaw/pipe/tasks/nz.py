@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from yaw.pipe.project import ProjectDirectory
 from yaw.pipe.parser import create_subparser, subparsers
-from yaw.pipe.tasks.core import logged
+from yaw.pipe.tasks.core import as_task
 
 
 parser_nz = create_subparser(
@@ -11,6 +11,8 @@ parser_nz = create_subparser(
     help="compute clustering clustering redshift estimates for the unknown data",
     description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.",
     threads=True)
+parser_nz.add_argument(
+    "--dummy-flag", action="store_true")
 
 
 def nz_estimate(
@@ -68,7 +70,7 @@ def nz_estimate(
         fig.savefig(str(project.path.joinpath(f"{scale_key}.pdf")))
 
 
-@logged
-def nz(args):
-    with ProjectDirectory(args.wdir) as project:
-        nz_estimate(project)
+@as_task
+def nz(args, project: ProjectDirectory) -> dict:
+    nz_estimate(project)
+    return dict(dummy_flag=args.dummy_flag)

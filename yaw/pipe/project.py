@@ -190,6 +190,7 @@ def _write_setup_file(
     cache_dir: Path | str | None,
     catalogs: InputRegister,
     backend_name: str,
+    jobs: dict
 ) -> None:
     # parse the setup into a YAML string
     setup = dict(
@@ -197,7 +198,8 @@ def _write_setup_file(
         data=dict(
             cachepath=str(cache_dir) if cache_dir is not None else None,
             catalogs=catalogs.to_dict()),
-        backend=backend_name)
+        backend=backend_name,
+        jobs=jobs)
     lines = yaml.dump(setup).split("\n")
     # some postprocessing for better readibility
     indent = " " * 4
@@ -208,13 +210,21 @@ def _write_setup_file(
             continue
         n_spaces = len(line) - len(stripped)
         n_indent = n_spaces // 2
-        if n_indent == 0:
+        is_list = stripped.startswith("- ")
+        if n_indent == 0 and not is_list:
             string += f"\n{line}\n"
         else:
-            string += f"{indent * n_indent}{stripped}\n"
+            list_indent = "  " if is_list else ""
+            string += f"{indent * n_indent}{list_indent}{stripped}\n"
     # write to setup file
     with open(path, "w") as f:
         f.write(string)
+
+
+class TaskList:
+
+    def __init__(self) -> None:
+        pass
 
 
 class ProjectDirectory:
@@ -251,7 +261,8 @@ class ProjectDirectory:
             config=config,
             cache_dir=cachepath,
             catalogs=InputRegister(),
-            backend_name=backend)
+            backend_name=backend,
+            jobs=[])
         return cls(path)
 
     def __enter__(self) -> ProjectDirectory:
@@ -291,6 +302,7 @@ class ProjectDirectory:
         self._cache.mkdir(exist_ok=True, parents=True)
         self._inputs = InputRegister.from_dict(
             data.get("catalogs", dict()))
+        self.jobs = setup.pop("jobs", [])
 
     def setup_write(self) -> None:
         _write_setup_file(
@@ -298,7 +310,8 @@ class ProjectDirectory:
             config=self.config,
             cache_dir=self.cache_dir,
             catalogs=self._inputs,
-            backend_name=self._backend_name)
+            backend_name=self._backend_name,
+            jobs=self.jobs)
 
     @property
     def backend(self) -> ModuleType:
@@ -444,6 +457,9 @@ class ProjectDirectory:
     def list_estimate_scales(self) -> list(str):
         return [path.name for path in self.estimate_dir.iterdir()]
 
+    def add_job(self, name: str, args: dict[str, Any]) -> None:
+        self.jobs.append({name: args})
+
 
 def runner(
     project: ProjectDirectory,
@@ -451,7 +467,7 @@ def runner(
     auto_ref_kwargs: dict[str, Any] | None = None,
     auto_unk_kwargs: dict[str, Any] | None = None,
     nz_kwargs: dict[str, Any] | None = None,
-    cache_kwargs: dict[str, Any] | None = None,
+    drop_cache: dict[str, Any] | None = None,
     progress: bool = False,
     threads: int | None = None
 ) -> None:
@@ -461,12 +477,12 @@ def runner(
         config = project.config
 
     # load the reference sample
-    if cross_kwargs or auto_ref_kwargs:
+    if cross_kwargs is not None or auto_ref_kwargs is not None:
         reference = project.load_reference("data")
         ref_rand = project.load_reference("rand")
 
     # run reference autocorrelation
-    if auto_ref_kwargs:
+    if auto_ref_kwargs is not None:
         cfs = project.backend.autocorrelate(
             config, reference, ref_rand,
             compute_rr=(not auto_ref_kwargs["no_rr"]),
@@ -478,7 +494,11 @@ def runner(
             cf.to_file(str(counts_dir.get_auto_reference()))
 
     # iterate the unknown sample bins
-    if cross_kwargs or auto_unk_kwargs or nz_kwargs:
+    if (
+        cross_kwargs is not None or
+        auto_unk_kwargs is not None or
+        nz_kwargs is not None
+    ):
         for idx in project.get_bin_indices():
 
             # load bin of the unknown sample
@@ -486,7 +506,7 @@ def runner(
             unk_rand = project.load_unknown("rand", idx)
 
             # run crosscorrelation
-            if cross_kwargs:
+            if cross_kwargs is not None:
                 cfs = project.backend.crosscorrelate(
                     config, reference, unknown,
                     ref_rand=ref_rand if not cross_kwargs["no_rr"] else None,
@@ -499,7 +519,7 @@ def runner(
                     cf.to_file(str(counts_dir.get_cross(idx)))
 
             # run unknown autocorrelation
-            if auto_unk_kwargs:
+            if auto_unk_kwargs is not None:
                 cfs = project.backend.autocorrelate(
                     config, unknown, unk_rand,
                     compute_rr=(not auto_unk_kwargs["no_rr"]),
@@ -511,23 +531,15 @@ def runner(
                     cf.to_file(str(counts_dir.get_auto(idx)))
 
             # measure true z
-            if nz_kwargs:
+            if nz_kwargs is not None:
                 unknown.true_redshift(config)
 
             # remove any loaded data sample
             del unknown, unk_rand
-    if cross_kwargs or auto_ref_kwargs:
+    if cross_kwargs is not None or auto_ref_kwargs is not None:
         del reference, ref_rand
 
     # clean up cached data
-    if cache_kwargs:
-        drop = cache_kwargs["drop"]
+    if drop_cache is not None:
         cachedir = project.get_cache()
-        if drop is None:
-            cachedir.summary()
-        else:  # delete entries
-            if len(drop) == 0:
-                cachedir.drop_all()
-            else:
-                for name in drop:
-                    cachedir.drop(name)
+        cachedir.drop_all()

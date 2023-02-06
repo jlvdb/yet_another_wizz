@@ -4,7 +4,6 @@ from typing import Any
 
 from yaw.pipe.parser import create_subparser, subparsers
 from yaw.pipe.project import ProjectDirectory
-from yaw.pipe.tasks.core import logged
 
 
 parser_run = create_subparser(
@@ -20,6 +19,5 @@ def run_from_setup(*args, **kwargs) -> Any:
         raise NotImplementedError
 
 
-@logged
 def run(args):
     run_from_setup(**args)

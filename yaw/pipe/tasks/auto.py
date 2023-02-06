@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from yaw.pipe.parser import create_subparser, subparsers
 from yaw.pipe.project import ProjectDirectory, runner
-from yaw.pipe.tasks.core import logged
+from yaw.pipe.tasks.core import as_task
 
 
 parser_auto = create_subparser(
@@ -20,13 +20,30 @@ parser_auto.add_argument(
     help="do not compute random-random pair counts")
 
 
-@logged
-def auto(args):
-    with ProjectDirectory(args.wdir) as project:
-        # run correlations
-        kwargs = dict(progress=args.progress, threads=args.threads)
-        if args.which == "ref":
-            kwargs["auto_ref_kwargs"] = dict(no_rr=args.no_rr)
-        else:
-            kwargs["auto_unk_kwargs"] = dict(no_rr=args.no_rr)
-        runner(project, **kwargs)
+def auto(args) -> dict:
+    if args.which == "ref":
+        return auto_ref(args)
+    else:
+        return auto_unk(args)
+
+
+@as_task
+def auto_ref(args, project: ProjectDirectory) -> dict:
+    # run correlations
+    setup_args = dict(no_rr=args.no_rr)
+    kwargs = dict(
+        auto_ref_kwargs=setup_args,
+        progress=args.progress, threads=args.threads)
+    runner(project, **kwargs)
+    return setup_args
+
+
+@as_task
+def auto_unk(args, project: ProjectDirectory) -> dict:
+    # run correlations
+    setup_args = dict(no_rr=args.no_rr)
+    kwargs = dict(
+        auto_unk_kwargs=setup_args,
+        progress=args.progress, threads=args.threads)
+    runner(project, **kwargs)
+    return setup_args
