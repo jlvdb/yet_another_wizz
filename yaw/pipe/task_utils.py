@@ -125,8 +125,10 @@ class TaskList(Sequence):
 
     @classmethod
     def from_list(cls, task_list: Sequence[dict[str, Any] | str]) -> TaskList:
-        new = cls.__new__(cls)
-        new._tasks = [TaskRecord.restore(task) for task in task_list]
+        new = cls()
+        for task in task_list:
+            task = TaskRecord.restore(task)
+            new.add(task)
         return new
 
     def to_list(self) -> list[dict[str, Any] | str]:

@@ -261,6 +261,19 @@ class ProjectDirectory:
             tasks=TaskList())
         return cls(path)
 
+    @classmethod
+    def from_setup(
+        cls,
+        path: Path | str,
+        setup_file: Path | str
+    ) -> ProjectDirectory:
+        new = cls.__new__(cls)  # access to path attributes
+        new._path = Path(path).expanduser()
+        new._path.mkdir(parents=True, exist_ok=False)
+        # copy setup file
+        shutil.copy(str(setup_file), str(new.setup_file))
+        return cls(path)
+
     def __enter__(self) -> ProjectDirectory:
         return self
 

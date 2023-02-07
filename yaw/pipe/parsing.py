@@ -107,13 +107,11 @@ class _Commandline(Registry):
             title=title, description=f"specify the {title} input file{opt}")
         if binned:
             group.add_argument(
-                f"--{prefix}-path", required=required, nargs="+", type=Path_exists,
-                metavar="<file>",
+                f"--{prefix}-path", required=required, nargs="+", type=Path_exists, metavar="<file>",
                 help="(list of) input file paths (e.g. if the data sample is binned tomographically)")
         else:
             group.add_argument(
-                f"--{prefix}-path", required=required, type=Path_exists,
-                metavar="<file>",
+                f"--{prefix}-path", required=required, type=Path_exists, metavar="<file>",
                 help="input file path")
         group.add_argument(
             f"--{prefix}-ra", required=required, metavar="<str>",
