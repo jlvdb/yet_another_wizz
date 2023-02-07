@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from yaw import __version__
 
 from yaw.pipe.data import BinnedInput, Input
+from yaw.pipe.utils import Registry
 
 
 def Directory_exists(path: str) -> Path:
@@ -27,30 +28,6 @@ def Path_exists(path: str) -> Path:
     if not filepath.is_file():
         raise argparse.ArgumentTypeError(f"path '{path}' is not a file")
     return filepath
-
-
-class Registry(Mapping):
-
-    _register = {}
-
-    def __str__(self) -> str:
-        return f"{self.__class__.__name__}({self._register})"
-
-    def __getitem__(self, name: str) -> Callable:
-        try:
-            return self._register[name]
-        except KeyError as e:
-            raise KeyError(f"no item named '{name}' registered") from e
-
-    def __iter__(self) -> Iterator[Callable]:
-        return iter(self._register)
-
-    def __len__(self) -> int:
-        return len(self._register)
-
-    def register(self, obj):
-        self._register[obj.__name__] = obj
-        return obj
 
 
 class CommandlineInitError(Exception):

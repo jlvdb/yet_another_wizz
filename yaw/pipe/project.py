@@ -17,6 +17,7 @@ from yaw.core.config import Configuration
 from yaw.core.utils import bytes_format
 
 from yaw.pipe.data import InputRegister
+from yaw.pipe.tasks import TaskList
 
 if TYPE_CHECKING:
     from yaw.core.catalog import CatalogBase
@@ -219,12 +220,6 @@ def _write_setup_file(
     # write to setup file
     with open(path, "w") as f:
         f.write(string)
-
-
-class TaskList:
-
-    def __init__(self) -> None:
-        pass
 
 
 class ProjectDirectory:
