@@ -9,7 +9,7 @@ from typing import Any
 from yaw import __version__
 
 from yaw.pipe.data import BinnedInput, Input
-from yaw.pipe.utils import Registry
+from yaw.pipe.task_utils import Registry
 
 
 def Directory_exists(path: str) -> Path:

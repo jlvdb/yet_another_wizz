@@ -17,11 +17,12 @@ from yaw.core.config import Configuration
 from yaw.core.utils import bytes_format
 
 from yaw.pipe.data import InputRegister
-from yaw.pipe.tasks import TaskList
+from yaw.pipe.task_utils import TaskList
 
 if TYPE_CHECKING:
     from yaw.core.catalog import CatalogBase
     from yaw.pipe.data import Input
+    from yaw.pipe.task_utils import TaskRecord
 
 
 class InvalidBackendError(Exception):
@@ -191,7 +192,7 @@ def _write_setup_file(
     cache_dir: Path | str | None,
     catalogs: InputRegister,
     backend_name: str,
-    jobs: dict
+    tasks: TaskList
 ) -> None:
     # parse the setup into a YAML string
     setup = dict(
@@ -200,7 +201,7 @@ def _write_setup_file(
             cachepath=str(cache_dir) if cache_dir is not None else None,
             catalogs=catalogs.to_dict()),
         backend=backend_name,
-        jobs=jobs)
+        tasks=tasks.to_list())
     lines = yaml.dump(setup).split("\n")
     # some postprocessing for better readibility
     indent = " " * 4
@@ -257,7 +258,7 @@ class ProjectDirectory:
             cache_dir=cachepath,
             catalogs=InputRegister(),
             backend_name=backend,
-            jobs=[])
+            tasks=TaskList())
         return cls(path)
 
     def __enter__(self) -> ProjectDirectory:
@@ -297,7 +298,10 @@ class ProjectDirectory:
         self._cache.mkdir(exist_ok=True, parents=True)
         self._inputs = InputRegister.from_dict(
             data.get("catalogs", dict()))
-        self.jobs = setup.pop("jobs", [])
+        try:
+            self._tasks = TaskList.from_list(setup["tasks"])
+        except KeyError:
+            self._tasks = TaskList()
 
     def setup_write(self) -> None:
         _write_setup_file(
@@ -306,7 +310,7 @@ class ProjectDirectory:
             cache_dir=self.cache_dir,
             catalogs=self._inputs,
             backend_name=self._backend_name,
-            jobs=self.jobs)
+            tasks=self._tasks)
 
     @property
     def backend(self) -> ModuleType:
@@ -452,5 +456,8 @@ class ProjectDirectory:
     def list_estimate_scales(self) -> list(str):
         return [path.name for path in self.estimate_dir.iterdir()]
 
-    def add_job(self, name: str, args: dict[str, Any]) -> None:
-        self.jobs.append({name: args})
+    def add_task(self, task: TaskRecord) -> None:
+        self._tasks.add(task)
+
+    def list_tasks(self) -> list[TaskRecord]:
+        return list(self._tasks)

@@ -9,34 +9,9 @@ from astropy.cosmology import available as cosmology_avaliable
 from yaw.core.config import Configuration
 from yaw.logger import get_logger
 
-from yaw.pipe.project import ProjectDirectory
 from yaw.pipe.parsing import Commandline
-from yaw.pipe.utils import Registry
-
-
-class _Tasks(Registry):
-
-    def register(self, func):
-        @wraps(func)
-        def wrapper(args, *posargs, **kwargs):
-            with ProjectDirectory(args.wdir) as project:
-                setup_args = func(args, project, *posargs, **kwargs)
-                project.add_job(func.__name__, setup_args)
-            return setup_args
-        self._register[wrapper.__name__] = wrapper
-        return wrapper
-
-Tasks = _Tasks()
-
-
-class Task:
-    pass
-
-
-class TaskList:
-
-    def __init__(self) -> None:
-        pass
+from yaw.pipe.project import ProjectDirectory
+from yaw.pipe.task_utils import Tasks
 
 
 def logged(func):
@@ -162,7 +137,7 @@ def auto(args) -> dict:
         return auto_unk(args)
 
 
-@Tasks.register
+@Tasks.register(20)
 @logged
 def auto_ref(args, project: ProjectDirectory) -> dict:
     # run correlations
@@ -174,7 +149,7 @@ def auto_ref(args, project: ProjectDirectory) -> dict:
     return setup_args
 
 
-@Tasks.register
+@Tasks.register(30)
 @logged
 def auto_unk(args, project: ProjectDirectory) -> dict:
     # run correlations
@@ -209,7 +184,7 @@ def cache(args) -> dict:
             cachedir.summary()
 
 
-@Tasks.register
+@Tasks.register(40)
 @logged
 def drop_cache(args, project: ProjectDirectory) -> dict:
     project.get_cache().drop_all()
@@ -235,7 +210,7 @@ Commandline.add_input_parser(parser_cross, "unknown (random)", prefix="rand", re
 
 
 @Commandline.register(COMMANDNAME)
-@Tasks.register
+@Tasks.register(10)
 @logged
 def cross(args, project: ProjectDirectory) -> dict:
     # get the data catalog and the optional random catalog
@@ -433,7 +408,7 @@ def nz_estimate(
 
 
 @Commandline.register(COMMANDNAME)
-@Tasks.register
+@Tasks.register(60)
 @logged
 def nz(args, project: ProjectDirectory) -> dict:
     nz_estimate(project)
@@ -456,7 +431,6 @@ def run_from_setup(*args, **kwargs):
 
 
 @Commandline.register(COMMANDNAME)
-@Tasks.register
 @logged
 def run(args):
     run_from_setup(**args)
