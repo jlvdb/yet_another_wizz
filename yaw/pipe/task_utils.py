@@ -37,7 +37,8 @@ class TaskRecord:
         if len(self.args) == 0:
             return self.name
         else:
-            return {self.name: self.args}
+            return {self.name: {
+                k: v for k, v in self.args.items() if v is not None}}
 
 
 class Registry(Mapping):

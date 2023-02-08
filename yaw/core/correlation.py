@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod, abstractproperty
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +31,63 @@ class EstimatorNotAvailableError(Exception):
     pass
 
 
+class Cts(ABC):
+
+    @abstractproperty
+    def _hash(self) -> int:
+        raise NotImplementedError
+
+    @abstractproperty
+    def _str(self) -> str:
+        raise NotImplementedError
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}>"
+
+    def __str__(self) -> str:
+        return self._str
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Cts):
+            return False
+        var1 = set(self._str.split("_"))
+        var2 = set(other._str.split("_"))
+        return not var1.isdisjoint(var2)
+
+
+class CtsDD(Cts):
+    _str = "dd"
+    _hash = 1
+
+
+class CtsDR(Cts):
+    _str = "dr"
+    _hash = 2
+
+
+class CtsRD(Cts):
+    _str = "rd"
+    _hash = 2
+
+
+class CtsRR(Cts):
+    _str = "rr"
+    _hash = 3
+
+
+class CtsMix(Cts):
+    _str = "dr_rd"
+    _hash = 2
+
+
+def cts_from_code(code: str) -> Cts:
+    codes = dict(dd=CtsDD, dr=CtsDR, rd=CtsRD, rr=CtsRR)
+    return codes[code]()
+
+
 class CorrelationEstimator(ABC):
     variants: list[CorrelationEstimator] = []
 
@@ -46,11 +104,11 @@ class CorrelationEstimator(ABC):
 
     @abstractproperty
     def requires(self) -> list[str]:
-        return ["dd", "dr", "rr"]
+        return [CtsDD(), CtsDR(), CtsRR()]
 
     @abstractproperty
     def optional(self) -> list[str]:
-        return ["rd"]
+        return [CtsRD()]
 
     @abstractmethod
     def __call__(
@@ -66,7 +124,7 @@ class CorrelationEstimator(ABC):
 
 class PeeblesHauser(CorrelationEstimator):
     short: str = "PH"
-    requires = ["dd", "rr"]
+    requires = [CtsDD(), CtsRR()]
     optional = []
 
     def __call__(
@@ -82,24 +140,24 @@ class PeeblesHauser(CorrelationEstimator):
 
 class DavisPeebles(CorrelationEstimator):
     short = "DP"
-    requires = ["dd", "dr"]
+    requires = [CtsDD(), CtsMix()]
     optional = []
 
     def __call__(
         self,
         *,
         dd: PairCountData,
-        dr: PairCountData
+        dr_rd: PairCountData
     ) -> DataFrame:
         DD = dd.normalise()
-        DR = dr.normalise()
+        DR = dr_rd.normalise()
         return DD / DR - 1.0
 
 
 class Hamilton(CorrelationEstimator):
     short = "HM"
-    requires = ["dd", "dr", "rr"]
-    optional = ["rd"]
+    requires = [CtsDD(), CtsDR(), CtsRR()]
+    optional = [CtsRD()]
 
     def __call__(
         self,
@@ -118,8 +176,8 @@ class Hamilton(CorrelationEstimator):
 
 class LandySzalay(CorrelationEstimator):
     short = "LS"
-    requires = ["dd", "dr", "rr"]
-    optional = ["rd"]
+    requires = [CtsDD(), CtsDR(), CtsRR()]
+    optional = [CtsRD()]
 
     def __call__(
         self,
@@ -146,11 +204,9 @@ class CorrelationFunction:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "npatch", self.dd.npatch)  # since frozen=True
-        # check if the minimum required pair counts are provided
-        if self.dr is None and self.rr is None:
-            raise ValueError("either 'dr' or 'rr' is required")
-        if self.dr is None and self.rd is not None:
-            raise ValueError("'rd' requires 'dr'")
+        # check if any random pairs are required
+        if self.dr is None and self.rd is None and self.rr is None:
+            raise ValueError("either 'dr', 'rd' or 'rr' is required")
         # check that the pair counts are compatible
         for kind in ("dr", "rd", "rr"):
             pairs: PairCountResult | None = getattr(self, kind)
@@ -191,7 +247,7 @@ class CorrelationFunction:
             if not attr.init:
                 continue
             if getattr(self, attr.name) is not None:
-                available.add(attr.name)
+                available.add(cts_from_code(attr.name))
         # check which estimators are supported
         estimators = {}
         for estimator in CorrelationEstimator.variants:  # registered estimators
@@ -217,19 +273,30 @@ class CorrelationFunction:
                 ].index(estimator)
                 est_class = CorrelationEstimator.variants[index]
             except ValueError as e:
-                raise ValueError("invalid estimator '{estimator}'") from e
+                raise ValueError(f"invalid estimator '{estimator}'") from e
             # determine which pair counts are missing
             for attr in fields(self):
                 name = attr.name
                 if not attr.init:
                     continue
-                if getattr(self, name) is None and name in est_class.requires:
+                cts = cts_from_code(name)
+                if getattr(self, name) is None and cts in est_class.requires:
                     raise EstimatorNotAvailableError(
                         f"estimator requires {name}")
             else:
                 raise RuntimeError()
         # select the correct estimator
-        return options[estimator]()  # return estimator class instance
+        return options[estimator]()  # return estimator class instance        
+
+    def _getattr_from_cts(self, cts: Cts) -> PairCountResult | None:
+        if isinstance(cts, CtsMix):
+            for code in str(cts).split("_"):
+                value = getattr(self, code)
+                if value is not None:
+                    break
+            return value
+        else:
+            return getattr(self, str(cts))
 
     def get(
         self,
@@ -239,12 +306,12 @@ class CorrelationFunction:
         logger.debug(
             f"computing correlation with {estimator_func.short} estimator")
         requires = {
-            kind: getattr(self, kind).get()
-            for kind in estimator_func.requires}
+            str(cts): self._getattr_from_cts(cts).get()
+            for cts in estimator_func.requires}
         optional = {
-            kind: getattr(self, kind).get()
-            for kind in estimator_func.optional
-            if getattr(self, kind) is not None}
+            str(cts): self._getattr_from_cts(cts).get()
+            for cts in estimator_func.optional
+            if self._getattr_from_cts(cts) is not None}
         return estimator_func(**requires, **optional)[0]
 
     def generate_bootstrap_patch_indices(
@@ -280,12 +347,12 @@ class CorrelationFunction:
             patch_idx=patch_idx)
         # generate samples
         requires = {
-            kind: getattr(self, kind).get_samples(**sample_kwargs)
-            for kind in estimator_func.requires}
+            str(cts): self._getattr_from_cts(cts).get_samples(**sample_kwargs)
+            for cts in estimator_func.requires}
         optional = {
-            kind: getattr(self, kind).get_samples(**sample_kwargs)
-            for kind in estimator_func.optional
-            if getattr(self, kind) is not None}
+            str(cts): self._getattr_from_cts(cts).get_samples(**sample_kwargs)
+            for cts in estimator_func.optional
+            if self._getattr_from_cts(cts) is not None}
         return estimator_func(**requires, **optional)
 
     def plot(
@@ -411,8 +478,6 @@ def crosscorrelate(
     compute_dr = unk_rand is not None
     compute_rd = ref_rand is not None
     compute_rr = compute_dr and compute_rd
-    if not compute_rd and not compute_dr:
-        raise ValueError("no randoms provided")
 
     logger.info(
         f"running crosscorrelation ({len(config.scales.scales)} scales, "

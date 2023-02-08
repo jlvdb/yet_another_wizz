@@ -7,11 +7,16 @@ from typing import Any
 from astropy.cosmology import available as cosmology_avaliable
 
 from yaw.core.config import Configuration
+from yaw.core.correlation import CorrelationEstimator
 from yaw.logger import get_logger
 
 from yaw.pipe.parsing import Commandline, Path_exists
-from yaw.pipe.project import ProjectDirectory
+from yaw.pipe.project import MissingCatalogError, ProjectDirectory
 from yaw.pipe.task_utils import Tasks
+
+
+class NoCountsError(Exception):
+    pass
 
 
 def logged(func):
@@ -46,13 +51,19 @@ def runner(
     # load the reference sample
     if cross_kwargs is not None or auto_ref_kwargs is not None:
         reference = project.load_reference("data")
-        ref_rand = project.load_reference("rand")
+        try:
+            ref_rand = project.load_reference("rand")
+        except MissingCatalogError:
+            ref_rand = None
 
     # run reference autocorrelation
     if auto_ref_kwargs is not None:
+        if ref_rand is None:
+            raise MissingCatalogError(
+                "reference autocorrelation requires reference randoms")
         cfs = project.backend.autocorrelate(
             config, reference, ref_rand,
-            compute_rr=(not auto_ref_kwargs.get("no_rr", True)),
+            compute_rr=(not auto_ref_kwargs.get("no_rr", False)),
             progress=progress)
         if not isinstance(cfs, dict):
             cfs = {config.scales.dict_keys()[0]: cfs}
@@ -70,16 +81,30 @@ def runner(
 
             # load bin of the unknown sample
             unknown = project.load_unknown("data", idx)
-            unk_rand = project.load_unknown("rand", idx)
+            try:
+                unk_rand = project.load_unknown("rand", idx)
+            except MissingCatalogError:
+                unk_rand = None
 
             # run crosscorrelation
             if cross_kwargs is not None:
                 compute_rr = (not cross_kwargs.get("no_rr", True))
+                # select randoms to pass, if both are not None, RR is computed
+                if compute_rr:
+                    randoms = dict(ref_rand=ref_rand, unk_rand=unk_rand)
+                else:
+                    # prefer using DR over RD if both are possible
+                    if unk_rand is not None:
+                        randoms = dict(unk_rand=unk_rand)
+                    elif ref_rand is not None:
+                        randoms = dict(ref_rand=ref_rand)
+                    else:
+                        raise MissingCatalogError(
+                            "crosscorrelation requires either reference or "
+                            "unknown randoms")
+                # run
                 cfs = project.backend.crosscorrelate(
-                    config, reference, unknown,
-                    ref_rand=ref_rand if compute_rr else None,
-                    unk_rand=unk_rand,
-                    progress=progress)
+                    config, reference, unknown, **randoms, progress=progress)
                 if not isinstance(cfs, dict):
                     cfs = {config.scales.dict_keys()[0]: cfs}
                 for scale_key, cf in cfs.items():
@@ -88,9 +113,12 @@ def runner(
 
             # run unknown autocorrelation
             if auto_unk_kwargs is not None:
+                if unk_rand is None:
+                    raise MissingCatalogError(
+                        "unknown autocorrelation requires unknown randoms")
                 cfs = project.backend.autocorrelate(
                     config, unknown, unk_rand,
-                    compute_rr=(not auto_unk_kwargs.get("no_rr", True)),
+                    compute_rr=(not auto_unk_kwargs.get("no_rr", False)),
                     progress=progress)
                 if not isinstance(cfs, dict):
                     cfs = {config.scales.dict_keys()[0]: cfs}
@@ -98,9 +126,48 @@ def runner(
                     counts_dir = project.get_counts(scale_key, create=True)
                     cf.to_file(str(counts_dir.get_auto(idx)))
 
-            # measure true z
+            # estimate n(z)
             if nz_kwargs is not None:
-                unknown.true_redshifts(config)
+                CorrClass = project.backend.CorrelationFunction
+
+                # iterate scales
+                scale_keys = project.list_counts_scales()
+                if len(scale_keys) == 0:
+                    raise NoCountsError("no correlation pair counts found")
+                for scale_key in project.list_counts_scales():
+                    counts_dir = project.get_counts(scale_key)
+                    est_dir = project.get_estimate(scale_key, create=True)
+
+                    # load w_sp
+                    path = counts_dir.get_cross(idx)
+                    if not path.exists():
+                        raise NoCountsError(
+                            "no crosscorrelation pair counts found")
+                    w_sp = CorrClass.from_file(str(path))
+                    est = project.backend.NzEstimator(
+                        w_sp, estimator=nz_kwargs.get("est_cross"))
+                    # load w_ss
+                    path = counts_dir.get_auto_reference()
+                    if path.exists():
+                        w_ss = CorrClass.from_file(str(path))
+                        est.add_reference_autocorr(
+                            w_ss, estimator=nz_kwargs.get("est_auto"))
+                    # load w_pp
+                    path = counts_dir.get_auto(idx)
+                    if path.exists():
+                        w_pp = CorrClass.from_file(str(path))
+                        est.add_unknown_autocorr(
+                            w_pp, estimator=nz_kwargs.get("est_auto"))
+                    # dummy estimator evaluation
+                    est.get()
+                    est.get_samples(
+                        global_norm=nz_kwargs.get("global_norm", False),
+                        sample_method=nz_kwargs.get("method", "bootstrap"),
+                        n_boot=nz_kwargs.get("n_boot", 500),
+                        seed=nz_kwargs.get("seed", 12345))
+                    # write to disk
+                    for kind, path in est_dir.get_cross(idx).items():
+                        print(f"   mock writing {kind}: {path}")
 
             # remove any loaded data sample
             del unknown, unk_rand
@@ -351,71 +418,43 @@ parser_nz = Commandline.create_subparser(
     help="compute clustering clustering redshift estimates for the unknown data",
     description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.",
     threads=True)
-parser_nz.add_argument(
-    "--dummy-flag", action="store_true")
 
+group_est = parser_nz.add_argument_group(
+    title="correlation estimators",
+    description="configure estimators for the different types of correlation functions")
+group_est.add_argument(
+    "--est-cross", choices=CorrelationEstimator.variants, default=None,
+    help="correlation estimator to use for crosscorrelations (default: best)")
+group_est.add_argument(
+    "--est-auto", choices=CorrelationEstimator.variants, default=None,
+    help="correlation estimator to use for autocorrelations (default: best)")
 
-def nz_estimate(
-    project: ProjectDirectory
-) -> None:
-    import matplotlib
-    matplotlib.use("agg")
-    import matplotlib.pyplot as plt
-    from math import ceil
-
-    # iterate scales
-    for scale_key in project.list_counts_scales():
-        counts_dir = project.get_counts(scale_key)
-        est_dir = project.get_estimate(scale_key, create=True)
-        # iterate bins
-        bin_indices = counts_dir.get_cross_indices()
-
-        nbins = len(bin_indices)
-        ncols = 3
-        fig, axes = plt.subplots(
-            ceil(nbins / ncols), ncols,
-            figsize=(10, 8), sharex=True, sharey=True)
-        for ax, idx in zip(axes.flatten(), bin_indices):
-
-            # load w_sp
-            path = counts_dir.get_cross(idx)
-            w_sp = project.backend.CorrelationFunction.from_file(str(path))
-            est = project.backend.NzEstimator(w_sp)
-            # load w_ss
-            path = counts_dir.get_auto_reference()
-            if path.exists():
-                w_ss = project.backend.CorrelationFunction.from_file(str(path))
-                est.add_reference_autocorr(w_ss)
-            # load w_pp
-            path = counts_dir.get_auto(idx)
-            if path.exists():
-                w_pp = project.backend.CorrelationFunction.from_file(str(path))
-                est.add_unknown_autocorr(w_pp)
-
-            # just for now to actually generate samples
-            est.plot(ax=ax)
-            try:
-                data = project.load_unknown("data", idx)
-            except Exception:
-                pass
-            else:
-                nz = data.true_redshifts(project.config)
-                nz.plot(ax=ax, color="k")
-
-            # write to disk
-            for kind, path in est_dir.get_cross(idx).items():
-                print(f"   mock writing {kind}: {path}")
-        fig.tight_layout()
-        fig.subplots_adjust(wspace=0.0, hspace=0.0)
-        fig.savefig(str(project.path.joinpath(f"{scale_key}.pdf")))
+group_samp = parser_nz.add_argument_group(
+    title="resampling",
+    description="configure the resampling used for covariance estimates")
+group_samp.add_argument(
+    "--global-norm", action="store_true",
+    help="normalise pair counts globally instead of patch-wise")
+group_samp.add_argument(
+    "--method", choices=("bootstrap", "jackknife"), default="bootstrap",
+    help="resampling method for covariance estimates (default: %(default)s)")
+group_samp.add_argument(
+    "--n-boot", type=int, metavar="<int>", default=500,
+    help="number of bootstrap samples (default: %(default)s)")
+group_samp.add_argument(
+    "--seed", type=int, metavar="<int>", default=12345,
+    help="random seed for bootstrap sample generation (default: %(default)s)")
 
 
 @Commandline.register(COMMANDNAME)
 @Tasks.register(60)
 @logged
 def nz(args, project: ProjectDirectory) -> dict:
-    nz_estimate(project)
-    return dict(dummy_flag=args.dummy_flag)
+    setup_args = dict(
+        est_cross=args.est_cross, est_auto=args.est_auto, method=args.method,
+        global_norm=args.global_norm, n_boot=args.n_boot, seed=args.seed)
+    runner(project, nz_kwargs=setup_args)
+    return setup_args
 
 
 ################################################################################
