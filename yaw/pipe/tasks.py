@@ -80,7 +80,7 @@ def runner(
         for idx in project.get_bin_indices():
 
             # load bin of the unknown sample
-            if cross_kwargs is not None and auto_unk_kwargs is not None:
+            if cross_kwargs is not None or auto_unk_kwargs is not None:
                 unknown = project.load_unknown("data", idx)
                 try:
                     unk_rand = project.load_unknown("rand", idx)
@@ -170,11 +170,17 @@ def runner(
                     for kind, path in est_dir.get_cross(idx).items():
                         print(f"   mock writing {kind}: {path}")
 
-            # remove any loaded data sample
-            if cross_kwargs is not None and auto_unk_kwargs is not None:
-                del unknown, unk_rand
-    if cross_kwargs is not None or auto_ref_kwargs is not None:
-        del reference, ref_rand
+            # remove any loaded data samples
+            for sample in (unknown, unk_rand):
+                try:
+                    del sample
+                except NameError:
+                    pass
+    for sample in (reference, ref_rand):
+        try:
+            del sample
+        except NameError:
+            pass
 
     # clean up cached data
     if drop_cache is not None:
