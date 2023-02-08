@@ -90,7 +90,8 @@ class PatchCatalog:
             if self._len < SUBSET_SIZE:
                 pos = self.pos
             else:
-                which = np.random.randint(0, self._len, size=SUBSET_SIZE)
+                rng = np.random.default_rng(seed=12345)
+                which = rng.integers(0, self._len, size=SUBSET_SIZE)
                 pos = self.pos[which]
             xyz = position_sky2sphere(pos)
 
