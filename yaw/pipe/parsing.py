@@ -12,21 +12,25 @@ from yaw.pipe.data import BinnedInput, Input
 from yaw.pipe.task_utils import Registry
 
 
-def Directory_exists(path: str) -> Path:
-    filepath = Path(path)
-    if not filepath.exists():
-        raise argparse.ArgumentTypeError(f"file '{path}' not found")
-    if not filepath.is_dir():
-        raise argparse.ArgumentTypeError(f"path '{path}' is not a directory")
-    return filepath
+def Path_absolute(path: str) -> Path:
+    return Path(path).expanduser().absolute()
 
 
 def Path_exists(path: str) -> Path:
-    filepath = Path(path)
+    filepath = Path_absolute(path)
     if not filepath.exists():
         raise argparse.ArgumentTypeError(f"file '{path}' not found")
     if not filepath.is_file():
         raise argparse.ArgumentTypeError(f"path '{path}' is not a file")
+    return filepath
+
+
+def Directory_exists(path: str) -> Path:
+    filepath = Path_absolute(path)
+    if not filepath.exists():
+        raise argparse.ArgumentTypeError(f"file '{path}' not found")
+    if not filepath.is_dir():
+        raise argparse.ArgumentTypeError(f"path '{path}' is not a directory")
     return filepath
 
 

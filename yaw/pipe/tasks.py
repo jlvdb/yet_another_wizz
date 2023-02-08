@@ -10,7 +10,7 @@ from yaw.core.config import Configuration
 from yaw.core.correlation import CorrelationEstimator
 from yaw.logger import get_logger
 
-from yaw.pipe.parsing import Commandline, Path_exists
+from yaw.pipe.parsing import Commandline, Path_absolute, Path_exists
 from yaw.pipe.project import MissingCatalogError, ProjectDirectory
 from yaw.pipe.task_utils import Tasks
 
@@ -80,11 +80,12 @@ def runner(
         for idx in project.get_bin_indices():
 
             # load bin of the unknown sample
-            unknown = project.load_unknown("data", idx)
-            try:
-                unk_rand = project.load_unknown("rand", idx)
-            except MissingCatalogError:
-                unk_rand = None
+            if cross_kwargs is not None and auto_unk_kwargs is not None:
+                unknown = project.load_unknown("data", idx)
+                try:
+                    unk_rand = project.load_unknown("rand", idx)
+                except MissingCatalogError:
+                    unk_rand = None
 
             # run crosscorrelation
             if cross_kwargs is not None:
@@ -170,7 +171,8 @@ def runner(
                         print(f"   mock writing {kind}: {path}")
 
             # remove any loaded data sample
-            del unknown, unk_rand
+            if cross_kwargs is not None and auto_unk_kwargs is not None:
+                del unknown, unk_rand
     if cross_kwargs is not None or auto_ref_kwargs is not None:
         del reference, ref_rand
 
@@ -193,7 +195,7 @@ parser_init = Commandline.create_subparser(
     threads=False,
     progress=False)
 parser_init.add_argument(  # manual since special help text
-    "wdir", metavar="<path>", type=Path,
+    "wdir", metavar="<path>", type=Path_absolute,
     help="project directory, must not exist")
 
 parser_init.add_argument(
@@ -250,7 +252,7 @@ group_backend.add_argument(
     "--no-crosspatch", action="store_true",
     help="disable counting pairs across patch boundaries (scipy backend only)")
 group_backend.add_argument(
-    "--cache-path", metavar="<path>", type=Path,
+    "--cache-path", metavar="<path>", type=Path_absolute,
     help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
 group_backend.add_argument(
     "--threads", type=int, metavar="<int>",
@@ -471,7 +473,7 @@ parser_run = Commandline.create_subparser(
     threads=True,
     progress=True)
 parser_run.add_argument(  # manual since special help text
-    "wdir", metavar="<path>", type=Path,
+    "wdir", metavar="<path>", type=Path_absolute,
     help="project directory, must not exist")
 parser_run.add_argument(
     "-s", "--setup", required=True, type=Path_exists, metavar="<file>",
