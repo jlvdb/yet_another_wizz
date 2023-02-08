@@ -179,123 +179,8 @@ def runner(
         cachedir = project.get_cache()
         cachedir.drop_all()
 
-
-################################################################################
-COMMANDNAME = "auto"
-
-parser_auto = Commandline.create_subparser(
-    name=COMMANDNAME,
-    help="measure angular autocorrelation functions",
-    description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.",
-    progress=True,
-    threads=True)
-parser_auto.add_argument(
-    "--which", choices=("ref", "unk"), default="ref",
-    help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
-parser_auto.add_argument(
-    "--no-rr", action="store_true",
-    help="do not compute random-random pair counts")
-
-
-@Commandline.register(COMMANDNAME)
-def auto(args) -> dict:
-    if args.which == "ref":
-        return auto_ref(args)
-    else:
-        return auto_unk(args)
-
-
-@Tasks.register(20)
-@logged
-def auto_ref(args, project: ProjectDirectory) -> dict:
-    # run correlations
-    setup_args = dict(no_rr=args.no_rr)
-    kwargs = dict(
-        auto_ref_kwargs=setup_args,
-        progress=args.progress, threads=args.threads)
-    runner(project, **kwargs)
-    return setup_args
-
-
-@Tasks.register(30)
-@logged
-def auto_unk(args, project: ProjectDirectory) -> dict:
-    # run correlations
-    setup_args = dict(no_rr=args.no_rr)
-    kwargs = dict(
-        auto_unk_kwargs=setup_args,
-        progress=args.progress, threads=args.threads)
-    runner(project, **kwargs)
-    return setup_args
-
-
-################################################################################
-COMMANDNAME = "cache"
-
-parser_cache = Commandline.create_subparser(
-    name=COMMANDNAME,
-    help="mange or clean up cache directories",
-    description="Get a summary of the project's cache directory (location, size, etc.) or remove entries with --drop.",
-    progress=False)
-parser_cache.add_argument(
-    "--drop", action="store_true",
-    help="drop all cache entries")
-
-
-@Commandline.register(COMMANDNAME)
-def cache(args) -> dict:
-    if args.drop:
-        return drop_cache(args)
-    else:
-        with ProjectDirectory(args.wdir) as project:
-            cachedir = project.get_cache()
-            cachedir.summary()
-
-
-@Tasks.register(40)
-@logged
-def drop_cache(args, project: ProjectDirectory) -> dict:
-    project.get_cache().drop_all()
-    return {}
-
-
-################################################################################
-COMMANDNAME = "cross"
-
-parser_cross = Commandline.create_subparser(
-    name=COMMANDNAME,
-    help="measure angular cross-correlation functions",
-    description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.",
-    progress=True,
-    threads=True)
-parser_cross.add_argument(
-    "--no-rr", action="store_true",
-    help="do not compute random-random pair counts, even if both randoms are available")
-
-Commandline.add_input_parser(parser_cross, "unknown (data)", prefix="unk", required=True, binned=True)
-
-Commandline.add_input_parser(parser_cross, "unknown (random)", prefix="rand", required=False, binned=True)
-
-
-@Commandline.register(COMMANDNAME)
-@Tasks.register(10)
-@logged
-def cross(args, project: ProjectDirectory) -> dict:
-    # get the data catalog and the optional random catalog
-    input_unk = Commandline.get_input_from_args(args, "unk", require_z=False)
-    input_rand = Commandline.get_input_from_args(args, "rand", require_z=False)
-    if input_unk.get_bin_indices() != input_rand.get_bin_indices():
-        raise ValueError("bin indices for data and randoms do not match")
-    for idx in input_unk.get_bin_indices():
-        project.add_unknown(
-            idx, data=input_unk.get(idx), rand=input_rand.get(idx))
-    # run correlations
-    setup_args = dict(no_rr=args.no_rr)
-    runner(
-        project, cross_kwargs=setup_args,
-        progress=args.progress, threads=args.threads)
-    return setup_args
-
+###########################  SUBCOMMANDS FOR PARSER ############################
+# NOTE: the order in which the subcommands are defined is the same as when running the global help command
 
 ################################################################################
 COMMANDNAME = "init"
@@ -392,22 +277,120 @@ def init(args) -> None:
 
 
 ################################################################################
-COMMANDNAME = "merge"
+COMMANDNAME = "cross"
 
-parser_merge = Commandline.create_subparser(
+parser_cross = Commandline.create_subparser(
     name=COMMANDNAME,
-    help="merge correlation functions from different project directories",
-    description="TODO: Scope currently unclear.")
+    help="measure angular cross-correlation functions",
+    description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.",
+    progress=True,
+    threads=True)
+parser_cross.add_argument(
+    "--no-rr", action="store_true",
+    help="do not compute random-random pair counts, even if both randoms are available")
+
+Commandline.add_input_parser(parser_cross, "unknown (data)", prefix="unk", required=True, binned=True)
+
+Commandline.add_input_parser(parser_cross, "unknown (random)", prefix="rand", required=False, binned=True)
 
 
 @Commandline.register(COMMANDNAME)
+@Tasks.register(10)
 @logged
-def merge(args):
-    # case: config and reference equal
-    #     copy output files together into one directory if unknown bins are exclusive sets
-    # case: config and unknown bins equal
-    #     attempt to merge pair counts and recompute n(z) estimate
-    raise NotImplementedError
+def cross(args, project: ProjectDirectory) -> dict:
+    # get the data catalog and the optional random catalog
+    input_unk = Commandline.get_input_from_args(args, "unk", require_z=False)
+    input_rand = Commandline.get_input_from_args(args, "rand", require_z=False)
+    if input_unk.get_bin_indices() != input_rand.get_bin_indices():
+        raise ValueError("bin indices for data and randoms do not match")
+    for idx in input_unk.get_bin_indices():
+        project.add_unknown(
+            idx, data=input_unk.get(idx), rand=input_rand.get(idx))
+    # run correlations
+    setup_args = dict(no_rr=args.no_rr)
+    runner(
+        project, cross_kwargs=setup_args,
+        progress=args.progress, threads=args.threads)
+    return setup_args
+
+
+################################################################################
+COMMANDNAME = "auto"
+
+parser_auto = Commandline.create_subparser(
+    name=COMMANDNAME,
+    help="measure angular autocorrelation functions",
+    description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.",
+    progress=True,
+    threads=True)
+parser_auto.add_argument(
+    "--which", choices=("ref", "unk"), default="ref",
+    help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
+parser_auto.add_argument(
+    "--no-rr", action="store_true",
+    help="do not compute random-random pair counts")
+
+
+@Commandline.register(COMMANDNAME)
+def auto(args) -> dict:
+    if args.which == "ref":
+        return auto_ref(args)
+    else:
+        return auto_unk(args)
+
+
+@Tasks.register(20)
+@logged
+def auto_ref(args, project: ProjectDirectory) -> dict:
+    # run correlations
+    setup_args = dict(no_rr=args.no_rr)
+    kwargs = dict(
+        auto_ref_kwargs=setup_args,
+        progress=args.progress, threads=args.threads)
+    runner(project, **kwargs)
+    return setup_args
+
+
+@Tasks.register(30)
+@logged
+def auto_unk(args, project: ProjectDirectory) -> dict:
+    # run correlations
+    setup_args = dict(no_rr=args.no_rr)
+    kwargs = dict(
+        auto_unk_kwargs=setup_args,
+        progress=args.progress, threads=args.threads)
+    runner(project, **kwargs)
+    return setup_args
+
+
+################################################################################
+COMMANDNAME = "cache"
+
+parser_cache = Commandline.create_subparser(
+    name=COMMANDNAME,
+    help="mange or clean up cache directories",
+    description="Get a summary of the project's cache directory (location, size, etc.) or remove entries with --drop.",
+    progress=False)
+parser_cache.add_argument(
+    "--drop", action="store_true",
+    help="drop all cache entries")
+
+
+@Commandline.register(COMMANDNAME)
+def cache(args) -> dict:
+    if args.drop:
+        return drop_cache(args)
+    else:
+        with ProjectDirectory(args.wdir) as project:
+            cachedir = project.get_cache()
+            cachedir.summary()
+
+
+@Tasks.register(40)
+@logged
+def drop_cache(args, project: ProjectDirectory) -> dict:
+    project.get_cache().drop_all()
+    return {}
 
 
 ################################################################################
@@ -415,19 +398,20 @@ COMMANDNAME = "nz"
 
 parser_nz = Commandline.create_subparser(
     name=COMMANDNAME,
-    help="compute clustering clustering redshift estimates for the unknown data",
+    help="compute clustering redshift estimates for the unknown data",
     description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.",
     threads=True)
 
+_estimators = [est.short for est in CorrelationEstimator.variants]
 group_est = parser_nz.add_argument_group(
     title="correlation estimators",
     description="configure estimators for the different types of correlation functions")
 group_est.add_argument(
-    "--est-cross", choices=CorrelationEstimator.variants, default=None,
-    help="correlation estimator to use for crosscorrelations (default: best)")
+    "--est-cross", choices=_estimators, default=None,
+    help="correlation estimator for crosscorrelations (default: LS or DP)")
 group_est.add_argument(
-    "--est-auto", choices=CorrelationEstimator.variants, default=None,
-    help="correlation estimator to use for autocorrelations (default: best)")
+    "--est-auto", choices=_estimators, default=None,
+    help="correlation estimator for autocorrelations (default: LS or DP)")
 
 group_samp = parser_nz.add_argument_group(
     title="resampling",
@@ -455,6 +439,25 @@ def nz(args, project: ProjectDirectory) -> dict:
         global_norm=args.global_norm, n_boot=args.n_boot, seed=args.seed)
     runner(project, nz_kwargs=setup_args)
     return setup_args
+
+
+################################################################################
+COMMANDNAME = "merge"
+
+parser_merge = Commandline.create_subparser(
+    name=COMMANDNAME,
+    help="merge correlation functions from different project directories",
+    description="TODO: Scope currently unclear.")
+
+
+@Commandline.register(COMMANDNAME)
+@logged
+def merge(args):
+    # case: config and reference equal
+    #     copy output files together into one directory if unknown bins are exclusive sets
+    # case: config and unknown bins equal
+    #     attempt to merge pair counts and recompute n(z) estimate
+    raise NotImplementedError
 
 
 ################################################################################
