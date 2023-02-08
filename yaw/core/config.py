@@ -11,11 +11,14 @@ import numpy as np
 import yaml
 
 from yaw import __version__
-from yaw.core.cosmology import TypeCosmology, get_default_cosmology
+from yaw.core.cosmology import (
+    TypeCosmology, get_default_cosmology, r_kpc_to_angle)
 from yaw.core.utils import scales_to_keys
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
+    from yaw.core.catalog import CatalogBase
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -427,6 +430,42 @@ class Configuration:
         if rbin_slop is not None:
             config["backend"]["rbin_slop"] = rbin_slop
         return self.__class__.from_dict(config)
+
+    def plot_scales(
+        self,
+        catalog: CatalogBase,
+        log: bool = True,
+        legend: bool = True
+    ) -> Figure:
+        import matplotlib.pyplot as plt
+
+        fig, ax_scale = plt.subplots(1, 1)
+        # plot scale of annulus
+        for r_min, r_max in self.scales.scales:
+            ang_min, ang_max = np.transpose([
+                r_kpc_to_angle([r_min, r_max], z, self.cosmology)
+                for z in self.binning.zbins])
+            ax_scale.fill_between(
+                self.binning.zbins, ang_min, ang_max, step="post", alpha=0.3,
+                label=rf"${r_min:.0f} < r \leq {r_max:.0f}$ kpc")
+        if legend:
+            ax_scale.legend(loc="lower right")
+        # plot patch sizes
+        ax_patch = ax_scale.twiny()
+        bins = np.histogram_bin_edges(catalog.radii)
+        if log:
+            ax_patch.set_yscale("log")
+            bins = np.logspace(
+                np.log10(bins[0]), np.log10(bins[-1]), len(bins), base=10.0)
+        ax_patch.hist(
+            catalog.radii, bins,
+            orientation="horizontal", color="k", alpha=0.5)
+        # decorate
+        ax_scale.set_xlim(self.binning.zmin, self.binning.zmax)
+        ax_scale.set_ylabel("Radius / rad")
+        ax_scale.set_xlabel("Redshift")
+        ax_patch.set_xlabel("Patch count")
+        return fig
 
     @classmethod
     def from_dict(cls, config: dict) -> Configuration:
