@@ -8,8 +8,10 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 
-from yaw.logger import TimedLog
 from yaw.core.correlation import CorrelationData
+from yaw.core.utils import BinnedQuantity
+
+from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
-class NzTrue:
+class NzTrue(BinnedQuantity):
 
     def __init__(
         self,
@@ -38,11 +40,6 @@ class NzTrue:
     @property
     def binning(self) -> IntervalIndex:
         return pd.IntervalIndex.from_breaks(self._binning)
-
-    @property
-    def dz(self) -> NDArray[np.float_]:
-        # compute redshift bin widths
-        return np.array([zbin.right - zbin.left for zbin in self.binning])
 
     def generate_bootstrap_patch_indices(
         self,

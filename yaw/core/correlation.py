@@ -14,6 +14,8 @@ from matplotlib import pyplot as plt
 
 from yaw.core.catalog import PatchLinkage
 from yaw.core.resampling import PairCountResult
+from yaw.core.utils import BinnedQuantity
+
 from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
@@ -197,7 +199,7 @@ class LandySzalay(CorrelationEstimator):
 
 
 @dataclass(frozen=True, repr=False)
-class CorrelationFunction:
+class CorrelationFunction(BinnedQuantity):
     dd: PairCountResult
     dr: PairCountResult | None = field(default=None)
     rd: PairCountResult | None = field(default=None)
@@ -230,15 +232,10 @@ class CorrelationFunction:
     def binning(self) -> IntervalIndex:
         return self.dd.binning
 
-    def is_compatible(
-        self,
-        other: PairCountResult
-    ) -> bool:
-        if not isinstance(other, CorrelationFunction):
-            raise TypeError(f"object of type {type(other)} is not compatible")
-        if self.npatch != other.npatch:
+    def is_compatible(self, other: PairCountResult) -> bool:
+        if not super().is_compatible(other):
             return False
-        if np.any(self.binning != other.binning):
+        if self.npatch != other.npatch:
             return False
         return True
 
@@ -394,7 +391,7 @@ class CorrelationFunction:
 
 
 @dataclass(frozen=True, repr=False)
-class CorrelationData:
+class CorrelationData(BinnedQuantity):
 
     data: Series
     samples: DataFrame
@@ -418,23 +415,6 @@ class CorrelationData:
         sampling = self.sampling
         return f"{name}({n_bins=}, z={z}, {samples=}, {sampling=})"
 
-    def __len__(self) -> int:
-        return len(self.binning)
-
-    def n_samples(self) -> int:
-        return len(self.samples.columns)
-
-    def is_compatible(self, other: CorrelationData) -> bool:
-        if not isinstance(other, CorrelationData):
-            raise TypeError(f"object of type {type(other)} is not compatible")
-        if self.n_samples() != other.n_samples():
-            return False
-        if self.sampling != other.sampling:
-            return False
-        if np.any(self.binning != other.binning):
-            return False
-        return True
-
     @property
     def binning(self) -> IntervalIndex:
         return self.data.index
@@ -446,6 +426,18 @@ class CorrelationData:
     @property
     def dz(self) -> NDArray[np.float_]:
         return np.array([z.right - z.left for z in self.binning])
+
+    def n_samples(self) -> int:
+        return len(self.samples.columns)
+
+    def is_compatible(self, other: CorrelationData) -> bool:
+        if not super().is_compatible(other):
+            return False
+        if self.n_samples() != other.n_samples():
+            return False
+        if self.sampling != other.sampling:
+            return False
+        return True
 
     @property
     def error(self) -> Series:

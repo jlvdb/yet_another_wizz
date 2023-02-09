@@ -9,6 +9,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from yaw.core.utils import BinnedQuantity
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval, IntervalIndex
@@ -90,10 +92,14 @@ def arraydict_from_hdf(source: h5py.Group) -> ArrayDict:
 
 
 @dataclass(frozen=True, repr=False)
-class PairCountData:
+class PairCountData(BinnedQuantity):
+
     binning: IntervalIndex
     count: NDArray[np.float_]
     total: NDArray[np.float_]
+
+    def is_compatible(self, other: PairCountData) -> bool:
+        return super().is_compatible(other)
 
     def normalise(self) -> NDArray[np.float_]:
         normalised = self.count / self.total
@@ -130,7 +136,8 @@ def jackknife_iter(
 
 
 @dataclass(frozen=True, repr=False)
-class PairCountResult:
+class PairCountResult(BinnedQuantity):
+
     npatch: int
     count: ArrayDict
     total: ArrayDict
@@ -174,7 +181,7 @@ class PairCountResult:
         npatch = zbins[0].npatch
         mask = zbins[0].mask
         keys = tuple(zbins[0].keys())
-        nbins = zbins[0].nbins
+        nbins = len(zbins[0])
         for zbin in zbins[1:]:
             if zbin.npatch != npatch:
                 raise ValueError("the patch numbers are inconsistent")
@@ -182,7 +189,7 @@ class PairCountResult:
                 raise ValueError("pair masks are inconsistent")
             if tuple(zbin.keys()) != keys:
                 raise ValueError("patches are inconsistent")
-            if zbin.nbins != nbins:
+            if len(zbin) != nbins:
                 raise IndexError("number of bins is inconsistent")
 
         # check the ordering of the bins based on the provided intervals
@@ -211,9 +218,8 @@ class PairCountResult:
     def keys(self) -> list[TypePatchKey]:
         return self.total.keys()
 
-    @property
-    def nbins(self) -> int:
-        return len(self.binning)
+    def is_compatible(self, other: PairCountResult) -> bool:
+        return super().is_compatible(other)
 
     def get_patch_count(self) -> DataFrame:
         return pd.DataFrame(
