@@ -171,16 +171,14 @@ def runner(
                         print(f"   mock writing {kind}: {path}")
 
             # remove any loaded data samples
-            for sample in (unknown, unk_rand):
-                try:
-                    del sample
-                except NameError:
-                    pass
-    for sample in (reference, ref_rand):
-        try:
-            del sample
-        except NameError:
-            pass
+            try:
+                del unknown, unk_rand
+            except NameError:
+                pass
+    try:
+        del reference, ref_rand
+    except NameError:
+        pass
 
     # clean up cached data
     if drop_cache is not None:
@@ -391,7 +389,7 @@ def cache(args) -> dict:
     else:
         with ProjectDirectory(args.wdir) as project:
             cachedir = project.get_cache()
-            cachedir.summary()
+            cachedir.print_contents()
 
 
 @Tasks.register(40)

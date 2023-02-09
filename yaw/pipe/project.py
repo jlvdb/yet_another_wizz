@@ -48,7 +48,7 @@ class Directory(Path):
     # seems to be the easiest way to subclass pathlib.Path
     _flavour = _windows_flavour if os.name == 'nt' else _posix_flavour
 
-    def summary(self) -> None:
+    def print_contents(self) -> None:
         sizes = dict()
         for path in self.iterdir():
             if path.is_dir():
@@ -249,8 +249,6 @@ class ProjectDirectory:
         new = cls.__new__(cls)  # access to path attributes
         new._path = Path(path).expanduser()
         new._path.mkdir(parents=True, exist_ok=False)
-        if cachepath is None:
-            cachepath = new._path.joinpath("cache")
         # create the setup file
         _write_setup_file(
             new.setup_file,
@@ -306,8 +304,8 @@ class ProjectDirectory:
             data = setup["data"]
         except KeyError as e:
             _parse_section_error(e, "data")
-        cachepath = data.get("cachepath")
-        self._cache = CacheDirectory(cachepath)
+        self._cachepath = data.get("cachepath")
+        self._cache = CacheDirectory(self.cache_dir)
         self._cache.mkdir(exist_ok=True, parents=True)
         self._inputs = InputRegister.from_dict(
             data.get("catalogs", dict()))
@@ -320,7 +318,7 @@ class ProjectDirectory:
         _write_setup_file(
             self.setup_file,
             config=self.config,
-            cache_dir=self.cache_dir,
+            cache_dir=self._cachepath,
             catalogs=self._inputs,
             backend_name=self._backend_name,
             tasks=self._tasks)
@@ -340,6 +338,20 @@ class ProjectDirectory:
     @property
     def config(self) -> Configuration:
         return self._config
+
+    @property
+    def cache_dir(self) -> Path:
+        if self._cachepath is None:
+            return self._path.joinpath("cache")
+        else:
+            return Path(self._cachepath)
+
+    @property
+    def cache_restore_supported(self) -> bool:
+        return hasattr(self.backend.Catalog, "from_cache")
+
+    def get_cache(self) -> CacheDirectory:
+        return self._cache
 
     def set_reference(
         self,
@@ -387,29 +399,20 @@ class ProjectDirectory:
         kwargs = input.to_dict()
         kwargs.pop("cache", False)
         # attempt to load the catalog into memory
-        if self.get_cache() is None:
-            # no cache available
-            if input.cache:
-                warnings.warn(
-                    "no cache directory provided, cannot cache catalog")
-            catalog = self.backend.Catalog.from_file(**kwargs)
-
+        if sample == "reference":
+            cachepath = self._cache.get_reference()[kind]
         else:
-            # cache available, get object path
-            if sample == "reference":
-                cachepath = self._cache.get_reference()[kind]
-            else:
-                cachepath = self._cache.get_unknown(bin_idx)[kind]
-            exists = cachepath.exists()
-            if self.cache_restore_supported and exists and input.cache:
-                # already cached and backend supports restoring
-                catalog = self.backend.Catalog.from_cache(cachepath)
-            else:
-                # no caching requested or not supported
-                if input.cache:
-                    kwargs["cache_directory"] = str(cachepath)
-                    cachepath.mkdir(exist_ok=True)
-                catalog = self.backend.Catalog.from_file(**kwargs)
+            cachepath = self._cache.get_unknown(bin_idx)[kind]
+        exists = cachepath.exists()
+        if self.cache_restore_supported and exists and input.cache:
+            # already cached and backend supports restoring
+            catalog = self.backend.Catalog.from_cache(cachepath)
+        else:
+            # no caching requested or not supported
+            if input.cache:
+                kwargs["cache_directory"] = str(cachepath)
+                cachepath.mkdir(exist_ok=True)
+            catalog = self.backend.Catalog.from_file(**kwargs)
         return catalog
 
     def load_reference(self, kind: str) -> CatalogBase:
@@ -423,17 +426,6 @@ class ProjectDirectory:
 
     def show_catalogs(self) -> None:
         print(yaml.dump(self._inputs.to_dict()))
-
-    @property
-    def cache_dir(self) -> Path:
-        return Path(self._cache)
-
-    @property
-    def cache_restore_supported(self) -> bool:
-        return hasattr(self.backend.Catalog, "from_cache")
-
-    def get_cache(self) -> CacheDirectory:
-        return self._cache
 
     @property
     def counts_dir(self) -> Path:
