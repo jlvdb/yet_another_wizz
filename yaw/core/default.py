@@ -36,4 +36,5 @@ class Resampling:
     global_norm = False  # check with 'nz' parser
     seed = 12345
 
+
 backend = "scipy"

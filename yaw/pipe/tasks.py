@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import sys
 from functools import wraps
 from typing import Any
@@ -183,6 +184,12 @@ def runner(
         cachedir = project.get_cache()
         cachedir.drop_all()
 
+
+BACKEND_OPTIONS = ("scipy", "treecorr")
+BINNING_OPTIONS = ("linear", "comoving", "logspace")
+COSMOLOGY_OPTIONS = cosmology_avaliable
+METHOD_OPTIONS = ("bootstrap", "jackknife")
+
 ###########################  SUBCOMMANDS FOR PARSER ############################
 # NOTE: the order in which the subcommands are defined is the same as when running the global help command
 
@@ -208,10 +215,10 @@ parser_init.add_argument(
     help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
 
 parser_init.add_argument(
-    "--backend", choices=("scipy", "treecorr"), default=DEFAULT.backend,
+    "--backend", choices=BACKEND_OPTIONS, default=DEFAULT.backend,
     help="backend used for pair counting (default: %(default)s)")
 parser_init.add_argument(
-    "--cosmology", choices=cosmology_avaliable, default=get_default_cosmology().name,
+    "--cosmology", choices=COSMOLOGY_OPTIONS, default=get_default_cosmology().name,
     help="cosmological model used for distance calculations (see astropy.cosmology, default: %(default)s)")
 
 Commandline.add_input_parser(parser_init, "reference (data)", prefix="ref", required=True, require_z=True)
@@ -247,7 +254,7 @@ group_bins.add_argument(
     "--zbin-num", default=DEFAULT.AutoBinning.zbin_num, type=int, metavar="<int>",
     help="number of redshift bins (default: %(default)s)")
 group_bins.add_argument(
-    "--method", choices=("linear", "comoving", "logspace"), default=DEFAULT.AutoBinning.method,
+    "--method", choices=BINNING_OPTIONS, default=DEFAULT.AutoBinning.method,
     help="number of redshift bins (default: %(default)s), 'logspace' means equal size in log(1+z)")
 
 group_backend = parser_init.add_argument_group(
@@ -451,7 +458,7 @@ group_samp.add_argument(
     "--global-norm", action="store_true",  # check with DEFAULT.Resampling.global_norm
     help="normalise pair counts globally instead of patch-wise")
 group_samp.add_argument(
-    "--method", choices=("bootstrap", "jackknife"), default=DEFAULT.Resampling.method,
+    "--method", choices=METHOD_OPTIONS, default=DEFAULT.Resampling.method,
     help="resampling method for covariance estimates (default: %(default)s)")
 group_samp.add_argument(
     "--n-boot", type=int, metavar="<int>", default=DEFAULT.Resampling.n_boot,
@@ -494,6 +501,27 @@ def merge(args):
 ################################################################################
 COMMANDNAME = "run"
 
+class DumpConfigAction(argparse.Action):
+    def __init__(
+        self, option_strings, dest, nargs=0, const="default",
+        required=False, help=None
+    ) -> None:
+        super().__init__(
+            option_strings=option_strings, dest=dest, nargs=0,
+            const=const, required=required, help=help)
+    def __call__(self, parser, namespace, values, option_string):
+        if self.const == "default":
+            from yaw.pipe.default_setup import setup_default
+            print(setup_default.format(
+                backend_options=", ".join(BACKEND_OPTIONS),
+                binning_options=", ".join(BINNING_OPTIONS),
+                cosmology_options=", ".join(COSMOLOGY_OPTIONS),
+                method_options=", ".join(METHOD_OPTIONS)))
+        else:
+            from yaw.pipe.default_setup import setup_types
+            print(setup_types)
+        parser.exit()
+
 parser_run = Commandline.create_subparser(
     name=COMMANDNAME,
     help="perform tasks specified in a setup file",
@@ -507,7 +535,12 @@ parser_run.add_argument(  # manual since special help text
 parser_run.add_argument(
     "-s", "--setup", required=True, type=Path_exists, metavar="<file>",
     help="setup YAML file with configuration, input files and task list")
-# TODO: add action to dump empty configuration file
+parser_run.add_argument(
+    "-d", "--dump", action=DumpConfigAction, const="default", nargs=0,
+    help="dump an empty setup file to the terminal")
+parser_run.add_argument(
+    "--annotate", action=DumpConfigAction, const="annotate", nargs=0,
+    help="dump an pseudo setup file with parameter type annotations")
 
 
 def run_from_setup(
