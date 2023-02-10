@@ -11,6 +11,8 @@ import numpy as np
 import yaml
 
 from yaw import __version__
+
+from yaw.core import default as DEFAULT
 from yaw.core.cosmology import (
     TypeCosmology, get_default_cosmology, r_kpc_to_angle)
 from yaw.core.utils import DictRepresentation, scales_to_keys
@@ -103,8 +105,8 @@ class ScalesConfig(DictRepresentation):
 
     rmin: Sequence[float] | float
     rmax: Sequence[float] | float
-    rweight: float | None = field(default=None)
-    rbin_num: int = field(default=50)
+    rweight: float | None = field(default=DEFAULT.Scales.rweight)
+    rbin_num: int = field(default=DEFAULT.Scales.rbin_num)
 
     def __post_init__(self) -> None:
         msg_scale_error = f"scales violates 'rmin' < 'rmax'"
@@ -281,8 +283,8 @@ class AutoBinningConfig(BaseBinningConfig):
         cls,
         zmin: float,
         zmax: float,
-        zbin_num: int,
-        method: str = "linear",
+        zbin_num: int = DEFAULT.AutoBinning.zbin_num,
+        method: str = DEFAULT.AutoBinning.method,
         cosmology: TypeCosmology | None = None
     ) -> ScalesConfig:
         zbins = BinFactory(zmin, zmax, zbin_num, cosmology).get(method)
@@ -315,11 +317,11 @@ class AutoBinningConfig(BaseBinningConfig):
 class BackendConfig(DictRepresentation):
 
     # general
-    thread_num: int | None = field(default=None)
+    thread_num: int | None = DEFAULT.Backend.thread_num
     # scipy
-    crosspatch: bool = field(default=True)
+    crosspatch: bool = field(default=DEFAULT.Backend.crosspatch)
     # treecorr
-    rbin_slop: float = field(default=0.01)
+    rbin_slop: float = field(default=DEFAULT.Backend.rbin_slop)
 
     def __post_init__(self) -> None:
         if self.thread_num is None:
@@ -332,7 +334,7 @@ class Configuration(DictRepresentation):
     scales: ScalesConfig
     binning: AutoBinningConfig | ManualBinningConfig
     backend: BackendConfig = field(default_factory=BackendConfig)
-    cosmology: TypeCosmology | str | None = field(default=None)
+    cosmology: TypeCosmology | str | None = DEFAULT.Configuration.cosmology
 
     def __post_init__(self) -> None:
         # parse cosmology
@@ -353,22 +355,22 @@ class Configuration(DictRepresentation):
     def create(
         cls,
         *,
-        cosmology: TypeCosmology | str | None = None,
+        cosmology: TypeCosmology | str | None = DEFAULT.Configuration.cosmology,
         # ScalesConfig
         rmin: ArrayLike,
         rmax: ArrayLike,
-        rweight: float | None = None,
-        rbin_num: int = 50,
+        rweight: float | None = DEFAULT.Configuration.scales.rweight,
+        rbin_num: int = DEFAULT.Configuration.scales.rbin_num,
         # AutoBinningConfig /  ManualBinningConfig
         zmin: float | None = None,
         zmax: float | None = None,
-        zbin_num: int | None = None,
-        method: str = "linear",
+        zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
+        method: str = DEFAULT.Configuration.binning.method,
         zbins: NDArray[np.float_] | None = None,
         # BackendConfig
-        thread_num: int | None = None,
-        crosspatch: bool = True,
-        rbin_slop: float = 0.01
+        thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
+        crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
+        rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop
     ) -> Configuration:
         cosmology = _parse_cosmology(cosmology)
         scales = ScalesConfig(
@@ -388,56 +390,56 @@ class Configuration(DictRepresentation):
     def modify(
         self,
         *,
-        cosmology: TypeCosmology | str | None = None,
+        cosmology: TypeCosmology | str | None = DEFAULT.none,
         # ScalesConfig
-        rmin: ArrayLike | None = None,
-        rmax: ArrayLike | None = None,
-        rweight: float | None = None,
-        rbin_num: int | None = None,
+        rmin: ArrayLike | None = DEFAULT.none,
+        rmax: ArrayLike | None = DEFAULT.none,
+        rweight: float | None = DEFAULT.none,
+        rbin_num: int | None = DEFAULT.none,
         # AutoBinningConfig /  ManualBinningConfig
-        zmin: float | None = None,
-        zmax: float | None = None,
-        zbin_num: int | None = None,
-        method: str | None = None,
-        zbins: NDArray[np.float_] | None = None,
+        zmin: float | None = DEFAULT.none,
+        zmax: float | None = DEFAULT.none,
+        zbin_num: int | None = DEFAULT.none,
+        method: str | None = DEFAULT.none,
+        zbins: NDArray[np.float_] | None = DEFAULT.none,
         # BackendConfig
-        thread_num: int | None = None,
-        crosspatch: bool | None = None,
-        rbin_slop: float | None = None
+        thread_num: int | None = DEFAULT.none,
+        crosspatch: bool | None = DEFAULT.none,
+        rbin_slop: float | None = DEFAULT.none
     ) -> Configuration:
         config = self.to_dict()
-        if cosmology is not None:
+        if cosmology is not DEFAULT.none:
             if isinstance(cosmology, str):
                 cosmology = _yaml_to_cosmology(cosmology)
             config["cosmology"] = _cosmology_to_yaml(cosmology)
         # ScalesConfig
-        if rmin is not None:
+        if rmin is not DEFAULT.none:
             config["scales"]["rmin"] = rmin
-        if rmax is not None:
+        if rmax is not DEFAULT.none:
             config["scales"]["rmax"] = rmax
-        if rweight is not None:
+        if rweight is not DEFAULT.none:
             config["scales"]["rweight"] = rweight
-        if rbin_num is not None:
+        if rbin_num is not DEFAULT.none:
             config["scales"]["rbin_num"] = rbin_num
         # AutoBinningConfig /  ManualBinningConfig
         if _is_manual_binning(zbins, zmin, zmax, zbin_num, require=False):
-            if zbins is not None:
+            if zbins is not DEFAULT.none:
                 config["binning"]["zbins"] = zbins
         else:
-            if zmin is not None:
+            if zmin is not DEFAULT.none:
                 config["binning"]["zmin"] = zmin
-            if zmax is not None:
+            if zmax is not DEFAULT.none:
                 config["binning"]["zmax"] = zmax
-            if zbin_num is not None:
+            if zbin_num is not DEFAULT.none:
                 config["binning"]["zbin_num"] = zbin_num
-            if method is not None:
+            if method is not DEFAULT.none:
                 config["binning"]["method"] = method
         # BackendConfig
-        if thread_num is not None:
+        if thread_num is not DEFAULT.none:
             config["backend"]["thread_num"] = thread_num
-        if crosspatch is not None:
+        if crosspatch is not DEFAULT.none:
             config["backend"]["crosspatch"] = crosspatch
-        if rbin_slop is not None:
+        if rbin_slop is not DEFAULT.none:
             config["backend"]["rbin_slop"] = rbin_slop
         return self.__class__.from_dict(config)
 
@@ -485,7 +487,8 @@ class Configuration(DictRepresentation):
     ) -> Configuration:
         config = {k: v for k, v in the_dict.items()}
         _check_version(config.pop("version", "0.0"))
-        cosmology = _parse_cosmology(config.pop("cosmology", None))
+        cosmology = _parse_cosmology(config.pop(
+            "cosmology", DEFAULT.Configuration.cosmology))
         # parse the required subgroups
         try:
             scales = ScalesConfig.from_dict(config.pop("scales"))

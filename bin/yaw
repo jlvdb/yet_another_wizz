@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-from yaw.pipe.parsing import Commandline
-from yaw.pipe.tasks import Tasks
+from yaw.pipe import Commandline
 
 
 if __name__ == "__main__":

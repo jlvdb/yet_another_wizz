@@ -10,6 +10,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from yaw.core import default as DEFAULT
 from yaw.core.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
 
@@ -220,14 +221,14 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def _generate_bootstrap_patch_indices(
         self,
         n_boot: int,
-        seed: int = 12345
+        seed: int = DEFAULT.Resampling.seed
     ) -> NDArray[np.int_]:
         rng = np.random.default_rng(seed=seed)
         return rng.integers(0, self.n_patches, size=(n_boot, self.n_patches))
 
     def _get_jackknife_samples(
         self,
-        global_norm: bool = False,
+        global_norm: bool = DEFAULT.Resampling.global_norm,
     ) -> PairCountData:
         # The iterator expects a single patch index which is dropped in a single
         # realisation.
@@ -252,7 +253,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def _get_bootstrap_samples(
         self,
         patch_idx: NDArray[np.int_],
-        global_norm: bool = False
+        global_norm: bool = DEFAULT.Resampling.global_norm
     ) -> PairCountData:
         # The treecorr bootstrap iterator expects a list of patch indicies which
         # are present in the specific boostrap realisation to generate, i.e.
@@ -280,11 +281,11 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def get_samples(
         self,
         *,
-        method: str = "bootstrap",
-        n_boot: int = 500,
+        method: str = DEFAULT.Resampling.method,
+        n_boot: int = DEFAULT.Resampling.n_boot,
         patch_idx: NDArray[np.int_] | None = None,
-        global_norm: bool = False,
-        seed: int = 12345
+        global_norm: bool = DEFAULT.Resampling.global_norm,
+        seed: int = DEFAULT.Resampling.seed
     ) -> PairCountData:
         if method == "jackknife":
             samples = self._get_jackknife_samples(global_norm=global_norm)

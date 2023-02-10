@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 import yaml
 
+from yaw.core import default as DEFAULT
 from yaw.core.config import Configuration
 from yaw.core.utils import TypePathStr, bytes_format
 
@@ -244,7 +245,7 @@ class ProjectDirectory:
         path: TypePathStr,
         config: Configuration,
         cachepath: TypePathStr | None = None,
-        backend: str = "scipy"
+        backend: str = DEFAULT.backend
     ) -> ProjectDirectory:
         new = cls.__new__(cls)  # access to path attributes
         new._path = Path(path).expanduser()

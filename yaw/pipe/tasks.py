@@ -6,13 +6,15 @@ from typing import Any
 
 from astropy.cosmology import available as cosmology_avaliable
 
+from yaw.core import default as DEFAULT
 from yaw.core.config import Configuration
 from yaw.core.correlation import CorrelationEstimator
+from yaw.core.cosmology import get_default_cosmology
 from yaw.core.utils import TypePathStr
 
 from yaw.logger import get_logger
 
-from yaw.pipe.parsing import Commandline, Path_absolute, Path_exists
+from yaw.pipe.commandline import Commandline, Path_absolute, Path_exists
 from yaw.pipe.project import MissingCatalogError, ProjectDirectory
 from yaw.pipe.task_utils import Tasks
 
@@ -198,10 +200,10 @@ parser_init.add_argument(  # manual since special help text
     help="project directory, must not exist")
 
 parser_init.add_argument(
-    "--backend", choices=("scipy", "treecorr"), default="scipy",
+    "--backend", choices=("scipy", "treecorr"), default=DEFAULT.backend,
     help="backend used for pair counting (default: %(default)s)")
 parser_init.add_argument(
-    "--cosmology", choices=cosmology_avaliable, default="Planck15",
+    "--cosmology", choices=cosmology_avaliable, default=get_default_cosmology().name,
     help="cosmological model used for distance calculations (see astropy.cosmology, default: %(default)s)")
 
 Commandline.add_input_parser(parser_init, "reference (data)", prefix="ref", required=True, require_z=True)
@@ -212,17 +214,17 @@ group_scales = parser_init.add_argument_group(
     title="measurement scales",
     description="sets the physical scales for the correlation measurements")
 group_scales.add_argument(
-    "--rmin", default=100, type=float, nargs="*", metavar="<float>",
-    help="(list of) lower scale cut in kpc (pyhsical, default: %(default)s)")
+    "--rmin", type=float, nargs="*", metavar="<float>", required=True,
+    help="(list of) lower scale cut in kpc (pyhsical)")
 group_scales.add_argument(
-    "--rmax", default=1000, type=float, nargs="*", metavar="<float>",
-    help="(list of) upper scale cut in kpc (pyhsical, default: %(default)s)")
+    "--rmax", type=float, nargs="*", metavar="<float>", required=True,
+    help="(list of) upper scale cut in kpc (pyhsical)")
 group_scales.add_argument(
-    "--rweight", type=float, metavar="<float>",
+    "--rweight", type=float, metavar="<float>", default=DEFAULT.Scales.rweight,
     help="weight galaxy pairs by separation [separation]**[--rweight] (default: no weight)")
 group_scales.add_argument(
-    "--rbin-num", type=int, metavar="<int>", default=50,
-    help="radial resolution (number of log bins) to compute separation weights for galaxy pairs (default: %(default)s")
+    "--rbin-num", type=int, metavar="<int>", default=DEFAULT.Scales.rbin_num,
+    help="radial resolution (number of log bins) to compute separation weights for galaxy pairs (default: %(default)s)")
 
 group_bins = parser_init.add_argument_group(
     title="redshift binning",
@@ -234,27 +236,26 @@ group_bins.add_argument(
     "--zmax", default=3.0, type=float, metavar="<float>",
     help="upper redshift limit (default: %(default)s)")
 group_bins.add_argument(
-    "--zbin-num", default=30, type=int, metavar="<int>",
+    "--zbin-num", default=DEFAULT.AutoBinning.zbin_num, type=int, metavar="<int>",
     help="number of redshift bins (default: %(default)s)")
 group_bins.add_argument(
-    "--method", metavar="<str>",
-    choices=("linear", "comoving", "logspace"), default="linear",
+    "--method", choices=("linear", "comoving", "logspace"), default=DEFAULT.AutoBinning.method,
     help="number of redshift bins (default: %(default)s), 'logspace' means equal size in log(1+z)")
 
 group_backend = parser_init.add_argument_group(
     title="backend specific",
     description="parameters that are specific to pair counting backends")
 group_backend.add_argument(
-    "--rbin-slop", type=float, metavar="<float>", default=0.01,
-    help="treecorr 'rbin_slop' parameter (treecorr backend only), note that there is only a single radial bin if [--rweight] is not specified, otherwise [--rbin-num] bins")
+    "--rbin-slop", type=float, metavar="<float>", default=DEFAULT.Backend.rbin_slop,
+    help="treecorr 'rbin_slop' parameter (treecorr backend only, default: %(default)s), note that there is only a single radial bin if [--rweight] is not specified, otherwise [--rbin-num] bins")
 group_backend.add_argument(
-    "--no-crosspatch", action="store_true",
+    "--no-crosspatch", action="store_true",  # check with DEFAULT.Backend.crosspath
     help="disable counting pairs across patch boundaries (scipy backend only)")
 group_backend.add_argument(
     "--cache-path", metavar="<path>", type=Path_absolute,
     help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
 group_backend.add_argument(
-    "--threads", type=int, metavar="<int>",
+    "--threads", type=int, metavar="<int>", default=DEFAULT.Backend.thread_num,
     help="default number of threads to use if not specified (default: all)")
 
 
@@ -325,11 +326,11 @@ parser_auto = Commandline.create_subparser(
     progress=True,
     threads=True)
 parser_auto.add_argument(
-    "--which", choices=("ref", "unk"), default="ref",
-    help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
-parser_auto.add_argument(
     "--no-rr", action="store_true",
     help="do not compute random-random pair counts")
+parser_auto.add_argument(
+    "--which", choices=("ref", "unk"), default="ref",
+    help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
 
 
 @Commandline.register(COMMANDNAME)
@@ -418,16 +419,16 @@ group_samp = parser_nz.add_argument_group(
     title="resampling",
     description="configure the resampling used for covariance estimates")
 group_samp.add_argument(
-    "--global-norm", action="store_true",
+    "--global-norm", action="store_true",  # check with DEFAULT.Resampling.global_norm
     help="normalise pair counts globally instead of patch-wise")
 group_samp.add_argument(
-    "--method", choices=("bootstrap", "jackknife"), default="bootstrap",
+    "--method", choices=("bootstrap", "jackknife"), default=DEFAULT.Resampling.method,
     help="resampling method for covariance estimates (default: %(default)s)")
 group_samp.add_argument(
-    "--n-boot", type=int, metavar="<int>", default=500,
+    "--n-boot", type=int, metavar="<int>", default=DEFAULT.Resampling.n_boot,
     help="number of bootstrap samples (default: %(default)s)")
 group_samp.add_argument(
-    "--seed", type=int, metavar="<int>", default=12345,
+    "--seed", type=int, metavar="<int>", default=DEFAULT.Resampling.seed,
     help="random seed for bootstrap sample generation (default: %(default)s)")
 
 

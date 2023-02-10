@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
+from yaw.core import default as DEFAULT
 from yaw.core.catalog import PatchLinkage
 from yaw.core.paircounts import PairCountResult
 from yaw.core.utils import (
@@ -305,7 +306,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def _generate_bootstrap_patch_indices(
         self,
         n_boot: int,
-        seed: int = 12345
+        seed: int = DEFAULT.Resampling.seed
     ) -> NDArray[np.int_]:
         return self.dd._generate_bootstrap_patch_indices(n_boot, seed=seed)
 
@@ -313,11 +314,11 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         self,
         *,
         estimator: str | None = None,
-        method: str = "bootstrap",
-        n_boot: int = 500,
+        method: str = DEFAULT.Resampling.method,
+        n_boot: int = DEFAULT.Resampling.n_boot,
         patch_idx: NDArray[np.int_] | None = None,
-        global_norm: bool = False,
-        seed: int = 12345
+        global_norm: bool = DEFAULT.Resampling.global_norm,
+        seed: int = DEFAULT.Resampling.seed
     ) -> CorrelationData:
         valid_methods = ("bootstrap", "jackknife")
         if method not in valid_methods:

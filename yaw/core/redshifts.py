@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 
+from yaw.core import default as DEFAULT
 from yaw.core.correlation import CorrelationData
 from yaw.core.utils import BinnedQuantity, PatchedQuantity
 
@@ -41,7 +42,7 @@ class NzTrue(PatchedQuantity, BinnedQuantity):
     def _generate_bootstrap_patch_indices(
         self,
         n_boot: int,
-        seed: int = 12345
+        seed: int = DEFAULT.Resampling.global_norm
     ) -> NDArray[np.int_]:
         N = len(self.counts)
         rng = np.random.default_rng(seed=seed)
@@ -55,9 +56,9 @@ class NzTrue(PatchedQuantity, BinnedQuantity):
     def get(
         self,
         *,
-        method: str = "bootstrap",
-        n_boot: int = 500,
-        seed: int = 12345,
+        method: str = DEFAULT.Resampling.method,
+        n_boot: int = DEFAULT.Resampling.n_boot,
+        seed: int = DEFAULT.Resampling.global_norm,
         **kwargs
     ) -> DataFrame:
         with TimedLog(
@@ -134,11 +135,11 @@ class RedshiftData(CorrelationData):
         cross_est: str | None = None,
         ref_est: str | None = None,
         unk_est: str | None = None,
-        method: str = "bootstrap",
-        n_boot: int = 500,
+        method: str = DEFAULT.Resampling.method,
+        n_boot: int = DEFAULT.Resampling.n_boot,
         patch_idx: NDArray[np.int_] | None = None,
-        global_norm: bool = False,
-        seed: int = 12345
+        global_norm: bool = DEFAULT.Resampling.global_norm,
+        seed: int = DEFAULT.Resampling.seed
     ) -> RedshiftData:
         with TimedLog(
             logger.debug,
