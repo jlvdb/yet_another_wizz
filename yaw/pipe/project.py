@@ -291,11 +291,14 @@ class ProjectDirectory(DictRepresentation):
         return cls(path)
 
     def to_dict(self) -> dict[str, Any]:
-        cache_dir = str(self._cachepath)
+        if self._cachepath is None:
+            cache_dir = None
+        else:
+            cache_dir = str(self._cachepath)
         setup = dict(
             configuration=self._config.to_dict(),
             data=dict(
-                cachepath=cache_dir if cache_dir is not None else None,
+                cachepath=cache_dir,
                 catalogs=self._inputs.to_dict()),
             backend=self._backend_name,
             tasks=self._tasks.to_list())
