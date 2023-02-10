@@ -7,8 +7,8 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
+from numpy.typing import NDArray
 from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
 
 from yaw.core.catalog import CatalogBase
@@ -287,4 +287,6 @@ class Catalog(CatalogBase):
             counts, bins = np.histogram(
                 patch.redshifts, config.binning.zbins, weights=patch.weights)
             hist_counts.append(counts)
-        return NzTrue(np.array(hist_counts), bins)
+        return NzTrue(
+            counts=np.array(hist_counts),
+            binning=pd.IntervalIndex.from_breaks(bins))

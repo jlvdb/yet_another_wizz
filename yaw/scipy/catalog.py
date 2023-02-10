@@ -437,4 +437,6 @@ class Catalog(CatalogBase):
         # NDArray[np.float_]
         pool.add_constant(config.binning.zbin_num)
         hist_counts = list(pool.iter_result())
-        return NzTrue(np.array(hist_counts), config.binning.zbins)
+        return NzTrue(
+            counts=np.array(hist_counts),
+            binning=pd.IntervalIndex.from_breaks(config.binning.zbins))

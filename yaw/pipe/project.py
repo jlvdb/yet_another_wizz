@@ -484,6 +484,19 @@ class ProjectDirectory(DictRepresentation):
     def list_estimate_scales(self) -> list(str):
         return [path.name for path in self.estimate_dir.iterdir()]
 
+    @property
+    def true_dir(self) -> Path:
+        return self.path.joinpath("true")
+
+    def get_true(
+        self,
+        bin_idx: int,
+        create: bool = False
+    ) -> Path:
+        if create:
+            self.true_dir.mkdir(exist_ok=True)
+        return self.true_dir.joinpath(f"nztrue_{bin_idx}")
+
     def add_task(self, task: TaskRecord) -> None:
         self._tasks.add(task)
 

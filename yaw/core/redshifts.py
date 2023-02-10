@@ -60,7 +60,7 @@ class NzTrue(PatchedQuantity, BinnedQuantity):
         n_boot: int = DEFAULT.Resampling.n_boot,
         seed: int = DEFAULT.Resampling.global_norm,
         **kwargs
-    ) -> DataFrame:
+    ) -> RedshiftData:
         with TimedLog(
             logger.debug,
             f"computing redshift distributions with method '{method}'"

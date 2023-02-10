@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from functools import wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from astropy.cosmology import available as cosmology_avaliable
 
@@ -11,7 +11,6 @@ from yaw.core import default as DEFAULT
 from yaw.core.config import Configuration
 from yaw.core.correlation import CorrelationEstimator
 from yaw.core.cosmology import get_default_cosmology
-from yaw.core.utils import TypePathStr
 
 from yaw.logger import get_logger
 
@@ -20,6 +19,16 @@ from yaw.pipe.project import (
     MissingCatalogError, ProjectDirectory,
     load_config_from_setup, load_setup_as_dict)
 from yaw.pipe.task_utils import Tasks
+
+if TYPE_CHECKING:
+    from yaw.core.correlation import CorrelationFunction, CorrelationData
+    from yaw.core.redshifts import RedshiftData
+
+
+BACKEND_OPTIONS = ("scipy", "treecorr")
+BINNING_OPTIONS = ("linear", "comoving", "logspace")
+from astropy.cosmology import available as COSMOLOGY_OPTIONS
+METHOD_OPTIONS = ("bootstrap", "jackknife")
 
 
 class NoCountsError(Exception):
@@ -40,156 +49,272 @@ def logged(func):
     return wrapper
 
 
-def runner(
-    project: ProjectDirectory,
-    cross_kwargs: dict[str, Any] | None = None,
-    auto_ref_kwargs: dict[str, Any] | None = None,
-    auto_unk_kwargs: dict[str, Any] | None = None,
-    nz_kwargs: dict[str, Any] | None = None,
-    drop_cache: dict[str, Any] | None = None,
-    progress: bool = False,
-    threads: int | None = None
-) -> None:
-    if threads is not None:
-        config = project.config.modify(thread_num=threads)
-    else:
-        config = project.config
+class Runner:
 
-    # load the reference sample
-    if cross_kwargs is not None or auto_ref_kwargs is not None:
-        reference = project.load_reference("data")
+    def __init__(
+        self,
+        project: ProjectDirectory,
+        progress: bool = False,
+        threads: int | None = None
+    ) -> None:
+        self.project = project
+        self.backend = self.project.backend
+        self.progress = progress
+        if threads is not None:
+            self.config = project.config.modify(thread_num=threads)
+        else:
+            self.config = project.config
+        # create place holder attributes
+        self.ref_data = None
+        self.ref_rand = None
+        self.unk_data = None
+        self.unk_rand = None
+        self.w_sp = None
+        self.w_ss = None
+        self.w_pp = None
+        self.w_sp_data = None
+        self.w_ss_data = None
+        self.w_pp_data = None
+
+    def load_reference(self):
+        self.ref_data = self.project.load_reference("data")
         try:
-            ref_rand = project.load_reference("rand")
+            self.ref_rand = self.project.load_reference("rand")
         except MissingCatalogError:
-            ref_rand = None
+            self.ref_rand = None
 
-    # run reference autocorrelation
-    if auto_ref_kwargs is not None:
-        if ref_rand is None:
+    def load_unknown(self, idx: int, skip_rand: bool = False):
+        self.unk_data = self.project.load_unknown("data", idx)
+        try:
+            if skip_rand:
+                self.unk_rand = None
+            else:
+                self.unk_rand = self.project.load_unknown("rand", idx)
+        except MissingCatalogError:
+            self.unk_rand = None
+
+    def cf_as_dict(
+        self,
+        cfs: CorrelationFunction | dict[str, CorrelationFunction]
+    ) -> dict[str, CorrelationFunction]:
+        if not isinstance(cfs, dict):
+            cfs = {self.config.scales.dict_keys()[0]: cfs}
+        return cfs
+
+    def run_auto_ref(
+        self,
+        *,
+        compute_rr: bool
+    ) -> dict[str, CorrelationFunction]:
+        if self.ref_rand is None:
             raise MissingCatalogError(
                 "reference autocorrelation requires reference randoms")
-        cfs = project.backend.autocorrelate(
-            config, reference, ref_rand,
-            compute_rr=(not auto_ref_kwargs.get("no_rr", False)),
-            progress=progress)
-        if not isinstance(cfs, dict):
-            cfs = {config.scales.dict_keys()[0]: cfs}
-        for scale_key, cf in cfs.items():
-            counts_dir = project.get_counts(scale_key, create=True)
-            cf.to_file(str(counts_dir.get_auto_reference()))
+        cfs = self.project.backend.autocorrelate(
+            self.config, self.ref_data, self.ref_rand,
+            compute_rr=compute_rr, progress=self.progress)
+        cfs = self.cf_as_dict(cfs)
+        for scale, cf in cfs.items():
+            counts_dir = self.project.get_counts(scale, create=True)
+            cf.to_file(counts_dir.get_auto_reference())
+        self.w_ss = cfs
 
-    # iterate the unknown sample bins
-    if (
-        cross_kwargs is not None or
-        auto_unk_kwargs is not None or
-        nz_kwargs is not None
-    ):
-        for idx in project.get_bin_indices():
+    def run_auto_unk(
+        self,
+        idx: int,
+        *,
+        compute_rr: bool
+    ) -> dict[str, CorrelationFunction]:
+        if self.unk_rand is None:
+            raise MissingCatalogError(
+                "unknown autocorrelation requires unknown randoms")
+        cfs = self.project.backend.autocorrelate(
+            self.config, self.unk_data, self.unk_rand,
+            compute_rr=compute_rr, progress=self.progress)
+        cfs = self.cf_as_dict(cfs)
+        for scale, cf in cfs.items():
+            counts_dir = self.project.get_counts(scale, create=True)
+            cf.to_file(counts_dir.get_auto(idx))
+        self.w_pp = cfs
 
-            # load bin of the unknown sample
-            if cross_kwargs is not None or auto_unk_kwargs is not None:
-                unknown = project.load_unknown("data", idx)
-                try:
-                    unk_rand = project.load_unknown("rand", idx)
-                except MissingCatalogError:
-                    unk_rand = None
+    def run_cross(
+        self,
+        idx: int,
+        *,
+        compute_rr: bool
+    ) -> dict[str, CorrelationFunction]:
+        if compute_rr:
+            if self.ref_rand is None:
+                raise MissingCatalogError(
+                    "crosscorrelation with RR requires reference randoms")
+            if self.unk_rand is None:
+                raise MissingCatalogError(
+                    "crosscorrelation with RR requires unknown randoms")
+            randoms = dict(ref_rand=self.ref_rand, unk_rand=self.unk_rand)
+        else:
+            # prefer using DR over RD if both are possible
+            if self.unk_rand is not None:
+                randoms = dict(unk_rand=self.unk_rand)
+            elif self.ref_rand is not None:
+                randoms = dict(ref_rand=self.ref_rand)
+            else:
+                raise MissingCatalogError(
+                    "crosscorrelation requires either reference or "
+                    "unknown randoms")
+        cfs = self.project.backend.crosscorrelate(
+            self.config, self.ref_data, self.unk_data,
+            **randoms, progress=self.progress)
+        cfs = self.cf_as_dict(cfs)
+        for scale, cf in cfs.items():
+            counts_dir = self.project.get_counts(scale, create=True)
+            cf.to_file(counts_dir.get_cross(idx))
+        self.w_sp = cfs
 
-            # run crosscorrelation
-            if cross_kwargs is not None:
-                compute_rr = (not cross_kwargs.get("no_rr", True))
-                # select randoms to pass, if both are not None, RR is computed
-                if compute_rr:
-                    randoms = dict(ref_rand=ref_rand, unk_rand=unk_rand)
-                else:
-                    # prefer using DR over RD if both are possible
-                    if unk_rand is not None:
-                        randoms = dict(unk_rand=unk_rand)
-                    elif ref_rand is not None:
-                        randoms = dict(ref_rand=ref_rand)
-                    else:
-                        raise MissingCatalogError(
-                            "crosscorrelation requires either reference or "
-                            "unknown randoms")
-                # run
-                cfs = project.backend.crosscorrelate(
-                    config, reference, unknown, **randoms, progress=progress)
-                if not isinstance(cfs, dict):
-                    cfs = {config.scales.dict_keys()[0]: cfs}
-                for scale_key, cf in cfs.items():
-                    counts_dir = project.get_counts(scale_key, create=True)
-                    cf.to_file(str(counts_dir.get_cross(idx)))
+    def load_auto_ref(self) -> None:
+        cfs = {}
+        for scale in self.project.list_counts_scales():
+            counts_dir = self.project.get_counts(scale)
+            path = counts_dir.get_auto_reference()
+            cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+        self.w_ss = cfs
 
-            # run unknown autocorrelation
-            if auto_unk_kwargs is not None:
-                if unk_rand is None:
-                    raise MissingCatalogError(
-                        "unknown autocorrelation requires unknown randoms")
-                cfs = project.backend.autocorrelate(
-                    config, unknown, unk_rand,
-                    compute_rr=(not auto_unk_kwargs.get("no_rr", False)),
-                    progress=progress)
-                if not isinstance(cfs, dict):
-                    cfs = {config.scales.dict_keys()[0]: cfs}
-                for scale_key, cf in cfs.items():
-                    counts_dir = project.get_counts(scale_key, create=True)
-                    cf.to_file(str(counts_dir.get_auto(idx)))
+    def load_auto_unk(self, idx: int) -> None:
+        cfs = {}
+        for scale in self.project.list_counts_scales():
+            counts_dir = self.project.get_counts(scale)
+            path = counts_dir.get_auto(idx)
+            cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+        self.w_pp = cfs
 
-            # estimate n(z)
-            if nz_kwargs is not None:
-                CorrClass = project.backend.CorrelationFunction
+    def load_cross(self, idx: int) -> None:
+        cfs = {}
+        for scale in self.project.list_counts_scales():
+            counts_dir = self.project.get_counts(scale)
+            path = counts_dir.get_cross(idx)
+            cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+        if len(cfs) == 0:
+            raise NoCountsError(f"crosscorrelation counts not found")
+        self.w_sp = cfs
 
-                # iterate scales
-                scale_keys = project.list_counts_scales()
-                if len(scale_keys) == 0:
-                    raise NoCountsError("no correlation pair counts found")
-                for scale_key in project.list_counts_scales():
-                    counts_dir = project.get_counts(scale_key)
-                    est_dir = project.get_estimate(scale_key, create=True)
-                    # load correlation functions
-                    path = counts_dir.get_cross(idx)
-                    if not path.exists():
-                        raise NoCountsError(
-                            "no crosscorrelation pair counts found")
-                    w_sp = CorrClass.from_file(path)
-                    path = counts_dir.get_auto_reference()
-                    w_ss = CorrClass.from_file(path) if path.exists() else None
-                    path = counts_dir.get_auto(idx)
-                    w_pp = CorrClass.from_file(path) if path.exists() else None
-                    # compute samples
-                    nz = project.backend.RedshiftData.from_correlation_functions(
-                        # specify correlation functions
-                        cross_corr=w_sp, cross_est=nz_kwargs.get("est_cross"),
-                        ref_corr=w_ss, ref_est=nz_kwargs.get("est_auto"),
-                        unk_corr=w_pp, unk_est=nz_kwargs.get("est_auto"),
-                        # configure joint sampling
-                        global_norm=nz_kwargs.get("global_norm", False),
-                        method=nz_kwargs.get("method", "bootstrap"),
-                        n_boot=nz_kwargs.get("n_boot", 500),
-                        seed=nz_kwargs.get("seed", 12345))
-                    # write to disk
-                    path = est_dir.get_cross(idx)
-                    nz.to_files(path)
+    def sample_corrfunc(
+        self,
+        cfs_kind: str,
+        *,
+        estimator: str | None,
+        method: str,
+        n_boot: int,
+        global_norm: bool,
+        seed: int
+    ) -> dict[str, CorrelationData]:
+        cfs = getattr(self, cfs_kind)
+        if cfs is None and cfs_kind == "w_sp":
+            raise NoCountsError(f"crosscorrelation counts not found")
+        data = {}
+        for scale, cf in cfs.items():
+            data[scale] = cf.get(
+                estimator=estimator, method=method,
+                n_boot=n_boot, global_norm=global_norm, seed=seed)
+        setattr(self, f"{cfs_kind}_data", data)
 
-            # remove any loaded data samples
-            try:
-                del unknown, unk_rand
-            except NameError:
-                pass
-    try:
-        del reference, ref_rand
-    except NameError:
-        pass
+    def compute_nz_cc(self, idx: int) -> None:
+        cross_data = self.w_sp_data
+        if self.w_ss_data is None:
+            ref_data = {scale: None for scale in cross_data}
+        else:
+            ref_data = self.w_ss_data
+        if self.w_pp_data is None:
+            unk_data = {scale: None for scale in cross_data}
+        else:
+            unk_data = self.w_pp_data
+        for scale in cross_data:
+            nz = self.backend.RedshiftData.from_correlation_data(
+                cross_data[scale], ref_data[scale], unk_data[scale])
+            est_dir = self.project.get_estimate(scale, create=True)
+            path = est_dir.get_cross(idx)
+            nz.to_files(path)
 
-    # clean up cached data
-    if drop_cache is not None:
-        cachedir = project.get_cache()
-        cachedir.drop_all()
+    def compute_nz_true(self, idx: int) -> None:
+        nz = self.unk_data.true_redshifts(self.config)
+        nz_data = nz.get()
+        path = self.project.get_true(idx, create=True)
+        nz_data.to_files(path)
 
+    def drop_cache(self):
+        self.project.get_cache().drop_all()
 
-BACKEND_OPTIONS = ("scipy", "treecorr")
-BINNING_OPTIONS = ("linear", "comoving", "logspace")
-COSMOLOGY_OPTIONS = cosmology_avaliable
-METHOD_OPTIONS = ("bootstrap", "jackknife")
+    def main(
+        self,
+        cross_kwargs: dict[str, Any] | None = None,
+        auto_ref_kwargs: dict[str, Any] | None = None,
+        auto_unk_kwargs: dict[str, Any] | None = None,
+        nz_kwargs: dict[str, Any] | None = None,
+        true_kwargs: dict[str, Any] | None = None,
+        drop_cache: dict[str, Any] | None = None
+    ) -> None:
+        do_w_sp = cross_kwargs is not None
+        do_w_ss = auto_ref_kwargs is not None
+        do_w_pp = auto_unk_kwargs is not None
+        do_nz = nz_kwargs is not None
+        do_true = true_kwargs is not None
+
+        if do_nz:
+            sample_kwargs = dict(
+                global_norm=nz_kwargs.get(
+                    "global_norm", DEFAULT.Resampling.global_norm),
+                method=nz_kwargs.get(
+                    "method", DEFAULT.Resampling.method),
+                n_boot=nz_kwargs.get(
+                    "n_boot", DEFAULT.Resampling.n_boot),
+                seed=nz_kwargs.get(
+                    "seed", DEFAULT.Resampling.seed))
+
+        if do_w_sp or do_w_ss:
+            self.load_reference()
+
+        if do_w_ss:
+            compute_rr = (not auto_ref_kwargs.get("no_rr", False))
+            self.run_auto_ref(compute_rr=compute_rr)
+        elif do_nz:
+            self.load_auto_ref()
+
+        if do_nz:
+            self.sample_corrfunc(
+                "w_ss", estimator=nz_kwargs.get("est_auto"),
+                **sample_kwargs)
+
+        if do_w_sp or do_w_pp or do_nz or do_true:
+            for idx in self.project.get_bin_indices():
+
+                if do_w_sp or do_w_pp or do_true:
+                    skip_rand = do_true and not (do_w_sp or do_w_pp)
+                    self.load_unknown(idx, skip_rand=skip_rand)
+
+                if do_true:
+                    self.compute_nz_true(idx)
+
+                if do_w_sp:
+                    compute_rr = (not cross_kwargs.get("no_rr", True))
+                    self.run_cross(idx, compute_rr=compute_rr)
+                elif do_nz:
+                    self.load_cross(idx)
+
+                if do_w_pp:
+                    compute_rr = (not auto_unk_kwargs.get("no_rr", False))
+                    self.run_auto_unk(idx, compute_rr=compute_rr)
+                elif do_nz:
+                    self.load_auto_unk(idx)
+
+                if do_nz:
+                    self.sample_corrfunc(
+                        "w_sp", estimator=nz_kwargs.get("est_cross"),
+                        **sample_kwargs)
+                    self.sample_corrfunc(
+                        "w_pp", estimator=nz_kwargs.get("est_auto"),
+                        **sample_kwargs)
+                    self.compute_nz_cc(idx)
+
+        if drop_cache:
+            self.drop_cache()
+
 
 ###########################  SUBCOMMANDS FOR PARSER ############################
 # NOTE: the order in which the subcommands are defined is the same as when running the global help command
@@ -351,9 +476,8 @@ def cross(args, project: ProjectDirectory) -> dict:
             idx, data=input_unk.get(idx), rand=input_rand.get(idx))
     # run correlations
     setup_args = dict(no_rr=args.no_rr)
-    runner(
-        project, cross_kwargs=setup_args,
-        progress=args.progress, threads=args.threads)
+    runner = Runner(project, progress=args.progress, threads=args.threads)
+    runner.main(cross_kwargs=setup_args)
     return setup_args
 
 
@@ -387,10 +511,8 @@ def auto(args) -> dict:
 def auto_ref(args, project: ProjectDirectory) -> dict:
     # run correlations
     setup_args = dict(no_rr=args.no_rr)
-    kwargs = dict(
-        auto_ref_kwargs=setup_args,
-        progress=args.progress, threads=args.threads)
-    runner(project, **kwargs)
+    runner = Runner(project, progress=args.progress, threads=args.threads)
+    runner.main(auto_ref_kwargs=setup_args)
     return setup_args
 
 
@@ -399,41 +521,9 @@ def auto_ref(args, project: ProjectDirectory) -> dict:
 def auto_unk(args, project: ProjectDirectory) -> dict:
     # run correlations
     setup_args = dict(no_rr=args.no_rr)
-    kwargs = dict(
-        auto_unk_kwargs=setup_args,
-        progress=args.progress, threads=args.threads)
-    runner(project, **kwargs)
+    runner = Runner(project, progress=args.progress, threads=args.threads)
+    runner.main(auto_unk_kwargs=setup_args)
     return setup_args
-
-
-################################################################################
-COMMANDNAME = "cache"
-
-parser_cache = Commandline.create_subparser(
-    name=COMMANDNAME,
-    help="mange or clean up cache directories",
-    description="Get a summary of the project's cache directory (location, size, etc.) or remove entries with --drop.",
-    progress=False)
-parser_cache.add_argument(
-    "--drop", action="store_true",
-    help="drop all cache entries")
-
-
-@Commandline.register(COMMANDNAME)
-def cache(args) -> dict:
-    if args.drop:
-        return drop_cache(args)
-    else:
-        with ProjectDirectory(args.wdir) as project:
-            cachedir = project.get_cache()
-            cachedir.print_contents()
-
-
-@Tasks.register(40)
-@logged
-def drop_cache(args, project: ProjectDirectory) -> dict:
-    project.get_cache().drop_all()
-    return {}
 
 
 ################################################################################
@@ -480,8 +570,58 @@ def nz(args, project: ProjectDirectory) -> dict:
     setup_args = dict(
         est_cross=args.est_cross, est_auto=args.est_auto, method=args.method,
         global_norm=args.global_norm, n_boot=args.n_boot, seed=args.seed)
-    runner(project, nz_kwargs=setup_args)
+    runner = Runner(project, threads=args.threads)
+    runner.main(nz_kwargs=setup_args)
     return setup_args
+
+
+################################################################################
+COMMANDNAME = "true"
+
+parser_merge = Commandline.create_subparser(
+    name=COMMANDNAME,
+    help="compute true redshift distributions for unknown data",
+    description="Compute the redshift distributions of the unknown data sample(s), which requires providing point-estimate redshifts for the catalog.",
+    threads=True)
+
+
+@Commandline.register(COMMANDNAME)
+@Tasks.register(40)
+@logged
+def true(args, project: ProjectDirectory) -> dict:
+    runner = Runner(project, threads=args.threads)
+    runner.main(true_kwargs={})
+    return {}
+
+
+################################################################################
+COMMANDNAME = "cache"
+
+parser_cache = Commandline.create_subparser(
+    name=COMMANDNAME,
+    help="mange or clean up cache directories",
+    description="Get a summary of the project's cache directory (location, size, etc.) or remove entries with --drop.",
+    progress=False)
+parser_cache.add_argument(
+    "--drop", action="store_true",
+    help="drop all cache entries")
+
+
+@Commandline.register(COMMANDNAME)
+def cache(args) -> dict:
+    if args.drop:
+        return drop_cache(args)
+    else:
+        with ProjectDirectory(args.wdir) as project:
+            cachedir = project.get_cache()
+            cachedir.print_contents()
+
+
+@Tasks.register(50)
+@logged
+def drop_cache(args, project: ProjectDirectory) -> dict:
+    project.get_cache().drop_all()
+    return {}
 
 
 ################################################################################
@@ -571,10 +711,11 @@ def run(args):
 
     # run the tasks in the job list
     with project:
-        runner_kwargs = dict(progress=args.progress, threads=args.threads)
+        runner = Runner(project, args.progress, args.threads)
+        task_kwargs = dict()
         for task in project.list_tasks():
             if task.name == "drop_cache":
-                runner_kwargs[task.name] = True
+                task_kwargs[task.name] = True
             else:
-                runner_kwargs[f"{task.name}_kwargs"] = task.args
-        runner(project, **runner_kwargs)
+                task_kwargs[f"{task.name}_kwargs"] = task.args
+        runner.main(**task_kwargs)

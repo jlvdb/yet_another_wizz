@@ -386,10 +386,6 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 data.to_hdf(group)
         dest.create_dataset("n_patches", data=self.n_patches)
 
-    def to_file(self, path: TypePathStr) -> None:
-        with h5py.File(str(path), mode="w") as f:
-            self.to_hdf(f)
-
 
 @dataclass(frozen=True)
 class CorrelationData(BinnedQuantity):
