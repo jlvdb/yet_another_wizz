@@ -222,10 +222,17 @@ class BinFactory:
             raise ValueError(f"invalid binning method '{method}'") from e
 
 
-@dataclass(frozen=True)
 class BaseBinningConfig(DictRepresentation):
 
     zbins: NDArray[np.float_]
+    method: str
+
+    def __repr__(self) -> str:
+        name = self.__class__.__name__
+        zbin_num = self.zbin_num
+        z = f"{self.zmin:.3f}...{self.zmax:.3f}"
+        method = self.method
+        return f"{name}({zbin_num=}, {z=}, {method=})"
 
     @property
     def zmin(self) -> float:
@@ -240,7 +247,7 @@ class BaseBinningConfig(DictRepresentation):
         return len(self.zbins) - 1
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ManualBinningConfig(BaseBinningConfig):
 
     zbins: NDArray[np.float_]
@@ -272,7 +279,7 @@ class ManualBinningConfig(BaseBinningConfig):
         return dict(method=self.method, zbins=self.zbins.tolist())
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class AutoBinningConfig(BaseBinningConfig):
 
     zbins: NDArray[np.float_]
