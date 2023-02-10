@@ -10,7 +10,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from yaw.core.utils import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.utils import (
+    BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -210,9 +211,6 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def keys(self) -> list[TypePatchKey]:
         return self.total.keys()
 
-    def is_compatible(self, other: PairCountResult) -> bool:
-        return super().is_compatible(other)
-
     def get(self) -> PairCountData:
         return PairCountData(
             count=self.count.as_array().sum(axis=0),
@@ -325,11 +323,6 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         dset = dest.create_dataset(
             "binning", data=binning, **_compression)
         dset.attrs["closed"] = self.binning.closed
-
-    @classmethod
-    def from_file(cls, path: Path | str) -> PairCountResult:
-        return super().from_file(path)
-
 
 
 @dataclass(frozen=True, repr=False)

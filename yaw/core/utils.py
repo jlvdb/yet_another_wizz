@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import (
+    TYPE_CHECKING, Any, Type, TypeVar, Protocol, runtime_checkable)
 
 import h5py
 import numpy as np
@@ -13,6 +15,8 @@ if TYPE_CHECKING:
 
 TypePatchKey = tuple[int, int]
 TypeScaleKey = str
+
+TypePathStr = Path | str
 
 
 class LimitTracker:
@@ -85,8 +89,8 @@ class BinnedQuantity(Protocol):
     def dz(self) -> NDArray[np.float_]:
         return np.array([z.right - z.left for z in self.binning])
 
-    def is_compatible(self, other: BinnedQuantity) -> bool:
-        if not isinstance(other, BinnedQuantity):
+    def is_compatible(self, other) -> bool:
+        if not isinstance(other, self.__class__):
             raise TypeError(
                 f"object of type {type(other)} is not compatible with "
                 f"{self.__class__}")
@@ -95,18 +99,38 @@ class BinnedQuantity(Protocol):
         return True
 
 
+THF = TypeVar("THF", bound="HDFSerializable")
+
+
 class HDFSerializable(Protocol):
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> HDFSerializable: ...
+    def from_hdf(cls: Type[THF], source: h5py.Group) -> THF: ...
 
     def to_hdf(self, dest: h5py.Group) -> None: ...
 
     @classmethod
-    def from_file(cls, path: Path | str) -> HDFSerializable:
+    def from_file(cls: Type[THF], path: TypePathStr) -> THF:
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
-    def to_file(self, path: Path | str) -> None:
+    def to_file(self, path: TypePathStr) -> None:
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
+
+
+TDR = TypeVar("TDR", bound="DictRepresentation")
+
+
+class DictRepresentation(Protocol):
+
+    @classmethod
+    def from_dict(
+        cls: Type[TDR],
+        the_dict: dict[str, Any],
+        **kwargs: dict[str, Any]  # passing additinal constructor data
+    ) -> TDR:
+        return cls(**the_dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

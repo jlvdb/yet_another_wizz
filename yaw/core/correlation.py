@@ -14,7 +14,8 @@ from matplotlib import pyplot as plt
 
 from yaw.core.catalog import PatchLinkage
 from yaw.core.paircounts import PairCountResult
-from yaw.core.utils import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.utils import (
+    BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
 
 from yaw.logger import TimedLog
 
@@ -384,11 +385,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 data.to_hdf(group)
         dest.create_dataset("n_patches", data=self.n_patches)
 
-    @classmethod
-    def from_file(cls, path: Path | str) -> CorrelationFunction:
-        return super().from_file(path)
-
-    def to_file(self, path: Path | str) -> None:
+    def to_file(self, path: TypePathStr) -> None:
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
 
@@ -447,7 +444,7 @@ class CorrelationData(BinnedQuantity):
         return corr
 
     @classmethod
-    def from_files(cls, path_prefix: Path | str) -> CorrelationData:
+    def from_files(cls, path_prefix: TypePathStr) -> CorrelationData:
         csv_config = dict(skipinitialspace=True, comment="#")
         # load data and errors
         ext = "dat"
@@ -486,7 +483,7 @@ class CorrelationData(BinnedQuantity):
     def _cov_desc(self) -> str:
         return f"# correlation function estimate covariance matrix ({len(self)}x{len(self)})"
 
-    def to_files(self, path_prefix: Path | str) -> None:
+    def to_files(self, path_prefix: TypePathStr) -> None:
         PREC = 10
         DELIM = ","
 

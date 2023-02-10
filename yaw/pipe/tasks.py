@@ -8,6 +8,8 @@ from astropy.cosmology import available as cosmology_avaliable
 
 from yaw.core.config import Configuration
 from yaw.core.correlation import CorrelationEstimator
+from yaw.core.utils import TypePathStr
+
 from yaw.logger import get_logger
 
 from yaw.pipe.parsing import Commandline, Path_absolute, Path_exists
@@ -479,8 +481,8 @@ parser_run.add_argument(
 
 
 def run_from_setup(
-    path: Path | str,
-    setup_file: Path | str,
+    path: TypePathStr,
+    setup_file: TypePathStr,
     progress: bool = False,
     threads: int | None = None
 ) -> None:

@@ -4,15 +4,17 @@ from dataclasses import _MISSING_TYPE, asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+from yaw.core.utils import DictRepresentation, TypePathStr
+
 
 class InputCatalogError(Exception):
     pass
 
 
 @dataclass(frozen=True)
-class Input:
+class Input(DictRepresentation):
 
-    filepath: Path | str
+    filepath: TypePathStr
     ra: str
     dec: str
     redshift: str | None = field(default=None)
@@ -29,8 +31,12 @@ class Input:
             raise TypeError(f"'filepath' must be of type {str} or {Path}")
 
     @classmethod
-    def from_dict(cls, filedata: dict[str, str | None]) -> Input:
-        key_names = set(filedata.keys())
+    def from_dict(
+        cls,
+        the_dict: dict[str, str | None],
+        **kwargs
+    ) -> Input:
+        key_names = set(the_dict.keys())
         try:  # check for extra keys
             all_names = set(field.name for field in fields(cls))
             item = (key_names - all_names).pop()
@@ -45,13 +51,13 @@ class Input:
             raise  InputCatalogError(f"missing argument '{item}'")
         except KeyError:
             pass
-        cls._check_filepath_type(filedata["filepath"])
-        return cls(**filedata)
+        cls._check_filepath_type(the_dict["filepath"])
+        return cls(**the_dict)
 
     def _filepath_to_dict(self) -> str:
         return str(self.filepath)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         result = {}
         for key, value in asdict(self).items():
             if value is None:
@@ -65,7 +71,7 @@ class Input:
 
 class BinnedInput(Input):
 
-    filepath: dict[int, Path | str]
+    filepath: dict[int, TypePathStr]
 
     def __post_init__(self):
         object.__setattr__(
@@ -89,7 +95,7 @@ class BinnedInput(Input):
             raise KeyError(f"bin with index '{bin_idx}' does not exist")
         kwargs = {key: value for key, value in asdict(self).items()}
         kwargs["filepath"] = self.filepath[bin_idx]
-        return Input(**kwargs)
+        return Input.from_dict(kwargs)
 
     def drop(self, bin_idx: int) -> None:
         if bin_idx not in self.get_bin_indices():
@@ -114,7 +120,10 @@ class BinnedInput(Input):
             raise TypeError(f"'filepath' must be of type {dict}")
 
     @classmethod
-    def from_dict(cls, filedata: dict[str, dict | str | None]) -> BinnedInput:
+    def from_dict(
+        cls,
+        filedata: dict[str, dict | str | None],
+        **kwargs) -> BinnedInput:
         return super().from_dict(filedata)
 
     def _filepath_to_dict(self) -> str:
@@ -172,15 +181,19 @@ def _parse_catalog_dict(
     return parsed
 
 
-class InputRegister:
+class InputRegister(DictRepresentation):
 
     def __init__(self) -> None:
         self._reference: dict[str, Input | None] = dict(data=None, rand=None)
         self._unknown: dict[str, BinnedInput | None] = dict(data=None, rand=None)
 
     @classmethod
-    def from_dict(cls, inputs: dict[str, dict]) -> InputRegister:
-        _inputs = {k: v for k, v in inputs.items()}
+    def from_dict(
+        cls,
+        the_dict: dict[str, dict],
+        **kwargs
+    ) -> InputRegister:
+        _inputs = {k: v for k, v in the_dict.items()}
         new = cls.__new__(cls)
         # parse reference
         new._reference = _parse_catalog_dict(
@@ -203,7 +216,7 @@ class InputRegister:
                 "must be 'reference' or 'unknown'")
         return new
 
-    def to_dict(self) -> dict[str, dict]:
+    def to_dict(self) -> dict[str, Any]:
         reference = {
             kind: None if inp is None else inp.to_dict()
             for kind, inp in self._reference.items()}

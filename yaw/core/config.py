@@ -13,7 +13,7 @@ import yaml
 from yaw import __version__
 from yaw.core.cosmology import (
     TypeCosmology, get_default_cosmology, r_kpc_to_angle)
-from yaw.core.utils import scales_to_keys
+from yaw.core.utils import DictRepresentation, scales_to_keys
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -99,7 +99,7 @@ def _parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
 
 
 @dataclass(frozen=True)
-class ScalesConfig:
+class ScalesConfig(DictRepresentation):
 
     rmin: Sequence[float] | float
     rmax: Sequence[float] | float
@@ -151,9 +151,6 @@ class ScalesConfig:
 
     def dict_keys(self) -> list[str]:
         return scales_to_keys(self.scales)
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
 
 
 def _is_manual_binning(
@@ -224,7 +221,7 @@ class BinFactory:
 
 
 @dataclass(frozen=True)
-class BaseBinningConfig:
+class BaseBinningConfig(DictRepresentation):
 
     zbins: NDArray[np.float_]
 
@@ -261,6 +258,14 @@ class ManualBinningConfig(BaseBinningConfig):
     def method(self) -> str:
         return "manual"
 
+    @classmethod
+    def from_dict(
+        cls,
+        the_dict: dict[str, Any],
+        **kwargs
+    ) -> ManualBinningConfig:
+        return cls(np.asarray(the_dict["zbins"]))
+
     def to_dict(self) -> dict[str, Any]:
         return dict(method=self.method, zbins=self.zbins.tolist())
 
@@ -290,6 +295,14 @@ class AutoBinningConfig(BaseBinningConfig):
             return False
         return True
 
+    @classmethod
+    def from_dict(
+        cls,
+        the_dict: dict[str, Any],
+        cosmology: TypeCosmology | None = None
+    ) -> AutoBinningConfig:
+        return cls.generate(**the_dict, cosmology=cosmology)
+
     def to_dict(self) -> dict[str, Any]:
         return dict(
             zmin=self.zmin,
@@ -299,7 +312,7 @@ class AutoBinningConfig(BaseBinningConfig):
 
 
 @dataclass(frozen=True)
-class BackendConfig:
+class BackendConfig(DictRepresentation):
 
     # general
     thread_num: int | None = field(default=None)
@@ -312,12 +325,9 @@ class BackendConfig:
         if self.thread_num is None:
             object.__setattr__(self, "thread_num", os.cpu_count())
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
 
 @dataclass(frozen=True)
-class Configuration:
+class Configuration(DictRepresentation):
 
     scales: ScalesConfig
     binning: AutoBinningConfig | ManualBinningConfig
@@ -468,12 +478,17 @@ class Configuration:
         return fig
 
     @classmethod
-    def from_dict(cls, config: dict) -> Configuration:
+    def from_dict(
+        cls,
+        the_dict: dict[str, Any],
+        **kwargs
+    ) -> Configuration:
+        config = {k: v for k, v in the_dict.items()}
         _check_version(config.pop("version", "0.0"))
         cosmology = _parse_cosmology(config.pop("cosmology", None))
         # parse the required subgroups
         try:
-            scales = ScalesConfig(**config.pop("scales"))
+            scales = ScalesConfig.from_dict(config.pop("scales"))
         except (TypeError, KeyError) as e:
             _parse_section_error(e, "scales")
         try:
@@ -487,7 +502,7 @@ class Configuration:
             _parse_section_error(e, "binning")
         # parse the optional subgroups
         try:
-            backend = BackendConfig(**config.pop("backend"))
+            backend = BackendConfig.from_dict(config.pop("backend"))
         except KeyError:
             backend = BackendConfig()
         except TypeError as e:

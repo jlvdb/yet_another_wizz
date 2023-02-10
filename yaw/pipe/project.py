@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 import yaml
 
 from yaw.core.config import Configuration
-from yaw.core.utils import bytes_format
+from yaw.core.utils import TypePathStr, bytes_format
 
 from yaw.pipe.data import InputRegister
 from yaw.pipe.task_utils import TaskList
@@ -187,9 +187,9 @@ def _parse_section_error(exception: Exception, section: str) -> NoReturn:
 
 
 def _write_setup_file(
-    path: Path | str,
+    path: TypePathStr,
     config: Configuration,
-    cache_dir: Path | str | None,
+    cache_dir: TypePathStr | None,
     catalogs: InputRegister,
     backend_name: str,
     tasks: TaskList
@@ -225,7 +225,7 @@ def _write_setup_file(
 
 class ProjectDirectory:
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: TypePathStr) -> None:
         self._path = Path(path).expanduser()
         if not self.path.exists():
             raise FileNotFoundError(
@@ -241,9 +241,9 @@ class ProjectDirectory:
     @classmethod
     def create(
         cls,
-        path: Path | str,
+        path: TypePathStr,
         config: Configuration,
-        cachepath: Path | str | None = None,
+        cachepath: TypePathStr | None = None,
         backend: str = "scipy"
     ) -> ProjectDirectory:
         new = cls.__new__(cls)  # access to path attributes
@@ -262,8 +262,8 @@ class ProjectDirectory:
     @classmethod
     def from_setup(
         cls,
-        path: Path | str,
-        setup_file: Path | str
+        path: TypePathStr,
+        setup_file: TypePathStr
     ) -> ProjectDirectory:
         new = cls.__new__(cls)  # access to path attributes
         new._path = Path(path).expanduser()
