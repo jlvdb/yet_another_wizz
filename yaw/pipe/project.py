@@ -4,7 +4,6 @@ import importlib
 import os
 import shutil
 import textwrap
-import warnings
 from abc import ABC, abstractmethod, abstractproperty
 from collections.abc import Iterator
 from pathlib import Path, _posix_flavour, _windows_flavour
@@ -15,7 +14,7 @@ import yaml
 
 from yaw.core import default as DEFAULT
 from yaw.core.config import Configuration
-from yaw.core.utils import TypePathStr, bytes_format
+from yaw.core.utils import DictRepresentation, TypePathStr, bytes_format
 
 from yaw.pipe.data import InputRegister
 from yaw.pipe.task_utils import TaskList
@@ -187,23 +186,11 @@ def _parse_section_error(exception: Exception, section: str) -> NoReturn:
     raise
 
 
-def _write_setup_file(
+def write_setup_file(
     path: TypePathStr,
-    config: Configuration,
-    cache_dir: TypePathStr | None,
-    catalogs: InputRegister,
-    backend_name: str,
-    tasks: TaskList
+    setup_dict: dict[str, Any]
 ) -> None:
-    # parse the setup into a YAML string
-    setup = dict(
-        configuration=config.to_dict(),
-        data=dict(
-            cachepath=str(cache_dir) if cache_dir is not None else None,
-            catalogs=catalogs.to_dict()),
-        backend=backend_name,
-        tasks=tasks.to_list())
-    lines = yaml.dump(setup).split("\n")
+    lines = yaml.dump(setup_dict).split("\n")
     # some postprocessing for better readibility
     indent = " " * 4
     string = "# yet_another_wizz setup configuration (auto generated)\n"
@@ -224,6 +211,20 @@ def _write_setup_file(
         f.write(string)
 
 
+def load_setup_as_dict(setup_file: TypePathStr) -> dict[str, Any]:
+    with open(setup_file) as f:
+        try:
+            return yaml.safe_load(f.read())
+        except Exception as e:
+            raise SetupError(
+                f"parsing the setup file '{setup_file}' failed") from e
+
+
+def load_config_from_setup(setup_file: TypePathStr) -> Configuration:
+    setup_dict = load_setup_as_dict(setup_file)
+    return parse_config_from_setup(setup_dict)
+
+
 def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
     try:
         return Configuration.from_dict(setup_dict["configuration"])
@@ -231,13 +232,7 @@ def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
         _parse_section_error(e, "configuration")
 
 
-def load_config_from_setup(setup_file: TypePathStr) -> Configuration:
-    with open(setup_file) as f:
-        setup_dict = yaml.safe_load(f.read())
-    return parse_config_from_setup(setup_dict)
-
-
-class ProjectDirectory:
+class ProjectDirectory(DictRepresentation):
 
     def __init__(self, path: TypePathStr) -> None:
         self._path = Path(path).expanduser()
@@ -253,6 +248,19 @@ class ProjectDirectory:
         self.estimate_dir.mkdir(exist_ok=True)
 
     @classmethod
+    def from_dict(
+        cls,
+        the_dict: dict[str, Any],
+        path: TypePathStr,
+    ) -> ProjectDirectory:
+        new = cls.__new__(cls)  # access to path attributes
+        new._path = Path(path).expanduser()
+        new._path.mkdir(parents=True, exist_ok=False)
+        # create the setup file
+        write_setup_file(new.setup_file, the_dict)
+        return cls(path)
+
+    @classmethod
     def create(
         cls,
         path: TypePathStr,
@@ -260,18 +268,14 @@ class ProjectDirectory:
         cachepath: TypePathStr | None = None,
         backend: str = DEFAULT.backend
     ) -> ProjectDirectory:
-        new = cls.__new__(cls)  # access to path attributes
-        new._path = Path(path).expanduser()
-        new._path.mkdir(parents=True, exist_ok=False)
-        # create the setup file
-        _write_setup_file(
-            new.setup_file,
-            config=config,
-            cache_dir=cachepath,
-            catalogs=InputRegister(),
-            backend_name=backend,
-            tasks=TaskList())
-        return cls(path)
+        setup_dict = dict(
+            configuration=config.to_dict(),
+            data=dict(
+                cachepath=str(cachepath) if cachepath is not None else None,
+                catalogs=InputRegister().to_dict()),
+            backend=backend,
+            tasks=TaskList().to_list())
+        return cls.from_dict(setup_dict, path=path)
 
     @classmethod
     def from_setup(
@@ -285,6 +289,17 @@ class ProjectDirectory:
         # copy setup file
         shutil.copy(str(setup_file), str(new.setup_file))
         return cls(path)
+
+    def to_dict(self) -> dict[str, Any]:
+        cache_dir = str(self._cachepath)
+        setup = dict(
+            configuration=self._config.to_dict(),
+            data=dict(
+                cachepath=cache_dir if cache_dir is not None else None,
+                catalogs=self._inputs.to_dict()),
+            backend=self._backend_name,
+            tasks=self._tasks.to_list())
+        return setup
 
     def __enter__(self) -> ProjectDirectory:
         return self
@@ -326,13 +341,7 @@ class ProjectDirectory:
             self._tasks = TaskList()
 
     def setup_write(self) -> None:
-        _write_setup_file(
-            self.setup_file,
-            config=self.config,
-            cache_dir=self._cachepath,
-            catalogs=self._inputs,
-            backend_name=self._backend_name,
-            tasks=self._tasks)
+        write_setup_file(self.setup_file, self.to_dict())
 
     @property
     def backend(self) -> ModuleType:

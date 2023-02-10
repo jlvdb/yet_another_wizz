@@ -17,7 +17,8 @@ from yaw.logger import get_logger
 
 from yaw.pipe.commandline import Commandline, Path_absolute, Path_exists
 from yaw.pipe.project import (
-    MissingCatalogError, ProjectDirectory, load_config_from_setup)
+    MissingCatalogError, ProjectDirectory,
+    load_config_from_setup, load_setup_as_dict)
 from yaw.pipe.task_utils import Tasks
 
 
@@ -277,9 +278,13 @@ def init(args) -> None:
     # parser arguments for Configuration
     config_args = dict(
         cosmology=args.cosmology,
-        rmin=args.rmin, rmax=args.rmax, rweight=args.rweight, rbin_num=args.rbin_num,
-        zmin=args.zmin, zmax=args.zmax, zbin_num=args.zbin_num, method=args.method,
-        thread_num=args.threads, crosspatch=(not args.no_crosspatch), rbin_slop=args.rbin_slop)
+        rmin=args.rmin, rmax=args.rmax,
+        rweight=args.rweight, rbin_num=args.rbin_num,
+        zmin=args.zmin, zmax=args.zmax,
+        zbin_num=args.zbin_num, method=args.method,
+        thread_num=args.threads,
+        crosspatch=(not args.no_crosspatch),
+        rbin_slop=args.rbin_slop)
     renames = dict(threads="thread_num", no_crosspatch="crosspatch")
 
     # load base configuration form setup file and update from command line
@@ -536,31 +541,40 @@ parser_run.add_argument(
     "-s", "--setup", required=True, type=Path_exists, metavar="<file>",
     help="setup YAML file with configuration, input files and task list")
 parser_run.add_argument(
+    "--config-from", type=Path_exists, metavar="<file>",
+    help="load the 'configuration' section from this setup file")
+
+group_dump = parser_run.add_argument_group(
+    title="setup file generation",
+    description="support for generating and working with setup files")
+group_dump.add_argument(
     "-d", "--dump", action=DumpConfigAction, const="default", nargs=0,
-    help="dump an empty setup file to the terminal")
-parser_run.add_argument(
+    help="dump an empty setup file with default values to the terminal")
+group_dump.add_argument(
     "--annotate", action=DumpConfigAction, const="annotate", nargs=0,
-    help="dump an pseudo setup file with parameter type annotations")
+    help="dump a pseudo setup file with parameter type annotations")
 
 
-def run_from_setup(
-    path: TypePathStr,
-    setup_file: TypePathStr,
-    progress: bool = False,
-    threads: int | None = None
-) -> None:
-    with ProjectDirectory.from_setup(path, setup_file) as project:
-        runner_kwargs = dict(progress=progress, threads=threads)
+@Commandline.register(COMMANDNAME)
+@logged
+def run(args):
+    # get the configuration from an external file
+    if args.config_from is not None:
+        setup = load_setup_as_dict(args.setup)
+        config = load_config_from_setup(args.config_from)
+        setup["configuration"] = config.to_dict()  # replace original config
+        # create a temporary setup file that can be read by ProjectDirectrory
+        project = ProjectDirectory.from_dict(setup, path=args.wdir)
+    # just use the setup file itself
+    else:
+        project = ProjectDirectory.from_setup(args.wdir, args.setup)
+
+    # run the tasks in the job list
+    with project:
+        runner_kwargs = dict(progress=args.progress, threads=args.threads)
         for task in project.list_tasks():
             if task.name == "drop_cache":
                 runner_kwargs[task.name] = True
             else:
                 runner_kwargs[f"{task.name}_kwargs"] = task.args
         runner(project, **runner_kwargs)
-
-
-@Commandline.register(COMMANDNAME)
-@logged
-def run(args):
-    run_from_setup(
-        args.wdir, args.setup, progress=args.progress, threads=args.threads)

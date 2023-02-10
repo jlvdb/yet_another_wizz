@@ -157,8 +157,12 @@ class RedshiftData(CorrelationData):
             cross_data = cross_corr.get(estimator=cross_est, **kwargs)
             if ref_corr is not None:
                 ref_data = ref_corr.get(estimator=ref_est, **kwargs)
+            else:
+                ref_data = None
             if unk_corr is not None:
                 unk_data = unk_corr.get(estimator=unk_est, **kwargs)
+            else:
+                unk_data = None
             return cls.from_correlation_data(
                 cross_data=cross_data, ref_data=ref_data, unk_data=unk_data)
 
