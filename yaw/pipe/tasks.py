@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import sys
 from functools import wraps
-from pathlib import Path
 from typing import Any
 
 from astropy.cosmology import available as cosmology_avaliable
@@ -15,7 +15,8 @@ from yaw.core.utils import TypePathStr
 from yaw.logger import get_logger
 
 from yaw.pipe.commandline import Commandline, Path_absolute, Path_exists
-from yaw.pipe.project import MissingCatalogError, ProjectDirectory
+from yaw.pipe.project import (
+    MissingCatalogError, ProjectDirectory, load_config_from_setup)
 from yaw.pipe.task_utils import Tasks
 
 
@@ -188,6 +189,7 @@ def runner(
 ################################################################################
 COMMANDNAME = "init"
 
+# NOTE: do not use 'dest=' in this subparser for --* arguments
 parser_init = Commandline.create_subparser(
     name=COMMANDNAME,
     help="initialise and configure a new a project directory",
@@ -198,6 +200,12 @@ parser_init = Commandline.create_subparser(
 parser_init.add_argument(  # manual since special help text
     "wdir", metavar="<path>", type=Path_absolute,
     help="project directory, must not exist")
+parser_init.add_argument(
+    "-s", "--setup", type=Path_exists, metavar="<file>",
+    help="optionl setup YAML file (e.g. from 'yaw run -d') with base configuration that is overwritten by arguments below")
+parser_init.add_argument(
+    "--cache-path", metavar="<path>", type=Path_absolute,
+    help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
 
 parser_init.add_argument(
     "--backend", choices=("scipy", "treecorr"), default=DEFAULT.backend,
@@ -252,9 +260,6 @@ group_backend.add_argument(
     "--no-crosspatch", action="store_true",  # check with DEFAULT.Backend.crosspath
     help="disable counting pairs across patch boundaries (scipy backend only)")
 group_backend.add_argument(
-    "--cache-path", metavar="<path>", type=Path_absolute,
-    help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
-group_backend.add_argument(
     "--threads", type=int, metavar="<int>", default=DEFAULT.Backend.thread_num,
     help="default number of threads to use if not specified (default: all)")
 
@@ -262,12 +267,37 @@ group_backend.add_argument(
 @Commandline.register(COMMANDNAME)
 @logged
 def init(args) -> None:
-    # parse the configuration
-    config = Configuration.create(
+    # parser arguments for Configuration
+    config_args = dict(
         cosmology=args.cosmology,
         rmin=args.rmin, rmax=args.rmax, rweight=args.rweight, rbin_num=args.rbin_num,
         zmin=args.zmin, zmax=args.zmax, zbin_num=args.zbin_num, method=args.method,
         thread_num=args.threads, crosspatch=(not args.no_crosspatch), rbin_slop=args.rbin_slop)
+    renames = dict(threads="thread_num", no_crosspatch="crosspatch")
+
+    # load base configuration form setup file and update from command line
+    if args.setup is not None:
+        base_config = load_config_from_setup(args.setup)
+        # optional arguments have default values which may overshadow values
+        # in the base configuration
+        updates = dict()
+        for arg in sys.argv:  # NOTE: this may break if dest= is used in parser
+            if not arg.startswith("--"):
+                continue  # ignore values and positional arguments
+            attr = arg[2:].replace("-", "_")  # get the NameSpace name
+            if attr in config_args:  # skip unrelated arguments
+                updates[attr] = config_args[attr]
+            elif attr in renames:
+                alt_attr = renames[attr]
+                updates[alt_attr] = config_args[alt_attr]
+        # extra care of redshift binning
+        config = base_config.modify(**updates)
+
+    # parse the configuration as given
+    else:
+        config = Configuration.create(**config_args)
+
+    # create the project directory
     with ProjectDirectory.create(
         args.wdir, config, cachepath=args.cache_path, backend=args.backend
     ) as project:
@@ -275,7 +305,6 @@ def init(args) -> None:
         input_ref = Commandline.get_input_from_args(args, "ref", require_z=True)
         input_rand = Commandline.get_input_from_args(args, "rand", require_z=True)
         project.set_reference(data=input_ref, rand=input_rand)
-        # TODO: patches
 
 
 ################################################################################

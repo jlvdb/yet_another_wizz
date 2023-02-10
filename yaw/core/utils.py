@@ -79,7 +79,7 @@ class BinnedQuantity(Protocol):
         name = self.__class__.__name__
         n_bins = len(self)
         z = f"{self.binning[0].left:.3f}...{self.binning[-1].right:.3f}"
-        return f"{name}({n_bins=}, z={z})"
+        return f"{name}({n_bins=}, {z=})"
 
     @property
     def mids(self) -> NDArray[np.float_]:

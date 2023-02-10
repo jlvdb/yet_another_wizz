@@ -1,4 +1,9 @@
-class none:
+class _none_meta(type):
+    def __repr__(self) -> str:
+        return "NoDefault"
+
+
+class none(metaclass=_none_meta):
     pass
 
 

@@ -429,7 +429,13 @@ class Configuration(DictRepresentation):
         if rbin_num is not DEFAULT.none:
             config["scales"]["rbin_num"] = rbin_num
         # AutoBinningConfig /  ManualBinningConfig
-        if _is_manual_binning(zbins, zmin, zmax, zbin_num, require=False):
+        if _is_manual_binning(
+            None if zbins is DEFAULT.none else zbins,
+            None if zmin is DEFAULT.none else zmin,
+            None if zmax is DEFAULT.none else zmax,
+            None if zbin_num is DEFAULT.none else zbin_num,
+            require=False
+        ):
             if zbins is not DEFAULT.none:
                 config["binning"]["zbins"] = zbins
         else:

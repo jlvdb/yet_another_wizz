@@ -224,6 +224,19 @@ def _write_setup_file(
         f.write(string)
 
 
+def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
+    try:
+        return Configuration.from_dict(setup_dict["configuration"])
+    except KeyError as e:
+        _parse_section_error(e, "configuration")
+
+
+def load_config_from_setup(setup_file: TypePathStr) -> Configuration:
+    with open(setup_file) as f:
+        setup_dict = yaml.safe_load(f.read())
+    return parse_config_from_setup(setup_dict)
+
+
 class ProjectDirectory:
 
     def __init__(self, path: TypePathStr) -> None:
@@ -296,10 +309,7 @@ class ProjectDirectory:
         self._backend = None
         self.backend  # try to import
         # configuration is straight forward
-        try:
-            self._config = Configuration.from_dict(setup["configuration"])
-        except KeyError as e:
-            _parse_section_error(e, "configuration")
+        self._config = parse_config_from_setup(setup)
         # set up the data management
         try:
             data = setup["data"]
