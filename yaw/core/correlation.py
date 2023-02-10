@@ -14,7 +14,7 @@ from matplotlib import pyplot as plt
 
 from yaw.core.catalog import PatchLinkage
 from yaw.core.resampling import PairCountResult
-from yaw.core.utils import BinnedQuantity
+from yaw.core.utils import BinnedQuantity, HDFSerializable, PatchedQuantity
 
 from yaw.logger import TimedLog
 
@@ -77,14 +77,14 @@ class CtsRD(Cts):
     _hash = 2
 
 
-class CtsRR(Cts):
-    _str = "rr"
-    _hash = 3
-
-
 class CtsMix(Cts):
     _str = "dr_rd"
     _hash = 2
+
+
+class CtsRR(Cts):
+    _str = "rr"
+    _hash = 3
 
 
 def cts_from_code(code: str) -> Cts:
@@ -93,6 +93,7 @@ def cts_from_code(code: str) -> Cts:
 
 
 class CorrelationEstimator(ABC):
+
     variants: list[CorrelationEstimator] = []
 
     def __init_subclass__(cls, **kwargs):
@@ -198,16 +199,17 @@ class LandySzalay(CorrelationEstimator):
         return (DD - (DR + RD) + RR) / RR
 
 
-@dataclass(frozen=True, repr=False)
-class CorrelationFunction(BinnedQuantity):
+@dataclass(frozen=True)
+class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
+
     dd: PairCountResult
     dr: PairCountResult | None = field(default=None)
     rd: PairCountResult | None = field(default=None)
     rr: PairCountResult | None = field(default=None)
-    npatch: int = field(init=False)
+    n_patches: int = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "npatch", self.dd.npatch)  # since frozen=True
+        object.__setattr__(self, "n_patches", self.dd.n_patches)
         # check if any random pairs are required
         if self.dr is None and self.rd is None and self.rr is None:
             raise ValueError("either 'dr', 'rd' or 'rr' is required")
@@ -216,17 +218,17 @@ class CorrelationFunction(BinnedQuantity):
             pairs: PairCountResult | None = getattr(self, kind)
             if pairs is None:
                 continue
-            if pairs.npatch != self.npatch:
+            if pairs.n_patches != self.n_patches:
                 raise ValueError(f"patches of '{kind}' do not match 'dd'")
             if np.any(pairs.binning != self.dd.binning):
                 raise ValueError(f"binning of '{kind}' and 'dd' does not match")
 
     def __repr__(self) -> str:
-        name = self.__class__.__name__
+        string = super().__repr__()[:-1]
         pairs = f"dd=True, dr={self.dr is not None}, "
         pairs += f"rd={self.rd is not None}, rr={self.rr is not None}"
-        other = f"npatches={self.npatch}, nbins={len(self.binning)}"
-        return f"{name}({pairs}, {other})"
+        other = f"n_patches={self.n_patches}, nbins={len(self.binning)}"
+        return f"{string}, {pairs}, {other})"
 
     @property
     def binning(self) -> IntervalIndex:
@@ -235,7 +237,7 @@ class CorrelationFunction(BinnedQuantity):
     def is_compatible(self, other: PairCountResult) -> bool:
         if not super().is_compatible(other):
             return False
-        if self.npatch != other.npatch:
+        if self.n_patches != other.n_patches:
             return False
         return True
 
@@ -299,26 +301,27 @@ class CorrelationFunction(BinnedQuantity):
         else:
             return getattr(self, str(cts))
 
-    def generate_bootstrap_patch_indices(
+    def _generate_bootstrap_patch_indices(
         self,
         n_boot: int,
         seed: int = 12345
     ) -> NDArray[np.int_]:
-        return self.dd.generate_bootstrap_patch_indices(n_boot, seed)
+        return self.dd._generate_bootstrap_patch_indices(n_boot, seed=seed)
 
     def get(
         self,
         *,
         estimator: str | None = None,
-        global_norm: bool = False,
-        sample_method: str = "bootstrap",
+        method: str = "bootstrap",
         n_boot: int = 500,
-        patch_idx: NDArray[np.int_] | None = None
+        patch_idx: NDArray[np.int_] | None = None,
+        global_norm: bool = False,
+        seed: int = 12345
     ) -> CorrelationData:
         valid_methods = ("bootstrap", "jackknife")
-        if sample_method not in valid_methods:
+        if method not in valid_methods:
             opts = ", ".join(f"'{s}'" for s in valid_methods)
-            raise ValueError(f"'sample_method' must be either of {opts}")
+            raise ValueError(f"'method' must be either of {opts}")
         estimator_func = self._check_and_select_estimator(estimator)
 
         logger.debug(
@@ -333,12 +336,13 @@ class CorrelationFunction(BinnedQuantity):
         data = estimator_func(**requires, **optional)[0]
 
         logger.debug(
-            f"computing {sample_method} samples with "
+            f"computing {method} samples with "
             f"{estimator_func.short} estimator")
-        if patch_idx is None and sample_method == "bootstrap":
-            patch_idx = self.dd.generate_bootstrap_patch_indices(n_boot)
+        if patch_idx is None and method == "bootstrap":
+            patch_idx = self.dd._generate_bootstrap_patch_indices(
+                n_boot, seed=seed)
         sample_kwargs = dict(
-            method=sample_method,
+            method=method,
             global_norm=global_norm,
             patch_idx=patch_idx)
         # generate samples
@@ -352,7 +356,7 @@ class CorrelationFunction(BinnedQuantity):
         samples = estimator_func(**requires, **optional)
 
         return CorrelationData(
-            data=data, samples=samples, sampling=sample_method)
+            data=data, samples=samples, method=method)
 
     @classmethod
     def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrelationFunction:
@@ -366,7 +370,7 @@ class CorrelationFunction(BinnedQuantity):
         dr = _try_load(source, "data_random")
         rd = _try_load(source, "random_data")
         rr = _try_load(source, "random_random")
-        return cls(dd, dr, rd, rr)
+        return cls(dd=dd, dr=dr, rd=rd, rr=rr)
 
     def to_hdf(self, dest: h5py.File | h5py.Group) -> None:
         group = dest.create_group("data_data")
@@ -378,66 +382,56 @@ class CorrelationFunction(BinnedQuantity):
             if data is not None:
                 group = dest.create_group(name)
                 data.to_hdf(group)
-        dest.create_dataset("npatch", data=self.npatch)
+        dest.create_dataset("n_patches", data=self.n_patches)
 
     @classmethod
     def from_file(cls, path: Path | str) -> CorrelationFunction:
-        with h5py.File(str(path)) as f:
-            return cls.from_hdf(f)
+        return super().from_file(path)
 
     def to_file(self, path: Path | str) -> None:
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True)
 class CorrelationData(BinnedQuantity):
 
     data: Series
     samples: DataFrame
-    sampling: str
+    method: str
     covariance: DataFrame = field(init=False)
 
     def __post_init__(self) -> None:
-        if self.sampling == "jackknife":
-            covmat = self.samples.T.cov(ddof=0) * (self.n_samples() - 1)
-        elif self.sampling == "bootstrap":
+        if self.method == "jackknife":
+            covmat = self.samples.T.cov(ddof=0) * (self.n_samples - 1)
+        elif self.method == "bootstrap":
             covmat = self.samples.T.cov(ddof=1)
         else:
-            raise ValueError(f"unknown sampling method '{self.sampling}'")
+            raise ValueError(f"unknown sampling method '{self.method}'")
         object.__setattr__(self, "covariance", covmat)
 
     def __repr__(self) -> str:
-        name = self.__class__.__name__
-        n_bins = len(self)
-        z = f"{self.binning[0].left:.3f}...{self.binning[-1].right:.3f}"
-        samples = self.n_samples()
-        sampling = self.sampling
-        return f"{name}({n_bins=}, z={z}, {samples=}, {sampling=})"
+        string = super().__repr__()[:-1]
+        samples = self.n_samples
+        method = self.method
+        return f"{string}, {samples=}, {method=})"
 
     @property
     def binning(self) -> IntervalIndex:
         return self.data.index
 
-    @property
-    def mids(self) -> NDArray[np.float_]:
-        return np.array([z.mid for z in self.binning])
-
-    @property
-    def dz(self) -> NDArray[np.float_]:
-        return np.array([z.right - z.left for z in self.binning])
-
-    def n_samples(self) -> int:
-        return len(self.samples.columns)
-
     def is_compatible(self, other: CorrelationData) -> bool:
         if not super().is_compatible(other):
             return False
-        if self.n_samples() != other.n_samples():
+        if self.n_samples != other.n_samples:
             return False
-        if self.sampling != other.sampling:
+        if self.method != other.method:
             return False
         return True
+
+    @property
+    def n_samples(self) -> int:
+        return len(self.samples.columns)
 
     @property
     def error(self) -> Series:
@@ -470,15 +464,15 @@ class CorrelationData(BinnedQuantity):
         # reconstruct sampling method
         method_key, n_samples = samples.columns[-1].rsplit("_", 1)
         if method_key == "boot":
-            sampling = "bootstrap"
+            method = "bootstrap"
         elif method_key == "jack":
-            sampling = "jackknife"
+            method = "jackknife"
         else:
             raise ValueError(f"invalid sampling method key '{method_key}'")
         samples.columns = pd.RangeIndex(0, int(n_samples)+1)  # original values
         return cls(
             data=Series(data_error["nz"], index=index),
-            samples=samples, sampling=sampling)
+            samples=samples, method=method)
 
     @property
     def _dat_desc(self) -> str:
@@ -486,7 +480,7 @@ class CorrelationData(BinnedQuantity):
 
     @property
     def _smp_desc(self) -> str:
-        return f"# {self.n_samples()} {self.sampling} correlation function samples"
+        return f"# {self.n_samples} {self.method} correlation function samples"
 
     @property
     def _cov_desc(self) -> str:
@@ -516,7 +510,7 @@ class CorrelationData(BinnedQuantity):
         ext = "smp"
         header = ["z_low", "z_high"]
         header.extend(
-            f"{self.sampling[:4]}_{i}" for i in range(self.n_samples()))
+            f"{self.method[:4]}_{i}" for i in range(self.n_samples))
         with open(f"{path_prefix}.{ext}", "w") as f:
             write_head(f, self._smp_desc, header)
             for z, samples in self.samples.iterrows():

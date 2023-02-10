@@ -234,6 +234,7 @@ class Catalog(CatalogBase):
     def ids(self) -> list[int]:
         return sorted(self._patches.keys())
 
+    @property
     def n_patches(self) -> int:
         # seems ok to drop the last patch if that is empty and therefore missing
         return max(self._patches.keys()) + 1
@@ -363,7 +364,7 @@ class Catalog(CatalogBase):
         pool.add_constant(config.scales.rbin_num)
 
         n_bins = len(config.binning.zbins) - 1
-        n_patches = self.n_patches()
+        n_patches = self.n_patches
         # execute, unpack the data
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
@@ -372,7 +373,7 @@ class Catalog(CatalogBase):
         if progress:
             result_iter = tqdm(
                 result_iter, total=pool.n_jobs(), delay=0.5,
-                leave=None, smoothing=0.05, unit="jobs")
+                leave=None, smoothing=0.1, unit="jobs")
         for (id1, id2), (total1, total2), counts in result_iter:
             # record total weight per bin, overwriting OK since identical
             totals1[id1] = total1
@@ -411,11 +412,11 @@ class Catalog(CatalogBase):
                 count_matrix[np.diag_indices(n_patches)] *= 0.5
             count = count_matrix[mask]
             result[scale_key] = PairCountResult(
-                n_patches,
                 count=ArrayDict(keys, count),
                 total=ArrayDict(keys, total),
                 mask=mask,
-                binning=pd.IntervalIndex.from_breaks(config.binning.zbins))
+                binning=pd.IntervalIndex.from_breaks(config.binning.zbins),
+                n_patches=n_patches)
         # drop the dictionary if there is only one scale
         if len(result) == 1:
             result = tuple(result.values())[0]
@@ -429,8 +430,8 @@ class Catalog(CatalogBase):
         # compute the reshift histogram in each patch
         pool = ParallelHelper(
             function=_histogram_thread,
-            n_items=self.n_patches(),
-            num_threads=min(self.n_patches(), config.backend.thread_num))
+            n_items=self.n_patches,
+            num_threads=min(self.n_patches, config.backend.thread_num))
         # patch: PatchCatalog
         pool.add_iterable(list(self))
         # NDArray[np.float_]

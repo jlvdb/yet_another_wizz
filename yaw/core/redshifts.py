@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -9,7 +10,7 @@ import pandas as pd
 import scipy.optimize
 
 from yaw.core.correlation import CorrelationData
-from yaw.core.utils import BinnedQuantity
+from yaw.core.utils import BinnedQuantity, PatchedQuantity
 
 from yaw.logger import TimedLog
 
@@ -22,26 +23,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
-class NzTrue(BinnedQuantity):
+@dataclass(frozen=True)
+class NzTrue(PatchedQuantity, BinnedQuantity):
 
-    def __init__(
-        self,
-        patch_counts: NDArray[np.int_],
-        binning: NDArray
-    ) -> None:
-        self.counts = patch_counts
-        self._binning = binning
+    counts: NDArray[np.int_]
+    binning: IntervalIndex
 
     def __repr__(self):
-        name = self.__class__.__name__
-        total = self.counts.sum()
-        return f"{name}(nbins={len(self.binning)}, count={total})"
+        string = super().__repr__()[:-1]
+        n_patches = self.n_patches
+        return f"{string}, {n_patches=})"
 
     @property
-    def binning(self) -> IntervalIndex:
-        return pd.IntervalIndex.from_breaks(self._binning)
+    def n_patches(self):
+        return len(self.counts)
 
-    def generate_bootstrap_patch_indices(
+    def _generate_bootstrap_patch_indices(
         self,
         n_boot: int,
         seed: int = 12345
@@ -50,71 +47,38 @@ class NzTrue(BinnedQuantity):
         rng = np.random.default_rng(seed=seed)
         return rng.integers(0, N, size=(n_boot, N))
 
-    def generate_jackknife_patch_indices(self) -> NDArray[np.int_]:
+    def _generate_jackknife_patch_indices(self) -> NDArray[np.int_]:
         N = len(self.counts)
         idx = np.delete(np.tile(np.arange(0, N), N), np.s_[::N+1])
         return idx.reshape((N, N-1))
 
     def get(
         self,
-        sample_method: str = "bootstrap",
+        *,
+        method: str = "bootstrap",
         n_boot: int = 500,
         seed: int = 12345,
         **kwargs
     ) -> DataFrame:
         with TimedLog(
             logger.debug,
-            f"computing redshift distributions with method '{sample_method}'"
+            f"computing redshift distributions with method '{method}'"
         ):
-            if sample_method == "bootstrap":
-                patch_idx = self.generate_bootstrap_patch_indices(n_boot, seed)
-            elif sample_method == "jackknife":
-                patch_idx = self.generate_jackknife_patch_indices()
+            if method == "bootstrap":
+                patch_idx = self._generate_bootstrap_patch_indices(
+                    n_boot, seed=seed)
+            elif method == "jackknife":
+                patch_idx = self._generate_jackknife_patch_indices()
 
             nz_data = pd.Series(self.counts.sum(axis=0), index=self.binning)
             nz_samp = pd.DataFrame(
                 index=self.binning,
                 columns=np.arange(len(patch_idx)),
                 data=np.sum(self.counts[patch_idx], axis=1).T)
-        return RedshiftData(nz_data, nz_samp, sampling=sample_method)
+        return RedshiftData(data=nz_data, samples=nz_samp, method=method)
 
 
 class RedshiftData(CorrelationData):
-
-    @classmethod
-    def from_correlation_functions(
-        cls,
-        cross_corr: CorrelationFunction,
-        ref_corr: CorrelationFunction | None = None,
-        unk_corr: CorrelationFunction | None = None,
-        *,
-        cross_est: str | None = None,
-        ref_est: str | None = None,
-        unk_est: str | None = None,
-        global_norm: bool = False,
-        sample_method: str = "bootstrap",
-        n_boot: int = 500,
-        patch_idx: NDArray[np.int_] | None = None
-    ) -> RedshiftData:
-        with TimedLog(
-            logger.debug,
-            f"estimating clustering redshifts with method '{sample_method}'"
-        ):
-            kwargs = dict(
-                global_norm=global_norm, sample_method=sample_method,
-                n_boot=n_boot, patch_idx=patch_idx)
-            # check compatibilty before sampling anything
-            if ref_corr is not None:
-                ref_corr.is_compatible(cross_corr)
-            if unk_corr is not None:
-                unk_corr.is_compatible(cross_corr)
-            # sample pair counts and evaluate estimator
-            cross_data = cross_corr.get(estimator=cross_est, **kwargs)
-            if ref_corr is not None:
-                ref_data = ref_corr.get(estimator=ref_est, **kwargs)
-            if unk_corr is not None:
-                unk_data = unk_corr.get(estimator=unk_est, **kwargs)
-            return cls.from_correlation_data(cross_data, ref_data, unk_data)
 
     @classmethod
     def from_correlation_data(
@@ -151,14 +115,51 @@ class RedshiftData(CorrelationData):
             w_pp_samp = unk_data.samples
 
         # compute redshift estimate, supress zero division warnings
-        N = cross_data.n_samples()
+        N = cross_data.n_samples
         dzsq_data = cross_data.dz**2
         dzsq_samp = np.tile(dzsq_data, N).reshape((N, -1)).T
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             nz_data = w_sp_data / np.sqrt(dzsq_data * w_ss_data * w_pp_data)
             nz_samp = w_sp_samp / np.sqrt(dzsq_samp * w_ss_samp * w_pp_samp)
-        return cls(nz_data, nz_samp, sampling=cross_data.sampling)
+        return cls(data=nz_data, samples=nz_samp, method=cross_data.method)
+
+    @classmethod
+    def from_correlation_functions(
+        cls,
+        cross_corr: CorrelationFunction,
+        ref_corr: CorrelationFunction | None = None,
+        unk_corr: CorrelationFunction | None = None,
+        *,
+        cross_est: str | None = None,
+        ref_est: str | None = None,
+        unk_est: str | None = None,
+        method: str = "bootstrap",
+        n_boot: int = 500,
+        patch_idx: NDArray[np.int_] | None = None,
+        global_norm: bool = False,
+        seed: int = 12345
+    ) -> RedshiftData:
+        with TimedLog(
+            logger.debug,
+            f"estimating clustering redshifts with method '{method}'"
+        ):
+            kwargs = dict(
+                method=method, n_boot=n_boot, patch_idx=patch_idx,
+                global_norm=global_norm, seed=seed)
+            # check compatibilty before sampling anything
+            if ref_corr is not None:
+                ref_corr.is_compatible(cross_corr)
+            if unk_corr is not None:
+                unk_corr.is_compatible(cross_corr)
+            # sample pair counts and evaluate estimator
+            cross_data = cross_corr.get(estimator=cross_est, **kwargs)
+            if ref_corr is not None:
+                ref_data = ref_corr.get(estimator=ref_est, **kwargs)
+            if unk_corr is not None:
+                unk_data = unk_corr.get(estimator=unk_est, **kwargs)
+            return cls.from_correlation_data(
+                cross_data=cross_data, ref_data=ref_data, unk_data=unk_data)
 
     @property
     def _dat_desc(self) -> str:
@@ -166,7 +167,7 @@ class RedshiftData(CorrelationData):
 
     @property
     def _smp_desc(self) -> str:
-        return f"# {self.n_samples()} {self.sampling} n(z) samples"
+        return f"# {self.n_samples} {self.method} n(z) samples"
 
     @property
     def _cov_desc(self) -> str:
@@ -185,4 +186,6 @@ class RedshiftData(CorrelationData):
                 xdata=to.mids, ydata=to.data.to_numpy(),
                 p0=[1.0], sigma=sigma)[0][0]
         return self.__class__(
-            self.data / norm, self.samples / norm, self.sampling)
+            data=self.data / norm,
+            samples=self.samples / norm,
+            method=self.method)

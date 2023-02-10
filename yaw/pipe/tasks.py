@@ -138,37 +138,30 @@ def runner(
                 for scale_key in project.list_counts_scales():
                     counts_dir = project.get_counts(scale_key)
                     est_dir = project.get_estimate(scale_key, create=True)
-
-                    # load w_sp
+                    # load correlation functions
                     path = counts_dir.get_cross(idx)
                     if not path.exists():
                         raise NoCountsError(
                             "no crosscorrelation pair counts found")
-                    w_sp = CorrClass.from_file(str(path))
-                    est = project.backend.NzEstimator(
-                        w_sp, estimator=nz_kwargs.get("est_cross"))
-                    # load w_ss
+                    w_sp = CorrClass.from_file(path)
                     path = counts_dir.get_auto_reference()
-                    if path.exists():
-                        w_ss = CorrClass.from_file(str(path))
-                        est.add_reference_autocorr(
-                            w_ss, estimator=nz_kwargs.get("est_auto"))
-                    # load w_pp
+                    w_ss = CorrClass.from_file(path) if path.exists() else None
                     path = counts_dir.get_auto(idx)
-                    if path.exists():
-                        w_pp = CorrClass.from_file(str(path))
-                        est.add_unknown_autocorr(
-                            w_pp, estimator=nz_kwargs.get("est_auto"))
-                    # dummy estimator evaluation
-                    est.get()
-                    est.get_samples(
+                    w_pp = CorrClass.from_file(path) if path.exists() else None
+                    # compute samples
+                    nz = project.backend.RedshiftData.from_correlation_functions(
+                        # specify correlation functions
+                        cross_corr=w_sp, cross_est=nz_kwargs.get("est_cross"),
+                        ref_corr=w_ss, ref_est=nz_kwargs.get("est_auto"),
+                        unk_corr=w_pp, unk_est=nz_kwargs.get("est_auto"),
+                        # configure joint sampling
                         global_norm=nz_kwargs.get("global_norm", False),
-                        sample_method=nz_kwargs.get("method", "bootstrap"),
+                        method=nz_kwargs.get("method", "bootstrap"),
                         n_boot=nz_kwargs.get("n_boot", 500),
                         seed=nz_kwargs.get("seed", 12345))
                     # write to disk
-                    for kind, path in est_dir.get_cross(idx).items():
-                        print(f"   mock writing {kind}: {path}")
+                    path = est_dir.get_cross(idx)
+                    nz.to_files(path)
 
             # remove any loaded data samples
             try:

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__.replace(".core.", "."))
 
 @dataclass(frozen=True)
 class SharedArray:
+
     array: multiprocessing.RawArray
     shape: tuple[int]
     dtype: DTypeLike

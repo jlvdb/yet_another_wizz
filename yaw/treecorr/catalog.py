@@ -76,7 +76,7 @@ class Catalog(CatalogBase):
         # TODO: different convention of patch centers in TC and SC
         elif isinstance(patch_centers, Catalog):
             kwargs["patch_centers"] = patch_centers._catalog.get_patch_centers()
-            n_patches = patch_centers.n_patches()
+            n_patches = patch_centers.n_patches
             log_msg = f"applying {n_patches} patches from external data"
         elif patch_centers is not None:
             self.logger.warn(
@@ -124,8 +124,9 @@ class Catalog(CatalogBase):
 
     @property
     def ids(self) -> list[int]:
-        return list(range(self.n_patches()))
+        return list(range(self.n_patches))
 
+    @property
     def n_patches(self) -> int:
         return self._catalog.npatch
 

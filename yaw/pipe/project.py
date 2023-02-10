@@ -171,13 +171,13 @@ class EstimateDirectory(DataDirectory):
         return {ext: Path(self.joinpath(f"{base}.{ext}")) for ext in extensions}
 
     def get_auto_reference(self) -> dict[str, Path]:
-        return self._generate_filenames("auto_reference")
+        return Path(self.joinpath("auto_reference"))
 
     def get_auto(self, bin_idx: int) -> dict[str, Path]:
-        return self._generate_filenames(f"{self._auto_prefix}_{bin_idx}")
+        return Path(self.joinpath(f"{self._auto_prefix}_{bin_idx}"))
 
     def get_cross(self, bin_idx: int) -> dict[str, Path]:
-        return self._generate_filenames(f"{self._cross_prefix}_{bin_idx}")
+        return Path(self.joinpath(f"{self._cross_prefix}_{bin_idx}"))
 
 
 def _parse_section_error(exception: Exception, section: str) -> NoReturn:

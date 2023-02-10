@@ -11,6 +11,7 @@ class InputCatalogError(Exception):
 
 @dataclass(frozen=True)
 class Input:
+
     filepath: Path | str
     ra: str
     dec: str

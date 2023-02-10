@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from abc import ABC, abstractproperty
-from collections.abc import Sized
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+import h5py
 import numpy as np
 
 if TYPE_CHECKING:
@@ -58,14 +58,24 @@ def bytes_format(x: float) -> str:
     return prefix + suffix
 
 
-class BinnedQuantity(ABC, Sized):
+class PatchedQuantity(Protocol):
+
+    n_patches: int
+
+
+@runtime_checkable
+class BinnedQuantity(Protocol):
+
+    binning: IntervalIndex
 
     def __len__(self) -> int:
         return len(self.binning)
 
-    @abstractproperty
-    def binning(self) -> IntervalIndex:
-        raise NotImplementedError
+    def __repr__(self) -> str:
+        name = self.__class__.__name__
+        n_bins = len(self)
+        z = f"{self.binning[0].left:.3f}...{self.binning[-1].right:.3f}"
+        return f"{name}({n_bins=}, z={z})"
 
     @property
     def mids(self) -> NDArray[np.float_]:
@@ -83,3 +93,20 @@ class BinnedQuantity(ABC, Sized):
         if np.any(self.binning != other.binning):
             return False
         return True
+
+
+class HDFSerializable(Protocol):
+
+    @classmethod
+    def from_hdf(cls, source: h5py.Group) -> HDFSerializable: ...
+
+    def to_hdf(self, dest: h5py.Group) -> None: ...
+
+    @classmethod
+    def from_file(cls, path: Path | str) -> HDFSerializable:
+        with h5py.File(str(path)) as f:
+            return cls.from_hdf(f)
+
+    def to_file(self, path: Path | str) -> None:
+        with h5py.File(str(path), mode="w") as f:
+            self.to_hdf(f)

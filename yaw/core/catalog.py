@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod, abstractproperty
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
 import astropandas as apd
@@ -12,7 +12,7 @@ from scipy.spatial import distance_matrix
 
 from yaw.core.coordinates import distance_sphere2sky, position_sphere2sky
 from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.utils import long_num_format
+from yaw.core.utils import PatchedQuantity, long_num_format
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
-class CatalogBase(ABC):
+class CatalogBase(ABC, Sequence, PatchedQuantity):
 
     logger = logging.getLogger("yaw.Catalog")
 
@@ -93,7 +93,7 @@ class CatalogBase(ABC):
         args = dict(
             loaded=self.is_loaded(),
             nobjects=len(self),
-            npatches=self.n_patches(),
+            npatches=self.n_patches,
             redshifts=self.has_redshifts())
         arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"{name}({arg_str})"
@@ -110,13 +110,6 @@ class CatalogBase(ABC):
     def ids(self) -> list[int]:
         """
         Get a list of patch IDs.
-        """
-        pass
-
-    @abstractmethod
-    def n_patches(self) -> int:
-        """
-        Get the number of patches (spatial regions).
         """
         pass
 
@@ -256,7 +249,7 @@ class CatalogBase(ABC):
         self.logger.debug("computing true redshift distribution")
 
 
-class PatchLinkage:
+class PatchLinkage(PatchedQuantity):
 
     def __init__(
         self,
@@ -294,7 +287,7 @@ class PatchLinkage:
             patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
         logger.debug(
             f"found {len(patch_pairs)} patch links "
-            f"for {catalog.n_patches()} patches")
+            f"for {catalog.n_patches} patches")
         return cls(patch_pairs)
 
     def __len__(self) -> int:
@@ -302,8 +295,9 @@ class PatchLinkage:
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
-        return f"{name}(npatches={self.n_patches()}, pairs={len(self)})"
+        return f"{name}(n_patches={self.n_patches}, n_pairs={len(self)})"
 
+    @property
     def n_patches(self) -> int:
         patches = set()
         for p1, p2 in self.pairs:
@@ -345,7 +339,7 @@ class PatchLinkage:
             collection1, collection2)
         pairs = self.get_pairs(auto, crosspatch)
         # make a boolean matrix indicating the exisiting patch combinations
-        n_patches = self.n_patches()
+        n_patches = self.n_patches
         matrix = np.zeros((n_patches, n_patches), dtype=np.bool_)
         for pair in pairs:
             matrix[pair] = True
@@ -360,7 +354,7 @@ class PatchLinkage:
         auto, collection1, collection2 = self._parse_collections(
             collection1, collection2)
         # make a boolean mask indicating all patch combinations
-        n_patches = self.n_patches()
+        n_patches = self.n_patches
         shape = (n_patches, n_patches)
         if crosspatch:
             mask = np.ones(shape, dtype=np.bool_)
@@ -378,7 +372,7 @@ class PatchLinkage:
     ) -> NDArray[np.float_]:
         auto, collection1, collection2 = self._parse_collections(
             collection1, collection2)
-        n_patches = self.n_patches()
+        n_patches = self.n_patches
         # compute the product of the total weight per patch
         totals1 = np.zeros(n_patches)
         for i, total in zip(collection1.ids, collection1.get_totals()):
