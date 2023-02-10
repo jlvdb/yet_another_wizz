@@ -17,8 +17,8 @@ from yaw.core.utils import PatchedQuantity, long_num_format
 if TYPE_CHECKING:
     from pandas import DataFrame
     from yaw.core.config import Configuration
+    from yaw.core.paircounts import PairCountResult
     from yaw.core.redshifts import NzTrue
-    from yaw.core.resampling import PairCountResult
     from yaw.core.utils import (
         TypePatchKey, TypeScaleKey)
 

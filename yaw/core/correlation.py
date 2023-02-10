@@ -13,7 +13,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 from yaw.core.catalog import PatchLinkage
-from yaw.core.resampling import PairCountResult
+from yaw.core.paircounts import PairCountResult
 from yaw.core.utils import BinnedQuantity, HDFSerializable, PatchedQuantity
 
 from yaw.logger import TimedLog
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from pandas import DataFrame, IntervalIndex, Series
     from yaw.core.catalog import CatalogBase
     from yaw.core.config import Configuration
-    from yaw.core.resampling import PairCountData
+    from yaw.core.paircounts import PairCountData
     from yaw.core.utils import TypeScaleKey
 
 

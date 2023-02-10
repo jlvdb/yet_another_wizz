@@ -14,9 +14,9 @@ from yaw.core.catalog import CatalogBase
 from yaw.core.config import Configuration
 from yaw.core.coordinates import position_sphere2sky
 from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.paircounts import ArrayDict, PairCountResult
 from yaw.core.parallel import ParallelHelper
 from yaw.core.redshifts import NzTrue
-from yaw.core.resampling import ArrayDict, PairCountResult
 from yaw.core.utils import (
     LimitTracker, TypePatchKey, TypeScaleKey, scales_to_keys)
 

@@ -16,8 +16,8 @@ from yaw.core.config import Configuration
 from yaw.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
 from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.paircounts import PairCountResult
 from yaw.core.redshifts import NzTrue
-from yaw.core.resampling import PairCountResult
 from yaw.core.utils import TypeScaleKey
 
 from yaw.logger import TimedLog
