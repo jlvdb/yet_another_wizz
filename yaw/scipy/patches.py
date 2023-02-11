@@ -272,7 +272,7 @@ except ImportError:
     ) -> tuple[NDArray[np.float_], NDArray[np.int_]]:
         if len(ra) != len(dec):
             raise ValueError("length of 'ra' and 'dec' does not match")
-        subset = np.random.randint(0, len(ra), size=min(n_max, len(xyz)))
+        subset = np.random.randint(0, len(ra), size=min(n_max, len(ra)))
         # place on unit sphere to avoid coordinate distortions
         xyz = position_sky2sphere(np.column_stack([ra[subset], dec[subset]]))
         centers, _ = vq.kmeans2(xyz[subset], n_patches, minit="points")

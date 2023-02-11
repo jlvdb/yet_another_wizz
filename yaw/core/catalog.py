@@ -26,7 +26,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
-class CatalogBase(ABC, Sequence, PatchedQuantity):
+class CatalogDummy:
+    def __init__(self, centers: NDArray[np.float_]) -> None:
+        self.centers = centers
+
+
+class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
 
     logger = logging.getLogger("yaw.Catalog")
 
@@ -50,7 +55,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
     def from_file(
         cls,
         filepath: str,
-        patches: int | CatalogBase | str,
+        patches: int | CatalogDummy | str,
         ra: str,
         dec: str,
         *,
@@ -68,7 +73,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         if isinstance(patches, str):
             columns.append(patches)
             patch_kwarg = dict(patch_name=patches)
-        elif isinstance(patches, CatalogBase):
+        elif isinstance(patches, CatalogDummy):
             patch_kwarg = dict(
                 patch_centers=position_sphere2sky(patches.centers))
         elif isinstance(patches, int):
