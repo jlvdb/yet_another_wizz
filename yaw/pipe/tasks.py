@@ -80,17 +80,17 @@ class Runner:
         self.w_pp_data = None
 
     def load_reference(self):
-        self.logger.info("loading reference data")
-        self.ref_data = self.project.load_reference("data")
+        # load randoms first since preferrable for optional patch creation
         try:
             self.ref_rand = self.project.load_reference("rand")
         except MissingCatalogError:
             self.logger.debug("loading reference randoms failed")
             self.ref_rand = None
+        self.logger.info("loading reference data")
+        self.ref_data = self.project.load_reference("data")
 
     def load_unknown(self, idx: int, skip_rand: bool = False):
-        self.logger.info(f"loading unknown data bin {idx}")
-        self.unk_data = self.project.load_unknown("data", idx)
+        # load randoms first since preferrable for optional patch creation
         try:
             if skip_rand:
                 self.logger.debug("skipping unknown randoms")
@@ -100,6 +100,8 @@ class Runner:
         except MissingCatalogError:
             self.logger.debug("loading unknown randoms failed")
             self.unk_rand = None
+        self.logger.info(f"loading unknown data bin {idx}")
+        self.unk_data = self.project.load_unknown("data", idx)
 
     def cf_as_dict(
         self,
