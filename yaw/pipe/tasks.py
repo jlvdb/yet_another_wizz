@@ -135,7 +135,7 @@ class Runner:
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
         self.logger.info(
-            f"measuring unknown autocorrelation function for bin '{idx}'")
+            f"measuring unknown autocorrelation function for bin {idx}")
         if self.unk_rand is None:
             raise MissingCatalogError(
                 "unknown autocorrelation requires unknown randoms")
@@ -155,7 +155,7 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
-        self.logger.info(f"measuring crosscorrelation function for bin '{idx}'")
+        self.logger.info(f"measuring crosscorrelation function for bin {idx}")
         if compute_rr:
             if self.ref_rand is None:
                 raise MissingCatalogError(
@@ -283,25 +283,25 @@ class Runner:
         cross_kwargs: dict[str, Any] | None = None,
         auto_ref_kwargs: dict[str, Any] | None = None,
         auto_unk_kwargs: dict[str, Any] | None = None,
-        nz_kwargs: dict[str, Any] | None = None,
-        true_kwargs: dict[str, Any] | None = None,
+        zcc_kwargs: dict[str, Any] | None = None,
+        ztrue_kwargs: dict[str, Any] | None = None,
         drop_cache: dict[str, Any] | None = None
     ) -> None:
         do_w_sp = cross_kwargs is not None
         do_w_ss = auto_ref_kwargs is not None
         do_w_pp = auto_unk_kwargs is not None
-        do_nz = nz_kwargs is not None
-        do_true = true_kwargs is not None
+        do_zcc = zcc_kwargs is not None
+        do_ztrue = ztrue_kwargs is not None
 
-        if do_nz:
+        if do_zcc:
             sample_kwargs = dict(
-                global_norm=nz_kwargs.get(
+                global_norm=zcc_kwargs.get(
                     "global_norm", DEFAULT.Resampling.global_norm),
-                method=nz_kwargs.get(
+                method=zcc_kwargs.get(
                     "method", DEFAULT.Resampling.method),
-                n_boot=nz_kwargs.get(
+                n_boot=zcc_kwargs.get(
                     "n_boot", DEFAULT.Resampling.n_boot),
-                seed=nz_kwargs.get(
+                seed=zcc_kwargs.get(
                     "seed", DEFAULT.Resampling.seed))
 
         if do_w_sp or do_w_ss:
@@ -310,44 +310,44 @@ class Runner:
         if do_w_ss:
             compute_rr = (not auto_ref_kwargs.get("no_rr", False))
             self.run_auto_ref(compute_rr=compute_rr)
-        elif do_nz:
+        elif do_zcc:
             self.load_auto_ref()
-
-        if do_nz:
+        if do_zcc:
             self.sample_corrfunc(
-                "w_ss", estimator=nz_kwargs.get("est_auto"),
+                "w_ss", estimator=zcc_kwargs.get("est_auto"),
                 **sample_kwargs)
 
-        if do_w_sp or do_w_pp or do_nz or do_true:
+        if do_w_sp or do_w_pp or do_zcc or do_ztrue:
             for idx in self.project.get_bin_indices():
 
-                if do_w_sp or do_w_pp or do_true:
-                    skip_rand = do_true and not (do_w_sp or do_w_pp)
+                if do_w_sp or do_w_pp or do_ztrue:
+                    skip_rand = do_ztrue and not (do_w_sp or do_w_pp)
                     self.load_unknown(idx, skip_rand=skip_rand)
-
-                if do_true:
-                    self.compute_nz_true(idx)
 
                 if do_w_sp:
                     compute_rr = (not cross_kwargs.get("no_rr", True))
                     self.run_cross(idx, compute_rr=compute_rr)
-                elif do_nz:
+                elif do_zcc:
                     self.load_cross(idx)
+                if do_zcc:
+                    self.sample_corrfunc(
+                        "w_sp", estimator=zcc_kwargs.get("est_cross"),
+                        **sample_kwargs)
 
                 if do_w_pp:
                     compute_rr = (not auto_unk_kwargs.get("no_rr", False))
                     self.run_auto_unk(idx, compute_rr=compute_rr)
-                elif do_nz:
+                elif do_zcc:
                     self.load_auto_unk(idx)
+                if do_zcc:
+                    self.sample_corrfunc(
+                        "w_pp", estimator=zcc_kwargs.get("est_auto"),
+                        **sample_kwargs)
 
-                if do_nz:
-                    self.sample_corrfunc(
-                        "w_sp", estimator=nz_kwargs.get("est_cross"),
-                        **sample_kwargs)
-                    self.sample_corrfunc(
-                        "w_pp", estimator=nz_kwargs.get("est_auto"),
-                        **sample_kwargs)
+                if do_zcc:
                     self.compute_nz_cc(idx)
+                if do_ztrue:
+                    self.compute_nz_true(idx)
 
         if drop_cache:
             self.drop_cache()
@@ -564,16 +564,16 @@ def auto_unk(args, project: ProjectDirectory) -> dict:
 
 
 ################################################################################
-COMMANDNAME = "nz"
+COMMANDNAME = "zcc"
 
-parser_nz = Commandline.create_subparser(
+parser_zcc = Commandline.create_subparser(
     name=COMMANDNAME,
     help="compute clustering redshift estimates for the unknown data",
     description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.",
     threads=True)
 
 _estimators = [est.short for est in CorrelationEstimator.variants]
-group_est = parser_nz.add_argument_group(
+group_est = parser_zcc.add_argument_group(
     title="correlation estimators",
     description="configure estimators for the different types of correlation functions")
 group_est.add_argument(
@@ -583,7 +583,7 @@ group_est.add_argument(
     "--est-auto", choices=_estimators, default=None,
     help="correlation estimator for autocorrelations (default: LS or DP)")
 
-group_samp = parser_nz.add_argument_group(
+group_samp = parser_zcc.add_argument_group(
     title="resampling",
     description="configure the resampling used for covariance estimates")
 group_samp.add_argument(
@@ -603,17 +603,17 @@ group_samp.add_argument(
 @Commandline.register(COMMANDNAME)
 @Tasks.register(60)
 @logged
-def nz(args, project: ProjectDirectory) -> dict:
+def zcc(args, project: ProjectDirectory) -> dict:
     setup_args = dict(
         est_cross=args.est_cross, est_auto=args.est_auto, method=args.method,
         global_norm=args.global_norm, n_boot=args.n_boot, seed=args.seed)
     runner = Runner(project, threads=args.threads)
-    runner.main(nz_kwargs=setup_args)
+    runner.main(zcc_kwargs=setup_args)
     return setup_args
 
 
 ################################################################################
-COMMANDNAME = "true"
+COMMANDNAME = "ztrue"
 
 parser_merge = Commandline.create_subparser(
     name=COMMANDNAME,
@@ -625,9 +625,9 @@ parser_merge = Commandline.create_subparser(
 @Commandline.register(COMMANDNAME)
 @Tasks.register(40)
 @logged
-def true(args, project: ProjectDirectory) -> dict:
+def ztrue(args, project: ProjectDirectory) -> dict:
     runner = Runner(project, threads=args.threads)
-    runner.main(true_kwargs={})
+    runner.main(ztrue_kwargs={})
     return {}
 
 
