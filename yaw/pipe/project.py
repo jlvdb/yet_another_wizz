@@ -10,6 +10,7 @@ from pathlib import Path, _posix_flavour, _windows_flavour
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, NoReturn
 
+import pandas as pd
 import yaml
 
 from yaw.core import default as DEFAULT
@@ -396,6 +397,30 @@ class ProjectDirectory(DictRepresentation):
     ) -> None:
         self._inputs.add_unknown(bin_idx, data, rand)
 
+    def _build_catalog(self, load_kwargs) -> CatalogBase:
+        # patches must be created or applied
+        if not self._inputs.external_patches:
+            if "patches" in load_kwargs:
+                msg = "'n_patches' and catalog 'patches' are mutually exclusive"
+                raise SetupError(msg)
+            # load and apply existing patch centers
+            if self.patch_file.exists():
+                centers = pd.read_csv(str(self.patch_file))
+                catalog = self.backend.core.catalog.CatalogDummy(
+                    centers.to_numpy())
+                load_kwargs["patches"] = catalog
+            # schedule patch creation
+            else:
+                load_kwargs["patches"] = self._inputs.n_patches
+
+        catalog = self.backend.Catalog.from_file(**load_kwargs)
+        # store patch centers for consecutive loads
+        if not self._inputs.external_patches and not self.patch_file.exists():
+            centers = pd.DataFrame({
+                coord: val for coord, val in zip("xyz", catalog.centers.T)})
+            centers.to_csv(str(self.patch_file), index=False)
+        return catalog
+
     def _load_catalog(
         self,
         sample: str,
@@ -432,15 +457,16 @@ class ProjectDirectory(DictRepresentation):
         else:
             cachepath = self._cache.get_unknown(bin_idx)[kind]
         exists = cachepath.exists()
+
+        # already cached and backend supports restoring
         if self.cache_restore_supported and exists and input.cache:
-            # already cached and backend supports restoring
             catalog = self.backend.Catalog.from_cache(cachepath)
+        # no caching requested or not supported
         else:
-            # no caching requested or not supported
             if input.cache:
                 kwargs["cache_directory"] = str(cachepath)
                 cachepath.mkdir(exist_ok=True)
-            catalog = self.backend.Catalog.from_file(**kwargs)
+            catalog = self._build_catalog(kwargs)
         return catalog
 
     def load_reference(self, kind: str) -> CatalogBase:
