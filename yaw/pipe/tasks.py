@@ -373,16 +373,21 @@ parser_init.add_argument(  # manual since special help text
 parser_init.add_argument(
     "-s", "--setup", type=Path_exists, metavar="<file>",
     help="optionl setup YAML file (e.g. from 'yaw run -d') with base configuration that is overwritten by arguments below")
-parser_init.add_argument(
-    "--cache-path", metavar="<path>", type=Path_absolute,
-    help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
 
-parser_init.add_argument(
+group_other = parser_init.add_argument_group(
+    title="additional arguments")
+group_other.add_argument(
     "--backend", choices=BACKEND_OPTIONS, default=DEFAULT.backend,
     help="backend used for pair counting (default: %(default)s)")
-parser_init.add_argument(
+group_other.add_argument(
     "--cosmology", choices=COSMOLOGY_OPTIONS, default=get_default_cosmology().name,
     help="cosmological model used for distance calculations (see astropy.cosmology, default: %(default)s)")
+group_other.add_argument(
+    "--cache-path", metavar="<path>", type=Path_absolute,
+    help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
+group_other.add_argument(
+    "--n-patches", type=int, metavar="<int>",
+    help="split all input data into this number of spatial patches for covariance estimation (default: patch index for catalogs)")
 
 Commandline.add_input_parser(parser_init, "reference (data)", prefix="ref", required=True, require_z=True)
 
@@ -473,7 +478,8 @@ def init(args) -> None:
 
     # create the project directory
     with ProjectDirectory.create(
-        args.wdir, config, cachepath=args.cache_path, backend=args.backend
+        args.wdir, config, n_patches=args.n_patches,
+        cachepath=args.cache_path, backend=args.backend
     ) as project:
         # get the data catalog and the optional random catalog
         input_ref = Commandline.get_input_from_args(args, "ref", require_z=True)

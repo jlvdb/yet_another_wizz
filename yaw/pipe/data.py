@@ -183,9 +183,10 @@ def _parse_catalog_dict(
 
 class InputRegister(DictRepresentation):
 
-    def __init__(self) -> None:
+    def __init__(self, n_patches: int | None = None) -> None:
         self._reference: dict[str, Input | None] = dict(data=None, rand=None)
         self._unknown: dict[str, BinnedInput | None] = dict(data=None, rand=None)
+        self._n_patches = n_patches
 
     @classmethod
     def from_dict(
@@ -193,44 +194,67 @@ class InputRegister(DictRepresentation):
         the_dict: dict[str, dict],
         **kwargs
     ) -> InputRegister:
-        _inputs = {k: v for k, v in the_dict.items()}
+        inputs = {k: v for k, v in the_dict.items()}
         new = cls.__new__(cls)
         # parse reference
         new._reference = _parse_catalog_dict(
-            _inputs.pop("reference", dict()),
+            inputs.pop("reference", dict()),
             section="reference", binned=False)
         for kind, data in new._reference.items():
             if isinstance(data, BinnedInput):
                 raise InputCatalogError(
                     "binned reference cataloge not permitted, in "
                     f"'reference:{kind}:filepath'")
-        # parse reference
+        # parse unknown
         new._unknown = _parse_catalog_dict(
-            _inputs.pop("unknown", dict()),
+            inputs.pop("unknown", dict()),
             section="unknown", binned=True)
+        # get optional patch number
+        new._n_patches = inputs.pop("n_patches", None)
         # check that there are no extra sections
-        if len(_inputs) > 0:
-            key = next(iter(_inputs.keys()))
+        if len(inputs) > 0:
+            key = next(iter(inputs.keys()))
             raise InputCatalogError(
                 f"encountered unknown section '{key}', "
                 "must be 'reference' or 'unknown'")
         return new
 
     def to_dict(self) -> dict[str, Any]:
-        reference = {
+        inputs = dict()
+        inputs["reference"] = {
             kind: None if inp is None else inp.to_dict()
             for kind, inp in self._reference.items()}
-        unknown = {
+        inputs["unknown"] = {
             kind: None if inp is None else inp.to_dict()
             for kind, inp in self._unknown.items()}
-        return dict(reference=reference, unknown=unknown)
+        if self.n_patches is not None:
+            inputs["n_patches"] = self.n_patches
+        return inputs
+
+    @property
+    def n_patches(self) -> int | None:
+        return self._n_patches
+
+    @property
+    def external_patches(self) -> bool:
+        return self._n_patches is None
+
+    def _check_patches_consistent(self, meta: Input) -> None:
+        if meta.patches is None and self.external_patches:
+            raise InputCatalogError(
+                "'n_patches' not set and no patch index column provided")
+        elif meta.patches is not None and not self.external_patches:
+            raise InputCatalogError(
+                "'n_patches' set but additional patch index column provided")
 
     def set_reference(
         self,
         data: Input,
         rand: Input | None = None
     ) -> None:
+        self._check_patches_consistent(data)
         self._reference["data"] = data
+        self._check_patches_consistent(rand)
         self._reference["rand"] = rand
     
     def add_unknown(
@@ -253,6 +277,7 @@ class InputRegister(DictRepresentation):
                 "current bin")
         # set the data
         for key, value in zip(["data", "rand"], [data, rand]):
+            self._check_patches_consistent(value)
             if self._unknown[key] is None:
                 self._unknown[key] = BinnedInput.from_inputs({bin_idx: value})
             else:

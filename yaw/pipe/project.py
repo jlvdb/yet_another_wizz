@@ -265,6 +265,7 @@ class ProjectDirectory(DictRepresentation):
         cls,
         path: TypePathStr,
         config: Configuration,
+        n_patches: int | None = None,
         cachepath: TypePathStr | None = None,
         backend: str = DEFAULT.backend
     ) -> ProjectDirectory:
@@ -272,7 +273,7 @@ class ProjectDirectory(DictRepresentation):
             configuration=config.to_dict(),
             data=dict(
                 cachepath=str(cachepath) if cachepath is not None else None,
-                catalogs=InputRegister().to_dict()),
+                catalogs=InputRegister(n_patches).to_dict()),
             backend=backend,
             tasks=TaskList().to_list())
         return cls.from_dict(setup_dict, path=path)
@@ -361,6 +362,10 @@ class ProjectDirectory(DictRepresentation):
     @property
     def config(self) -> Configuration:
         return self._config
+
+    @property
+    def patch_file(self) -> Path:
+        return self._path.joinpath("patch_centers.csv")
 
     @property
     def cache_dir(self) -> Path:

@@ -19,13 +19,11 @@ configuration:
         [crosspatch]:           <bool>
         [rbin_slop]:            <float>
         [thread_num]:           <int>
-    binning:  # NOTE: either of these two key groups below are required
-        # NOTE: auto-generated bin edges
+    binning:  # NOTE: either of zmin, zmax, zbin_num or zbins are required
         zmin:                   <float> / <list[float]>
         zmax:                   <float> / <list[float]>
         zbin_num:               <int>
         [method]:               <str>
-        # NOTE: manual bin edges, overwrites group above
         zbins:                  <list[float]>
     [cosmology]:                <str>
     scales:
@@ -37,6 +35,7 @@ configuration:
 data:
     [cachepath]:                <directory>
     catalogs:
+        [n_patches]:            <int>
         [reference]:
             data:
                 filepath:       <file>
@@ -79,8 +78,9 @@ tasks:
         [no_rr]:                <bool>
   - auto_unk:
         [no_rr]:                <bool>
+  - ztrue
   - drop_cache
-  - nz:
+  - zcc:
         global_norm:            <bool>
         method:                 <str>
         n_boot:                 <int>
@@ -131,6 +131,8 @@ data:
                         # (recommended for scipy 'backend', default is within project directory)
 
     catalogs:           # define input files, can be FITS, PARQUET, CSV or FEATHER files
+        n_patches: null     # number of automatic spatial patches to use for input catalogs below,
+                            # provide only if no 'data/rand.patches' provided below
 
         reference:          # reference data sample with know redshifts
             data:               # data catalog file and column names
@@ -166,7 +168,7 @@ data:
 # and updated automatically when running 'yaw' subcommands.
 # Tasks can be provided as single list entry, e.g.
 #   - cross
-#   - nz
+#   - zcc
 # to get a basic cluster redshift estimate or with the optional
 # parameters listed below.
 tasks:
@@ -177,8 +179,9 @@ tasks:
         no_rr: false            # do not compute random-random pair counts
   - auto_unk:               # compute the unknown sample autocorrelation for bias mitigation
         no_rr: false            # do not compute random-random pair counts
+  - ztrue                   # compute true redshift distributions
   - drop_cache              # delete temporary data in cache directory, has no arguments
-  - nz:                     # estimate clustering redshifts
+  - zcc:                    # estimate clustering redshifts
         global_norm: false      # normalise the pair counts globally instead of patch-wise
         method: bootstrap       # resampling method used to estimate the data covariance
                                 # ({method_options:})
