@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from functools import wraps
 from typing import TYPE_CHECKING, Any
@@ -51,6 +52,8 @@ def logged(func):
 
 class Runner:
 
+    logger = logging.getLogger("yaw.run")
+
     def __init__(
         self,
         project: ProjectDirectory,
@@ -77,20 +80,25 @@ class Runner:
         self.w_pp_data = None
 
     def load_reference(self):
+        self.logger.info("loading reference data")
         self.ref_data = self.project.load_reference("data")
         try:
             self.ref_rand = self.project.load_reference("rand")
         except MissingCatalogError:
+            self.logger.debug("loading reference randoms failed")
             self.ref_rand = None
 
     def load_unknown(self, idx: int, skip_rand: bool = False):
+        self.logger.info(f"loading unknown data bin {idx}")
         self.unk_data = self.project.load_unknown("data", idx)
         try:
             if skip_rand:
+                self.logger.debug("skipping unknown randoms")
                 self.unk_rand = None
             else:
                 self.unk_rand = self.project.load_unknown("rand", idx)
         except MissingCatalogError:
+            self.logger.debug("loading unknown randoms failed")
             self.unk_rand = None
 
     def cf_as_dict(
@@ -106,6 +114,7 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
+        self.logger.info(f"measuring reference autocorrelation function")
         if self.ref_rand is None:
             raise MissingCatalogError(
                 "reference autocorrelation requires reference randoms")
@@ -114,6 +123,7 @@ class Runner:
             compute_rr=compute_rr, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
+            self.logger.debug(f"writing pair counts for scale '{scale}'")
             counts_dir = self.project.get_counts(scale, create=True)
             cf.to_file(counts_dir.get_auto_reference())
         self.w_ss = cfs
@@ -124,6 +134,8 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
+        self.logger.info(
+            f"measuring unknown autocorrelation function for bin '{idx}'")
         if self.unk_rand is None:
             raise MissingCatalogError(
                 "unknown autocorrelation requires unknown randoms")
@@ -132,6 +144,7 @@ class Runner:
             compute_rr=compute_rr, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
+            self.logger.debug(f"writing pair counts for scale '{scale}'")
             counts_dir = self.project.get_counts(scale, create=True)
             cf.to_file(counts_dir.get_auto(idx))
         self.w_pp = cfs
@@ -142,6 +155,7 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
+        self.logger.info(f"measuring crosscorrelation function for bin '{idx}'")
         if compute_rr:
             if self.ref_rand is None:
                 raise MissingCatalogError(
@@ -165,11 +179,14 @@ class Runner:
             **randoms, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
+            self.logger.debug(f"writing pair counts for scale '{scale}'")
             counts_dir = self.project.get_counts(scale, create=True)
             cf.to_file(counts_dir.get_cross(idx))
         self.w_sp = cfs
 
     def load_auto_ref(self) -> None:
+        self.logger.info(
+            f"loading pair counts for reference autocorrelation function")
         cfs = {}
         for scale in self.project.list_counts_scales():
             counts_dir = self.project.get_counts(scale)
@@ -178,6 +195,9 @@ class Runner:
         self.w_ss = cfs
 
     def load_auto_unk(self, idx: int) -> None:
+        self.logger.info(
+            f"loading pair counts for unknown autocorrelation "
+            f"function bin {idx}")
         cfs = {}
         for scale in self.project.list_counts_scales():
             counts_dir = self.project.get_counts(scale)
@@ -186,6 +206,8 @@ class Runner:
         self.w_pp = cfs
 
     def load_cross(self, idx: int) -> None:
+        self.logger.info(
+            f"loading pair counts for crosscorrelation function bin {idx}")
         cfs = {}
         for scale in self.project.list_counts_scales():
             counts_dir = self.project.get_counts(scale)
@@ -205,6 +227,15 @@ class Runner:
         global_norm: bool,
         seed: int
     ) -> dict[str, CorrelationData]:
+        try:
+            kind = {
+                "w_sp": "cross",
+                "w_ss": "reference auto",
+                "w_pp": "unknown auto"
+            }[cfs_kind]
+        except KeyError:
+            raise ValueError(f"invalid correlation function kind '{cfs_kind}'")
+        self.logger.info(f"sampling {kind}correlation function")
         cfs = getattr(self, cfs_kind)
         if cfs is None and cfs_kind == "w_sp":
             raise NoCountsError(f"crosscorrelation counts not found")
@@ -216,6 +247,7 @@ class Runner:
         setattr(self, f"{cfs_kind}_data", data)
 
     def compute_nz_cc(self, idx: int) -> None:
+        self.logger.info(f"estimating clustering redshifts for bin {idx}")
         cross_data = self.w_sp_data
         if self.w_ss_data is None:
             ref_data = {scale: None for scale in cross_data}
@@ -226,6 +258,8 @@ class Runner:
         else:
             unk_data = self.w_pp_data
         for scale in cross_data:
+            self.logger.debug(
+                f"writing redshift data files for scale '{scale}'")
             nz = self.backend.RedshiftData.from_correlation_data(
                 cross_data[scale], ref_data[scale], unk_data[scale])
             est_dir = self.project.get_estimate(scale, create=True)
@@ -233,12 +267,15 @@ class Runner:
             nz.to_files(path)
 
     def compute_nz_true(self, idx: int) -> None:
+        self.logger.info(f"computing true redshift distribution for bin {idx}")
         nz = self.unk_data.true_redshifts(self.config)
         nz_data = nz.get()
         path = self.project.get_true(idx, create=True)
+        self.logger.debug("writing redshift data files")
         nz_data.to_files(path)
 
     def drop_cache(self):
+        self.logger.info("dropping cached data")
         self.project.get_cache().drop_all()
 
     def main(
