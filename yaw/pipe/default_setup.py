@@ -151,8 +151,8 @@ data:
             data:               # data catalog file and column names
                 filepath:           # either a single file path (no tomographic bins) or a mapping
                                     # of integer bin index to file path 
-                    0: ...              #
                     1: ...              #
+                    2: ...              #
                 ra: ra              # right ascension in degrees
                 dec: dec            # declination in degrees
                 redshift: z         # (optional) redshift of objects, if provided,

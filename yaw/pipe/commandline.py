@@ -198,7 +198,7 @@ class _Commandline(Registry):
                         raise argparse.ArgumentError(
                             f"indices [--{prefix}-idx] not unique")
                 else:
-                    idx = range(len(paths))
+                    idx = range(1, len(paths) + 1)
                 # update the key word arguments with a dict: idx -> path
                 kwargs["filepath"] = {i: path for i, path in zip(idx, paths)}
                 return BinnedInput.from_dict(kwargs)
