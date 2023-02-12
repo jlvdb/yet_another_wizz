@@ -81,16 +81,17 @@ class Runner:
 
     def load_reference(self):
         # load randoms first since preferrable for optional patch creation
+        self.logger.info("loading reference data")
         try:
             self.ref_rand = self.project.load_reference("rand")
         except MissingCatalogError:
             self.logger.debug("loading reference randoms failed")
             self.ref_rand = None
-        self.logger.info("loading reference data")
         self.ref_data = self.project.load_reference("data")
 
     def load_unknown(self, idx: int, skip_rand: bool = False):
         # load randoms first since preferrable for optional patch creation
+        self.logger.info(f"loading unknown data bin {idx}")
         try:
             if skip_rand:
                 self.logger.debug("skipping unknown randoms")
@@ -100,7 +101,6 @@ class Runner:
         except MissingCatalogError:
             self.logger.debug("loading unknown randoms failed")
             self.unk_rand = None
-        self.logger.info(f"loading unknown data bin {idx}")
         self.unk_data = self.project.load_unknown("data", idx)
 
     def cf_as_dict(
@@ -190,34 +190,44 @@ class Runner:
         self.logger.info(
             f"loading pair counts for reference autocorrelation function")
         cfs = {}
-        for scale in self.project.list_counts_scales():
-            counts_dir = self.project.get_counts(scale)
-            path = counts_dir.get_auto_reference()
-            cfs[scale] = self.backend.CorrelationFunction.from_file(path)
-        self.w_ss = cfs
+        try:
+            for scale in self.project.list_counts_scales():
+                counts_dir = self.project.get_counts(scale)
+                path = counts_dir.get_auto_reference()
+                cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+            assert len(cfs) > 0
+            self.w_ss = cfs
+        except (FileNotFoundError, AssertionError):
+            self.logger.info("skipped missing pair counts")
 
     def load_auto_unk(self, idx: int) -> None:
         self.logger.info(
             f"loading pair counts for unknown autocorrelation "
             f"function bin {idx}")
         cfs = {}
-        for scale in self.project.list_counts_scales():
-            counts_dir = self.project.get_counts(scale)
-            path = counts_dir.get_auto(idx)
-            cfs[scale] = self.backend.CorrelationFunction.from_file(path)
-        self.w_pp = cfs
+        try:
+            for scale in self.project.list_counts_scales():
+                counts_dir = self.project.get_counts(scale)
+                path = counts_dir.get_auto(idx)
+                cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+            assert len(cfs) > 0
+            self.w_pp = cfs
+        except (FileNotFoundError, AssertionError):
+            self.logger.info("skipped missing pair counts")
 
     def load_cross(self, idx: int) -> None:
         self.logger.info(
             f"loading pair counts for crosscorrelation function bin {idx}")
         cfs = {}
-        for scale in self.project.list_counts_scales():
-            counts_dir = self.project.get_counts(scale)
-            path = counts_dir.get_cross(idx)
-            cfs[scale] = self.backend.CorrelationFunction.from_file(path)
-        if len(cfs) == 0:
-            raise NoCountsError(f"crosscorrelation counts not found")
-        self.w_sp = cfs
+        try:
+            for scale in self.project.list_counts_scales():
+                counts_dir = self.project.get_counts(scale)
+                path = counts_dir.get_cross(idx)
+                cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+            assert len(cfs) > 0
+            self.w_sp = cfs
+        except (FileNotFoundError, AssertionError):
+            self.logger.info("skipped missing pair counts")
 
     def sample_corrfunc(
         self,
@@ -239,8 +249,6 @@ class Runner:
             raise ValueError(f"invalid correlation function kind '{cfs_kind}'")
         self.logger.info(f"sampling {kind}correlation function")
         cfs = getattr(self, cfs_kind)
-        if cfs is None and cfs_kind == "w_sp":
-            raise NoCountsError(f"crosscorrelation counts not found")
         data = {}
         for scale, cf in cfs.items():
             data[scale] = cf.get(
@@ -248,7 +256,22 @@ class Runner:
                 n_boot=n_boot, global_norm=global_norm, seed=seed)
         setattr(self, f"{cfs_kind}_data", data)
 
-    def compute_nz_cc(self, idx: int) -> None:
+    def write_auto_ref(self) -> None:
+        for scale, cf in self.w_ss_data.items():
+            self.logger.debug("writing reference autocorrelation data files")
+            est_dir = self.project.get_estimate(scale, create=True)
+            path = est_dir.get_auto_reference()
+            cf.to_files(path)
+
+    def write_auto_unk(self, idx: int) -> None:
+        for scale, cf in self.w_pp_data.items():
+            self.logger.debug(
+                f"writing unknown autocorrelation data files for bin {idx}")
+            est_dir = self.project.get_estimate(scale, create=True)
+            path = est_dir.get_auto(idx)
+            cf.to_files(path)
+
+    def write_nz_cc(self, idx: int) -> None:
         self.logger.info(f"estimating clustering redshifts for bin {idx}")
         cross_data = self.w_sp_data
         if self.w_ss_data is None:
@@ -268,7 +291,7 @@ class Runner:
             path = est_dir.get_cross(idx)
             nz.to_files(path)
 
-    def compute_nz_true(self, idx: int) -> None:
+    def write_nz_true(self, idx: int) -> None:
         self.logger.info(f"computing true redshift distribution for bin {idx}")
         nz = self.unk_data.true_redshifts(self.config)
         nz_data = nz.get()
@@ -294,6 +317,7 @@ class Runner:
         do_w_pp = auto_unk_kwargs is not None
         do_zcc = zcc_kwargs is not None
         do_ztrue = ztrue_kwargs is not None
+        zcc_processed = False
 
         if do_zcc:
             sample_kwargs = dict(
@@ -314,10 +338,12 @@ class Runner:
             self.run_auto_ref(compute_rr=compute_rr)
         elif do_zcc:
             self.load_auto_ref()
-        if do_zcc:
+        if do_zcc and self.w_ss is not None:
             self.sample_corrfunc(
                 "w_ss", estimator=zcc_kwargs.get("est_auto"),
                 **sample_kwargs)
+            self.write_auto_ref()
+            zcc_processed = True
 
         if do_w_sp or do_w_pp or do_zcc or do_ztrue:
             for idx in self.project.get_bin_indices():
@@ -331,25 +357,31 @@ class Runner:
                     self.run_cross(idx, compute_rr=compute_rr)
                 elif do_zcc:
                     self.load_cross(idx)
-                if do_zcc:
+                if do_zcc and self.w_sp is not None:
                     self.sample_corrfunc(
                         "w_sp", estimator=zcc_kwargs.get("est_cross"),
                         **sample_kwargs)
+                    zcc_processed = True
 
                 if do_w_pp:
                     compute_rr = (not auto_unk_kwargs.get("no_rr", False))
                     self.run_auto_unk(idx, compute_rr=compute_rr)
                 elif do_zcc:
                     self.load_auto_unk(idx)
-                if do_zcc:
+                if do_zcc and self.w_pp is not None:
                     self.sample_corrfunc(
                         "w_pp", estimator=zcc_kwargs.get("est_auto"),
                         **sample_kwargs)
+                    self.write_auto_unk(idx)
+                    zcc_processed = True
 
-                if do_zcc:
-                    self.compute_nz_cc(idx)
+                if do_zcc and self.w_sp is not None:
+                    self.write_nz_cc(idx)
                 if do_ztrue:
-                    self.compute_nz_true(idx)
+                    self.write_nz_true(idx)
+
+        if do_zcc and not zcc_processed:
+            self.logger.warn("task 'zcc': there were no pair counts to process")
 
         if drop_cache:
             self.drop_cache()

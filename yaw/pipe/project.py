@@ -338,8 +338,10 @@ class ProjectDirectory(DictRepresentation):
         self._cachepath = data.get("cachepath")
         self._cache = CacheDirectory(self.cache_dir)
         self._cache.mkdir(exist_ok=True, parents=True)
-        self._inputs = InputRegister.from_dict(
-            data.get("catalogs", dict()))
+        catalogs = data.get("catalogs", dict())
+        if catalogs is None:
+            catalogs = dict()
+        self._inputs = InputRegister.from_dict(catalogs)
         try:
             self._tasks = TaskList.from_list(setup["tasks"])
         except KeyError:

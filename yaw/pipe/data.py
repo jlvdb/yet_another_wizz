@@ -298,5 +298,6 @@ class InputRegister(DictRepresentation):
 
     def get_bin_indices(self) -> set[int]:
         for inputs in self._unknown.values():
-            return inputs.get_bin_indices()
+            if inputs is not None:
+                return inputs.get_bin_indices()
         return set()
