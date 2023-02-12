@@ -136,8 +136,7 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
-        self.logger.info(
-            f"measuring unknown autocorrelation function for bin {idx}")
+        self.logger.info(f"measuring unknown autocorrelation function")
         if self.unk_rand is None:
             raise MissingCatalogError(
                 "unknown autocorrelation requires unknown randoms")
@@ -157,7 +156,7 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
-        self.logger.info(f"measuring crosscorrelation function for bin {idx}")
+        self.logger.info(f"measuring crosscorrelation function")
         if compute_rr:
             if self.ref_rand is None:
                 raise MissingCatalogError(
@@ -201,9 +200,7 @@ class Runner:
             self.logger.info("skipped missing pair counts")
 
     def load_auto_unk(self, idx: int) -> None:
-        self.logger.info(
-            f"loading pair counts for unknown autocorrelation "
-            f"function bin {idx}")
+        self.logger.info(f"loading pair counts for unknown autocorrelation function")
         cfs = {}
         try:
             for scale in self.project.list_counts_scales():
@@ -216,8 +213,7 @@ class Runner:
             self.logger.info("skipped missing pair counts")
 
     def load_cross(self, idx: int) -> None:
-        self.logger.info(
-            f"loading pair counts for crosscorrelation function bin {idx}")
+        self.logger.info(f"loading pair counts for crosscorrelation function")
         cfs = {}
         try:
             for scale in self.project.list_counts_scales():
@@ -258,7 +254,8 @@ class Runner:
 
     def write_auto_ref(self) -> None:
         for scale, cf in self.w_ss_data.items():
-            self.logger.debug("writing reference autocorrelation data files")
+            self.logger.debug(
+                f"writing reference autocorrelation data files for scale '{scale}'")
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_auto_reference()
             cf.to_files(path)
@@ -266,13 +263,13 @@ class Runner:
     def write_auto_unk(self, idx: int) -> None:
         for scale, cf in self.w_pp_data.items():
             self.logger.debug(
-                f"writing unknown autocorrelation data files for bin {idx}")
+                f"writing unknown autocorrelation data files for scale '{scale}'")
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_auto(idx)
             cf.to_files(path)
 
     def write_nz_cc(self, idx: int) -> None:
-        self.logger.info(f"estimating clustering redshifts for bin {idx}")
+        self.logger.info(f"estimating clustering redshifts")
         cross_data = self.w_sp_data
         if self.w_ss_data is None:
             ref_data = {scale: None for scale in cross_data}
@@ -292,7 +289,7 @@ class Runner:
             nz.to_files(path)
 
     def write_nz_true(self, idx: int) -> None:
-        self.logger.info(f"computing true redshift distribution for bin {idx}")
+        self.logger.info(f"computing true redshift distribution")
         nz = self.unk_data.true_redshifts(self.config)
         nz_data = nz.get()
         path = self.project.get_true(idx, create=True)
