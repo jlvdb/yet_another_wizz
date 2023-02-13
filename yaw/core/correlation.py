@@ -464,7 +464,7 @@ class CorrelationData(BinnedQuantity):
             raise ValueError(f"invalid sampling method key '{method_key}'")
         samples.columns = pd.RangeIndex(0, int(n_samples)+1)  # original values
         return cls(
-            data=Series(data_error["nz"], index=index),
+            data=pd.Series(data_error["nz"].to_numpy(), index=index),
             samples=samples, method=method)
 
     @property
