@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 import h5py
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
 
 from yaw.core import default as DEFAULT
 from yaw.core.catalog import PatchLinkage
@@ -531,6 +530,8 @@ class CorrelationData(BinnedQuantity):
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
     ) -> Axis:
+        from matplotlib import pyplot as plt
+
         x = self.mids + xoffset
         y = self.data.to_numpy()
         yerr = self.error.to_numpy()
