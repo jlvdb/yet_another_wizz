@@ -529,12 +529,16 @@ class CorrelationData(BinnedQuantity):
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
+        scale_by_dz: bool = False
     ) -> Axis:
         from matplotlib import pyplot as plt
 
         x = self.mids + xoffset
         y = self.data.to_numpy()
         yerr = self.error.to_numpy()
+        if scale_by_dz:
+            y *= self.dz
+            yerr *= self.dz
         # configure plot
         if ax is None:
             ax = plt.gca()
