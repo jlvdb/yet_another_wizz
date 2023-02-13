@@ -154,7 +154,8 @@ def _parse_catalog_dict(
             input = _load_binned_optional(cat_dict)
         # enrich the excpetions to point to the problematic field in input
         except InputCatalogError as e:
-            e.args[0] += f" in section '{section}:{kind}'"
+            args = (e.args[0] + f" in section '{section}:{kind}'", *e.args[1:])
+            e.args = args
             raise
         except TypeError as e:
             raise InputCatalogError(
