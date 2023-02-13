@@ -4,7 +4,7 @@ import numpy as np
 import numpy.testing as npt
 import pandas as pd
 import pandas.testing as pdt
-from pytest import fixture, raises
+from pytest import fixture, mark, raises
 
 from yaw.scipy import patches
 
@@ -185,8 +185,16 @@ class TestPatchCatalog:
         tree = mock_patch.get_tree(leafsize=10)
         npt.assert_equal(tree.weights, mock_patch.weights)
 
+    @mark.skip
+    def test_center_radius(self):
+        raise NotImplementedError
 
-"""
-center
-radius
-"""
+
+@mark.skip
+def test_create_patches():
+    pass
+
+
+@mark.skip
+def test_assign_patches():
+    pass
