@@ -22,6 +22,10 @@ class NotAPatchFileError(Exception):
     pass
 
 
+class CachingError(Exception):
+    pass
+
+
 def patch_id_from_path(fpath: str) -> int:
     ext = ".feather"
     if not fpath.endswith(ext):
@@ -60,14 +64,15 @@ class PatchCatalog:
             raise KeyError(
                 "'data' contains unidentified columns, optional columns are "
                 "restricted to 'redshift' and 'weights'")
+        # next line is crucial, otherwise lines below modify data inplace
+        self._data = data.copy()
+        if degrees:
+            self._data["ra"] = np.deg2rad(data["ra"])
+            self._data["dec"] = np.deg2rad(data["dec"])
         # if there is a file path, store the file
         if cachefile is not None:
             self.cachefile = cachefile
-            data.to_feather(cachefile)
-        self._data = data
-        if degrees:
-            self._data["ra"] = np.deg2rad(self._data["ra"])
-            self._data["dec"] = np.deg2rad(self._data["dec"])
+            self._data.to_feather(cachefile)
         self._init(center, radius)
 
     def _init(
@@ -149,16 +154,18 @@ class PatchCatalog:
 
     def require_loaded(self) -> None:
         if not self.is_loaded():
-            raise AttributeError("data is not loaded")
+            raise CachingError("data is not loaded")
 
     def load(self, use_threads: bool = True) -> None:
         if not self.is_loaded():
             if self.cachefile is None:
-                raise ValueError("no datapath provided to load the data")
+                raise CachingError("no datapath provided to load the data")
             self._data = pd.read_feather(
                 self.cachefile, use_threads=use_threads)
 
     def unload(self) -> None:
+        if self.cachefile is None:
+            raise CachingError("no datapath provided to unload the data")
         self._data = None
         gc.collect()
 
