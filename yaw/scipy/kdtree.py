@@ -11,14 +11,18 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+class InvalidScalesError(Exception):
+    pass
+
+
 class SphericalKDTree:
 
     _total = None
 
     def __init__(
         self,
-        RA: NDArray[np.float_],
-        DEC: NDArray[np.float_],
+        RA: NDArray[np.float_],  # radian
+        DEC: NDArray[np.float_],  # radian
         weights: NDArray[np.float_] | None = None,
         leafsize: int = 16
     ) -> None:
@@ -45,14 +49,19 @@ class SphericalKDTree:
     def count(
         self,
         other: SphericalKDTree,
-        scales: NDArray[np.float_],
+        scales: NDArray[np.float_],  # radian
         dist_weight_scale: float | None = None,
         weight_res: int = 50
     ) -> NDArray:
         # unpack query scales
         scales = np.atleast_2d(scales)
         if scales.shape[1] != 2:
-            raise ValueError("'scales' must be composed of tuples of length 2")
+            raise InvalidScalesError(
+                "'scales' must be composed of tuples of length 2")
+        if np.any(scales <= 0.0):
+            raise InvalidScalesError("scales must be positive (r > 0)")
+        if np.any(scales > np.pi):
+            raise InvalidScalesError("scales exceed 180 deg")
         log_scales = np.log10(scales).flatten()
         # construct bins
         rlog_edges = np.linspace(log_scales.min(), log_scales.max(), weight_res)
@@ -67,8 +76,8 @@ class SphericalKDTree:
             counts = np.zeros_like(r_edges)
         counts = counts[1:]  # discard counts with 0 < R <= r_min
         # apply the distance weights
-        rlog_centers = (rlog_edges[:-1] + rlog_edges[1:]) / 2.0
         if dist_weight_scale is not None:
+            rlog_centers = (rlog_edges[:-1] + rlog_edges[1:]) / 2.0
             counts *= distance_sky2sphere(10**rlog_centers) ** dist_weight_scale
         # compute counts for original bins
         result = np.empty(len(scales))
