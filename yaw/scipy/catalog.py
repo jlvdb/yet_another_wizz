@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from yaw.core.catalog import CatalogBase
+from yaw.core.catalog import CatalogBase, PatchLinkage
 from yaw.core.config import Configuration
 from yaw.core.coordinates import position_sphere2sky
 from yaw.core.cosmology import r_kpc_to_angle
@@ -27,7 +27,6 @@ from yaw.logger import TimedLog
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame
-    from yaw.core.catalog import PatchLinkage
     from yaw.core.cosmology import TypeCosmology
 
 
@@ -355,7 +354,7 @@ class Catalog(CatalogBase):
         # z_bins: NDArray[np.float_]
         pool.add_constant(config.binning.zbins)
         # bin1: bool
-        pool.add_constant(True)
+        pool.add_constant(self.has_redshifts())
         # bin2: bool
         pool.add_constant(binned if other is not None else True)
         # dist_weight_scale: float | None

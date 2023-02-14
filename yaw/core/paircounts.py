@@ -61,7 +61,7 @@ class ArrayDict(Mapping):
         # values are returned in index order
         return [value for value in self._array]
 
-    def get(self, key: Any, default: Any) -> Any:
+    def get(self, key: Any, default: Any = None) -> Any:
         try:
             idx = self._dict[key]
         except KeyError:
