@@ -6,6 +6,7 @@ import sys
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
+import pandas as pd
 from astropy.cosmology import available as cosmology_avaliable
 
 from yaw.core import default as DEFAULT
@@ -288,13 +289,34 @@ class Runner:
             path = est_dir.get_cross(idx)
             nz.to_files(path)
 
+    def write_nz_ref(self) -> None:
+        path = self.project.get_true_reference(create=True)
+        # this data should always be produced unless it already exists
+        if not path.with_suffix(".dat").exists():
+            self.logger.info(
+                f"computing reference sample redshift distribution")
+            nz = self.ref_data.true_redshifts(self.config)
+            nz_data = nz.get()
+            self.logger.debug("writing redshift data files")
+            nz_data.to_files(path)
+
     def write_nz_true(self, idx: int) -> None:
         self.logger.info(f"computing true redshift distribution")
         nz = self.unk_data.true_redshifts(self.config)
         nz_data = nz.get()
-        path = self.project.get_true(idx, create=True)
+        path = self.project.get_true_unknown(idx, create=True)
         self.logger.debug("writing redshift data files")
         nz_data.to_files(path)
+
+    def write_total_unk(self, idx: int) -> None:
+        path = self.project.get_total_unknown()
+        if path.exists():
+            total = pd.read_csv(str(path), index_col=0)
+        else:
+            total = pd.DataFrame(
+                columns=["count", "sum_weight"], index=pd.Index([], name="bin"))
+        total.loc[idx] = (len(self.unk_data), self.unk_data.total)
+        total.to_csv(str(path))
 
     def drop_cache(self):
         self.logger.info("dropping cached data")
@@ -329,6 +351,7 @@ class Runner:
 
         if do_w_sp or do_w_ss:
             self.load_reference()
+            self.write_nz_ref()
 
         if do_w_ss:
             compute_rr = (not auto_ref_kwargs.get("no_rr", False))
@@ -348,6 +371,7 @@ class Runner:
                 if do_w_sp or do_w_pp or do_ztrue:
                     skip_rand = do_ztrue and not (do_w_sp or do_w_pp)
                     self.load_unknown(idx, skip_rand=skip_rand)
+                    self.write_total_unk(idx)
 
                 if do_w_sp:
                     compute_rr = (not cross_kwargs.get("no_rr", True))

@@ -310,6 +310,7 @@ class ProjectDirectory(DictRepresentation):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+        # TODO: this is sometimes executed even if an exception was raised
         if exc_type is None:
             self.setup_write()
 
@@ -521,7 +522,15 @@ class ProjectDirectory(DictRepresentation):
     def true_dir(self) -> Path:
         return self.path.joinpath("true")
 
-    def get_true(
+    def get_true_reference(
+        self,
+        create: bool = False
+    ) -> Path:
+        if create:
+            self.true_dir.mkdir(exist_ok=True)
+        return self.true_dir.joinpath(f"nz_reference")
+
+    def get_true_unknown(
         self,
         bin_idx: int,
         create: bool = False
@@ -529,6 +538,9 @@ class ProjectDirectory(DictRepresentation):
         if create:
             self.true_dir.mkdir(exist_ok=True)
         return self.true_dir.joinpath(f"nztrue_{bin_idx}")
+
+    def get_total_unknown(self) -> Path:
+        return self.true_dir.joinpath("bin_counts.dat")
 
     def add_task(self, task: TaskRecord) -> None:
         self._tasks.add(task)
