@@ -441,28 +441,37 @@ class CorrelationData(BinnedQuantity):
 
     @classmethod
     def from_files(cls, path_prefix: TypePathStr) -> CorrelationData:
-        csv_config = dict(skipinitialspace=True, comment="#")
         # load data and errors
         ext = "dat"
-        data_error = pd.read_csv(f"{path_prefix}.{ext}", **csv_config)
+        data_error = np.loadtxt(f"{path_prefix}.{ext}")
         # restore index
-        index = pd.IntervalIndex.from_arrays(
-            data_error["z_low"], data_error["z_high"])
+        index = pd.IntervalIndex.from_arrays(data_error[:, 0], data_error[:, 1])
+        data_error = pd.DataFrame(
+            {col: val for col, val in zip(["nz", "nz_err"], data_error.T[2:])},
+            index=index)
         # load samples
         ext = "smp"
-        samples = pd.read_csv(
-            f"{path_prefix}.{ext}", **csv_config,
-            usecols=lambda col: not col.startswith("z_"))
-        samples.set_index(index, drop=True, inplace=True)
+        samples = np.loadtxt(f"{path_prefix}.{ext}")
+        # load header
+        with open(f"{path_prefix}.{ext}") as f:
+            for line in f.readlines():
+                if "z_low" in line:
+                    line = line[2:].strip("\n")  # remove leading '# '
+                    header = [col for col in line.split(" ") if len(col) > 0]
+                    break
+            else:
+                raise ValueError("sample file header misformatted")
+        method_key, n_samples = header[-1].rsplit("_", 1)
+        n_samples = int(n_samples) + 1
         # reconstruct sampling method
-        method_key, n_samples = samples.columns[-1].rsplit("_", 1)
         if method_key == "boot":
             method = "bootstrap"
         elif method_key == "jack":
             method = "jackknife"
         else:
             raise ValueError(f"invalid sampling method key '{method_key}'")
-        samples.columns = pd.RangeIndex(0, int(n_samples)+1)  # original values
+        samples = pd.DataFrame.from_records(
+            samples[:, 2:], index=index, columns=pd.RangeIndex(0, n_samples))
         return cls(
             data=pd.Series(data_error["nz"].to_numpy(), index=index),
             samples=samples, method=method)
@@ -481,11 +490,12 @@ class CorrelationData(BinnedQuantity):
 
     def to_files(self, path_prefix: TypePathStr) -> None:
         PREC = 10
-        DELIM = ","
+        DELIM = " "
 
         def write_head(f, description, header):
             f.write(f"{description}\n")
-            f.write(",".join(f"{h:>{PREC}s}" for h in header) + "\n")
+            line = DELIM.join(f"{h:>{PREC}s}" for h in header)
+            f.write(f"# {line[2:]}\n")
 
         def fmt_num(value, prec=PREC):
             return f"{value: .{prec}f}"[:prec]
