@@ -1,133 +1,212 @@
 from __future__ import annotations
 
-import itertools
-from collections.abc import Collection, Generator, Iterable, Iterator, Mapping
+import logging
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
 import pandas as pd
 
 from yaw.core import default as DEFAULT
-from yaw.core.utils import (
-    BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
+from yaw.core.utils import BinnedQuantity, HDFSerializable, PatchedQuantity
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
+    import numba
+    from numpy.typing import NDArray, DTypeLike
     from pandas import DataFrame, Interval, IntervalIndex
     from treecorr import NNCorrelation
     from yaw.core.utils import TypePatchKey
+
+logger = logging.getLogger(__name__.replace(".core.", "."))
+try:
+    from numba import njit
+except Exception:
+    logger.warn("numba not available, resampling performance degraded")
+    from functools import wraps
+
+    def njit(func):  # TODO: probably need optional dummy decorator arguments
+        @wraps
+        def wrapped(*args, **kwargs):
+            return func(*args, **kwargs)
+        return wrapped
 
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 
-class ArrayDict(Mapping):
+class PatchDict(HDFSerializable):
 
-    def __init__(
-        self,
-        keys: Collection[Any],
-        array: NDArray
-    ) -> None:
-        if len(array) != len(keys):
-            raise ValueError("number of keys and array length do not match")
-        self._array = array
-        self._dict = {key: idx for idx, key in enumerate(keys)}
+    @staticmethod
+    def _check_key(key: TypePatchKey) -> None:
+        if not isinstance(key, tuple):
+            raise TypeError(f"keys must be of type {tuple}")
+        elif len(key) != 2:
+            raise ValueError(f"keys must be tuples of length 2, got {len(key)}")
 
-    def __len__(self) -> int:
-        return len(self._array)
 
-    def __getitem__(self, key: Any) -> NDArray:
-        idx = self._dict[key]
-        return self._array[idx]
+class CountsDict(PatchDict, dict):
+    
+    _default_item: NDArray = None
 
-    def __iter__(self) -> Iterator[NDArray]:
-        return self._dict.__iter__()
+    def __init__(self, *args, **kwargs ):
+        super().__init__(*args, **kwargs)
+        # need to do this
+        for key, item in self.items():
+            self._check_key(key)
+            self._check_item(item)
 
-    def __contains__(self, key: Any) -> bool:
-        return key in self._dict
+    def __init_subclass__(cls) -> None:
+        return super().__init_subclass__()
 
-    def items(self) -> list[tuple[Any, NDArray]]:
-        # ensure that the items are ordered by the index of each key
-        return sorted(self._dict.items(), key=lambda item: item[1])
+    def _check_item(self, item: NDArray) -> None:
+        if not isinstance(item, np.ndarray):
+            raise TypeError(f"values must be of type {np.ndarray}")
+        if self._default_item is None:
+            self._default_item = np.zeros_like(item)
+        elif item.shape != self._default_item.shape:
+            raise ValueError(
+                f"expected value array of shape {self._default_item.shape}, "
+                f"got {item.shape}")
+        elif item.dtype != self._default_item.dtype:
+            raise TypeError(
+                f"value arrays must be of type {self._default_item.dtype}, "
+                f"got {item.dtype}")
 
-    def keys(self) -> list[Any]:
-        # key are ordered by their corresponding index
-        return [key for key, _ in self.items()]
+    def __getitem__(self, key: TypePatchKey) -> NDArray:
+        return super().__getitem__(key)
 
-    def values(self) -> list[NDArray]:
-        # values are returned in index order
-        return [value for value in self._array]
+    def __setitem__(self, key: TypePatchKey, item: NDArray):
+        self._check_key(key)
+        self._check_item(item)
+        super().__setitem__(key, item)
+    
+    def get(self, item):
+        return super().get(item, self._default_item)
 
-    def get(self, key: Any, default: Any = None) -> Any:
+    def as_numba_dict(self) -> numba.typed.Dict | CountsDict:
         try:
-            idx = self._dict[key]
-        except KeyError:
-            return default
+            import numba
+        except Exception:
+            the_dict = self
         else:
-            return self._array[idx]
-
-    def sample(self, keys: Iterable[Any]) -> NDArray:
-        idx = [self._dict[key] for key in keys]
-        return self._array[idx]
+            the_dict = numba.typed.Dict()
+            for key, value in self.items():
+                the_dict[key] = value
+        return the_dict
 
     def as_array(self) -> NDArray:
-        return self._array
+        array = np.empty(
+            (len(self), *self._default_item.shape),
+            dtype=self._default_item.dtype)
+        for i, value in enumerate(self.values()):
+            array[i] = value
+        return array
 
     def as_dataframe(self) -> DataFrame:
-        return pd.DataFrame(self.as_array(), index=self.keys())
+        return pd.DataFrame(self.as_array(), index=list(self.keys()))
+
+    @classmethod
+    def from_hdf(cls, source: h5py.Group) -> CountsDict:
+        # we use tuple keys, pairs of ints
+        keys = [tuple(key) for key in source["keys"][:]]
+        data = source["data"][:]
+        result = cls()
+        for key, value in zip(key, data):
+            result[key] = value
+        return result
+
+    def to_hdf(self, dest: h5py.Group) -> None:
+        # we use tuple keys, pairs of ints
+        keys = np.array(list(self.keys()))
+        dest.create_dataset("keys", data=keys, **_compression)
+        dest.create_dataset("data", data=self.as_array(), **_compression)
 
 
-def arraydict_to_hdf(array: ArrayDict, dest: h5py.Group) -> None:
-    # we use tuple keys, pairs of ints
-    keys = np.array(array.keys())
-    dest.create_dataset("keys", data=keys, **_compression)
-    dest.create_dataset("data", data=array._array, **_compression)
+class TotalsDict(PatchDict, Mapping):
+
+    def __init__(self, totals1: NDArray, totals2: NDArray) -> None:
+        if totals1.shape != totals2.shape:
+            raise ValueError(
+                f"number of patches and bins do not match: "
+                f"{totals1.shape} != {totals2.shape}")
+        self.totals1 = totals1
+        self.totals2 = totals2
+
+    def __getitem__(self, key: TypePatchKey) -> int | float:
+        self._check_key(key)
+        k1, k2 = key
+        try:
+            return self.totals1[k1] * self.totals2[k2]
+        except IndexError as e:
+            raise KeyError(key) from e
 
 
-def arraydict_from_hdf(source: h5py.Group) -> ArrayDict:
-    # we use tuple keys, pairs of ints
-    keys = [tuple(key) for key in source["keys"][:]]
-    data = source["data"][:]
-    return ArrayDict(keys, data)
-
-
-def bootstrap_iter(
+@numba.njit
+def accumulate_counts_realisation(
     index: NDArray[np.int_],
-    mask: NDArray[np.bool_]
-) -> Generator[TypePatchKey, None, None]:
-    """from TreeCorr.BinnedCorr2"""
+    mask: NDArray[np.bool_],
+    thedict: numba.typed.Dict,
+    o_shape: tuple,
+    o_dtype: DTypeLike
+) -> NDArray:
+    """from TreeCorr.BinnedCorr2, works for jackknife and bootstrap"""
+    total = np.zeros(o_shape, dtype=o_dtype)
     # Include all represented auto-correlations once, repeating as appropriate.
     # This needs to be done separately from the below step to avoid extra
     # pairs (i,i) that you would get by looping i in index and j in index for
     # cases where i=j at different places in the index list.  E.g. if i=3 shows
     # up 3 times in index, then the naive way would get 9 instance of (3,3),
     # whereas we only want 3 instances.
-    ret1 = ((i, i) for i in index if mask[i, i])
+    for i in index:
+        key = (i, i)
+        if mask[i, i]:  # TODO: need mask?
+            if key in thedict:
+                total += thedict[key]
     # And all other pairs that aren't really auto-correlations.
     # These can happen at their natural multiplicity from i and j loops.
-    ret2 = ((i, j) for i in index for j in index if mask[i, j] and i != j)
-    # merge generators
-    return itertools.chain(ret1, ret2)
+    for i in index:
+        for j in index:
+            if i != j and mask[i, j]:  # TODO: need mask?
+                key = (i, j)
+                if key in thedict:
+                    total += thedict[key]
+    return total
 
 
-def jackknife_iter(
-    patch_key_list: Iterable[TypePatchKey],
-    drop_index: int,
-    mask: NDArray[np.bool_]
-) -> Generator[TypePatchKey, None, None]:
-    """from TreeCorr.BinnedCorr2"""
-    return ((j, k) for j, k in patch_key_list
-            if j != drop_index and k != drop_index and mask[j, k])
+@numba.njit
+def accumulate_totals_realisation(
+    index: NDArray[np.int_],
+    mask: NDArray[np.bool_],
+    totals1: NDArray,
+    totals2: NDArray
+) -> NDArray:
+    """from TreeCorr.BinnedCorr2, works for jackknife and bootstrap"""
+    total = np.zeros(totals1.shape[1], dtype=totals1.dtype)
+    # Include all represented auto-correlations once, repeating as appropriate.
+    # This needs to be done separately from the below step to avoid extra
+    # pairs (i,i) that you would get by looping i in index and j in index for
+    # cases where i=j at different places in the index list.  E.g. if i=3 shows
+    # up 3 times in index, then the naive way would get 9 instance of (3,3),
+    # whereas we only want 3 instances.
+    for i in index:
+        if mask[i, i]:  # TODO: need mask?
+            total += totals1[i] * totals2[i]
+    # And all other pairs that aren't really auto-correlations.
+    # These can happen at their natural multiplicity from i and j loops.
+    for i in index:
+        for j in index:
+            if i != j and mask[i, j]:  # TODO: need mask?
+                total += totals1[i] * totals2[j]
+    return total
 
 
 @dataclass(frozen=True)
 class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
-    count: ArrayDict
-    total: ArrayDict
+    count: CountsDict
+    total: CountsDict
     mask: NDArray[np.bool_]
     binning: IntervalIndex
     n_patches: int
@@ -150,6 +229,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     ) -> PairCountResult:
         # extract the (cross-patch) pair counts
         n_patches = max(correlation.npatch1, correlation.npatch2)
+        
         keys = []
         count = np.empty((len(correlation.results), 1))
         total = np.empty((len(correlation.results), 1))
