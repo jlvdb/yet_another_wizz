@@ -522,6 +522,7 @@ class Configuration(DictRepresentation):
 class ResamplingConfig(DictRepresentation):
 
     method: str = DEFAULT.Resampling.method
+    crosspatch: bool = DEFAULT.Resampling.crosspatch
     n_boot: int = DEFAULT.Resampling.n_boot
     global_norm: bool = DEFAULT.Resampling.global_norm
     seed: int = DEFAULT.Resampling.seed
@@ -572,3 +573,9 @@ class ResamplingConfig(DictRepresentation):
 
     def reset(self) -> None:
         object.__setattr__(self, "_boot_idx", None)
+
+    def to_dict(self) -> dict[str, Any]:
+        if self.method == "jackknife":
+            return dict(method=self.method, crosspatch=self.crosspatch)
+        else:
+            return super().to_dict()

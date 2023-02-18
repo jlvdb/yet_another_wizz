@@ -7,10 +7,9 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
-from astropy.cosmology import available as cosmology_avaliable
 
 from yaw.core import default as DEFAULT
-from yaw.core.config import Configuration
+from yaw.core.config import Configuration, ResamplingConfig
 from yaw.core.correlation import CorrelationEstimator
 from yaw.core.cosmology import get_default_cosmology
 
@@ -24,7 +23,6 @@ from yaw.pipe.task_utils import Tasks
 
 if TYPE_CHECKING:
     from yaw.core.correlation import CorrelationFunction, CorrelationData
-    from yaw.core.redshifts import RedshiftData
 
 
 BACKEND_OPTIONS = ("scipy", "treecorr")
@@ -230,11 +228,8 @@ class Runner:
         self,
         cfs_kind: str,
         *,
-        estimator: str | None,
-        method: str,
-        n_boot: int,
-        global_norm: bool,
-        seed: int
+        config: ResamplingConfig,
+        estimator: str | None
     ) -> dict[str, CorrelationData]:
         try:
             kind = {
@@ -248,9 +243,7 @@ class Runner:
         cfs = getattr(self, cfs_kind)
         data = {}
         for scale, cf in cfs.items():
-            data[scale] = cf.get(
-                estimator=estimator, method=method,
-                n_boot=n_boot, global_norm=global_norm, seed=seed)
+            data[scale] = cf.get(config, estimator=estimator)
         setattr(self, f"{cfs_kind}_data", data)
 
     def write_auto_ref(self) -> None:
@@ -289,21 +282,21 @@ class Runner:
             path = est_dir.get_cross(idx)
             nz.to_files(path)
 
-    def write_nz_ref(self) -> None:
+    def write_nz_ref(self, config: ResamplingConfig) -> None:
         path = self.project.get_true_reference(create=True)
         # this data should always be produced unless it already exists
         if not path.with_suffix(".dat").exists():
             self.logger.info(
                 f"computing reference sample redshift distribution")
             nz = self.ref_data.true_redshifts(self.config)
-            nz_data = nz.get()
+            nz_data = nz.get(config)
             self.logger.debug("writing redshift data files")
             nz_data.to_files(path)
 
-    def write_nz_true(self, idx: int) -> None:
+    def write_nz_true(self, idx: int, config: ResamplingConfig) -> None:
         self.logger.info(f"computing true redshift distribution")
         nz = self.unk_data.true_redshifts(self.config)
-        nz_data = nz.get()
+        nz_data = nz.get(config)
         path = self.project.get_true_unknown(idx, create=True)
         self.logger.debug("writing redshift data files")
         nz_data.to_files(path)
@@ -338,17 +331,6 @@ class Runner:
         do_ztrue = ztrue_kwargs is not None
         zcc_processed = False
 
-        if do_zcc:
-            sample_kwargs = dict(
-                global_norm=zcc_kwargs.get(
-                    "global_norm", DEFAULT.Resampling.global_norm),
-                method=zcc_kwargs.get(
-                    "method", DEFAULT.Resampling.method),
-                n_boot=zcc_kwargs.get(
-                    "n_boot", DEFAULT.Resampling.n_boot),
-                seed=zcc_kwargs.get(
-                    "seed", DEFAULT.Resampling.seed))
-
         if do_w_sp or do_w_ss:
             self.load_reference()
             self.write_nz_ref()
@@ -360,9 +342,9 @@ class Runner:
             self.load_auto_ref()
         if do_zcc and self.w_ss is not None:
             self.sample_corrfunc(
-                "w_ss", estimator=zcc_kwargs.get("est_auto"),
-                **sample_kwargs)
-            self.write_auto_ref()
+                "w_ss", config=zcc_kwargs["config"],
+                estimator=zcc_kwargs.get("est_auto"))
+            self.write_auto_ref(zcc_kwargs["config"])
             zcc_processed = True
 
         if do_w_sp or do_w_pp or do_zcc or do_ztrue:
@@ -380,8 +362,8 @@ class Runner:
                     self.load_cross(idx)
                 if do_zcc and self.w_sp is not None:
                     self.sample_corrfunc(
-                        "w_sp", estimator=zcc_kwargs.get("est_cross"),
-                        **sample_kwargs)
+                        "w_sp", config=zcc_kwargs["config"],
+                        estimator=zcc_kwargs.get("est_cross"))
                     zcc_processed = True
 
                 if do_w_pp:
@@ -391,15 +373,15 @@ class Runner:
                     self.load_auto_unk(idx)
                 if do_zcc and self.w_pp is not None:
                     self.sample_corrfunc(
-                        "w_pp", estimator=zcc_kwargs.get("est_auto"),
-                        **sample_kwargs)
+                        "w_pp", config=zcc_kwargs["config"],
+                        estimator=zcc_kwargs.get("est_auto"))
                     self.write_auto_unk(idx)
                     zcc_processed = True
 
                 if do_zcc and self.w_sp is not None:
                     self.write_nz_cc(idx)
                 if do_ztrue:
-                    self.write_nz_true(idx)
+                    self.write_nz_true(idx, zcc_kwargs["config"])
 
         if do_zcc and not zcc_processed:
             self.logger.warn("task 'zcc': there were no pair counts to process")
@@ -487,7 +469,7 @@ group_backend.add_argument(
     "--rbin-slop", type=float, metavar="<float>", default=DEFAULT.Backend.rbin_slop,
     help="treecorr 'rbin_slop' parameter (treecorr backend only, default: %(default)s), note that there is only a single radial bin if [--rweight] is not specified, otherwise [--rbin-num] bins")
 group_backend.add_argument(
-    "--no-crosspatch", action="store_true",  # check with DEFAULT.Backend.crosspath
+    "--no-crosspatch", action="store_true",  # check with DEFAULT.Backend.crosspatch
     help="disable counting pairs across patch boundaries (scipy backend only)")
 group_backend.add_argument(
     "--threads", type=int, metavar="<int>", default=DEFAULT.Backend.thread_num,
@@ -648,14 +630,17 @@ group_samp = parser_zcc.add_argument_group(
     title="resampling",
     description="configure the resampling used for covariance estimates")
 group_samp.add_argument(
-    "--global-norm", action="store_true",  # check with DEFAULT.Resampling.global_norm
-    help="normalise pair counts globally instead of patch-wise")
-group_samp.add_argument(
     "--method", choices=METHOD_OPTIONS, default=DEFAULT.Resampling.method,
     help="resampling method for covariance estimates (default: %(default)s)")
 group_samp.add_argument(
+    "--no-crosspatch", action="store_true",  # check with DEFAULT.Resampling.crosspatch
+    help="whether to include cross-patch pair counts when resampling")
+group_samp.add_argument(
     "--n-boot", type=int, metavar="<int>", default=DEFAULT.Resampling.n_boot,
     help="number of bootstrap samples (default: %(default)s)")
+group_samp.add_argument(
+    "--global-norm", action="store_true",  # check with DEFAULT.Resampling.global_norm
+    help="normalise pair counts globally instead of patch-wise")
 group_samp.add_argument(
     "--seed", type=int, metavar="<int>", default=DEFAULT.Resampling.seed,
     help="random seed for bootstrap sample generation (default: %(default)s)")
@@ -665,11 +650,14 @@ group_samp.add_argument(
 @Tasks.register(60)
 @logged
 def zcc(args, project: ProjectDirectory) -> dict:
+    config = ResamplingConfig(
+        method=args.method, crosspatch=(not args.no_crosspatch),
+        n_boot=args.n_boot, global_norm=args.global_norm, seed=args.seed)
     setup_args = dict(
-        est_cross=args.est_cross, est_auto=args.est_auto, method=args.method,
-        global_norm=args.global_norm, n_boot=args.n_boot, seed=args.seed)
+        est_cross=args.est_cross, est_auto=args.est_auto, config=config)
     runner = Runner(project, threads=args.threads)
     runner.main(zcc_kwargs=setup_args)
+    setup_args["config"] = config.to_dict()  # replace with dict representation
     return setup_args
 
 

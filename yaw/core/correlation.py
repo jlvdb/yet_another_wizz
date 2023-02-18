@@ -306,6 +306,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def get(
         self,
         config: ResamplingConfig,
+        *,
         estimator: str | None = None
     ) -> CorrelationData:
         est_fun = self._check_and_select_estimator(estimator)

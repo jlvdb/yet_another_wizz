@@ -81,8 +81,9 @@ tasks:
   - ztrue
   - drop_cache
   - zcc:
-        global_norm:            <bool>
         method:                 <str>
+        crosspatch:             <bool>
+        global_norm:            <bool>
         n_boot:                 <int>
         seed:                   <int>
 
@@ -182,9 +183,10 @@ tasks:
   - ztrue                   # compute true redshift distributions
   - drop_cache              # delete temporary data in cache directory, has no arguments
   - zcc:                    # estimate clustering redshifts
-        global_norm: false      # normalise the pair counts globally instead of patch-wise
         method: bootstrap       # resampling method used to estimate the data covariance
                                 # ({method_options:})
+        crosspatch: true        # whether to include cross-patch pair counts when resampling
+        global_norm: false      # normalise the pair counts globally instead of patch-wise
         n_boot: 500             # number of bootstrap samples to generate
         seed: 12345             # random seed used to generate the bootstrap samples
 """
