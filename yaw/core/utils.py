@@ -70,7 +70,9 @@ class PatchedQuantity(Protocol):
 @runtime_checkable
 class BinnedQuantity(Protocol):
 
-    binning: IntervalIndex
+    @property
+    def binning(self) -> IntervalIndex:
+        raise NotImplementedError
 
     def __len__(self) -> int:
         return len(self.binning)
@@ -105,9 +107,11 @@ THF = TypeVar("THF", bound="HDFSerializable")
 class HDFSerializable(Protocol):
 
     @classmethod
-    def from_hdf(cls: Type[THF], source: h5py.Group) -> THF: ...
+    def from_hdf(cls: Type[THF], source: h5py.Group) -> THF:
+        raise NotImplementedError
 
-    def to_hdf(self, dest: h5py.Group) -> None: ...
+    def to_hdf(self, dest: h5py.Group) -> None:
+        raise NotImplementedError
 
     @classmethod
     def from_file(cls: Type[THF], path: TypePathStr) -> THF:

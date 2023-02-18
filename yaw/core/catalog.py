@@ -19,8 +19,7 @@ if TYPE_CHECKING:
     from yaw.core.config import Configuration
     from yaw.core.paircounts import PairCountResult
     from yaw.core.redshifts import NzTrue
-    from yaw.core.utils import (
-        TypePatchKey, TypeScaleKey)
+    from yaw.core.utils import TypePatchKey, TypeScaleKey
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
