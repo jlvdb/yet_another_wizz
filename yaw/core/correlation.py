@@ -13,6 +13,7 @@ import pandas as pd
 
 from yaw.core import default as DEFAULT
 from yaw.core.catalog import PatchLinkage
+from yaw.core.config import ResamplingConfig
 from yaw.core.paircounts import PairCountResult
 from yaw.core.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
@@ -139,8 +140,8 @@ class PeeblesHauser(CorrelationEstimator):
         dd: PairCountData,
         rr: PairCountData
     ) -> DataFrame:
-        DD = dd.normalise()
-        RR = rr.normalise()
+        DD = dd.normalised()
+        RR = rr.normalised()
         return DD / RR - 1.0
 
 
@@ -155,8 +156,8 @@ class DavisPeebles(CorrelationEstimator):
         dd: PairCountData,
         dr_rd: PairCountData
     ) -> DataFrame:
-        DD = dd.normalise()
-        DR = dr_rd.normalise()
+        DD = dd.normalised()
+        DR = dr_rd.normalised()
         return DD / DR - 1.0
 
 
@@ -173,10 +174,10 @@ class Hamilton(CorrelationEstimator):
         rr: PairCountData,
         rd: PairCountData | None = None
     ) -> DataFrame:
-        DD = dd.normalise()
-        DR = dr.normalise()
-        RD = DR if rd is None else rd.normalise()
-        RR = rr.normalise()
+        DD = dd.normalised()
+        DR = dr.normalised()
+        RD = DR if rd is None else rd.normalised()
+        RR = rr.normalised()
         return (DD * RR) / (DR * RD) - 1.0
 
 
@@ -193,10 +194,10 @@ class LandySzalay(CorrelationEstimator):
         rr: PairCountData,
         rd: PairCountData | None = None
     ) -> DataFrame:
-        DD = dd.normalise()
-        DR = dr.normalise()
-        RD = DR if rd is None else rd.normalise()
-        RR = rr.normalise()
+        DD = dd.normalised()
+        DR = dr.normalised()
+        RD = DR if rd is None else rd.normalised()
+        RR = rr.normalised()
         return (DD - (DR + RD) + RR) / RR
 
 
@@ -302,62 +303,36 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         else:
             return getattr(self, str(cts))
 
-    def _generate_bootstrap_patch_indices(
-        self,
-        n_boot: int,
-        seed: int = DEFAULT.Resampling.seed
-    ) -> NDArray[np.int_]:
-        return self.dd._generate_bootstrap_patch_indices(n_boot, seed=seed)
-
     def get(
         self,
-        *,
-        estimator: str | None = None,
-        method: str = DEFAULT.Resampling.method,
-        n_boot: int = DEFAULT.Resampling.n_boot,
-        patch_idx: NDArray[np.int_] | None = None,
-        global_norm: bool = DEFAULT.Resampling.global_norm,
-        seed: int = DEFAULT.Resampling.seed
+        config: ResamplingConfig,
+        estimator: str | None = None
     ) -> CorrelationData:
-        valid_methods = ("bootstrap", "jackknife")
-        if method not in valid_methods:
-            opts = ", ".join(f"'{s}'" for s in valid_methods)
-            raise ValueError(f"'method' must be either of {opts}")
-        estimator_func = self._check_and_select_estimator(estimator)
+        est_fun = self._check_and_select_estimator(estimator)
 
-        logger.debug(
-            f"computing correlation with {estimator_func.short} estimator")
-        requires = {
+        logger.debug(f"computing correlation with {est_fun.short} estimator")
+        required = {
             str(cts): self._getattr_from_cts(cts).get()
-            for cts in estimator_func.requires}
+            for cts in est_fun.requires}
         optional = {
             str(cts): self._getattr_from_cts(cts).get()
-            for cts in estimator_func.optional
+            for cts in est_fun.optional
             if self._getattr_from_cts(cts) is not None}
-        data = estimator_func(**requires, **optional)[0]
+        data = est_fun(**required, **optional)[0]
 
         logger.debug(
-            f"computing {method} samples with "
-            f"{estimator_func.short} estimator")
-        if patch_idx is None and method == "bootstrap":
-            patch_idx = self.dd._generate_bootstrap_patch_indices(
-                n_boot, seed=seed)
-        sample_kwargs = dict(
-            method=method,
-            global_norm=global_norm,
-            patch_idx=patch_idx)
-        # generate samples
-        requires = {
-            str(cts): self._getattr_from_cts(cts).get_samples(**sample_kwargs)
-            for cts in estimator_func.requires}
+            f"computing {config.method} samples with {est_fun.short} estimator")
+        required = {
+            str(cts): self._getattr_from_cts(cts).get_samples(config)
+            for cts in est_fun.requires}
         optional = {
-            str(cts): self._getattr_from_cts(cts).get_samples(**sample_kwargs)
-            for cts in estimator_func.optional
+            str(cts): self._getattr_from_cts(cts).get_samples(config)
+            for cts in est_fun.optional
             if self._getattr_from_cts(cts) is not None}
-        samples = estimator_func(**requires, **optional)
+        samples = est_fun(**required, **optional)
 
         return CorrelationData(
-            data=data, samples=samples, method=method)
+            data=data, samples=samples, method=config.method)
 
     @classmethod
     def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrelationFunction:
@@ -505,8 +480,8 @@ class CorrelationData(BinnedQuantity):
         header = ["z_low", "z_high", "nz", "nz_err"]
         with open(f"{path_prefix}.{ext}", "w") as f:
             write_head(f, self._dat_desc, header)
-            for z, nz, nz_err in zip(self.binning, self.data, self.error):
-                values = [fmt_num(val) for val in (z.left, z.right, nz, nz_err)]
+            for z_edges, nz, nz_err in zip(self.edges, self.data, self.error):
+                values = [fmt_num(val) for val in (*z_edges, nz, nz_err)]
                 f.write(DELIM.join(values) + "\n")
 
         # write samples
@@ -570,6 +545,9 @@ class CorrelationData(BinnedQuantity):
             color = ax.plot(x, y, **plot_kwargs)[0].get_color()
             ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
         return ax
+
+    def plot_corr(self) -> Axis:
+        raise NotImplementedError
 
 
 def _create_dummy_counts(

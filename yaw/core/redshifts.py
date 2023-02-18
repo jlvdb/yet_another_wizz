@@ -10,6 +10,7 @@ import pandas as pd
 import scipy.optimize
 
 from yaw.core import default as DEFAULT
+from yaw.core.config import ResamplingConfig
 from yaw.core.correlation import CorrelationData
 from yaw.core.utils import BinnedQuantity, PatchedQuantity
 
@@ -17,7 +18,7 @@ from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-    from pandas import DataFrame, IntervalIndex
+    from pandas import IntervalIndex
     from yaw.core.correlation import CorrelationFunction
 
 
@@ -39,44 +40,18 @@ class NzTrue(PatchedQuantity, BinnedQuantity):
     def n_patches(self):
         return len(self.counts)
 
-    def _generate_bootstrap_patch_indices(
-        self,
-        n_boot: int,
-        seed: int = DEFAULT.Resampling.global_norm
-    ) -> NDArray[np.int_]:
-        N = len(self.counts)
-        rng = np.random.default_rng(seed=seed)
-        return rng.integers(0, N, size=(n_boot, N))
-
-    def _generate_jackknife_patch_indices(self) -> NDArray[np.int_]:
-        N = len(self.counts)
-        idx = np.delete(np.tile(np.arange(0, N), N), np.s_[::N+1])
-        return idx.reshape((N, N-1))
-
-    def get(
-        self,
-        *,
-        method: str = DEFAULT.Resampling.method,
-        n_boot: int = DEFAULT.Resampling.n_boot,
-        seed: int = DEFAULT.Resampling.global_norm,
-        **kwargs
-    ) -> RedshiftData:
+    def get(self, config: ResamplingConfig) -> RedshiftData:
         with TimedLog(
             logger.debug,
-            f"computing redshift distributions with method '{method}'"
+            f"computing redshift distributions with method '{config.method}'"
         ):
-            if method == "bootstrap":
-                patch_idx = self._generate_bootstrap_patch_indices(
-                    n_boot, seed=seed)
-            elif method == "jackknife":
-                patch_idx = self._generate_jackknife_patch_indices()
-
+            patch_idx = config.get_samples(self.n_patches)
             nz_data = pd.Series(self.counts.sum(axis=0), index=self.binning)
             nz_samp = pd.DataFrame(
                 index=self.binning,
                 columns=np.arange(len(patch_idx)),
                 data=np.sum(self.counts[patch_idx], axis=1).T)
-        return RedshiftData(data=nz_data, samples=nz_samp, method=method)
+        return RedshiftData(data=nz_data, samples=nz_samp, method=config.method)
 
 
 class RedshiftData(CorrelationData):

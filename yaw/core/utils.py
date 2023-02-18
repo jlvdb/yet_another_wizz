@@ -88,8 +88,12 @@ class BinnedQuantity(Protocol):
         return np.array([z.mid for z in self.binning])
 
     @property
+    def edges(self) -> NDArray[np.float_]:
+        return np.column_stack([self.binning.left, self.binning.right])
+
+    @property
     def dz(self) -> NDArray[np.float_]:
-        return np.array([z.right - z.left for z in self.binning])
+        return np.diff(self.edges)
 
     def is_compatible(self, other) -> bool:
         if not isinstance(other, self.__class__):

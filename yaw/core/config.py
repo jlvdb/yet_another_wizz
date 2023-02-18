@@ -14,7 +14,7 @@ from yaw import __version__
 
 from yaw.core import default as DEFAULT
 from yaw.core.cosmology import (
-    TypeCosmology, get_default_cosmology, r_kpc_to_angle)
+    BinFactory, TypeCosmology, get_default_cosmology, r_kpc_to_angle)
 from yaw.core.utils import DictRepresentation, scales_to_keys
 
 if TYPE_CHECKING:
@@ -172,54 +172,6 @@ def _is_manual_binning(
             logger.warn(
                 "'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
         return True
-
-
-class BinFactory:
-
-    def __init__(
-        self,
-        zmin: float,
-        zmax: float,
-        nbins: int,
-        cosmology: TypeCosmology | None = None
-    ):
-        if zmin >= zmax:
-            raise ValueError("'zmin' >= 'zmax'")
-        if cosmology is None:
-            cosmology = get_default_cosmology()
-        self.cosmology = cosmology
-        self.zmin = zmin
-        self.zmax = zmax
-        self.nbins = nbins
-
-    def linear(self) -> NDArray[np.float_]:
-        return np.linspace(self.zmin, self.zmax, self.nbins + 1)
-
-    def comoving(self) -> NDArray[np.float_]:
-        cbinning = np.linspace(
-            self.cosmology.comoving_distance(self.zmin).value,
-            self.cosmology.comoving_distance(self.zmax).value,
-            self.nbins + 1)
-        # construct a spline mapping from comoving distance to redshift
-        zarray = np.linspace(0, 10.0, 5000)
-        carray = self.cosmology.comoving_distance(zarray).value
-        return np.interp(cbinning, xp=carray, fp=zarray)  # redshift @ cbinning
-
-    def logspace(self) -> NDArray[np.float_]:
-        logbinning = np.linspace(
-            np.log(1.0 + self.zmin), np.log(1.0 + self.zmax), self.nbins + 1)
-        return np.exp(logbinning) - 1.0
-
-    @staticmethod
-    def check(zbins: NDArray[np.float_]) -> None:
-        if np.any(np.diff(zbins) <= 0):
-            raise ValueError("redshift bins must be monotonicaly increasing")
-
-    def get(self, method: str) -> NDArray[np.float_]:
-        try:
-            return getattr(self, method)()
-        except AttributeError as e:
-            raise ValueError(f"invalid binning method '{method}'") from e
 
 
 class BaseBinningConfig(DictRepresentation):
@@ -564,3 +516,59 @@ class Configuration(DictRepresentation):
         string = yaml.dump(self.to_dict())
         with open(path, "w") as f:
             f.write(string)
+
+
+@dataclass(frozen=True)
+class ResamplingConfig(DictRepresentation):
+
+    method: str = DEFAULT.Resampling.method
+    n_boot: int = DEFAULT.Resampling.n_boot
+    global_norm: bool = DEFAULT.Resampling.global_norm
+    seed: int = DEFAULT.Resampling.seed
+    _resampling_idx = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.method not in self.implemented_methods:
+            opts = ", ".join(f"'{s}'" for s in self.implemented_methods)
+            raise ConfigurationError(
+                f"invalid resampling method '{self.method}', "
+                f"must either of {opts}")
+
+    @classmethod
+    @property
+    def implemented_methods(cls) -> tuple[str]:
+        return ("jackknife", "bootstrap")
+
+    @property
+    def n_patches(self) -> int | None:
+        if self._boot_idx is None:
+            return None
+        else:
+            return self._boot_idx.shape[1]
+
+    def _generate_bootstrap(self) -> NDArray[np.int_]:
+        N = self.n_patches
+        rng = np.random.default_rng(seed=self.seed)
+        return rng.integers(0, N, size=(self.n_boot, N))
+
+    def _generate_jackknife(self) -> NDArray[np.int_]:
+        N = self.n_patches
+        idx = np.delete(np.tile(np.arange(0, N), N), np.s_[::N+1])
+        return idx.reshape((N, N-1))
+
+    def get_samples(self, n_patches: int) -> NDArray[np.int_]:
+        # generate samples once, afterwards check that n_patches matches
+        if self._resampling_idx is None:
+            if self.method == "jackknife":
+                idx = self._generate_jackknife()
+            else:
+                idx = self._generate_bootstrap()
+            object.__setattr__(self, "_resampling_idx", idx)
+        elif n_patches != self.n_patches:
+            raise ValueError(
+                f"'n_patches' does not match, expected {self.n_patches}, but "
+                f"got {n_patches}")
+        return self._resampling_idx
+
+    def reset(self) -> None:
+        object.__setattr__(self, "_boot_idx", None)
