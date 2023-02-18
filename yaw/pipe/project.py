@@ -309,7 +309,7 @@ class ProjectDirectory(DictRepresentation):
     def __enter__(self) -> ProjectDirectory:
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+    def __exit__(self, exc_type, exc_value, exc_traceback):
         # TODO: this is sometimes executed even if an exception was raised
         if exc_type is None:
             self.setup_write()

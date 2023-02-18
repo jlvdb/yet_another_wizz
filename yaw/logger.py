@@ -43,7 +43,7 @@ class TimedLog:
         self.t = default_timer()
         return self
 
-    def __exit__(self, *args, **kwargs) -> None:
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         delta = default_timer() - self.t
         time = str(timedelta(seconds=round(delta)))
         self.callback(f"{self.msg} - done {time}")

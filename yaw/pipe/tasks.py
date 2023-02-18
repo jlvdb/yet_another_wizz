@@ -46,6 +46,7 @@ def logged(func):
             return func(args, *posargs, **kwargs)
         except Exception:
             logger.exception("an unexpected error occured")
+            raise
     return wrapper
 
 
