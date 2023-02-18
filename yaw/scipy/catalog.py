@@ -342,7 +342,7 @@ class Catalog(CatalogBase):
         # prepare job scheduling
         pool = ParallelHelper(
             function=_count_pairs_thread,
-            n_items=n_jobs, num_threads=min(n_jobs, config.backend.thread_num))
+            n_items=n_jobs, num_threads=config.backend.get_threads(n_jobs))
         # patch1: PatchCatalog
         pool.add_iterable(patch1_list)
         # patch2: PatchCatalog
@@ -430,7 +430,7 @@ class Catalog(CatalogBase):
         pool = ParallelHelper(
             function=_histogram_thread,
             n_items=self.n_patches,
-            num_threads=min(self.n_patches, config.backend.thread_num))
+            num_threads=config.backend.get_threads(self.n_patches))
         # patch: PatchCatalog
         pool.add_iterable(list(self))
         # NDArray[np.float_]

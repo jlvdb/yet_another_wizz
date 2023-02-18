@@ -324,7 +324,7 @@ class AutoBinningConfig(BaseBinningConfig):
 class BackendConfig(DictRepresentation):
 
     # general
-    thread_num: int | None = DEFAULT.Backend.thread_num
+    thread_num: int | None = field(default=DEFAULT.Backend.thread_num)
     # scipy
     crosspatch: bool = field(default=DEFAULT.Backend.crosspatch)
     # treecorr
@@ -333,6 +333,17 @@ class BackendConfig(DictRepresentation):
     def __post_init__(self) -> None:
         if self.thread_num is None:
             object.__setattr__(self, "thread_num", os.cpu_count())
+
+    def get_threads(self, max=None) -> int:
+        if self.thread_num is None:
+            thread_num = os.cpu_count()
+        else:
+            thread_num = self.thread_num
+        if max is not None:
+            if max < 1:
+                raise ValueError("'max' must be positive")
+            thread_num = min(max, thread_num)
+        return thread_num
 
 
 @dataclass(frozen=True)

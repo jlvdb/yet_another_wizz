@@ -239,7 +239,7 @@ class Catalog(CatalogBase):
             nbins=(
                 1 if config.scales.rweight is None else config.scales.rbin_num),
             bin_slop=config.backend.rbin_slop,
-            num_threads=config.backend.thread_num)
+            num_threads=config.backend.get_threads())
 
         # bin the catalogues if necessary
         cats1 = self.bin_iter(config.binning.zbins)
@@ -253,7 +253,7 @@ class Catalog(CatalogBase):
 
         # iterate the bins and compute the correlation
         self.logger.debug(
-            f"running treecorr on {config.backend.thread_num} threads")
+            f"running treecorr on {config.backend.get_threads()} threads")
         result = {
             scale_key: [] for scale_key in config.scales.dict_keys()}
         for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
