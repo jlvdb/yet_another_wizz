@@ -958,6 +958,8 @@ def run(args):
         for task in project.list_tasks():
             if task.name == "drop_cache":
                 task_kwargs[task.name] = True
+            elif task.name == "plot":
+                task_kwargs[task.name] = True
             elif task.name == "zcc":
                 task.args["config"] = ResamplingConfig.from_dict(task.args)
                 task_kwargs[f"{task.name}_kwargs"] = task.args
