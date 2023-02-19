@@ -371,6 +371,67 @@ class Runner:
     def print_message(self, message: str, color: str = Colors.blu) -> None:
         print(f"{color}YAW {Colors.sep} {message}{Colors.rst}")
 
+    def plot(self):
+        import numpy as np
+        try:
+            import matplotlib.pyplot as plt
+            self.logger.info("create check-plots")
+        except ImportError:
+            self.logger.error("could not import matplotlib, plotting disabled")
+            return
+
+        def make_plot(paths, scale, title=None):
+            # figure out which files exist
+            paths_ok = [
+                path for path in paths if path.with_suffix(".dat").exists()]
+            # make a figure
+            n_row, rest = divmod(len(paths_ok), 3)
+            if n_row == 0:
+                n_row, n_col = 1, rest
+            else:
+                n_col = 3
+                if rest > 0:
+                    n_row += 1
+            fig, axes = plt.subplots(
+                n_row, n_col, figsize=(5*n_row, 3*n_col),
+                sharex=True, sharey=True)
+            axes = np.asarray(axes)
+            for i, ax in enumerate(axes.flatten()):
+                if i > len(paths_ok):
+                    ax.remove()
+            # plot the data
+            for ax, path in zip(axes.flatten(), paths_ok):
+                cf = self.backend.CorrelationData.from_files(path)
+                ax = cf.plot(zero_line=True, label=scale, ax=ax)
+                ax.legend()
+                ax.set_xlim(left=0.0)
+            if title is not None:
+                fig.suptitle(title)
+            return fig
+
+        for scale in self.project.list_estimate_scales():
+            est_dir = self.project.get_estimate(scale)
+            # reference
+            fig = make_plot(
+                [est_dir.get_auto_reference()], scale,
+                "Reference autocorrelation")
+            fig.savefig(self.project.estimate_dir.joinpath(
+                f"auto_reference_{scale}.png"))
+            # unknown
+            fig = make_plot(
+                [est_dir.get_auto(idx) for idx in est_dir.get_auto_indices()],
+                scale, "Unknown autocorrelation")
+            fig.tight_layout()
+            fig.savefig(self.project.estimate_dir.joinpath(
+                f"auto_unknown_{scale}.png"))
+            # ccs
+            fig = make_plot(
+                [est_dir.get_cross(idx) for idx in est_dir.get_cross_indices()],
+                scale, "Redshift estimate")
+            fig.tight_layout()
+            fig.savefig(self.project.estimate_dir.joinpath(
+                f"nz_estimate_{scale}.png"))
+
     def main(
         self,
         cross_kwargs: dict[str, Any] | None = None,
@@ -378,7 +439,8 @@ class Runner:
         auto_unk_kwargs: dict[str, Any] | None = None,
         zcc_kwargs: dict[str, Any] | None = None,
         ztrue_kwargs: dict[str, Any] | None = None,
-        drop_cache: dict[str, Any] | None = None
+        drop_cache: bool = False,
+        plot: bool = False
     ) -> None:
         do_w_sp = cross_kwargs is not None
         do_w_ss = auto_ref_kwargs is not None
@@ -456,10 +518,13 @@ class Runner:
         if drop_cache:
             self.drop_cache()
         
+        if plot:
+            self.plot()
+
         self.print_message("done")
 
 
-###########################  SUBCOMMANDS FOR PARSER ############################
+###########################  SUBCOMMANDS FOR PARSER  ###########################
 # NOTE: the order in which the subcommands are defined is the same as when running the global help command
 
 ################################################################################
@@ -798,6 +863,26 @@ def merge(args):
     # case: config and unknown bins equal
     #     attempt to merge pair counts and recompute n(z) estimate
     raise NotImplementedError
+
+
+################################################################################
+COMMANDNAME = "plot"
+
+parser_cache = Commandline.create_subparser(
+    name=COMMANDNAME,
+    help="generate automatic check plots",
+    description="Plot the autocorrelations and redshift estimates into the 'estimate' directory.",
+    progress=False,
+    threads=False)
+
+
+@Commandline.register(COMMANDNAME)
+@Tasks.register(70)
+@logged
+def plot(args, project: ProjectDirectory) -> dict:
+    runner = Runner(project)
+    runner.main(plot=True)
+    return {}
 
 
 ################################################################################

@@ -2,7 +2,8 @@
 from .. import __version__, core
 from ..randoms import UniformRandoms
 from ..core.config import Configuration
-from ..core.correlation import CorrelationFunction, autocorrelate, crosscorrelate
+from ..core.correlation import (
+    CorrelationData, CorrelationFunction, autocorrelate, crosscorrelate)
 from ..core.redshifts import RedshiftData
 from ..core.utils import scales_to_keys
 from ..logger import get_logger

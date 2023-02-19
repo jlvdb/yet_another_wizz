@@ -500,7 +500,8 @@ class ProjectDirectory(DictRepresentation):
         return CountsDirectory(path)
 
     def list_counts_scales(self) -> list(str):
-        return [path.name for path in self.counts_dir.iterdir()]
+        return [
+            path.name for path in self.counts_dir.iterdir() if path.is_dir()]
 
     @property
     def estimate_dir(self) -> Path:
@@ -517,7 +518,8 @@ class ProjectDirectory(DictRepresentation):
         return EstimateDirectory(path)
 
     def list_estimate_scales(self) -> list(str):
-        return [path.name for path in self.estimate_dir.iterdir()]
+        return [
+            path.name for path in self.estimate_dir.iterdir() if path.is_dir()]
 
     @property
     def true_dir(self) -> Path:
