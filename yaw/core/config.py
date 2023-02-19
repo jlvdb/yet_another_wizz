@@ -526,7 +526,8 @@ class ResamplingConfig(DictRepresentation):
     n_boot: int = DEFAULT.Resampling.n_boot
     global_norm: bool = DEFAULT.Resampling.global_norm
     seed: int = DEFAULT.Resampling.seed
-    _resampling_idx = field(default=None, init=False, repr=False)
+    _resampling_idx: NDArray[np.int_] | None = field(
+        default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.method not in self.implemented_methods:
@@ -542,18 +543,18 @@ class ResamplingConfig(DictRepresentation):
 
     @property
     def n_patches(self) -> int | None:
-        if self._boot_idx is None:
+        if self._resampling_idx is None:
             return None
         else:
-            return self._boot_idx.shape[1]
+            return self._resampling_idx.shape[1]
 
-    def _generate_bootstrap(self) -> NDArray[np.int_]:
-        N = self.n_patches
+    def _generate_bootstrap(self, n_patches: int) -> NDArray[np.int_]:
+        N = n_patches
         rng = np.random.default_rng(seed=self.seed)
         return rng.integers(0, N, size=(self.n_boot, N))
 
-    def _generate_jackknife(self) -> NDArray[np.int_]:
-        N = self.n_patches
+    def _generate_jackknife(self, n_patches: int) -> NDArray[np.int_]:
+        N = n_patches
         idx = np.delete(np.tile(np.arange(0, N), N), np.s_[::N+1])
         return idx.reshape((N, N-1))
 
@@ -561,9 +562,9 @@ class ResamplingConfig(DictRepresentation):
         # generate samples once, afterwards check that n_patches matches
         if self._resampling_idx is None:
             if self.method == "jackknife":
-                idx = self._generate_jackknife()
+                idx = self._generate_jackknife(n_patches)
             else:
-                idx = self._generate_bootstrap()
+                idx = self._generate_bootstrap(n_patches)
             object.__setattr__(self, "_resampling_idx", idx)
         elif n_patches != self.n_patches:
             raise ValueError(
@@ -572,7 +573,7 @@ class ResamplingConfig(DictRepresentation):
         return self._resampling_idx
 
     def reset(self) -> None:
-        object.__setattr__(self, "_boot_idx", None)
+        object.__setattr__(self, "_resampling_idx", None)
 
     def to_dict(self) -> dict[str, Any]:
         if self.method == "jackknife":

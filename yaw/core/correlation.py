@@ -313,10 +313,10 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
         logger.debug(f"computing correlation with {est_fun.short} estimator")
         required = {
-            str(cts): self._getattr_from_cts(cts).get()
+            str(cts): self._getattr_from_cts(cts).get(config)
             for cts in est_fun.requires}
         optional = {
-            str(cts): self._getattr_from_cts(cts).get()
+            str(cts): self._getattr_from_cts(cts).get(config)
             for cts in est_fun.optional
             if self._getattr_from_cts(cts) is not None}
         data = est_fun(**required, **optional)[0]

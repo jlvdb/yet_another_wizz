@@ -14,7 +14,7 @@ from yaw.core.catalog import CatalogBase, PatchLinkage
 from yaw.core.config import Configuration
 from yaw.core.coordinates import position_sphere2sky
 from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.paircounts import ArrayDict, PairCountResult
+from yaw.core.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.core.parallel import ParallelHelper
 from yaw.core.redshifts import NzTrue
 from yaw.core.utils import (
@@ -364,58 +364,34 @@ class Catalog(CatalogBase):
 
         n_bins = len(config.binning.zbins) - 1
         n_patches = self.n_patches
-        # execute, unpack the data
+        # set up data to repack task results from [ids->scale] to [scale->ids]
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
-        count_dict = {key: {} for key in config.scales.dict_keys()}
+        count_dict = {
+            key: PatchedCount(n_patches, n_bins, auto=auto)
+            for key in config.scales.dict_keys()}
+        # run the scheduled tasks
         result_iter = pool.iter_result()
+        # add an optional progress bar
         if progress:
             result_iter = tqdm(
                 result_iter, total=pool.n_jobs(), delay=0.5,
-                leave=None, smoothing=0.1, unit="jobs")
+                leave=False, smoothing=0.1, unit="jobs")
         for (id1, id2), (total1, total2), counts in result_iter:
             # record total weight per bin, overwriting OK since identical
             totals1[id1] = total1
             totals2[id2] = total2
             # record counts at each scale
             for scale_key, count in counts.items():
-                count_dict[scale_key][(id1, id2)] = count
+                count_dict[scale_key][id1, id2] = count
+        total = PatchedTotal(totals1, totals2, auto=auto)  # not scale-dependent
 
-        # get mask of all used cross-patch combinations, upper triangle if auto
-        mask = linkage.get_mask(self, other, config.backend.crosspatch)
-        keys = [
-            tuple(key) for key in np.indices((n_patches, n_patches))[:, mask].T]
-
-        # compute patch-wise product of total of weights
-        total_matrix = np.empty((n_patches, n_patches, n_bins))
-        for i in range(n_bins):
-            # get the patch totals for the current bin
-            totals = np.multiply.outer(totals1[:, i], totals2[:, i])
-            total_matrix[:, :, i] = totals
-        # apply correction for autocorrelation, i. e. no double-counting
-        if auto:
-            total_matrix[np.diag_indices(n_patches)] *= 0.5
-        # flatten to shape (n_patches*n_patches, n_bins), also if auto:
-        # (id1, id2) not counted, i.e. dropped, if id1 > id2
-        total = total_matrix[mask]
-        del total_matrix
-
-        # sort counts into similar data structure, pack result
+        # pack result
         result = {}
-        for scale_key, counts in count_dict.items():
-            count_matrix = np.zeros((n_patches, n_patches, n_bins))
-            for patch_key, count in counts.items():
-                count_matrix[patch_key] = count
-            # apply correction for autocorrelation, i. e. no double-counting
-            if auto:
-                count_matrix[np.diag_indices(n_patches)] *= 0.5
-            count = count_matrix[mask]
+        for scale_key, count in count_dict.items():
             result[scale_key] = PairCountResult(
-                count=ArrayDict(keys, count),
-                total=ArrayDict(keys, total),
-                mask=mask,
-                binning=pd.IntervalIndex.from_breaks(config.binning.zbins),
-                n_patches=n_patches)
+                count=count, total=total,
+                binning=pd.IntervalIndex.from_breaks(config.binning.zbins))
         # drop the dictionary if there is only one scale
         if len(result) == 1:
             result = tuple(result.values())[0]

@@ -1,219 +1,416 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
+try:
+    from typing import TypeAlias
+except ImportError:
+    from typing_extensions import TypeAlias
 
 import h5py
 import numpy as np
 import pandas as pd
+import scipy.sparse
 
-from yaw.core import default as DEFAULT
+from yaw.core.config import ResamplingConfig
 from yaw.core.utils import BinnedQuantity, HDFSerializable, PatchedQuantity
 
 if TYPE_CHECKING:
-    import numba
-    from numpy.typing import NDArray, DTypeLike
-    from pandas import DataFrame, Interval, IntervalIndex
+    from scipy.sparse import spmatrix
+    from numpy.typing import ArrayLike, NDArray, DTypeLike
+    from pandas import Interval, IntervalIndex
     from treecorr import NNCorrelation
     from yaw.core.utils import TypePatchKey
 
-logger = logging.getLogger(__name__.replace(".core.", "."))
-try:
-    from numba import njit
-except Exception:
-    logger.warn("numba not available, resampling performance degraded")
-    from functools import wraps
 
-    def njit(func):  # TODO: probably need optional dummy decorator arguments
-        @wraps
-        def wrapped(*args, **kwargs):
-            return func(*args, **kwargs)
-        return wrapped
+logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 
-class PatchDict(HDFSerializable):
+TypeSlice: TypeAlias = Union[slice, int, None]
 
-    @staticmethod
-    def _check_key(key: TypePatchKey) -> None:
+
+class PatchedArray(PatchedQuantity, HDFSerializable):
+
+    n_bins: int
+    density: float
+
+    def __repr__(self) -> str:
+        shape = self.shape
+        density = self.density
+        return f"{self.__class__.__name__}({shape=}, {density=:.1%})"
+
+    def _parse_key(
+        self,
+        key: tuple | TypeSlice
+    ) -> tuple[TypeSlice, TypeSlice, TypeSlice]:
+        default = slice(None, None, None)
+        j, k = default, default
         if not isinstance(key, tuple):
-            raise TypeError(f"keys must be of type {tuple}")
-        elif len(key) != 2:
-            raise ValueError(f"keys must be tuples of length 2, got {len(key)}")
-
-
-class CountsDict(PatchDict, dict):
-    
-    _default_item: NDArray = None
-
-    def __init__(self, *args, **kwargs ):
-        super().__init__(*args, **kwargs)
-        # need to do this
-        for key, item in self.items():
-            self._check_key(key)
-            self._check_item(item)
-
-    def __init_subclass__(cls) -> None:
-        return super().__init_subclass__()
-
-    def _check_item(self, item: NDArray) -> None:
-        if not isinstance(item, np.ndarray):
-            raise TypeError(f"values must be of type {np.ndarray}")
-        if self._default_item is None:
-            self._default_item = np.zeros_like(item)
-        elif item.shape != self._default_item.shape:
-            raise ValueError(
-                f"expected value array of shape {self._default_item.shape}, "
-                f"got {item.shape}")
-        elif item.dtype != self._default_item.dtype:
-            raise TypeError(
-                f"value arrays must be of type {self._default_item.dtype}, "
-                f"got {item.dtype}")
-
-    def __getitem__(self, key: TypePatchKey) -> NDArray:
-        return super().__getitem__(key)
-
-    def __setitem__(self, key: TypePatchKey, item: NDArray):
-        self._check_key(key)
-        self._check_item(item)
-        super().__setitem__(key, item)
-    
-    def get(self, item):
-        return super().get(item, self._default_item)
-
-    def as_numba_dict(self) -> numba.typed.Dict | CountsDict:
-        try:
-            import numba
-        except Exception:
-            the_dict = self
+            i = key
         else:
-            the_dict = numba.typed.Dict()
-            for key, value in self.items():
-                the_dict[key] = value
-        return the_dict
+            if len(key) == 2:
+                i, j = key
+            elif len(key) == 3:
+                i, j, k = key
+            else:
+                raise IndexError(
+                    f"too many indices for array: array is 3-dimensional, but "
+                    f"{len(key)} were indexed")
+        return i, j, k
+
+    def __getitem__(self, key) -> ArrayLike:
+        raise NotImplementedError
+
+    @property
+    def dtype(self) -> DTypeLike:
+        return np.float_
+
+    @property
+    def shape(self) -> tuple[int]:
+        return (self.n_patches, self.n_patches, self.n_bins)
+
+    @property
+    def shape(self) -> tuple[int]:
+        raise NotImplementedError
+
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
+    @property
+    def size(self) -> int:
+        np.prod(self.shape)
 
     def as_array(self) -> NDArray:
-        array = np.empty(
-            (len(self), *self._default_item.shape),
-            dtype=self._default_item.dtype)
-        for i, value in enumerate(self.values()):
-            array[i] = value
-        return array
+        return self[:, :, :]
 
-    def as_dataframe(self) -> DataFrame:
-        return pd.DataFrame(self.as_array(), index=list(self.keys()))
+    def sum_binned(self) -> NDArray:
+        raise NotImplementedError
 
-    @classmethod
-    def from_hdf(cls, source: h5py.Group) -> CountsDict:
-        # we use tuple keys, pairs of ints
-        keys = [tuple(key) for key in source["keys"][:]]
-        data = source["data"][:]
-        result = cls()
-        for key, value in zip(key, data):
-            result[key] = value
-        return result
+    def sum_jackknife(self) -> NDArray:
+        raise NotImplementedError
 
-    def to_hdf(self, dest: h5py.Group) -> None:
-        # we use tuple keys, pairs of ints
-        keys = np.array(list(self.keys()))
-        dest.create_dataset("keys", data=keys, **_compression)
-        dest.create_dataset("data", data=self.as_array(), **_compression)
+    def sum_bootstrap(self) -> NDArray:
+        raise NotImplementedError
 
 
-class TotalsDict(PatchDict, Mapping):
+class PatchedTotal(PatchedArray):
 
-    def __init__(self, totals1: NDArray, totals2: NDArray) -> None:
+    def __init__(
+        self,
+        totals1: NDArray,
+        totals2: NDArray,
+        *,
+        auto: bool
+    ) -> None:
+        for i, totals in enumerate((totals1, totals2), 1):
+            if totals.ndim != 2:
+                raise ValueError(f"'totals{i}' must be two dimensional")
         if totals1.shape != totals2.shape:
             raise ValueError(
                 f"number of patches and bins do not match: "
                 f"{totals1.shape} != {totals2.shape}")
         self.totals1 = totals1
         self.totals2 = totals2
+        self.auto = auto
+        self._sum = None
 
-    def __getitem__(self, key: TypePatchKey) -> int | float:
-        self._check_key(key)
-        k1, k2 = key
-        try:
-            return self.totals1[k1] * self.totals2[k2]
-        except IndexError as e:
-            raise KeyError(key) from e
+    def __getitem__(self, key) -> ArrayLike:
+        i, j, k = self._parse_key(key)
+        x = np.atleast_2d(self.t1[i])[:, k]
+        y = np.atleast_2d(self.t2[j])[:, k]
+        arr = np.einsum("i...,j...->ij...", x, y)
+        squeeze_ax = tuple(
+            a for a, val in enumerate((i, j))
+            if isinstance(val, (int, np.integer)))
+        return np.squeeze(arr, axis=squeeze_ax)
+
+    @property
+    def n_patches(self) -> int:
+        return self.totals1.shape[0]
+
+    @property
+    def n_bins(self) -> int:
+        return self.totals1.shape[1]
+
+    @property
+    def density(self) -> float:
+        return (self.totals1.size + self.totals2.shape) / self.size
+
+    def sum_binned(self) -> NDArray:
+        if self._sum is None:
+            # sum over outer product
+            self._sum = np.einsum("i...,j...->...", self.totals1, self.totals2)
+        return self._sum
+
+    def sum_jackknife(self, config: ResamplingConfig) -> NDArray:
+        out = np.empty((self.n_patches, self.n_bins))  # jackknife samples
+
+        diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
+        if self.auto:
+            diag *= 0.5
+
+        if not config.crosspatch:  # only diagonal terms
+            full = np.einsum("i...->...", diag)
+            for k in range(self.n_patches):
+                out[k] = full - diag[k]
+
+        elif self.auto:
+            # trick to compute upper triangle of
+            # np.einsum("i...,j...->...", a, b)
+            idx_row, idx_col = np.triu_indices(self.n_patches, 0)
+            full = np.einsum(
+                "i...,i...", self.totals1[idx_row], self.totals2[idx_col])
+            # rows and columns are identical
+            rowcols = np.einsum("i...,j...->i...", self.totals1, self.totals2)
+            for k in range(self.n_patches):
+                # use that (as in cross==True case):
+                # with rc = rowcols[k]
+                # sum(rc[:k]) + sum(rc[k:]) + diag[k] == sum(rc[:])
+                out[k] = full - rowcols[k]
+
+        else:
+            rows = np.einsum("i...,j...->i...", self.totals1, self.totals2)
+            cols = np.einsum("i...,j...->j...", self.totals1, self.totals2)
+            full = np.einsum("i...->...", rows)
+            for k in range(self.n_patches):
+                out[k] = full - cols[k] - rows[k] + diag[k]
+        
+        return out
+
+    def _single_bootstrap(
+        self,
+        patch_idx: NDArray[np.int_],
+        config: ResamplingConfig
+    ) -> NDArray:
+        # create the realisation
+        tot1_real = self.totals1[patch_idx]
+        tot2_real = self.totals2[patch_idx]
+
+        diag = np.einsum("i...,i...->...", tot1_real, tot2_real)
+        if self.auto:
+            diag *= 0.5
+
+        if not config.crosspatch:  # only diagonal terms
+            return diag
+
+        # need to skip autocorrelation terms that arise on off-diagonals due to
+        # repeated elements in realisation: identify where in the matrix the
+        # realisation indices are not identical
+        is_cross = np.subtract.outer(patch_idx, patch_idx) != 0
+        if self.auto:
+            is_cross = np.triu(is_cross)
+        # compute the sum over the outer product, setting auto-terms to zero
+        cross = np.einsum("i...,j...,ij->...", tot1_real, tot2_real, is_cross)
+        return diag + cross
+
+    def sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
+        out = np.empty((config.n_boot, self.n_bins))  # bootstrap samples
+        # create and iterate realisations
+        patch_idx = config.get_samples(self.n_patches)
+        for n, idx in enumerate(patch_idx):
+            out[n] = self._single_bootstrap(idx, config=config)
+
+    @classmethod
+    def from_hdf(cls, source: h5py.Group) -> PatchedTotal:
+        totals1 = source["totals1"][:]
+        totals2 = source["totals2"][:]
+        auto = source["auto"][()]
+        return cls(totals1, totals2, auto=auto)
+
+    def to_hdf(self, dest: h5py.Group) -> None:
+        dest.create_dataset("totals1", data=self.totals1, **_compression)
+        dest.create_dataset("totals2", data=self.totals2, **_compression)
+        dest.create_dataset("auto", data=self.auto)
 
 
-@numba.njit
-def accumulate_counts_realisation(
-    index: NDArray[np.int_],
-    mask: NDArray[np.bool_],
-    thedict: numba.typed.Dict,
-    o_shape: tuple,
-    o_dtype: DTypeLike
-) -> NDArray:
-    """from TreeCorr.BinnedCorr2, works for jackknife and bootstrap"""
-    total = np.zeros(o_shape, dtype=o_dtype)
-    # Include all represented auto-correlations once, repeating as appropriate.
-    # This needs to be done separately from the below step to avoid extra
-    # pairs (i,i) that you would get by looping i in index and j in index for
-    # cases where i=j at different places in the index list.  E.g. if i=3 shows
-    # up 3 times in index, then the naive way would get 9 instance of (3,3),
-    # whereas we only want 3 instances.
-    for i in index:
-        key = (i, i)
-        if mask[i, i]:  # TODO: need mask?
-            if key in thedict:
-                total += thedict[key]
-    # And all other pairs that aren't really auto-correlations.
-    # These can happen at their natural multiplicity from i and j loops.
-    for i in index:
-        for j in index:
-            if i != j and mask[i, j]:  # TODO: need mask?
-                key = (i, j)
-                if key in thedict:
-                    total += thedict[key]
-    return total
+class PatchedCount(PatchedArray):
 
+    def __init__(
+        self,
+        n_patches: int,
+        n_bins: int,
+        *,
+        auto: bool,
+        dtype: DTypeLike = np.float_
+    ) -> None:
+        self._keys = set()
+        self._n_patches = n_patches
+        self._bins: list[spmatrix] = [
+            scipy.sparse.dok_matrix((n_patches, n_patches), dtype=dtype)
+            for i in range(n_bins)]
+        self.auto = auto
 
-@numba.njit
-def accumulate_totals_realisation(
-    index: NDArray[np.int_],
-    mask: NDArray[np.bool_],
-    totals1: NDArray,
-    totals2: NDArray
-) -> NDArray:
-    """from TreeCorr.BinnedCorr2, works for jackknife and bootstrap"""
-    total = np.zeros(totals1.shape[1], dtype=totals1.dtype)
-    # Include all represented auto-correlations once, repeating as appropriate.
-    # This needs to be done separately from the below step to avoid extra
-    # pairs (i,i) that you would get by looping i in index and j in index for
-    # cases where i=j at different places in the index list.  E.g. if i=3 shows
-    # up 3 times in index, then the naive way would get 9 instance of (3,3),
-    # whereas we only want 3 instances.
-    for i in index:
-        if mask[i, i]:  # TODO: need mask?
-            total += totals1[i] * totals2[i]
-    # And all other pairs that aren't really auto-correlations.
-    # These can happen at their natural multiplicity from i and j loops.
-    for i in index:
-        for j in index:
-            if i != j and mask[i, j]:  # TODO: need mask?
-                total += totals1[i] * totals2[j]
-    return total
+    def __getitem__(self, key) -> ArrayLike:
+        i, j, k = self._parse_key(key)
+        squeeze_ax = tuple(
+            a for a, val in enumerate((i, j, k))
+            if isinstance(val, (int, np.integer)))
+        arr = np.array([counts[i, j].toarray() for counts in self._bins[k]])
+        return np.squeeze(arr, axis=squeeze_ax)
+
+    def __setitem__(self, key: TypePatchKey, item: NDArray):
+        item = np.asarray(item)
+        if item.shape != (self.n_bins,):
+            raise ValueError(
+                f"can only set items with length 'n_bins'={self.n_bins}")
+        if not isinstance(key, tuple):
+            raise TypeAlias(f"slice must be of type {tuple}")
+        elif len(key) != 2:
+            raise IndexError(
+                f"too many indices for array assignment: index must be "
+                f"2-dimensional, but {len(key)} where indexed")
+        for n, val in enumerate(key):
+            if not isinstance(val, (int, np.integer)):
+                raise TypeError(
+                    f"index for axis {n} must be of type {int}, "
+                    f"but got {type(val)}")
+        for counts, val in zip(self._bins, item):
+            counts[key] = val
+        self._keys.add(key)
+
+    def keys(self) -> NDArray:
+        return np.array(list(self._keys))
+
+    def values(self) -> NDArray:
+        idx_ax0, idx_ax1 = self.keys().T
+        values = np.column_stack([
+            np.squeeze(counts[idx_ax0, idx_ax1].toarray())
+            for counts in self._bins])
+        return values
+
+    @property
+    def n_patches(self) -> int:
+        return self._n_patches
+
+    @property
+    def n_bins(self) -> int:
+        return len(self._bins)
+
+    @property
+    def density(self) -> float:
+        stored = sum(counts.nnz for counts in self._bins)
+        total = np.prod(self.shape)
+        return stored / total
+
+    def sum_binned(self) -> NDArray:
+        return np.array([counts.sum() for counts in self._bins])
+
+    def _bin_jackknife(
+        self,
+        counts: spmatrix,
+        config: ResamplingConfig
+    ) -> NDArray:
+        out = np.empty(self.n_patches)
+
+        diag = counts.diagonal()
+        if self.auto:
+            diag *= 0.5
+
+        if not config.crosspatch:  # only diagonal terms
+            full = diag.sum()
+            for k in range(self.n_patches):
+                out[k] = full - diag[k]
+            return out
+
+        if self.auto:
+            counts = scipy.sparse.triu(counts)
+
+        rows = counts.sum(axis=1)
+        cols = counts.sum(axis=0)
+        # operations above result in numpy.matrix, squeeze extra dimension
+        rows = np.squeeze(np.asarray(rows))
+        cols = np.squeeze(np.asarray(cols))
+        full = rows.sum()
+        for k in range(self.n_patches):
+            out[k] = full - cols[k] - rows[k] + diag[k]
+
+        return out
+
+    def sum_jackknife(self, config: ResamplingConfig) -> NDArray:
+        out = np.empty((self.n_patches, self.n_bins))
+        for i, counts in enumerate(self._bins):
+            bin_jackknife = self._bin_jackknife(counts, config=config)
+            out[:, i] = bin_jackknife
+        return out
+
+    def _bin_single_bootstrap(
+        self,
+        counts: np.matrix,
+        patch_idx: NDArray[np.int_],
+        config: ResamplingConfig
+    ) -> float:
+        diag = counts.diagonal()[patch_idx].sum()  # diagonal of realisation
+        if self.auto:
+            diag *= 0.5
+
+        if not config.crosspatch:  # only diagonal terms
+            return diag
+
+        # create realisation of counts matrix
+        counts_real = counts[patch_idx][:, patch_idx]
+        # need to skip autocorrelation terms that araise on off-diagonal due to
+        # repeated elements in realisation
+        # identify where in the matrix the realisation indices not identical
+        is_cross = np.subtract.outer(patch_idx, patch_idx) != 0
+        if self.auto:
+            is_cross = np.triu(is_cross)
+
+        # compute the sum over the outer product, setting auto-terms to zero
+        cross = counts_real[is_cross].sum()
+        return diag + cross  # scalar!
+
+    def _bin_bootstrap(
+        self,
+        counts: spmatrix,
+        config: ResamplingConfig
+    ) -> NDArray:
+        out = np.empty(config.n_boot)
+        # indexing in both dimensions very inefficient in sparse matrices,
+        # switch to dense numpy array
+        counts: np.matrix = counts.toarray()
+        # create and iterate realisations
+        patch_idx = config.get_samples(self.n_patches)
+        for n, idx in enumerate(patch_idx):
+            out[n] = self._bin_single_bootstrap(counts, idx, config=config)
+
+    def sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
+        out = np.empty((config.n_boot, self.n_bins))
+        for i, counts in enumerate(self._bins):
+            bin_jackknife = self._bin_bootstrap(counts, config=config)
+            out[:, i] = bin_jackknife
+        return out
+
+    @classmethod
+    def from_hdf(cls, source: h5py.Group) -> PatchedTotal:
+        keys = [tuple(key) for key in source["keys"][:]]
+        data = source["data"][:]
+        n_patches = source["n_patches"][()]
+        auto = source["auto"][()]
+        # reconstruct the sparse matrix incrementally
+        new = cls(n_patches, data.shape[1], auto=auto, dtype=data.dtype)
+        for key, value in zip(keys, data):
+            new[key] = value
+        return new
+
+    def to_hdf(self, dest: h5py.Group) -> None:
+        dest.create_dataset("keys", data=self.keys(), **_compression)
+        dest.create_dataset("data", data=self.values(), **_compression)
+        dest.create_dataset("n_patches", data=self.n_patches)
+        dest.create_dataset("auto", data=self.auto)
 
 
 @dataclass(frozen=True)
 class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
-    count: CountsDict
-    total: CountsDict
-    mask: NDArray[np.bool_]
+    count: PatchedCount
+    total: PatchedTotal
     binning: IntervalIndex
-    n_patches: int
-
-    def __post_init__(self) -> None:
-        if self.count.keys() != self.total.keys():
-            raise KeyError("keys for 'count' and 'total' are not identical")
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -227,6 +424,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         interval: Interval,
         correlation: NNCorrelation
     ) -> PairCountResult:
+        raise NotImplementedError
         # extract the (cross-patch) pair counts
         n_patches = max(correlation.npatch1, correlation.npatch2)
         
@@ -239,8 +437,8 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
             total[i] = result.tot
         return cls(
             n_patches=n_patches,
-            count=ArrayDict(keys, count),
-            total=ArrayDict(keys, total),
+            count=PatchedCount(keys, count),
+            total=PatchedTotal(keys, total),
             mask=correlation._ok,
             binning=pd.IntervalIndex([interval]))
 
@@ -249,6 +447,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         cls,
         zbins: Iterable[PairCountResult]
     ) -> PairCountResult:
+        raise NotImplementedError
         # check that the data is compatible
         if len(zbins) == 0:
             raise ValueError("'zbins' is empty")
@@ -278,6 +477,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 raise ValueError(f"the binning interval is not contiguous")
 
         # merge the ArrayDicts
+        """
         count = ArrayDict(
             keys, np.column_stack([zbin.count.as_array() for zbin in zbins]))
         total = ArrayDict(
@@ -288,122 +488,48 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
             total=total,
             mask=mask,
             binning=binning)
+        """
 
-    def keys(self) -> list[TypePatchKey]:
-        return self.total.keys()
+    @property
+    def n_patches(self) -> int:
+        return self.total.n_patches
 
-    def get(self) -> PairCountData:
+    def get(self, config: ResamplingConfig) -> PairCountData:
         return PairCountData(
-            count=self.count.as_array().sum(axis=0),
-            total=self.total.as_array().sum(axis=0),
+            count=self.count.sum_binned(),
+            total=self.total.sum_binned(),
             binning=self.binning)
 
-    def _generate_bootstrap_patch_indices(
-        self,
-        n_boot: int,
-        seed: int = DEFAULT.Resampling.seed
-    ) -> NDArray[np.int_]:
-        rng = np.random.default_rng(seed=seed)
-        return rng.integers(0, self.n_patches, size=(n_boot, self.n_patches))
-
-    def _get_jackknife_samples(
-        self,
-        global_norm: bool = DEFAULT.Resampling.global_norm,
-    ) -> PairCountData:
-        # The iterator expects a single patch index which is dropped in a single
-        # realisation.
-        count = []
-        total = []
-        if global_norm:
-            global_total = self.total.as_array().sum(axis=0)
-        for idx in range(self.n_patches):  # leave-one-out iteration
-            # we need to use the jackknife iterator twice
-            patches = list(jackknife_iter(self.keys(), idx, mask=self.mask))
-            idx = [self.count._dict[key] for key in patches]  # avoid repeating
-            count.append(self.count._array[idx].sum(axis=0))
-            if global_norm:
-                total.append(global_total)
-            else:
-                total.append(self.total._array[idx].sum(axis=0))
-        return PairCountData(
-            count=np.array(count),
-            total=np.array(total),
-            binning=self.binning)
-
-    def _get_bootstrap_samples(
-        self,
-        patch_idx: NDArray[np.int_],
-        global_norm: bool = DEFAULT.Resampling.global_norm
-    ) -> PairCountData:
-        # The treecorr bootstrap iterator expects a list of patch indicies which
-        # are present in the specific boostrap realisation to generate, i.e.
-        # draw N times from (0, ..., N) with repetition. These random patch
-        # indices for M realisations should be provided in the [M, N] shaped
-        # array 'patch_idx'.
-        count = []
-        total = []
-        if global_norm:
-            global_total = self.total.as_array().sum(axis=0)
-        for idx in patch_idx:  # simplified leave-one-out iteration
-            # we need to use the jackknife iterator twice
-            patches = list(bootstrap_iter(idx, mask=self.mask))
-            idx = [self.count._dict[key] for key in patches]  # avoid repeating
-            count.append(self.count._array[idx].sum(axis=0))
-            if global_norm:
-                total.append(global_total)
-            else:
-                total.append(self.total._array[idx].sum(axis=0))
-        return PairCountData(
-            count=np.array(count),
-            total=np.array(total),
-            binning=self.binning)
-
-    def get_samples(
-        self,
-        *,
-        method: str = DEFAULT.Resampling.method,
-        n_boot: int = DEFAULT.Resampling.n_boot,
-        patch_idx: NDArray[np.int_] | None = None,
-        global_norm: bool = DEFAULT.Resampling.global_norm,
-        seed: int = DEFAULT.Resampling.seed
-    ) -> PairCountData:
-        if method == "jackknife":
-            samples = self._get_jackknife_samples(global_norm=global_norm)
-        elif method == "bootstrap":
-            if patch_idx is None:
-                patch_idx = self._generate_bootstrap_patch_indices(
-                    n_boot, seed=seed)
-            samples = self._get_bootstrap_samples(
-                patch_idx, global_norm=global_norm)
-        else:
-            raise NotImplementedError(
-                f"sampling method '{method}' not implemented")
-        return samples
+    def get_samples(self, config: ResamplingConfig) -> PairCountData:
+        if config.method == "jackknife":
+            count = self.count.sum_jackknife(config)
+            total = self.total.sum_jackknife(config)
+        else:  # bootstrap
+            count = self.count.sum_bootstrap(config)
+            total = self.total.sum_bootstrap(config)
+        return PairCountData(count=count, total=total, binning=self.binning)
 
     @classmethod
     def from_hdf(cls, source: h5py.Group) -> PairCountResult:
-        n_patches = source["n_patches"][()]
-        mask = source["mask"][:]
-        count = arraydict_from_hdf(source["count"])
-        total = arraydict_from_hdf(source["total"])
+        # reconstruct the binning
         dset = source["binning"]
         left, right = dset[:].T
-        binning = pd.IntervalIndex.from_arrays(
-            left, right, closed=dset.attrs["closed"])
-        return cls(
-            count=count, total=total, mask=mask, binning=binning,
-            n_patches=n_patches)
+        closed = dset.attrs["closed"]
+        binning = pd.IntervalIndex.from_arrays(left, right, closed=closed)
+        # load the data
+        count = PatchedCount.from_hdf(source["count"])
+        total = PatchedTotal.from_hdf(source["total"])
+        return cls(count=count, total=total, binning=binning)
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        dest.create_dataset("n_patches", data=self.n_patches)  # scalar
-        arraydict_to_hdf(self.count, dest.create_group("count"))
-        arraydict_to_hdf(self.total, dest.create_group("total"))
-        dest.create_dataset("mask", data=self.mask, **_compression)
-        binning = np.column_stack([
-            self.binning.left.values, self.binning.right.values])
-        dset = dest.create_dataset(
-            "binning", data=binning, **_compression)
+        # store the binning
+        dset = dest.create_dataset("binning", data=self.edges, **_compression)
         dset.attrs["closed"] = self.binning.closed
+        # store the data
+        group = dest.create_group("count")
+        self.count.to_hdf(group)
+        group = dest.create_group("total")
+        self.total.to_hdf(group)
 
 
 @dataclass(frozen=True, repr=False)
@@ -416,6 +542,6 @@ class PairCountData(BinnedQuantity):
     def is_compatible(self, other: PairCountData) -> bool:
         return super().is_compatible(other)
 
-    def normalise(self) -> NDArray[np.float_]:
+    def normalised(self) -> NDArray[np.float_]:
         normalised = self.count / self.total
         return pd.DataFrame(data=normalised.T, index=self.binning)

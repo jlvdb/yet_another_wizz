@@ -70,9 +70,7 @@ class PatchedQuantity(Protocol):
 @runtime_checkable
 class BinnedQuantity(Protocol):
 
-    @property
-    def binning(self) -> IntervalIndex:
-        raise NotImplementedError
+    binning: IntervalIndex
 
     def __len__(self) -> int:
         return len(self.binning)
@@ -93,7 +91,7 @@ class BinnedQuantity(Protocol):
 
     @property
     def dz(self) -> NDArray[np.float_]:
-        return np.diff(self.edges)
+        return np.diff(self.edges).ravel()
 
     def is_compatible(self, other) -> bool:
         if not isinstance(other, self.__class__):

@@ -39,9 +39,9 @@ def logged(func):
     @wraps(func)
     def wrapper(args, *posargs, **kwargs):
         levels = {0: "warn", 1: "info", 2: "debug"}
-        logger = get_logger(levels[args.verbose], plain=False)
+        logger = get_logger(levels[args.verbose], plain=True)
         # TODO: add log file at args.wdir.joinpath("events.log")
-        logger.info(f"running job '{func.__name__}'")
+        print(f"\nYAW running job '{func.__name__}'")
         try:
             return func(args, *posargs, **kwargs)
         except Exception:
@@ -283,21 +283,23 @@ class Runner:
             path = est_dir.get_cross(idx)
             nz.to_files(path)
 
-    def write_nz_ref(self, config: ResamplingConfig) -> None:
+    def write_nz_ref(self) -> None:
         path = self.project.get_true_reference(create=True)
         # this data should always be produced unless it already exists
         if not path.with_suffix(".dat").exists():
             self.logger.info(
                 f"computing reference sample redshift distribution")
             nz = self.ref_data.true_redshifts(self.config)
-            nz_data = nz.get(config)
+            # we mainly care about the actual n(z), use default resampling
+            nz_data = nz.get(ResamplingConfig())
             self.logger.debug("writing redshift data files")
             nz_data.to_files(path)
 
-    def write_nz_true(self, idx: int, config: ResamplingConfig) -> None:
+    def write_nz_true(self, idx: int) -> None:
         self.logger.info(f"computing true redshift distribution")
         nz = self.unk_data.true_redshifts(self.config)
-        nz_data = nz.get(config)
+        # we mainly care about the actual n(z), use default resampling
+        nz_data = nz.get(ResamplingConfig())
         path = self.project.get_true_unknown(idx, create=True)
         self.logger.debug("writing redshift data files")
         nz_data.to_files(path)
@@ -345,7 +347,7 @@ class Runner:
             self.sample_corrfunc(
                 "w_ss", config=zcc_kwargs["config"],
                 estimator=zcc_kwargs.get("est_auto"))
-            self.write_auto_ref(zcc_kwargs["config"])
+            self.write_auto_ref()
             zcc_processed = True
 
         if do_w_sp or do_w_pp or do_zcc or do_ztrue:
@@ -382,7 +384,7 @@ class Runner:
                 if do_zcc and self.w_sp is not None:
                     self.write_nz_cc(idx)
                 if do_ztrue:
-                    self.write_nz_true(idx, zcc_kwargs["config"])
+                    self.write_nz_true(idx)
 
         if do_zcc and not zcc_processed:
             self.logger.warn("task 'zcc': there were no pair counts to process")
@@ -658,7 +660,9 @@ def zcc(args, project: ProjectDirectory) -> dict:
         est_cross=args.est_cross, est_auto=args.est_auto, config=config)
     runner = Runner(project, threads=args.threads)
     runner.main(zcc_kwargs=setup_args)
-    setup_args["config"] = config.to_dict()  # replace with dict representation
+    # replace config object with dict representation
+    setup_args.pop("config")
+    setup_args.update(config.to_dict())
     return setup_args
 
 
@@ -803,6 +807,9 @@ def run(args):
         for task in project.list_tasks():
             if task.name == "drop_cache":
                 task_kwargs[task.name] = True
+            elif task.name == "zcc":
+                task.args["config"] = ResamplingConfig.from_dict(task.args)
+                task_kwargs[f"{task.name}_kwargs"] = task.args
             else:
                 task_kwargs[f"{task.name}_kwargs"] = task.args
         runner.main(**task_kwargs)
