@@ -274,7 +274,7 @@ class ProjectDirectory(DictRepresentation):
             configuration=config.to_dict(),
             data=dict(
                 cachepath=str(cachepath) if cachepath is not None else None,
-                catalogs=InputRegister(n_patches).to_dict()),
+                **InputRegister(n_patches).to_dict()),
             backend=backend,
             tasks=TaskList().to_list())
         return cls.from_dict(setup_dict, path=path)
@@ -301,7 +301,7 @@ class ProjectDirectory(DictRepresentation):
             configuration=self._config.to_dict(),
             data=dict(
                 cachepath=cache_dir,
-                catalogs=self._inputs.to_dict()),
+                **self._inputs.to_dict()),
             backend=self._backend_name,
             tasks=self._tasks.to_list())
         return setup
@@ -336,13 +336,10 @@ class ProjectDirectory(DictRepresentation):
             data = setup["data"]
         except KeyError as e:
             _parse_section_error(e, "data")
-        self._cachepath = data.get("cachepath")
+        self._cachepath = data.pop("cachepath", None)
         self._cache = CacheDirectory(self.cache_dir)
         self._cache.mkdir(exist_ok=True, parents=True)
-        catalogs = data.get("catalogs", dict())
-        if catalogs is None:
-            catalogs = dict()
-        self._inputs = InputRegister.from_dict(catalogs)
+        self._inputs = InputRegister.from_dict(data)
         try:
             self._tasks = TaskList.from_list(setup["tasks"])
         except KeyError:

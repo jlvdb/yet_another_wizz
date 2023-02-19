@@ -37,7 +37,7 @@ TypeSlice: TypeAlias = Union[slice, int, None]
 def cross_to_auto_counts(counts: NDArray) -> NDArray:
     # For a true autocorrelation expect n*(n-1) pairs, but code measures
     # crossa-correlation which yields n**2, i.e. double-counts pairs.
-    n = np.sqrt()
+    n = np.sqrt(counts)
     return n * (n - 1.0)
 
 

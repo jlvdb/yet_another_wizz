@@ -34,42 +34,41 @@ configuration:
 
 data:
     [cachepath]:                <directory>
-    catalogs:
-        [n_patches]:            <int>
-        [reference]:
-            data:
-                filepath:       <file>
-                ra:             <str>
-                dec:            <str>
-                redshift:       <str>
-                [patches]:      <str>
-                [cache]:        <bool>
-            [rand]:
-                filepath:       <file>
-                ra:             <str>
-                dec:            <str>
-                redshift:       <str>
-                [patches]:      <str>
-                [cache]:        <bool>
-        [unknown]:
-            data:
-                filepath:
-                    <int>:      <file>
-                    ...
-                ra:             <str>
-                dec:            <str>
-                [redshift]:     <str>
-                [patches]:      <str>
-                [cache]:        <bool>
-            [rand]:
-                filepath:
-                    <int>:      <file>
-                    ...
-                ra:             <str>
-                dec:            <str>
-                [redshift]:     <str>
-                [patches]:      <str>
-                [cache]:        <bool>
+    [n_patches]:            <int>
+    [reference]:
+        data:
+            filepath:       <file>
+            ra:             <str>
+            dec:            <str>
+            redshift:       <str>
+            [patches]:      <str>
+            [cache]:        <bool>
+        [rand]:
+            filepath:       <file>
+            ra:             <str>
+            dec:            <str>
+            redshift:       <str>
+            [patches]:      <str>
+            [cache]:        <bool>
+    [unknown]:
+        data:
+            filepath:
+                <int>:      <file>
+                ...
+            ra:             <str>
+            dec:            <str>
+            [redshift]:     <str>
+            [patches]:      <str>
+            [cache]:        <bool>
+        [rand]:
+            filepath:
+                <int>:      <file>
+                ...
+            ra:             <str>
+            dec:            <str>
+            [redshift]:     <str>
+            [patches]:      <str>
+            [cache]:        <bool>
 
 tasks:
   - cross:
@@ -125,44 +124,42 @@ configuration:
                                 # (ignored if 'rweight' is null or omitted)
 
 # This section defines the input data products and their meta
-# data. Not all 
-data:
+# data. These can be FITS, PARQUET, CSV or FEATHER files.
+data:               # define input files, can be FITS, PARQUET, CSV or FEATHER files
 
     cachepath: null     # cache directory path, e.g. on fast storage device
                         # (recommended for scipy 'backend', default is within project directory)
+    n_patches: null     # number of automatic spatial patches to use for input catalogs below,
+                        # provide only if no 'data/rand.patches' provided below
 
-    catalogs:           # define input files, can be FITS, PARQUET, CSV or FEATHER files
-        n_patches: null     # number of automatic spatial patches to use for input catalogs below,
-                            # provide only if no 'data/rand.patches' provided below
+    reference:          # reference data sample with know redshifts
+        data:               # data catalog file and column names
+            filepath: ...       # input file path
+            ra: ra              # right ascension in degrees
+            dec: dec            # declination in degrees
+            redshift: z         # redshift of objects (required)
+            patches: patch      # integer index for patch assignment, couting from 0...N-1
+            weight: weight      # (optional) object weight
+            cache: true         # whether to cache the file in the cache directory
+        rand: null          # random catalog for data sample,
+                            # omit or repeat arguments from 'data' above
 
-        reference:          # reference data sample with know redshifts
-            data:               # data catalog file and column names
-                filepath: ...       # input file path
-                ra: ra              # right ascension in degrees
-                dec: dec            # declination in degrees
-                redshift: z         # redshift of objects (required)
-                patches: patch      # integer index for patch assignment, couting from 0...N-1
-                weight: weight      # (optional) object weight
-                cache: true         # whether to cache the file in the cache directory
-            rand: null          # random catalog for data sample,
-                                # omit or repeat arguments from 'data' above
-
-        unknown:            # unknown data sample for which clustering redshifts are estimated,
-                            # typically in tomographic redshift bins, see below
-            data:               # data catalog file and column names
-                filepath:           # either a single file path (no tomographic bins) or a mapping
-                                    # of integer bin index to file path 
-                    1: ...              #
-                    2: ...              #
-                ra: ra              # right ascension in degrees
-                dec: dec            # declination in degrees
-                redshift: z         # (optional) redshift of objects, if provided,
-                                    # enables computing the autocorrelation of the unknown sample
-                patches: patch      # integer index for patch assignment, couting from 0...N-1
-                weight: weight      # (optional) object weight
-                cache: true         # whether to cache the file in the cache directory
-            rand: null          # random catalog for data sample, omit or repeat arguments from
-                                # 'data' above ('filepath' format must must match 'data' above)
+    unknown:            # unknown data sample for which clustering redshifts are estimated,
+                        # typically in tomographic redshift bins, see below
+        data:               # data catalog file and column names
+            filepath:           # either a single file path (no tomographic bins) or a mapping of
+                                # integer bin index to file path 
+                1: ...              #
+                2: ...              #
+            ra: ra              # right ascension in degrees
+            dec: dec            # declination in degrees
+            redshift: z         # (optional) redshift of objects, if provided, enables computing
+                                # the autocorrelation of the unknown sample
+            patches: patch      # integer index for patch assignment, couting from 0...N-1
+            weight: weight      # (optional) object weight
+            cache: true         # whether to cache the file in the cache directory
+        rand: null          # random catalog for data sample, omit or repeat arguments from 'data'
+                            # above ('filepath' format must must match 'data' above)
 
 # The section below is entirely optional and used to specify tasks
 # to execute when using the 'yaw run' command. The list is generated
