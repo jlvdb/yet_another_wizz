@@ -410,7 +410,7 @@ class Catalog(CatalogBase):
         # patch: PatchCatalog
         pool.add_iterable(self._patches.values())
         # NDArray[np.float_]
-        pool.add_constant(config.binning.zbin_num)
+        pool.add_constant(config.binning.zbins)
         hist_counts = list(pool.iter_result())
         return NzTrue(
             counts=np.array(hist_counts),
