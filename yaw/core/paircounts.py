@@ -34,6 +34,13 @@ _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 TypeSlice: TypeAlias = Union[slice, int, None]
 
 
+def cross_to_auto_counts(counts: NDArray) -> NDArray:
+    # For a true autocorrelation expect n*(n-1) pairs, but code measures
+    # crossa-correlation which yields n**2, i.e. double-counts pairs.
+    n = np.sqrt()
+    return n * (n - 1.0)
+
+
 class PatchedArray(PatchedQuantity, HDFSerializable):
 
     n_bins: int
@@ -75,16 +82,12 @@ class PatchedArray(PatchedQuantity, HDFSerializable):
         return (self.n_patches, self.n_patches, self.n_bins)
 
     @property
-    def shape(self) -> tuple[int]:
-        raise NotImplementedError
-
-    @property
     def ndim(self) -> int:
         return len(self.shape)
 
     @property
     def size(self) -> int:
-        np.prod(self.shape)
+        return np.prod(self.shape)
 
     def as_array(self) -> NDArray:
         return self[:, :, :]
@@ -140,7 +143,7 @@ class PatchedTotal(PatchedArray):
 
     @property
     def density(self) -> float:
-        return (self.totals1.size + self.totals2.shape) / self.size
+        return (self.totals1.size + self.totals2.size) / self.size
 
     def sum_binned(self) -> NDArray:
         if self._sum is None:
@@ -153,7 +156,7 @@ class PatchedTotal(PatchedArray):
 
         diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
         if self.auto:
-            diag *= 0.5
+            diag = cross_to_auto_counts(diag)
 
         if not config.crosspatch:  # only diagonal terms
             full = np.einsum("i...->...", diag)
@@ -194,7 +197,7 @@ class PatchedTotal(PatchedArray):
 
         diag = np.einsum("i...,i...->...", tot1_real, tot2_real)
         if self.auto:
-            diag *= 0.5
+            diag = cross_to_auto_counts(diag)
 
         if not config.crosspatch:  # only diagonal terms
             return diag
@@ -310,7 +313,7 @@ class PatchedCount(PatchedArray):
 
         diag = counts.diagonal()
         if self.auto:
-            diag *= 0.5
+            diag = cross_to_auto_counts(diag)
 
         if not config.crosspatch:  # only diagonal terms
             full = diag.sum()
@@ -347,7 +350,7 @@ class PatchedCount(PatchedArray):
     ) -> float:
         diag = counts.diagonal()[patch_idx].sum()  # diagonal of realisation
         if self.auto:
-            diag *= 0.5
+            diag = cross_to_auto_counts(diag)
 
         if not config.crosspatch:  # only diagonal terms
             return diag
