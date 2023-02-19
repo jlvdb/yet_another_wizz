@@ -6,14 +6,13 @@ import sys
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
-import pandas as pd
-
 from yaw.core import default as DEFAULT
 from yaw.core.config import Configuration, ResamplingConfig
 from yaw.core.correlation import CorrelationEstimator
 from yaw.core.cosmology import get_default_cosmology
+from yaw.core.utils import format_float_fixed_width as fmt_num
 
-from yaw.logger import get_logger
+from yaw.logger import Colors, get_logger
 
 from yaw.pipe.commandline import Commandline, Path_absolute, Path_exists
 from yaw.pipe.project import (
@@ -41,7 +40,11 @@ def logged(func):
         levels = {0: "warn", 1: "info", 2: "debug"}
         logger = get_logger(levels[args.verbose], plain=True)
         # TODO: add log file at args.wdir.joinpath("events.log")
-        print(f"\nYAW running job '{func.__name__}'")
+        if func.__name__ == "run":
+            message = f"running setup from from:{Colors.rst} {args.setup}"
+        else:
+            message = f"running task {str(func.__name__).upper()}"
+        print(f"{Colors.grn}YAW {Colors.sep} {message}{Colors.rst}")
         try:
             return func(args, *posargs, **kwargs)
         except Exception:
@@ -306,17 +309,32 @@ class Runner:
 
     def write_total_unk(self, idx: int) -> None:
         path = self.project.get_total_unknown()
+        table = {}  # bin index -> (count, sum weights)
+        # read existing data
         if path.exists():
-            total = pd.read_csv(str(path), index_col=0)
-        else:
-            total = pd.DataFrame(
-                columns=["count", "sum_weight"], index=pd.Index([], name="bin"))
-        total.loc[idx] = (len(self.unk_data), self.unk_data.total)
-        total.to_csv(str(path))
+            with open(str(path)) as f:
+                for line in f.readlines():
+                    if line.startswith("#"):
+                        continue
+                    bin_idx, count, sum_weight = line.strip().split()
+                    # add or update entry
+                    table[int(bin_idx)] = (int(count), float(sum_weight))
+        table[idx] = (len(self.unk_data), self.unk_data.total)
+        # write table
+        PREC = 12
+        with open(str(path), "w") as f:
+            f.write(f"# bin {'count':>{PREC}s} {'sum_weight':>{PREC}s}\n")
+            for bin_idx in sorted(table):
+                count, sum_weight = table[bin_idx]
+                sum_weight = fmt_num(sum_weight, PREC)
+                f.write(f"{bin_idx:5d} {count:{PREC}d} {sum_weight}\n")
 
     def drop_cache(self):
         self.logger.info("dropping cached data")
         self.project.get_cache().drop_all()
+
+    def print_message(self, message: str, color: str = Colors.blu) -> None:
+        print(f"{color}YAW {Colors.sep} {message}{Colors.rst}")
 
     def main(
         self,
@@ -334,6 +352,8 @@ class Runner:
         do_ztrue = ztrue_kwargs is not None
         zcc_processed = False
 
+        if do_w_sp or do_w_ss or do_zcc:
+            self.print_message("processing reference sample")
         if do_w_sp or do_w_ss:
             self.load_reference()
             self.write_nz_ref()
@@ -351,7 +371,13 @@ class Runner:
             zcc_processed = True
 
         if do_w_sp or do_w_pp or do_zcc or do_ztrue:
-            for idx in self.project.get_bin_indices():
+            for i, idx in enumerate(self.project.get_bin_indices(), 1):
+                message = "processing unknown "
+                if self.project.n_bins == 1:
+                    message += "sample"
+                else:
+                    message += f"bin {i} / {self.project.n_bins}"
+                self.print_message(message)
 
                 if do_w_sp or do_w_pp or do_ztrue:
                     skip_rand = do_ztrue and not (do_w_sp or do_w_pp)
@@ -391,6 +417,8 @@ class Runner:
 
         if drop_cache:
             self.drop_cache()
+        
+        self.print_message("done")
 
 
 ###########################  SUBCOMMANDS FOR PARSER ############################

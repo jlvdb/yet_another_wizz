@@ -1,10 +1,42 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from datetime import timedelta
 from timeit import default_timer
 from typing import Callable
+
+
+def term_supports_color() -> bool:
+    plat = sys.platform
+    supported = (
+        plat != "Pocket PC" and
+        (plat != "win32" or "ANSICON" in os.environ))
+    isatty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    return supported and isatty
+
+
+if term_supports_color():
+    class Colors:
+        sep = "|"
+        gry = "\033[2m"
+        bld = "\033[1m"
+        blu = "\033[1;34m"
+        grn = "\033[1;32m"
+        ylw = "\033[1;33m"
+        red = "\033[1;31m"
+        rst = "\033[0m"
+else:
+    class Colors:
+        sep = "|"
+        gry = ""
+        bld = ""
+        blu = ""
+        grn = ""
+        ylw = ""
+        red = ""
+        rst = ""
 
 
 class OnlyYAWFilter(logging.Filter):
@@ -14,19 +46,14 @@ class OnlyYAWFilter(logging.Filter):
 
 class CustomFormatter(logging.Formatter):
 
-    sep = "|"
-    faint = "\033[2m"
-    bold = "\033[1m"
-    boldyellow = "\033[1;33m"
-    boldred = "\033[1;31m"
-    reset = "\033[0m"
-
+    level = "%(levelname).3s"
+    msg = "%(message)s"
     FORMATS = {
-        logging.DEBUG: f"{faint}%(levelname).3s {sep} %(message)s{reset}",
-        logging.INFO: f"%(levelname).3s {sep} %(message)s",
-        logging.WARNING: f"{boldyellow}%(levelname).3s {sep}{reset} %(message)s",
-        logging.ERROR: f"{boldred}%(levelname).3s {sep} %(message)s{reset}",
-        logging.CRITICAL: f"{boldred}%(levelname).3s {sep} %(message)s{reset}"}
+        logging.DEBUG: f"{Colors.gry}{level} {Colors.sep} {msg}{Colors.rst}",
+        logging.INFO: f"{level} {Colors.sep} {msg}",
+        logging.WARNING: f"{Colors.ylw}{level} {Colors.sep}{Colors.rst} {msg}",
+        logging.ERROR: f"{Colors.red}{level} {Colors.sep} {msg}{Colors.rst}",
+        logging.CRITICAL: f"{Colors.red}{level} {Colors.sep} {msg}{Colors.rst}"}
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno, self.FORMATS[logging.INFO])

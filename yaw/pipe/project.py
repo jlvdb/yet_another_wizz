@@ -481,6 +481,10 @@ class ProjectDirectory(DictRepresentation):
     def get_bin_indices(self) -> set[int]:
         return self._inputs.get_bin_indices()
 
+    @property
+    def n_bins(self):
+        return self._inputs.n_bins
+
     def show_catalogs(self) -> None:
         print(yaml.dump(self._inputs.to_dict()))
 
