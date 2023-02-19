@@ -408,7 +408,7 @@ class Catalog(CatalogBase):
             n_items=self.n_patches,
             num_threads=config.backend.get_threads(self.n_patches))
         # patch: PatchCatalog
-        pool.add_iterable(list(self))
+        pool.add_iterable(self._patches.values())
         # NDArray[np.float_]
         pool.add_constant(config.binning.zbin_num)
         hist_counts = list(pool.iter_result())
