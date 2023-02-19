@@ -309,6 +309,11 @@ class PatchLinkage(PatchedQuantity):
             patches.add(p2)
         return len(patches)
 
+    @property
+    def density(self) -> float:
+        n = self.n_patches
+        return len(self) / (n*n)
+
     def get_pairs(
         self,
         auto: bool,

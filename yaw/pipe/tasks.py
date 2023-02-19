@@ -7,6 +7,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 from yaw.core import default as DEFAULT
+from yaw.core.catalog import PatchLinkage
 from yaw.core.config import Configuration, ResamplingConfig
 from yaw.core.correlation import CorrelationEstimator
 from yaw.core.cosmology import get_default_cosmology
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 BACKEND_OPTIONS = ("scipy", "treecorr")
 BINNING_OPTIONS = ("linear", "comoving", "logspace")
 from astropy.cosmology import available as COSMOLOGY_OPTIONS
-METHOD_OPTIONS = ("bootstrap", "jackknife")
+METHOD_OPTIONS = ResamplingConfig.implemented_methods
 
 
 class NoCountsError(Exception):
@@ -70,11 +71,14 @@ class Runner:
             self.config = project.config.modify(thread_num=threads)
         else:
             self.config = project.config
+        self._warned_patches = False
+        self._warned_linkage = False
         # create place holder attributes
         self.ref_data = None
         self.ref_rand = None
         self.unk_data = None
         self.unk_rand = None
+        self.linkage = None
         self.w_sp = None
         self.w_ss = None
         self.w_pp = None
@@ -82,15 +86,27 @@ class Runner:
         self.w_ss_data = None
         self.w_pp_data = None
 
+    def _warn_patches(self):
+        LIM = 256
+        msg = f"a large number of patches (>{LIM}) may degrade the performance"
+        if not self._warned_patches:
+            cats = (self.ref_data, self.ref_rand, self.unk_data, self.unk_rand)
+            for cat in cats:
+                if hasattr(cat, "n_patches") and cat.n_patches > LIM:
+                    self.logger.warn(msg)
+                    self._warned_patches = True
+                    break
+
     def load_reference(self):
         # load randoms first since preferrable for optional patch creation
         self.logger.info("loading reference data")
         try:
             self.ref_rand = self.project.load_reference("rand")
-        except MissingCatalogError:
-            self.logger.debug("loading reference randoms failed")
+        except MissingCatalogError as e:
+            self.logger.debug(e.args[0])
             self.ref_rand = None
         self.ref_data = self.project.load_reference("data")
+        self._warn_patches()
 
     def load_unknown(self, idx: int, skip_rand: bool = False):
         # load randoms first since preferrable for optional patch creation
@@ -101,10 +117,26 @@ class Runner:
                 self.unk_rand = None
             else:
                 self.unk_rand = self.project.load_unknown("rand", idx)
-        except MissingCatalogError:
-            self.logger.debug("loading unknown randoms failed")
+        except MissingCatalogError as e:
+            self.logger.debug(e.args[0])
             self.unk_rand = None
         self.unk_data = self.project.load_unknown("data", idx)
+        self._warn_patches()
+
+    def compute_linkage(self):
+        if self.linkage is None:
+            cats = (self.unk_rand, self.unk_data, self.ref_rand, self.ref_data)
+            for cat in cats:
+                if cat is not None:
+                    break
+            else:
+                raise MissingCatalogError("no catalogs loaded")
+            self.linkage = PatchLinkage.from_setup(self.config, cat)
+            if self.linkage.density > 0.3 and not self._warned_linkage:
+                self.logger.warn(
+                    "linkage density > 0.3, either patches overlap "
+                    "significantly or are small compared to scales")
+                self._warned_linkage = True
 
     def cf_as_dict(
         self,
@@ -125,7 +157,8 @@ class Runner:
                 "reference autocorrelation requires reference randoms")
         cfs = self.project.backend.autocorrelate(
             self.config, self.ref_data, self.ref_rand,
-            compute_rr=compute_rr, progress=self.progress)
+            linkage=self.linkage, compute_rr=compute_rr,
+            progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
             self.logger.debug(f"writing pair counts for scale '{scale}'")
@@ -145,7 +178,8 @@ class Runner:
                 "unknown autocorrelation requires unknown randoms")
         cfs = self.project.backend.autocorrelate(
             self.config, self.unk_data, self.unk_rand,
-            compute_rr=compute_rr, progress=self.progress)
+            linkage=self.linkage, compute_rr=compute_rr,
+            progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
             self.logger.debug(f"writing pair counts for scale '{scale}'")
@@ -180,7 +214,7 @@ class Runner:
                     "unknown randoms")
         cfs = self.project.backend.crosscorrelate(
             self.config, self.ref_data, self.unk_data,
-            **randoms, progress=self.progress)
+            **randoms, linkage=self.linkage, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
             self.logger.debug(f"writing pair counts for scale '{scale}'")
@@ -203,7 +237,8 @@ class Runner:
             self.logger.info("skipped missing pair counts")
 
     def load_auto_unk(self, idx: int) -> None:
-        self.logger.info(f"loading pair counts for unknown autocorrelation function")
+        self.logger.info(
+            f"loading pair counts for unknown autocorrelation function")
         cfs = {}
         try:
             for scale in self.project.list_counts_scales():
@@ -360,6 +395,7 @@ class Runner:
 
         if do_w_ss:
             compute_rr = (not auto_ref_kwargs.get("no_rr", False))
+            self.compute_linkage()
             self.run_auto_ref(compute_rr=compute_rr)
         elif do_zcc:
             self.load_auto_ref()
@@ -385,6 +421,7 @@ class Runner:
                     self.write_total_unk(idx)
 
                 if do_w_sp:
+                    self.compute_linkage()
                     compute_rr = (not cross_kwargs.get("no_rr", True))
                     self.run_cross(idx, compute_rr=compute_rr)
                 elif do_zcc:
@@ -396,6 +433,7 @@ class Runner:
                     zcc_processed = True
 
                 if do_w_pp:
+                    self.compute_linkage()
                     compute_rr = (not auto_unk_kwargs.get("no_rr", False))
                     self.run_auto_unk(idx, compute_rr=compute_rr)
                 elif do_zcc:

@@ -62,6 +62,13 @@ def bytes_format(x: float) -> str:
     return prefix + suffix
 
 
+def format_float_fixed_width(value, width):
+    string = f"{value: .{width}f}"[:width]
+    if "nan" in string or "inf" in string:
+        string = f"{string.strip():>{width}s}"
+    return string
+
+
 class PatchedQuantity(Protocol):
 
     n_patches: int

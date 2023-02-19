@@ -4,21 +4,20 @@ import logging
 import warnings
 from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass, field, fields
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
 import pandas as pd
 
-from yaw.core import default as DEFAULT
 from yaw.core.catalog import PatchLinkage
 from yaw.core.config import ResamplingConfig
 from yaw.core.paircounts import PairCountResult
 from yaw.core.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
+from yaw.core.utils import format_float_fixed_width as fmt_num
 
-from yaw.logger import TimedLog
+from yaw.logger import LogCustomWarning, TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -102,6 +101,11 @@ class CorrelationEstimator(ABC):
         super().__init_subclass__(**kwargs)
         cls.variants.append(cls)
 
+    def _warn_enum_zero(self, counts: NDArray):
+        if np.any(counts == 0.0):
+            logger.warn(
+                f"estimator {self.short} encontered zeros in enumerator")
+
     def name(self) -> str:
         return self.__class__.__name__
 
@@ -142,6 +146,7 @@ class PeeblesHauser(CorrelationEstimator):
     ) -> DataFrame:
         DD = dd.normalised()
         RR = rr.normalised()
+        self._warn_enum_zero(RR)
         return DD / RR - 1.0
 
 
@@ -158,6 +163,7 @@ class DavisPeebles(CorrelationEstimator):
     ) -> DataFrame:
         DD = dd.normalised()
         DR = dr_rd.normalised()
+        self._warn_enum_zero(DR)
         return DD / DR - 1.0
 
 
@@ -178,7 +184,9 @@ class Hamilton(CorrelationEstimator):
         DR = dr.normalised()
         RD = DR if rd is None else rd.normalised()
         RR = rr.normalised()
-        return (DD * RR) / (DR * RD) - 1.0
+        enum = DR * RD
+        self._warn_enum_zero(enum)
+        return (DD * RR) / enum - 1.0
 
 
 class LandySzalay(CorrelationEstimator):
@@ -198,6 +206,7 @@ class LandySzalay(CorrelationEstimator):
         DR = dr.normalised()
         RD = DR if rd is None else rd.normalised()
         RR = rr.normalised()
+        self._warn_enum_zero(RR)
         return (DD - (DR + RD) + RR) / RR
 
 
@@ -371,12 +380,15 @@ class CorrelationData(BinnedQuantity):
     covariance: DataFrame = field(init=False)
 
     def __post_init__(self) -> None:
-        if self.method == "jackknife":
-            covmat = self.samples.T.cov(ddof=0) * (self.n_samples - 1)
-        elif self.method == "bootstrap":
-            covmat = self.samples.T.cov(ddof=1)
-        else:
-            raise ValueError(f"unknown sampling method '{self.method}'")
+        with LogCustomWarning(
+            logger, "invalid values encountered in correlation samples"
+        ):
+            if self.method == "jackknife":
+                covmat = self.samples.T.cov(ddof=0) * (self.n_samples - 1)
+            elif self.method == "bootstrap":
+                covmat = self.samples.T.cov(ddof=1)
+            else:
+                raise ValueError(f"unknown sampling method '{self.method}'")
         object.__setattr__(self, "covariance", covmat)
 
     def __repr__(self) -> str:
@@ -468,21 +480,18 @@ class CorrelationData(BinnedQuantity):
         PREC = 10
         DELIM = " "
 
-        def write_head(f, description, header):
+        def write_head(f, description, header, delim=DELIM):
             f.write(f"{description}\n")
-            line = DELIM.join(f"{h:>{PREC}s}" for h in header)
+            line = delim.join(f"{h:>{PREC}s}" for h in header)
             f.write(f"# {line[2:]}\n")
-
-        def fmt_num(value, prec=PREC):
-            return f"{value: .{prec}f}"[:prec]
 
         # write data and errors
         ext = "dat"
         header = ["z_low", "z_high", "nz", "nz_err"]
         with open(f"{path_prefix}.{ext}", "w") as f:
-            write_head(f, self._dat_desc, header)
+            write_head(f, self._dat_desc, header, delim=DELIM)
             for z_edges, nz, nz_err in zip(self.edges, self.data, self.error):
-                values = [fmt_num(val) for val in (*z_edges, nz, nz_err)]
+                values = [fmt_num(val, PREC) for val in (*z_edges, nz, nz_err)]
                 f.write(DELIM.join(values) + "\n")
 
         # write samples
@@ -491,10 +500,10 @@ class CorrelationData(BinnedQuantity):
         header.extend(
             f"{self.method[:4]}_{i}" for i in range(self.n_samples))
         with open(f"{path_prefix}.{ext}", "w") as f:
-            write_head(f, self._smp_desc, header)
+            write_head(f, self._smp_desc, header, delim=DELIM)
             for z, samples in self.samples.iterrows():
-                values = [fmt_num(z.left), fmt_num(z.right)]
-                values.extend(fmt_num(val) for val in samples)
+                values = [fmt_num(z.left, PREC), fmt_num(z.right, PREC)]
+                values.extend(fmt_num(val, PREC) for val in samples)
                 f.write(DELIM.join(values) + "\n")
 
         # write covariance (just for convenience)
@@ -565,6 +574,8 @@ def autocorrelate(
     config: Configuration,
     data: CatalogBase,
     random: CatalogBase,
+    *,
+    linkage: PatchLinkage | None = None,
     compute_rr: bool = True,
     progress: bool = False
 ) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
@@ -574,15 +585,17 @@ def autocorrelate(
     """
     logger.info(
         f"running autocorrelation ({len(config.scales.scales)} scales, "
-        f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
-    linkage = PatchLinkage.from_setup(config, random)
+        f"{config.scales.scales.min():.0f}<r<="
+        f"{config.scales.scales.max():.0f}kpc)")
+    if linkage is None:
+        linkage = PatchLinkage.from_setup(config, random)
     kwargs = dict(linkage=linkage, progress=progress)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = data.correlate(config, binned=True, **kwargs)
-    with TimedLog(logger.info, f"counting data-random pairs"):
+    with TimedLog(logger.info, f"counting data-rand pairs"):
         DR = data.correlate(config, binned=True, other=random, **kwargs)
     if compute_rr:
-        with TimedLog(logger.info, f"counting random-random pairs"):
+        with TimedLog(logger.info, f"counting rand-rand pairs"):
             RR = random.correlate(config, binned=True, **kwargs)
     else:
         RR = _create_dummy_counts(DD)
@@ -603,6 +616,7 @@ def crosscorrelate(
     *,
     ref_rand: CatalogBase | None = None,
     unk_rand: CatalogBase | None = None,
+    linkage: PatchLinkage | None = None,
     progress: bool = False
 ) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
     """
@@ -616,26 +630,28 @@ def crosscorrelate(
 
     logger.info(
         f"running crosscorrelation ({len(config.scales.scales)} scales, "
-        f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
-    linkage = PatchLinkage.from_setup(config, unknown)
+        f"{config.scales.scales.min():.0f}<r<="
+        f"{config.scales.scales.max():.0f}kpc)")
+    if linkage is None:
+        linkage = PatchLinkage.from_setup(config, unknown)
     kwargs = dict(linkage=linkage, progress=progress)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = reference.correlate(
             config, binned=False, other=unknown, **kwargs)
     if compute_dr:
-        with TimedLog(logger.info, f"counting data-random pairs"):
+        with TimedLog(logger.info, f"counting data-rand pairs"):
             DR = reference.correlate(
                 config, binned=False, other=unk_rand, **kwargs)
     else:
         DR = _create_dummy_counts(DD)
     if compute_rd:
-        with TimedLog(logger.info, f"counting random-data pairs"):
+        with TimedLog(logger.info, f"counting rand-data pairs"):
             RD = ref_rand.correlate(
                 config, binned=False, other=unknown, **kwargs)
     else:
         RD = _create_dummy_counts(DD)
     if compute_rr:
-        with TimedLog(logger.info, f"counting random-random pairs"):
+        with TimedLog(logger.info, f"counting rand-rand pairs"):
             RR = ref_rand.correlate(
                 config, binned=False, other=unk_rand, **kwargs)
     else:

@@ -14,7 +14,7 @@ from yaw.core.config import ResamplingConfig
 from yaw.core.correlation import CorrelationData
 from yaw.core.utils import BinnedQuantity, PatchedQuantity
 
-from yaw.logger import TimedLog
+from yaw.logger import LogCustomWarning, TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -90,13 +90,15 @@ class RedshiftData(CorrelationData):
             w_pp_data = unk_data.data
             w_pp_samp = unk_data.samples
 
-        # compute redshift estimate, supress zero division warnings
         N = cross_data.n_samples
         dzsq_data = cross_data.dz**2
         dzsq_samp = np.tile(dzsq_data, N).reshape((N, -1)).T
+        with LogCustomWarning(
+            logger, "invalid values encountered in redshift estimate"
+        ):
+            nz_data = w_sp_data / np.sqrt(dzsq_data * w_ss_data * w_pp_data)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            nz_data = w_sp_data / np.sqrt(dzsq_data * w_ss_data * w_pp_data)
             nz_samp = w_sp_samp / np.sqrt(dzsq_samp * w_ss_samp * w_pp_samp)
         return cls(data=nz_data, samples=nz_samp, method=cross_data.method)
 
@@ -159,11 +161,14 @@ class RedshiftData(CorrelationData):
             mask = np.isfinite(self.data)
             norm = np.trapz(self.data.to_numpy()[mask], x=self.mids)
         else:
-            y = self.data.to_numpy()
-            sigma = to.data.to_numpy() ** -2  # best match at high amplitude
+            y_from = self.data.to_numpy()
+            y_to = to.data.to_numpy()
+            errors = to.data.to_numpy()
+            mask = np.isfinite(y_from) & np.isfinite(y_to) & np.isfinite(errors)
+            sigma = errors[mask] ** -2  # best match at high amplitude
             norm = scipy.optimize.curve_fit(
-                lambda x, A: A * y,  # x is a dummy variable
-                xdata=to.mids, ydata=to.data.to_numpy(),
+                lambda x, A: A * y_from[mask],  # x is a dummy variable
+                xdata=to.mids[mask], ydata=y_to[mask],
                 p0=[1.0], sigma=sigma)[0][0]
         return self.__class__(
             data=self.data / norm,
