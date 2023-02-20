@@ -79,14 +79,15 @@ class BinnedQuantity(Protocol):
 
     binning: IntervalIndex
 
-    def __len__(self) -> int:
-        return len(self.binning)
-
     def __repr__(self) -> str:
         name = self.__class__.__name__
-        n_bins = len(self)
+        n_bins = self.n_bins
         z = f"{self.binning[0].left:.3f}...{self.binning[-1].right:.3f}"
         return f"{name}({n_bins=}, {z=})"
+
+    @property
+    def n_bins(self) -> int:
+        return len(self.binning)
 
     @property
     def mids(self) -> NDArray[np.float_]:
@@ -94,11 +95,11 @@ class BinnedQuantity(Protocol):
 
     @property
     def edges(self) -> NDArray[np.float_]:
-        return np.column_stack([self.binning.left, self.binning.right])
+        return np.append(self.binning.left, self.binning.right[-1])
 
     @property
     def dz(self) -> NDArray[np.float_]:
-        return np.diff(self.edges).ravel()
+        return np.diff(self.edges)
 
     def is_compatible(self, other) -> bool:
         if not isinstance(other, self.__class__):

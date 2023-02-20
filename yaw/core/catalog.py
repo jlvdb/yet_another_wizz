@@ -16,9 +16,9 @@ from yaw.core.utils import PatchedQuantity, long_num_format
 
 if TYPE_CHECKING:
     from pandas import DataFrame
-    from yaw.core.config import Configuration
+    from yaw.core.config import Configuration, ResamplingConfig
+    from yaw.core.datapacks import RedshiftData
     from yaw.core.paircounts import PairCountResult
-    from yaw.core.redshifts import NzTrue
     from yaw.core.utils import TypePatchKey, TypeScaleKey
 
 
@@ -245,8 +245,9 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
     @abstractmethod
     def true_redshifts(
         self,
-        config: Configuration
-    ) -> NzTrue:
+        config: Configuration,
+        sampling_config: ResamplingConfig | None = None
+    ) -> RedshiftData:
         """
         Compute the a redshift distribution histogram.
         """

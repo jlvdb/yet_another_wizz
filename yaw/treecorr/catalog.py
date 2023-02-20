@@ -17,7 +17,6 @@ from yaw.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
 from yaw.core.cosmology import r_kpc_to_angle
 from yaw.core.paircounts import PairCountResult
-from yaw.core.redshifts import NzTrue
 from yaw.core.utils import TypeScaleKey
 
 from yaw.logger import TimedLog
@@ -25,6 +24,8 @@ from yaw.logger import TimedLog
 if TYPE_CHECKING:
     from pandas import DataFrame, Interval
     from yaw.core.catalog import PatchLinkage
+    from yaw.core.config import ResamplingConfig
+    from yaw.core.datapacks import RedshiftData
 
 
 logger = logging.getLogger(__name__)
@@ -275,9 +276,13 @@ class Catalog(CatalogBase):
                 result[scale_key] = PairCountResult.from_bins(binned_result)
         return result
 
-    def true_redshifts(self, config: Configuration) -> NzTrue:
+    def true_redshifts(
+        self,
+        config: Configuration,
+        sampling_config: ResamplingConfig | None = None
+    ) -> RedshiftData:
         super().true_redshifts(config)
-
+        raise NotImplementedError
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
         # compute the reshift histogram in each patch

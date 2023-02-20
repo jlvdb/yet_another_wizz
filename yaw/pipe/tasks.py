@@ -232,9 +232,9 @@ class Runner:
                 path = counts_dir.get_auto_reference()
                 cfs[scale] = self.backend.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
-            self.w_ss = cfs
         except (FileNotFoundError, AssertionError):
             self.logger.info("skipped missing pair counts")
+        self.w_ss = cfs
 
     def load_auto_unk(self, idx: int) -> None:
         self.logger.info(
@@ -286,12 +286,12 @@ class Runner:
         setattr(self, f"{cfs_kind}_data", data)
 
     def write_auto_ref(self) -> None:
-        for scale, cf in self.w_ss_data.items():
+        for scale, cf_data in self.w_ss_data.items():
             self.logger.debug(
                 f"writing reference autocorrelation data files for scale '{scale}'")
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_auto_reference()
-            cf.to_files(path)
+            cf_data.to_files(path)
 
     def write_auto_unk(self, idx: int) -> None:
         for scale, cf in self.w_pp_data.items():
@@ -315,11 +315,11 @@ class Runner:
         for scale in cross_data:
             self.logger.debug(
                 f"writing redshift data files for scale '{scale}'")
-            nz = self.backend.RedshiftData.from_correlation_data(
+            nz_data = self.backend.RedshiftData.from_correlation_data(
                 cross_data[scale], ref_data[scale], unk_data[scale])
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_cross(idx)
-            nz.to_files(path)
+            nz_data.to_files(path)
 
     def write_nz_ref(self) -> None:
         path = self.project.get_true_reference(create=True)
@@ -327,19 +327,15 @@ class Runner:
         if not path.with_suffix(".dat").exists():
             self.logger.info(
                 f"computing reference sample redshift distribution")
-            nz = self.ref_data.true_redshifts(self.config)
-            # we mainly care about the actual n(z), use default resampling
-            nz_data = nz.get(ResamplingConfig())
+            nz_data = self.ref_data.true_redshifts(self.config)
             self.logger.debug("writing redshift data files")
             nz_data.to_files(path)
 
     def write_nz_true(self, idx: int) -> None:
         self.logger.info(f"computing true redshift distribution")
-        nz = self.unk_data.true_redshifts(self.config)
-        # we mainly care about the actual n(z), use default resampling
-        nz_data = nz.get(ResamplingConfig())
-        path = self.project.get_true_unknown(idx, create=True)
+        nz_data = self.unk_data.true_redshifts(self.config)
         self.logger.debug("writing redshift data files")
+        path = self.project.get_true_unknown(idx, create=True)
         nz_data.to_files(path)
 
     def write_total_unk(self, idx: int) -> None:
@@ -375,7 +371,8 @@ class Runner:
         import numpy as np
         try:
             import matplotlib.pyplot as plt
-            self.logger.info("create check-plots")
+            self.logger.info(
+                f"creating check-plots in '{self.project.estimate_dir}'")
         except ImportError:
             self.logger.error("could not import matplotlib, plotting disabled")
             return
@@ -384,6 +381,8 @@ class Runner:
             # figure out which files exist
             paths_ok = [
                 path for path in paths if path.with_suffix(".dat").exists()]
+            if len(paths_ok) == 0:
+                return None
             # make a figure
             n_row, rest = divmod(len(paths_ok), 3)
             if n_row == 0:
@@ -415,22 +414,31 @@ class Runner:
             fig = make_plot(
                 [est_dir.get_auto_reference()], scale,
                 "Reference autocorrelation")
-            fig.savefig(self.project.estimate_dir.joinpath(
-                f"auto_reference_{scale}.png"))
+            if fig is not None:
+                name = f"auto_reference_{scale}.png"
+                self.logger.debug(f"writing '{name}'")
+                path = self.project.estimate_dir.joinpath(name)
+                fig.savefig(path)
             # unknown
             fig = make_plot(
                 [est_dir.get_auto(idx) for idx in est_dir.get_auto_indices()],
                 scale, "Unknown autocorrelation")
-            fig.tight_layout()
-            fig.savefig(self.project.estimate_dir.joinpath(
-                f"auto_unknown_{scale}.png"))
+            if fig is not None:
+                fig.tight_layout()
+                name = f"auto_unknown_{scale}.png"
+                self.logger.debug(f"writing '{name}'")
+                path = self.project.estimate_dir.joinpath(name)
+                fig.savefig(path)
             # ccs
             fig = make_plot(
                 [est_dir.get_cross(idx) for idx in est_dir.get_cross_indices()],
                 scale, "Redshift estimate")
-            fig.tight_layout()
-            fig.savefig(self.project.estimate_dir.joinpath(
-                f"nz_estimate_{scale}.png"))
+            if fig is not None:
+                fig.tight_layout()
+                name = f"nz_estimate_{scale}.png"
+                self.logger.debug(f"writing '{name}'")
+                path = self.project.estimate_dir.joinpath(name)
+                fig.savefig(path)
 
     def main(
         self,
@@ -955,7 +963,7 @@ def run(args):
     with project:
         runner = Runner(project, args.progress, args.threads)
         task_kwargs = dict()
-        for task in project.list_tasks():
+        for i, task in enumerate(project.list_tasks(), 1):
             if task.name == "drop_cache":
                 task_kwargs[task.name] = True
             elif task.name == "plot":
@@ -965,4 +973,5 @@ def run(args):
                 task_kwargs[f"{task.name}_kwargs"] = task.args
             else:
                 task_kwargs[f"{task.name}_kwargs"] = task.args
+            print(f"    |{i:2d}) {task.name}")
         runner.main(**task_kwargs)
