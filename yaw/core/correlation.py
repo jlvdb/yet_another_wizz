@@ -312,8 +312,9 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 pairs = self._getattr_from_cts(cts).get(config)
                 required_data[str(cts)] = pairs.data
                 required_samples[str(cts)] = pairs.samples
-            except AttributeError:
-                pass
+            except AttributeError as e:
+                if "NoneType" not in e.args[0]:
+                    raise
         # get the pair counts for the optional terms
         optional_data = {}
         optional_samples = {}
@@ -322,8 +323,9 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 pairs = self._getattr_from_cts(cts).get(config)
                 optional_data[str(cts)] = pairs.data
                 optional_samples[str(cts)] = pairs.samples
-            except AttributeError:
-                pass
+            except AttributeError as e:
+                if "NoneType" not in e.args[0]:
+                    raise
         # evaluate the correlation estimator
         data = est_fun(**required_data, **optional_data)
         samples = est_fun(**required_samples, **optional_samples)

@@ -93,7 +93,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
         raise NotImplementedError
 
-    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
+    def _bootstrap(self, config: ResamplingConfig) -> NDArray:
         raise NotImplementedError
 
     def get_sum(self, config: ResamplingConfig) -> SampledData:
@@ -101,7 +101,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         if config.method == "bootstrap":
             samples = self._bootstrap(config)
         else:
-            samples = self._jackknife(config)
+            samples = self._jackknife(config, signal=data)
         return SampledData(
             binning=self.binning,
             data=data,
@@ -198,24 +198,24 @@ class PatchedTotal(PatchedArray):
 
     def _jackknife_cross_diag(self, signal: NDArray) -> NDArray:
         diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
-        return signal[:, ...] - diag
+        return signal - diag
 
     def _jackknife_auto_diag(self, signal: NDArray) -> NDArray:
         diag = 0.5 * np.einsum("i...,i...->i...", self.totals1, self.totals2)
-        return signal[:, ...] - diag
+        return signal - diag
 
     def _jackknife_cross(self, signal: NDArray) -> NDArray:
         diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
         rows = np.einsum("i...,j...->i...", self.totals1, self.totals2)
         cols = np.einsum("i...,j...->j...", self.totals1, self.totals2)
-        return signal[:, ...] - rows - cols + diag  # subtracted diag twice
+        return signal - rows - cols + diag  # subtracted diag twice
 
     def _jackknife_auto(self, signal: NDArray) -> NDArray:
         diag = 0.5 * np.einsum("i...,i...->i...", self.totals1, self.totals2)
         # sum along axes of upper triangle (without diagonal) of outer product
         rows = outer_triu_sum(self.totals1, self.totals2, k=1, axis=1)
         cols = outer_triu_sum(self.totals1, self.totals2, k=1, axis=0)
-        return signal[:, ...] - rows - cols - diag  # diag not in rows or cols
+        return signal - rows - cols - diag  # diag not in rows or cols
 
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
         if config.crosspatch:
@@ -333,7 +333,7 @@ class PatchedCount(PatchedArray):
         return bin.diagonal().sum()
 
     def _bin_sum_auto_diag(self, bin: spmatrix) -> np.number:
-        return 0.5 * self._bin_sum_cross_diag()
+        return 0.5 * self._bin_sum_cross_diag(bin)
 
     def _bin_sum_cross(self, bin: spmatrix) -> np.number:
         return bin.sum()
@@ -348,14 +348,14 @@ class PatchedCount(PatchedArray):
         for i, bin in enumerate(self._bins):
             if config.crosspatch:
                 if self.auto:
-                    out[i] = self._sum_auto(bin)
+                    out[i] = self._bin_sum_auto(bin)
                 else:
-                    out[i] = self._sum_cross(bin)
+                    out[i] = self._bin_sum_cross(bin)
             else:
                 if self.auto:
-                    out[i] = self._sum_auto_diag(bin)
+                    out[i] = self._bin_sum_auto_diag(bin)
                 else:
-                    out[i] = self._sum_cross_diag(bin)
+                    out[i] = self._bin_sum_cross_diag(bin)
         return out
 
     # methods implementing jackknife samples
@@ -365,14 +365,14 @@ class PatchedCount(PatchedArray):
         bin: spmatrix,
         signal: NDArray
     ) -> NDArray:
-        return signal[:, ...] - bin.diagonal()
+        return signal - bin.diagonal()  # broadcast to (n_patches,)
 
     def _bin_jackknife_auto_diag(
         self,
         bin: spmatrix,
         signal: NDArray
     ) -> NDArray:
-        return signal - (0.5 * bin.diagonal())
+        return signal - (0.5 * bin.diagonal())  # broadcast to (n_patches,)
 
     def _bin_jackknife_cross(
         self,
@@ -382,7 +382,7 @@ class PatchedCount(PatchedArray):
         diag = bin.diagonal()
         rows = np.asarray(bin.sum(axis=1)).flatten()
         cols = np.asarray(bin.sum(axis=0)).flatten()
-        return signal - rows - cols + diag
+        return signal - rows - cols + diag  # broadcast to (n_patches,)
 
     def _bin_jackknife_auto(
         self,
@@ -394,21 +394,21 @@ class PatchedCount(PatchedArray):
         tri_upper = scipy.sparse.triu(bin, k=1)
         rows = np.asarray(tri_upper.sum(axis=1)).flatten()
         cols = np.asarray(tri_upper.sum(axis=0)).flatten()
-        return signal[:, ...] - rows - cols - diag  # diag not in rows or cols
+        return signal - rows - cols - diag  # broadcast to (n_patches,)
 
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
         out = np.empty((self.n_patches, self.n_bins))
-        for i, bin in enumerate(self._bins):
+        for i, (bin, bin_signal) in enumerate(zip(self._bins, signal)):
             if config.crosspatch:
                 if self.auto:
-                    out[:, i] = self._bin_jackknife_auto(bin, signal)
+                    out[:, i] = self._bin_jackknife_auto(bin, bin_signal)
                 else:
-                    out[:, i] = self._bin_jackknife_cross(bin, signal)
+                    out[:, i] = self._bin_jackknife_cross(bin, bin_signal)
             else:
                 if self.auto:
-                    out[:, i] = self._bin_jackknife_auto_diag(bin, signal)
+                    out[:, i] = self._bin_jackknife_auto_diag(bin, bin_signal)
                 else:
-                    out[:, i] = self._bin_jackknife_cross_diag(bin, signal)
+                    out[:, i] = self._bin_jackknife_cross_diag(bin, bin_signal)
         return out
 
     # methods implementing bootstrap samples
