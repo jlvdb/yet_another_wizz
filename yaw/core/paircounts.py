@@ -16,7 +16,8 @@ import scipy.sparse
 
 from yaw.core.config import ResamplingConfig
 from yaw.core.datapacks import SampledData
-from yaw.core.utils import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.utils import (
+    BinnedQuantity, HDFSerializable, PatchedQuantity, outer_triu_sum)
 
 if TYPE_CHECKING:
     from scipy.sparse import spmatrix
@@ -86,12 +87,21 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     def as_array(self) -> NDArray:
         return self[:, :, :]
 
+    def _sum(self, config: ResamplingConfig) -> NDArray:
+        raise NotImplementedError
+
+    def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
+        raise NotImplementedError
+
+    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
+        raise NotImplementedError
+
     def get_sum(self, config: ResamplingConfig) -> SampledData:
+        data = self._sum(config)
         if config.method == "bootstrap":
-            data = self._sum(config.crosspatch)
-            samples = self._sum_bootstrap(config)
+            samples = self._bootstrap(config)
         else:
-            data, samples = self._sum_jackknife(config)
+            samples = self._jackknife(config)
         return SampledData(
             binning=self.binning,
             data=data,
@@ -155,100 +165,74 @@ class PatchedTotal(PatchedArray):
     def density(self) -> float:
         return (self.totals1.size + self.totals2.size) / self.size
 
-    def _sum_jackknife(
-        self,
-        config:ResamplingConfig
-    ) -> tuple[NDArray, NDArray]:
-        samples = np.empty((self.n_patches, self.n_bins))
+    # methods implementing the signal
 
-        diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
-        half_diag = diag * 0.5
+    def _sum_cross_diag(self) -> NDArray:
+        return np.einsum("i...,i...->...", self.totals1, self.totals2)
 
-        if not config.crosspatch:  # only diagonal terms, leave out element k
+    def _sum_auto_diag(self) -> NDArray:
+        return 0.5 * self._sum_cross_diag()
+
+    def _sum_cross(self) -> NDArray:
+        # sum of outer product
+        return np.einsum("i...,j...->...", self.totals1, self.totals2)
+
+    def _sum_auto(self) -> NDArray:
+        # sum of upper triangle (without diagonal) of outer product
+        sum_upper = outer_triu_sum(self.totals1, self.totals2, k=1)
+        return sum_upper + self._sum_auto_diag()
+
+    def _sum(self, config: ResamplingConfig) -> NDArray:
+        if config.crosspatch:
             if self.auto:
-                diag = half_diag
-            full = np.einsum("i...->...", diag)
-            for k in range(self.n_patches):
-                samples[k] = full - diag[k]
-
-        else:
-            # for the k-th jackknife sample:
-            #     full - cols[k] - rows[k] + diag[k]
-            rows = np.einsum("i...,j...->i...", self.totals1, self.totals2)
-
-            if self.auto:
-                # trick to compute upper triangle of
-                # np.einsum("i...,j...->..." self.totals1, self.totals2)
-                idx_row, idx_col = np.triu_indices(self.n_patches, 0)
-                full = np.einsum(
-                    "i...,i...", self.totals1[idx_row], self.totals2[idx_col])
-                # NOTE: full and rows both contain the full diagonal
-                full -= half_diag.sum()
-                rows = rows - half_diag
-                for k in range(self.n_patches):
-                    # for upper triangle, row contains rows[k], cols[k], diag[k]
-                    samples[k] = full - rows[k]
+                return self._sum_auto()
             else:
-                # sum along rows
-                cols = np.einsum("i...,j...->j...", self.totals1, self.totals2)
-                full = np.einsum("i...->...", rows)
-                for k in range(self.n_patches):
-                    # subtracting row and colum subtracts diagonal twice
-                    samples[k] = full - cols[k] - rows[k] + diag[k]
-       
-        return full, samples
-
-    def _sum(self, crosspatch: bool) -> tuple[NDArray, NDArray]:
-        raise NotImplementedError
-        diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
-        if self.auto:
-            diag *= 2.0
-
-        if not crosspatch:  # only diagonal terms
-            full = np.einsum("i...->...", diag)
-        elif not self.auto:
-            full = np.einsum("i...,j...->...", self.totals1, self.totals2)
+                return self._sum_cross()
         else:
-            # trick to compute upper triangle of case above
-            idx_row, idx_col = np.triu_indices(self.n_patches, 0)
-            full = np.einsum(
-                "i...,i...", self.totals1[idx_row], self.totals2[idx_col])
-        return full
+            if self.auto:
+                return self._sum_auto_diag()
+            else:
+                return self._sum_cross_diag()
 
-    def _single_bootstrap(
-        self,
-        patch_idx: NDArray[np.int_],
-        config: ResamplingConfig
-    ) -> NDArray:
+    # methods implementing jackknife samples
+
+    def _jackknife_cross_diag(self, signal: NDArray) -> NDArray:
+        diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
+        return signal[:, ...] - diag
+
+    def _jackknife_auto_diag(self, signal: NDArray) -> NDArray:
+        diag = 0.5 * np.einsum("i...,i...->i...", self.totals1, self.totals2)
+        return signal[:, ...] - diag
+
+    def _jackknife_cross(self, signal: NDArray) -> NDArray:
+        diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
+        rows = np.einsum("i...,j...->i...", self.totals1, self.totals2)
+        cols = np.einsum("i...,j...->j...", self.totals1, self.totals2)
+        return signal[:, ...] - rows - cols + diag  # subtracted diag twice
+
+    def _jackknife_auto(self, signal: NDArray) -> NDArray:
+        diag = 0.5 * np.einsum("i...,i...->i...", self.totals1, self.totals2)
+        # sum along axes of upper triangle (without diagonal) of outer product
+        rows = outer_triu_sum(self.totals1, self.totals2, k=1, axis=1)
+        cols = outer_triu_sum(self.totals1, self.totals2, k=1, axis=0)
+        return signal[:, ...] - rows - cols - diag  # diag not in rows or cols
+
+    def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
+        if config.crosspatch:
+            if self.auto:
+                return self._jackknife_auto(signal)
+            else:
+                return self._jackknife_cross(signal)
+        else:
+            if self.auto:
+                return self._jackknife_auto_diag(signal)
+            else:
+                return self._jackknife_cross_diag(signal)
+
+    # methods implementing bootstrap samples
+
+    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
         raise NotImplementedError
-        # create the realisation
-        tot1_real = self.totals1[patch_idx]
-        tot2_real = self.totals2[patch_idx]
-
-        diag = np.einsum("i...,i...->...", tot1_real, tot2_real)
-        if self.auto:
-            diag *= 2.0
-
-        if not config.crosspatch:  # only diagonal terms
-            return diag
-
-        # need to skip autocorrelation terms that arise on off-diagonals due to
-        # repeated elements in realisation: identify where in the matrix the
-        # realisation indices are not identical
-        is_cross = np.subtract.outer(patch_idx, patch_idx) != 0
-        if self.auto:
-            is_cross = np.triu(is_cross)
-        # compute the sum over the outer product, setting auto-terms to zero
-        cross = np.einsum("i...,j...,ij->...", tot1_real, tot2_real, is_cross)
-        return diag + cross
-
-    def _sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError
-        out = np.empty((config.n_boot, self.n_bins))  # bootstrap samples
-        # create and iterate realisations
-        patch_idx = config.get_samples(self.n_patches)
-        for n, idx in enumerate(patch_idx):
-            out[n] = self._single_bootstrap(idx, config=config)
 
     @classmethod
     def from_hdf(cls, source: h5py.Group) -> PatchedTotal:
@@ -343,129 +327,94 @@ class PatchedCount(PatchedArray):
         total = np.prod(self.shape)
         return stored / total
 
-    def _bin_jackknife(
-        self,
-        counts: spmatrix,
-        config: ResamplingConfig
-    ) -> tuple[np.float_, NDArray]:
-        samples = np.empty(self.n_patches)
+    # methods implementing the signal
 
-        diag = counts.diagonal()
-        if self.auto:
-            diag *= 0.5
+    def _bin_sum_cross_diag(self, bin: spmatrix) -> np.number:
+        return bin.diagonal().sum()
 
-        if not config.crosspatch:  # only diagonal terms, leave out element k
-            full = diag.sum()
-            for k in range(self.n_patches):
-                samples[k] = full - diag[k]
+    def _bin_sum_auto_diag(self, bin: spmatrix) -> np.number:
+        return 0.5 * self._bin_sum_cross_diag()
 
-        else:
-            # for the k-th jackknife sample:
-            #     full - cols[k] - rows[k] + diag[k]
-            if self.auto:
-                counts = scipy.sparse.triu(counts)
-            # sum along columns
-            rows = counts.sum(axis=1)
-            # sum along rows
-            cols = counts.sum(axis=0)
-            # operations above result in numpy.matrix, squeeze extra dimension
-            rows = np.squeeze(np.asarray(rows))
-            cols = np.squeeze(np.asarray(cols))
-            full = rows.sum()
+    def _bin_sum_cross(self, bin: spmatrix) -> np.number:
+        return bin.sum()
 
-            if self.auto:
-                # NOTE: full and rows/cols both contain the full diagonal but
-                # we need to scale this by two
-                diag_scaled = diag.sum()
-                full -= diag_scaled
-                rows = rows - diag_scaled
-                cols = cols - diag_scaled
+    def _bin_sum_auto(self, bin: spmatrix) -> np.number:
+        # sum of upper triangle (without diagonal) of outer product
+        sum_upper = scipy.sparse.triu(bin, k=1).sum()
+        return sum_upper + self._bin_sum_auto_diag(bin)
 
-            for k in range(self.n_patches):
-                # subtracting row and colum subtracts diagonal twice
-                samples[k] = full - cols[k] - rows[k] + diag[k]
-
-        return full, samples
-
-    def _sum_jackknife(
-        self,
-        config: ResamplingConfig
-    ) -> tuple[NDArray, NDArray]:
-        data = np.empty(self.n_bins)
-        samples = np.empty((self.n_patches, self.n_bins))
-        for i, counts in enumerate(self._bins):
-            dat, samp = self._bin_jackknife(counts, config=config)
-            data[i] = dat
-            samples[:, i] = samp
-        return data, samples
-
-    def _bin_sum(
-        self,
-        counts: spmatrix,
-        config: ResamplingConfig
-    ) -> NDArray:
-        raise NotImplementedError
-        diag = counts.diagonal()
-        if self.auto:
-            diag *= 2.0
-
-        if not config.crosspatch:  # only diagonal terms
-            full = diag.sum()
-
-        if self.auto:
-            counts = scipy.sparse.triu(counts)
-
-        return counts.sum()
-
-    def _bin_single_bootstrap(
-        self,
-        counts: np.matrix,
-        patch_idx: NDArray[np.int_],
-        config: ResamplingConfig
-    ) -> np.float_:
-        raise NotImplementedError
-        diag = counts.diagonal()[patch_idx].sum()  # diagonal of realisation
-        if self.auto:
-            diag *= 2.0
-
-        if not config.crosspatch:  # only diagonal terms
-            return diag
-
-        # create realisation of counts matrix
-        counts_real = counts[patch_idx][:, patch_idx]
-        # need to skip autocorrelation terms that araise on off-diagonal due to
-        # repeated elements in realisation
-        # identify where in the matrix the realisation indices not identical
-        is_cross = np.subtract.outer(patch_idx, patch_idx) != 0
-        if self.auto:
-            is_cross = np.triu(is_cross)
-
-        # compute the sum over the outer product, setting auto-terms to zero
-        cross = counts_real[is_cross].sum()
-        return diag + cross  # scalar!
-
-    def _bin_bootstrap(
-        self,
-        counts: spmatrix,
-        config: ResamplingConfig
-    ) -> NDArray:
-        raise NotImplementedError
-        out = np.empty(config.n_boot)
-        # indexing in both dimensions very inefficient in sparse matrices,
-        # switch to dense numpy array
-        counts: np.matrix = counts.toarray()
-        # create and iterate realisations
-        patch_idx = config.get_samples(self.n_patches)
-        for n, idx in enumerate(patch_idx):
-            out[n] = self._bin_single_bootstrap(counts, idx, config=config)
-
-    def _sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError
-        out = np.empty((config.n_boot, self.n_bins))
-        for i, counts in enumerate(self._bins):
-            bin_jackknife = self._bin_bootstrap(counts, config=config)
-            out[:, i] = bin_jackknife
+    def _sum(self, config: ResamplingConfig) -> NDArray:
+        out = np.empty(self.n_bins)
+        for i, bin in enumerate(self._bins):
+            if config.crosspatch:
+                if self.auto:
+                    out[i] = self._sum_auto(bin)
+                else:
+                    out[i] = self._sum_cross(bin)
+            else:
+                if self.auto:
+                    out[i] = self._sum_auto_diag(bin)
+                else:
+                    out[i] = self._sum_cross_diag(bin)
         return out
+
+    # methods implementing jackknife samples
+
+    def _bin_jackknife_cross_diag(
+        self,
+        bin: spmatrix,
+        signal: NDArray
+    ) -> NDArray:
+        return signal[:, ...] - bin.diagonal()
+
+    def _bin_jackknife_auto_diag(
+        self,
+        bin: spmatrix,
+        signal: NDArray
+    ) -> NDArray:
+        return signal - (0.5 * bin.diagonal())
+
+    def _bin_jackknife_cross(
+        self,
+        bin: spmatrix,
+        signal: NDArray
+    ) -> NDArray:
+        diag = bin.diagonal()
+        rows = np.asarray(bin.sum(axis=1)).flatten()
+        cols = np.asarray(bin.sum(axis=0)).flatten()
+        return signal - rows - cols + diag
+
+    def _bin_jackknife_auto(
+        self,
+        bin: spmatrix,
+        signal: NDArray
+    ) -> NDArray:
+        diag = 0.5 * bin.diagonal()
+        # sum along axes of upper triangle (without diagonal) of outer product
+        tri_upper = scipy.sparse.triu(bin, k=1)
+        rows = np.asarray(tri_upper.sum(axis=1)).flatten()
+        cols = np.asarray(tri_upper.sum(axis=0)).flatten()
+        return signal[:, ...] - rows - cols - diag  # diag not in rows or cols
+
+    def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
+        out = np.empty((self.n_patches, self.n_bins))
+        for i, bin in enumerate(self._bins):
+            if config.crosspatch:
+                if self.auto:
+                    out[:, i] = self._bin_jackknife_auto(bin, signal)
+                else:
+                    out[:, i] = self._bin_jackknife_cross(bin, signal)
+            else:
+                if self.auto:
+                    out[:, i] = self._bin_jackknife_auto_diag(bin, signal)
+                else:
+                    out[:, i] = self._bin_jackknife_cross_diag(bin, signal)
+        return out
+
+    # methods implementing bootstrap samples
+
+    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
+        raise NotImplementedError
 
     @classmethod
     def from_hdf(cls, source: h5py.Group) -> PatchedTotal:

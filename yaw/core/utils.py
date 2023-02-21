@@ -19,6 +19,32 @@ TypeScaleKey = str
 TypePathStr = Path | str
 
 
+def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
+    a = np.atleast_1d(a)
+    b = np.atleast_1d(b)
+    if a.shape != b.shape:
+        raise IndexError("shape of 'a' and 'b' does not match")
+    # allocate output array
+    dtype = (a[0] * b[0]).dtype  # correct dtype for product
+    N = len(a)
+    # sum all elements
+    if axis is None:
+        result = np.zeros_like(a[0], dtype=dtype)
+        for i in range(min(N, N-k)):
+            result += (a[i] * b[max(0, i+k):]).sum()
+    # sum row-wise
+    elif axis == 1:
+        result = np.zeros_like(b, dtype=dtype)
+        for i in range(min(N, N-k)):
+            result[i] = (a[i] * b[max(0, i+k):]).sum()
+    # sum column-wise
+    elif axis == 0:
+        result = np.zeros_like(a, dtype=dtype)
+        for i in range(max(0, k), N):
+            result[i] = (a[:min(N, max(0, i-k+1))] * b[i]).sum()
+    return result[()]
+
+
 class LimitTracker:
 
     def __init__(self):

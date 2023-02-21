@@ -14,16 +14,14 @@ def position_sky2sphere(RA_DEC: NDArray[np.float_]) -> NDArray[np.float_]:
     dimensions (x, y, z).
     """
     # unpack data and compute intermediate values
-    ra_dec_rad = np.atleast_2d(RA_DEC)
-    ra = ra_dec_rad[:, 0]
-    dec = ra_dec_rad[:, 1]
+    ra, dec = np.atleast_2d(RA_DEC).T
     cos_dec = np.cos(dec)
     # transform
-    pos_sphere = np.empty((len(ra_dec_rad), 3))
-    pos_sphere[:, 0] = np.cos(ra) * cos_dec  # x
-    pos_sphere[:, 1] = np.sin(ra) * cos_dec  # y
-    pos_sphere[:, 2] = np.sin(dec)           # z
-    return np.squeeze(pos_sphere)
+    x = np.cos(ra) * cos_dec
+    y = np.sin(ra) * cos_dec
+    z = np.sin(dec)
+    xyz = np.transpose([x, y, z])
+    return np.squeeze(xyz)
 
 
 def position_sphere2sky(xyz: NDArray[np.float_]) -> NDArray[np.float_]:
@@ -35,16 +33,14 @@ def position_sphere2sky(xyz: NDArray[np.float_]) -> NDArray[np.float_]:
         return np.where(x == 0, 1.0, np.sign(x))
 
     # unpack data and compute intermediate values
-    xyz = np.atleast_2d(xyz)
-    x = xyz[:, 0]
-    y = xyz[:, 1]
-    z = xyz[:, 2]
+    x, y, z = np.atleast_2d(xyz).T
     r_d2 = np.sqrt(x*x + y*y)
     # transform
     ra = np.arccos(x / r_d2) * sgn(y) % (2.0*np.pi)
     ra[np.isnan(ra)] = 0.0
     dec = np.arcsin(z)
-    return np.transpose([ra, dec])
+    rd = np.transpose([ra, dec])
+    return np.squeeze(rd)
 
 
 def distance_sky2sphere(dist_sky: ArrayLike) -> ArrayLike:
