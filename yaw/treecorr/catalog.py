@@ -259,7 +259,7 @@ class Catalog(CatalogBase):
             scale_key: [] for scale_key in config.scales.dict_keys()}
         for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
             scales = r_kpc_to_angle(
-                config.scales.scales, intv.mid, config.cosmology)
+                config.scales.as_array(), intv.mid, config.cosmology)
             for scale_key, (ang_min, ang_max) in zip(
                     config.scales.dict_keys(), scales):
                 correlation = NNCorrelation(

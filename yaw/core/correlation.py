@@ -298,10 +298,12 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     def get(
         self,
-        config: ResamplingConfig,
+        config: ResamplingConfig | None = None,
         *,
         estimator: str | None = None
     ) -> CorrelationData:
+        if config is None:
+            config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
         logger.debug(f"computing correlation with '{est_fun.short}' estimator")
         # get the pair counts for the required terms
@@ -385,10 +387,10 @@ def autocorrelate(
     Compute the angular autocorrelation amplitude in bins of redshift. Requires
     object redshifts.
     """
+    scales = config.scales.as_array()
     logger.info(
-        f"running autocorrelation ({len(config.scales.scales)} scales, "
-        f"{config.scales.scales.min():.0f}<r<="
-        f"{config.scales.scales.max():.0f}kpc)")
+        f"running autocorrelation ({len(scales)} scales, "
+        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)")
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, random)
     kwargs = dict(linkage=linkage, progress=progress)
@@ -430,10 +432,10 @@ def crosscorrelate(
     compute_rd = ref_rand is not None
     compute_rr = compute_dr and compute_rd
 
+    scales = config.scales.as_array()
     logger.info(
-        f"running crosscorrelation ({len(config.scales.scales)} scales, "
-        f"{config.scales.scales.min():.0f}<r<="
-        f"{config.scales.scales.max():.0f}kpc)")
+        f"running crosscorrelation ({len(scales)} scales, "
+        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)")
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, unknown)
     kwargs = dict(linkage=linkage, progress=progress)

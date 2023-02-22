@@ -57,7 +57,7 @@ class SampledData(BinnedQuantity):
         return pd.Series(self.data, index=self.binning)
 
     def get_samples(self) -> DataFrame:
-        return pd.DataFrame(self.samples, index=self.binning)
+        return pd.DataFrame(self.samples.T, index=self.binning)
 
     def is_compatible(self, other: SampledData) -> bool:
         if not super().is_compatible(other):
@@ -75,6 +75,7 @@ class CorrelationData(SampledData):
     covariance: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         with LogCustomWarning(
             logger, "invalid values encountered in correlation samples"
         ):
@@ -176,7 +177,7 @@ class CorrelationData(SampledData):
         with open(f"{path_prefix}.{ext}", "w") as f:
             write_head(f, self._smp_desc, header, delim=DELIM)
             for zlow, zhigh, samples in zip(
-                self.edges[:-1], self.edges[1:], self.samples
+                self.edges[:-1], self.edges[1:], self.samples.T
             ):
                 values = [fmt_num(zlow, PREC), fmt_num(zhigh, PREC)]
                 values.extend(fmt_num(val, PREC) for val in samples)

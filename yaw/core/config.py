@@ -139,7 +139,7 @@ class ScalesConfig(DictRepresentation):
                 "'rmin' and 'rmax' must be both sequences or float")
 
     def __eq__(self, other: ScalesConfig) -> bool:
-        if not _array_equal(self.scales, other.scales):
+        if not _array_equal(self.as_array(), other.as_array()):
             return False
         if self.rweight != other.rweight:
             return False
@@ -147,12 +147,11 @@ class ScalesConfig(DictRepresentation):
             return False
         return True
 
-    @property
-    def scales(self) -> NDArray[np.float_]:
+    def as_array(self) -> NDArray[np.float_]:
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
 
     def dict_keys(self) -> list[str]:
-        return scales_to_keys(self.scales)
+        return scales_to_keys(self.as_array())
 
 
 def _is_manual_binning(
@@ -429,7 +428,7 @@ class Configuration(DictRepresentation):
 
         fig, ax_scale = plt.subplots(1, 1)
         # plot scale of annulus
-        for r_min, r_max in self.scales.scales:
+        for r_min, r_max in self.scales.as_array():
             ang_min, ang_max = np.transpose([
                 r_kpc_to_angle([r_min, r_max], z, self.cosmology)
                 for z in self.binning.zbins])

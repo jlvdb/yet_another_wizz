@@ -273,7 +273,7 @@ class PatchLinkage(PatchedQuantity):
             # estimate maximum query radius at low, but non-zero redshift
             z_ref = max(0.05, config.binning.zmin)
             max_query_radius = r_kpc_to_angle(
-                config.scales.scales, z_ref, config.cosmology).max()
+                config.scales.as_array(), z_ref, config.cosmology).max()
         else:
             max_query_radius = 0.0  # only relevenat for cross-patch
 

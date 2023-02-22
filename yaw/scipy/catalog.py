@@ -4,6 +4,7 @@ import itertools
 import logging
 import os
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -32,6 +33,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+@dataclass(frozen=True)
+class PatchCorrelationData:
+    patches: TypePatchKey
+    totals1: NDArray
+    totals2: NDArray
+    counts: dict[TypeScaleKey, NDArray]
+
 
 def _count_pairs_thread(
     patch1: PatchCatalog,
@@ -43,7 +51,7 @@ def _count_pairs_thread(
     bin2: bool = False,
     dist_weight_scale: float | None = None,
     dist_weight_res: int = 50
-) -> tuple[TypePatchKey, tuple[NDArray, NDArray], dict[TypeScaleKey, NDArray]]:
+) -> PatchCorrelationData:
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
     # build trees
     patch1.load(use_threads=False)
@@ -69,7 +77,11 @@ def _count_pairs_thread(
         totals1[i] = tree1.total
         totals2[i] = tree2.total
     counts = {key: count for key, count in zip(scales_to_keys(scales), counts)}
-    return (patch1.id, patch2.id), (totals1, totals2), counts
+    return PatchCorrelationData(
+        patches=(patch1.id, patch2.id),
+        totals1=totals1,
+        totals2=totals2,
+        counts=counts)
 
 
 def _histogram_thread(
@@ -348,7 +360,7 @@ class Catalog(CatalogBase):
         # patch2: PatchCatalog
         pool.add_iterable(patch2_list)
         # scales: NDArray[np.float_]
-        pool.add_constant(config.scales.scales)
+        pool.add_constant(config.scales.as_array())
         # cosmology: TypeCosmology
         pool.add_constant(config.cosmology)
         # z_bins: NDArray[np.float_]
@@ -378,12 +390,16 @@ class Catalog(CatalogBase):
             result_iter = tqdm(
                 result_iter, total=pool.n_jobs(), delay=0.5,
                 leave=False, smoothing=0.1, unit="jobs")
-        for (id1, id2), (total1, total2), counts in result_iter:
+        patch_data: PatchCorrelationData
+        for patch_data in result_iter:
+            id1, id2 = patch_data.patches
             # record total weight per bin, overwriting OK since identical
-            totals1[id1] = total1
-            totals2[id2] = total2
+            totals1[id1] = patch_data.totals1
+            totals2[id2] = patch_data.totals2
             # record counts at each scale
-            for scale_key, count in counts.items():
+            for scale_key, count in patch_data.counts.items():
+                if auto and id1 == id2:
+                    count = count * 0.5  # autocorr. pairs are counted twice
                 count_dict[scale_key][id1, id2] = count
         total = PatchedTotal(  # not scale-dependent
             binning=binning,

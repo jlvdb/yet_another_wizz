@@ -96,7 +96,9 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     def _bootstrap(self, config: ResamplingConfig) -> NDArray:
         raise NotImplementedError
 
-    def get_sum(self, config: ResamplingConfig) -> SampledData:
+    def get_sum(self, config: ResamplingConfig | None = None) -> SampledData:
+        if config is None:
+            config = ResamplingConfig()
         data = self._sum(config)
         if config.method == "bootstrap":
             samples = self._bootstrap(config)
@@ -149,8 +151,8 @@ class PatchedTotal(PatchedArray):
 
     def __getitem__(self, key) -> ArrayLike:
         i, j, k = self._parse_key(key)
-        x = np.atleast_2d(self.t1[i])[:, k]
-        y = np.atleast_2d(self.t2[j])[:, k]
+        x = np.atleast_2d(self.totals1[i])[:, k]
+        y = np.atleast_2d(self.totals2[j])[:, k]
         arr = np.einsum("i...,j...->ij...", x, y)
         squeeze_ax = tuple(
             a for a, val in enumerate((i, j))
@@ -275,6 +277,23 @@ class PatchedCount(PatchedArray):
             for i in range(self.n_bins)]
         self.auto = auto
 
+    @classmethod
+    def from_matrix(
+        cls,
+        binning: IntervalIndex,
+        matrix: NDArray,
+        *,
+        auto: bool
+    ) -> PatchedCount:
+        if matrix.ndim != 3 or matrix.shape[0] != matrix.shape[1]:
+            raise IndexError(
+                "matrix must be of shape (n_patches, n_patches, n_bins)")
+        _, n_patches, n_bins = matrix.shape
+        new = cls(binning, n_patches, auto=auto, dtype=matrix.dtype)
+        new._bins = [
+            scipy.sparse.dok_matrix(matrix[:, :, i]) for i in range(n_bins)]
+        return new
+
     def __getitem__(self, key) -> ArrayLike:
         i, j, k = self._parse_key(key)
         squeeze_ax = tuple(
@@ -329,19 +348,14 @@ class PatchedCount(PatchedArray):
 
     # methods implementing the signal
 
-    def _bin_sum_cross_diag(self, bin: spmatrix) -> np.number:
+    def _bin_sum_diag(self, bin: spmatrix) -> np.number:
         return bin.diagonal().sum()
-
-    def _bin_sum_auto_diag(self, bin: spmatrix) -> np.number:
-        return 0.5 * self._bin_sum_cross_diag(bin)
 
     def _bin_sum_cross(self, bin: spmatrix) -> np.number:
         return bin.sum()
 
     def _bin_sum_auto(self, bin: spmatrix) -> np.number:
-        # sum of upper triangle (without diagonal) of outer product
-        sum_upper = scipy.sparse.triu(bin, k=1).sum()
-        return sum_upper + self._bin_sum_auto_diag(bin)
+        return scipy.sparse.triu(bin).sum()
 
     def _sum(self, config: ResamplingConfig) -> NDArray:
         out = np.empty(self.n_bins)
@@ -352,27 +366,17 @@ class PatchedCount(PatchedArray):
                 else:
                     out[i] = self._bin_sum_cross(bin)
             else:
-                if self.auto:
-                    out[i] = self._bin_sum_auto_diag(bin)
-                else:
-                    out[i] = self._bin_sum_cross_diag(bin)
+                out[i] = self._bin_sum_diag(bin)
         return out
 
     # methods implementing jackknife samples
 
-    def _bin_jackknife_cross_diag(
+    def _bin_jackknife_diag(
         self,
         bin: spmatrix,
         signal: NDArray
     ) -> NDArray:
         return signal - bin.diagonal()  # broadcast to (n_patches,)
-
-    def _bin_jackknife_auto_diag(
-        self,
-        bin: spmatrix,
-        signal: NDArray
-    ) -> NDArray:
-        return signal - (0.5 * bin.diagonal())  # broadcast to (n_patches,)
 
     def _bin_jackknife_cross(
         self,
@@ -389,7 +393,7 @@ class PatchedCount(PatchedArray):
         bin: spmatrix,
         signal: NDArray
     ) -> NDArray:
-        diag = 0.5 * bin.diagonal()
+        diag = bin.diagonal()
         # sum along axes of upper triangle (without diagonal) of outer product
         tri_upper = scipy.sparse.triu(bin, k=1)
         rows = np.asarray(tri_upper.sum(axis=1)).flatten()
@@ -405,10 +409,7 @@ class PatchedCount(PatchedArray):
                 else:
                     out[:, i] = self._bin_jackknife_cross(bin, bin_signal)
             else:
-                if self.auto:
-                    out[:, i] = self._bin_jackknife_auto_diag(bin, bin_signal)
-                else:
-                    out[:, i] = self._bin_jackknife_cross_diag(bin, bin_signal)
+                out[:, i] = self._bin_jackknife_diag(bin, bin_signal)
         return out
 
     # methods implementing bootstrap samples
@@ -531,8 +532,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
         n_patches = self.n_patches
-        n_keys = len(self.keys())
-        return f"{string}, {n_patches=}, {n_keys=})"
+        return f"{string}, {n_patches=})"
 
     @property
     def binning(self) -> IntervalIndex:
@@ -562,3 +562,35 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         self.count.to_hdf(group)
         group = dest.create_group("total")
         self.total.to_hdf(group)
+
+
+
+if __name__ == "__main__":
+    t1 = np.array([1, 2, 3, 4])
+    t2 = np.array([5, 4, 3, 2])
+
+    Tc = np.outer(t1, t2)
+    Ta = np.triu(np.outer(t1, t2)) - 0.5*np.diag(t1*t2)
+    Tc = np.atleast_3d(Tc)
+    Ta = np.atleast_3d(Ta)
+
+    print(Tc[:, :, 0])
+    print(Ta[:, :, 0])
+    print()
+
+    for cross in (False, True):
+        auto=False
+        print(f"{cross=}, {auto=}")
+        cts = PatchedCount.from_matrix(
+            binning=pd.IntervalIndex.from_breaks([0.1, 0.5]),
+            matrix=Tc, auto=auto)
+        print(cts.get_sum(ResamplingConfig(crosspatch=cross)).samples.T)
+        print()
+
+        auto=True
+        print(f"{cross=}, {auto=}")
+        cts = PatchedCount.from_matrix(
+            binning=pd.IntervalIndex.from_breaks([0.1, 0.5]),
+            matrix=Ta, auto=auto)
+        print(cts.get_sum(ResamplingConfig(crosspatch=cross)).samples.T)
+        print()
