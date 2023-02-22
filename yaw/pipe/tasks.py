@@ -377,10 +377,18 @@ class Runner:
             self.logger.error("could not import matplotlib, plotting disabled")
             return
 
-        def make_plot(paths, scale, title=None):
+        def make_plot(paths, scale, title=None, true=None):
             # figure out which files exist
-            paths_ok = [
-                path for path in paths if path.with_suffix(".dat").exists()]
+            paths_ok = []
+            trues_ok = []
+            for i, path in enumerate(paths):
+                if path.with_suffix(".dat").exists():
+                    paths_ok.append(path)
+                    try:
+                        if true[i].with_suffix(".dat").exists():
+                            trues_ok.append(true[i])
+                    except TypeError:
+                        trues_ok.append(None)
             if len(paths_ok) == 0:
                 return None
             # make a figure
@@ -392,16 +400,24 @@ class Runner:
                 if rest > 0:
                     n_row += 1
             fig, axes = plt.subplots(
-                n_row, n_col, figsize=(5*n_row, 3*n_col),
+                n_row, n_col, figsize=(4*n_col, 3*n_row),
                 sharex=True, sharey=True)
             axes = np.asarray(axes)
             for i, ax in enumerate(axes.flatten()):
-                if i > len(paths_ok):
+                if i >= len(paths_ok):
                     ax.remove()
             # plot the data
-            for ax, path in zip(axes.flatten(), paths_ok):
-                cf = self.backend.CorrelationData.from_files(path)
-                ax = cf.plot(zero_line=True, label=scale, ax=ax)
+            for ax, path, true in zip(axes.flatten(), paths_ok, trues_ok):
+                if true is not None:
+                    Nz = self.backend.RedshiftData.from_files(true)
+                    nz = Nz.normalised()
+                    ax = nz.plot(
+                        zero_line=True, error_bars=False, color="k", ax=ax)
+                    cf = self.backend.RedshiftData.from_files(path)
+                    ax = cf.normalised(to=nz).plot(label=scale, ax=ax)
+                else:
+                    cf = self.backend.CorrelationData.from_files(path)
+                    ax = cf.plot(zero_line=True, label=scale, ax=ax)
                 ax.legend()
                 ax.set_xlim(left=0.0)
             if title is not None:
@@ -432,7 +448,10 @@ class Runner:
             # ccs
             fig = make_plot(
                 [est_dir.get_cross(idx) for idx in est_dir.get_cross_indices()],
-                scale, "Redshift estimate")
+                scale, "Redshift estimate",
+                true=[
+                    self.project.get_true_unknown(idx)
+                    for idx in est_dir.get_cross_indices()])
             if fig is not None:
                 fig.tight_layout()
                 name = f"nz_estimate_{scale}.png"

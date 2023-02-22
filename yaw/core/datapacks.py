@@ -348,18 +348,17 @@ class RedshiftData(CorrelationData):
         if to is None:
             # normalise by integration
             mask = np.isfinite(self.data)
-            norm = np.trapz(self.data.to_numpy()[mask], x=self.mids)
+            norm = np.trapz(self.data[mask], x=self.mids)
         else:
-            y_from = self.data.to_numpy()
-            y_to = to.data.to_numpy()
-            errors = to.data.to_numpy()
-            mask = np.isfinite(y_from) & np.isfinite(y_to) & np.isfinite(errors)
-            sigma = errors[mask] ** -2  # best match at high amplitude
+            y_from = self.data
+            y_to = to.data
+            mask = np.isfinite(y_from) & np.isfinite(y_to)
             norm = scipy.optimize.curve_fit(
-                lambda x, A: A * y_from[mask],  # x is a dummy variable
+                lambda x, norm: y_from[mask] / norm,  # x is a dummy variable
                 xdata=to.mids[mask], ydata=y_to[mask],
-                p0=[1.0], sigma=sigma)[0][0]
+                p0=[1.0], sigma=1/y_to)[0][0]
         return self.__class__(
+            binning=self.binning,
             data=self.data / norm,
             samples=self.samples / norm,
             method=self.method)
