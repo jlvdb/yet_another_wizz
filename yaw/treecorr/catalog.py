@@ -17,7 +17,6 @@ from yaw.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
 from yaw.core.cosmology import r_kpc_to_angle
 from yaw.core.paircounts import PairCountResult
-from yaw.core.redshifts import NzTrue
 from yaw.core.utils import TypeScaleKey
 
 from yaw.logger import TimedLog
@@ -25,6 +24,8 @@ from yaw.logger import TimedLog
 if TYPE_CHECKING:
     from pandas import DataFrame, Interval
     from yaw.core.catalog import PatchLinkage
+    from yaw.core.config import ResamplingConfig
+    from yaw.core.datapacks import RedshiftData
 
 
 logger = logging.getLogger(__name__)
@@ -239,7 +240,7 @@ class Catalog(CatalogBase):
             nbins=(
                 1 if config.scales.rweight is None else config.scales.rbin_num),
             bin_slop=config.backend.rbin_slop,
-            num_threads=config.backend.thread_num)
+            num_threads=config.backend.get_threads())
 
         # bin the catalogues if necessary
         cats1 = self.bin_iter(config.binning.zbins)
@@ -253,12 +254,12 @@ class Catalog(CatalogBase):
 
         # iterate the bins and compute the correlation
         self.logger.debug(
-            f"running treecorr on {config.backend.thread_num} threads")
+            f"running treecorr on {config.backend.get_threads()} threads")
         result = {
             scale_key: [] for scale_key in config.scales.dict_keys()}
         for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
             scales = r_kpc_to_angle(
-                config.scales.scales, intv.mid, config.cosmology)
+                config.scales.as_array(), intv.mid, config.cosmology)
             for scale_key, (ang_min, ang_max) in zip(
                     config.scales.dict_keys(), scales):
                 correlation = NNCorrelation(
@@ -275,9 +276,13 @@ class Catalog(CatalogBase):
                 result[scale_key] = PairCountResult.from_bins(binned_result)
         return result
 
-    def true_redshifts(self, config: Configuration) -> NzTrue:
+    def true_redshifts(
+        self,
+        config: Configuration,
+        sampling_config: ResamplingConfig | None = None
+    ) -> RedshiftData:
         super().true_redshifts(config)
-
+        raise NotImplementedError
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
         # compute the reshift histogram in each patch

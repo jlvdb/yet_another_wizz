@@ -274,7 +274,7 @@ class ProjectDirectory(DictRepresentation):
             configuration=config.to_dict(),
             data=dict(
                 cachepath=str(cachepath) if cachepath is not None else None,
-                catalogs=InputRegister(n_patches).to_dict()),
+                **InputRegister(n_patches).to_dict()),
             backend=backend,
             tasks=TaskList().to_list())
         return cls.from_dict(setup_dict, path=path)
@@ -301,7 +301,7 @@ class ProjectDirectory(DictRepresentation):
             configuration=self._config.to_dict(),
             data=dict(
                 cachepath=cache_dir,
-                catalogs=self._inputs.to_dict()),
+                **self._inputs.to_dict()),
             backend=self._backend_name,
             tasks=self._tasks.to_list())
         return setup
@@ -309,7 +309,7 @@ class ProjectDirectory(DictRepresentation):
     def __enter__(self) -> ProjectDirectory:
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+    def __exit__(self, exc_type, exc_value, exc_traceback):
         # TODO: this is sometimes executed even if an exception was raised
         if exc_type is None:
             self.setup_write()
@@ -336,13 +336,10 @@ class ProjectDirectory(DictRepresentation):
             data = setup["data"]
         except KeyError as e:
             _parse_section_error(e, "data")
-        self._cachepath = data.get("cachepath")
+        self._cachepath = data.pop("cachepath", None)
         self._cache = CacheDirectory(self.cache_dir)
         self._cache.mkdir(exist_ok=True, parents=True)
-        catalogs = data.get("catalogs", dict())
-        if catalogs is None:
-            catalogs = dict()
-        self._inputs = InputRegister.from_dict(catalogs)
+        self._inputs = InputRegister.from_dict(data)
         try:
             self._tasks = TaskList.from_list(setup["tasks"])
         except KeyError:
@@ -481,6 +478,10 @@ class ProjectDirectory(DictRepresentation):
     def get_bin_indices(self) -> set[int]:
         return self._inputs.get_bin_indices()
 
+    @property
+    def n_bins(self):
+        return self._inputs.n_bins
+
     def show_catalogs(self) -> None:
         print(yaml.dump(self._inputs.to_dict()))
 
@@ -499,7 +500,8 @@ class ProjectDirectory(DictRepresentation):
         return CountsDirectory(path)
 
     def list_counts_scales(self) -> list(str):
-        return [path.name for path in self.counts_dir.iterdir()]
+        return [
+            path.name for path in self.counts_dir.iterdir() if path.is_dir()]
 
     @property
     def estimate_dir(self) -> Path:
@@ -516,7 +518,8 @@ class ProjectDirectory(DictRepresentation):
         return EstimateDirectory(path)
 
     def list_estimate_scales(self) -> list(str):
-        return [path.name for path in self.estimate_dir.iterdir()]
+        return [
+            path.name for path in self.estimate_dir.iterdir() if path.is_dir()]
 
     @property
     def true_dir(self) -> Path:

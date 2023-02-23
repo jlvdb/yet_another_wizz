@@ -4,25 +4,24 @@ import logging
 import warnings
 from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass, field, fields
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
 import pandas as pd
 
-from yaw.core import default as DEFAULT
 from yaw.core.catalog import PatchLinkage
+from yaw.core.config import ResamplingConfig
+from yaw.core.datapacks import CorrelationData
 from yaw.core.paircounts import PairCountResult
 from yaw.core.utils import (
-    BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
+    BinnedQuantity, HDFSerializable, PatchedQuantity)
 
 from yaw.logger import TimedLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-    from matplotlib.axis import Axis
-    from pandas import DataFrame, IntervalIndex, Series
+    from pandas import IntervalIndex
     from yaw.core.catalog import CatalogBase
     from yaw.core.config import Configuration
     from yaw.core.paircounts import PairCountData
@@ -101,6 +100,11 @@ class CorrelationEstimator(ABC):
         super().__init_subclass__(**kwargs)
         cls.variants.append(cls)
 
+    def _warn_enum_zero(self, counts: NDArray):
+        if np.any(counts == 0.0):
+            logger.warn(
+                f"estimator {self.short} encontered zeros in enumerator")
+
     def name(self) -> str:
         return self.__class__.__name__
 
@@ -124,7 +128,7 @@ class CorrelationEstimator(ABC):
         dr: PairCountData,
         rr: PairCountData,
         rd: PairCountData | None = None
-    ) -> DataFrame:
+    ) -> NDArray:
         raise NotImplementedError
 
 
@@ -138,10 +142,9 @@ class PeeblesHauser(CorrelationEstimator):
         *,
         dd: PairCountData,
         rr: PairCountData
-    ) -> DataFrame:
-        DD = dd.normalise()
-        RR = rr.normalise()
-        return DD / RR - 1.0
+    ) -> NDArray:
+        self._warn_enum_zero(rr)
+        return dd / rr - 1.0
 
 
 class DavisPeebles(CorrelationEstimator):
@@ -154,10 +157,9 @@ class DavisPeebles(CorrelationEstimator):
         *,
         dd: PairCountData,
         dr_rd: PairCountData
-    ) -> DataFrame:
-        DD = dd.normalise()
-        DR = dr_rd.normalise()
-        return DD / DR - 1.0
+    ) -> NDArray:
+        self._warn_enum_zero(dr_rd)
+        return dd / dr_rd - 1.0
 
 
 class Hamilton(CorrelationEstimator):
@@ -172,12 +174,11 @@ class Hamilton(CorrelationEstimator):
         dr: PairCountData,
         rr: PairCountData,
         rd: PairCountData | None = None
-    ) -> DataFrame:
-        DD = dd.normalise()
-        DR = dr.normalise()
-        RD = DR if rd is None else rd.normalise()
-        RR = rr.normalise()
-        return (DD * RR) / (DR * RD) - 1.0
+    ) -> NDArray:
+        rd = dr if rd is None else rd
+        enum = dr * rd
+        self._warn_enum_zero(enum)
+        return (dd * rr) / enum - 1.0
 
 
 class LandySzalay(CorrelationEstimator):
@@ -192,12 +193,10 @@ class LandySzalay(CorrelationEstimator):
         dr: PairCountData,
         rr: PairCountData,
         rd: PairCountData | None = None
-    ) -> DataFrame:
-        DD = dd.normalise()
-        DR = dr.normalise()
-        RD = DR if rd is None else rd.normalise()
-        RR = rr.normalise()
-        return (DD - (DR + RD) + RR) / RR
+    ) -> NDArray:
+        rd = dr if rd is None else rd
+        self._warn_enum_zero(rr)
+        return (dd - (dr + rd) + rr) / rr
 
 
 @dataclass(frozen=True)
@@ -219,16 +218,15 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             pairs: PairCountResult | None = getattr(self, kind)
             if pairs is None:
                 continue
-            if pairs.n_patches != self.n_patches:
-                raise ValueError(f"patches of '{kind}' do not match 'dd'")
-            if np.any(pairs.binning != self.dd.binning):
-                raise ValueError(f"binning of '{kind}' and 'dd' does not match")
+            if not self.dd.is_compatible(pairs):
+                raise ValueError(
+                    f"patches or binning of '{kind}' do not match 'dd'")
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
         pairs = f"dd=True, dr={self.dr is not None}, "
         pairs += f"rd={self.rd is not None}, rr={self.rr is not None}"
-        other = f"n_patches={self.n_patches}, nbins={len(self.binning)}"
+        other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
 
     @property
@@ -236,11 +234,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return self.dd.binning
 
     def is_compatible(self, other: PairCountResult) -> bool:
-        if not super().is_compatible(other):
-            return False
-        if self.n_patches != other.n_patches:
-            return False
-        return True
+        return self.dd.is_compatible(other.dd)
 
     @property
     def estimators(self) -> dict[str, CorrelationEstimator]:
@@ -302,62 +296,46 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         else:
             return getattr(self, str(cts))
 
-    def _generate_bootstrap_patch_indices(
-        self,
-        n_boot: int,
-        seed: int = DEFAULT.Resampling.seed
-    ) -> NDArray[np.int_]:
-        return self.dd._generate_bootstrap_patch_indices(n_boot, seed=seed)
-
     def get(
         self,
+        config: ResamplingConfig | None = None,
         *,
-        estimator: str | None = None,
-        method: str = DEFAULT.Resampling.method,
-        n_boot: int = DEFAULT.Resampling.n_boot,
-        patch_idx: NDArray[np.int_] | None = None,
-        global_norm: bool = DEFAULT.Resampling.global_norm,
-        seed: int = DEFAULT.Resampling.seed
+        estimator: str | None = None
     ) -> CorrelationData:
-        valid_methods = ("bootstrap", "jackknife")
-        if method not in valid_methods:
-            opts = ", ".join(f"'{s}'" for s in valid_methods)
-            raise ValueError(f"'method' must be either of {opts}")
-        estimator_func = self._check_and_select_estimator(estimator)
-
-        logger.debug(
-            f"computing correlation with {estimator_func.short} estimator")
-        requires = {
-            str(cts): self._getattr_from_cts(cts).get()
-            for cts in estimator_func.requires}
-        optional = {
-            str(cts): self._getattr_from_cts(cts).get()
-            for cts in estimator_func.optional
-            if self._getattr_from_cts(cts) is not None}
-        data = estimator_func(**requires, **optional)[0]
-
-        logger.debug(
-            f"computing {method} samples with "
-            f"{estimator_func.short} estimator")
-        if patch_idx is None and method == "bootstrap":
-            patch_idx = self.dd._generate_bootstrap_patch_indices(
-                n_boot, seed=seed)
-        sample_kwargs = dict(
-            method=method,
-            global_norm=global_norm,
-            patch_idx=patch_idx)
-        # generate samples
-        requires = {
-            str(cts): self._getattr_from_cts(cts).get_samples(**sample_kwargs)
-            for cts in estimator_func.requires}
-        optional = {
-            str(cts): self._getattr_from_cts(cts).get_samples(**sample_kwargs)
-            for cts in estimator_func.optional
-            if self._getattr_from_cts(cts) is not None}
-        samples = estimator_func(**requires, **optional)
-
+        if config is None:
+            config = ResamplingConfig()
+        est_fun = self._check_and_select_estimator(estimator)
+        logger.debug(f"computing correlation with '{est_fun.short}' estimator")
+        # get the pair counts for the required terms
+        required_data = {}
+        required_samples = {}
+        for cts in est_fun.requires:
+            try:  # if pairs are None, estimator with throw error
+                pairs = self._getattr_from_cts(cts).get(config)
+                required_data[str(cts)] = pairs.data
+                required_samples[str(cts)] = pairs.samples
+            except AttributeError as e:
+                if "NoneType" not in e.args[0]:
+                    raise
+        # get the pair counts for the optional terms
+        optional_data = {}
+        optional_samples = {}
+        for cts in est_fun.optional:
+            try:  # if pairs are None, estimator with throw error
+                pairs = self._getattr_from_cts(cts).get(config)
+                optional_data[str(cts)] = pairs.data
+                optional_samples[str(cts)] = pairs.samples
+            except AttributeError as e:
+                if "NoneType" not in e.args[0]:
+                    raise
+        # evaluate the correlation estimator
+        data = est_fun(**required_data, **optional_data)
+        samples = est_fun(**required_samples, **optional_samples)
         return CorrelationData(
-            data=data, samples=samples, method=method)
+            binning=self.binning,
+            data=data,
+            samples=samples,
+            method=config.method)
 
     @classmethod
     def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrelationFunction:
@@ -386,192 +364,6 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         dest.create_dataset("n_patches", data=self.n_patches)
 
 
-@dataclass(frozen=True)
-class CorrelationData(BinnedQuantity):
-
-    data: Series
-    samples: DataFrame
-    method: str
-    covariance: DataFrame = field(init=False)
-
-    def __post_init__(self) -> None:
-        if self.method == "jackknife":
-            covmat = self.samples.T.cov(ddof=0) * (self.n_samples - 1)
-        elif self.method == "bootstrap":
-            covmat = self.samples.T.cov(ddof=1)
-        else:
-            raise ValueError(f"unknown sampling method '{self.method}'")
-        object.__setattr__(self, "covariance", covmat)
-
-    def __repr__(self) -> str:
-        string = super().__repr__()[:-1]
-        samples = self.n_samples
-        method = self.method
-        return f"{string}, {samples=}, {method=})"
-
-    @property
-    def binning(self) -> IntervalIndex:
-        return self.data.index
-
-    def is_compatible(self, other: CorrelationData) -> bool:
-        if not super().is_compatible(other):
-            return False
-        if self.n_samples != other.n_samples:
-            return False
-        if self.method != other.method:
-            return False
-        return True
-
-    @property
-    def n_samples(self) -> int:
-        return len(self.samples.columns)
-
-    @property
-    def error(self) -> Series:
-        return pd.Series(np.sqrt(np.diag(self.covariance)), index=self.binning)
-
-    @property
-    def correlation(self) -> DataFrame:
-        stdev = np.sqrt(np.diag(self.covariance))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            corr = self.covariance / np.outer(stdev, stdev)
-        corr[self.covariance == 0] = 0
-        return corr
-
-    @classmethod
-    def from_files(cls, path_prefix: TypePathStr) -> CorrelationData:
-        # load data and errors
-        ext = "dat"
-        data_error = np.loadtxt(f"{path_prefix}.{ext}")
-        # restore index
-        index = pd.IntervalIndex.from_arrays(data_error[:, 0], data_error[:, 1])
-        data_error = pd.DataFrame(
-            {col: val for col, val in zip(["nz", "nz_err"], data_error.T[2:])},
-            index=index)
-        # load samples
-        ext = "smp"
-        samples = np.loadtxt(f"{path_prefix}.{ext}")
-        # load header
-        with open(f"{path_prefix}.{ext}") as f:
-            for line in f.readlines():
-                if "z_low" in line:
-                    line = line[2:].strip("\n")  # remove leading '# '
-                    header = [col for col in line.split(" ") if len(col) > 0]
-                    break
-            else:
-                raise ValueError("sample file header misformatted")
-        method_key, n_samples = header[-1].rsplit("_", 1)
-        n_samples = int(n_samples) + 1
-        # reconstruct sampling method
-        if method_key == "boot":
-            method = "bootstrap"
-        elif method_key == "jack":
-            method = "jackknife"
-        else:
-            raise ValueError(f"invalid sampling method key '{method_key}'")
-        samples = pd.DataFrame.from_records(
-            samples[:, 2:], index=index, columns=pd.RangeIndex(0, n_samples))
-        return cls(
-            data=pd.Series(data_error["nz"].to_numpy(), index=index),
-            samples=samples, method=method)
-
-    @property
-    def _dat_desc(self) -> str:
-        return "# correlation function estimate with symmetric 68% percentile confidence"
-
-    @property
-    def _smp_desc(self) -> str:
-        return f"# {self.n_samples} {self.method} correlation function samples"
-
-    @property
-    def _cov_desc(self) -> str:
-        return f"# correlation function estimate covariance matrix ({len(self)}x{len(self)})"
-
-    def to_files(self, path_prefix: TypePathStr) -> None:
-        PREC = 10
-        DELIM = " "
-
-        def write_head(f, description, header):
-            f.write(f"{description}\n")
-            line = DELIM.join(f"{h:>{PREC}s}" for h in header)
-            f.write(f"# {line[2:]}\n")
-
-        def fmt_num(value, prec=PREC):
-            return f"{value: .{prec}f}"[:prec]
-
-        # write data and errors
-        ext = "dat"
-        header = ["z_low", "z_high", "nz", "nz_err"]
-        with open(f"{path_prefix}.{ext}", "w") as f:
-            write_head(f, self._dat_desc, header)
-            for z, nz, nz_err in zip(self.binning, self.data, self.error):
-                values = [fmt_num(val) for val in (z.left, z.right, nz, nz_err)]
-                f.write(DELIM.join(values) + "\n")
-
-        # write samples
-        ext = "smp"
-        header = ["z_low", "z_high"]
-        header.extend(
-            f"{self.method[:4]}_{i}" for i in range(self.n_samples))
-        with open(f"{path_prefix}.{ext}", "w") as f:
-            write_head(f, self._smp_desc, header)
-            for z, samples in self.samples.iterrows():
-                values = [fmt_num(z.left), fmt_num(z.right)]
-                values.extend(fmt_num(val) for val in samples)
-                f.write(DELIM.join(values) + "\n")
-
-        # write covariance (just for convenience)
-        ext = "cov"
-        fmt_str = DELIM.join("{: .{prec}e}" for _ in range(len(self))) + "\n"
-        with open(f"{path_prefix}.{ext}", "w") as f:
-            f.write(f"{self._cov_desc}\n")
-            for values in self.covariance.to_numpy():
-                f.write(fmt_str.format(*values, prec=PREC-3))
-
-    def plot(
-        self,
-        *,
-        color: str | NDArray | None = None,
-        label: str | None = None,
-        error_bars: bool = True,
-        ax: Axis | None = None,
-        xoffset: float = 0.0,
-        plot_kwargs: dict[str, Any] | None = None,
-        zero_line: bool = False,
-        scale_by_dz: bool = False
-    ) -> Axis:
-        from matplotlib import pyplot as plt
-
-        x = self.mids + xoffset
-        y = self.data.to_numpy()
-        yerr = self.error.to_numpy()
-        if scale_by_dz:
-            y *= self.dz
-            yerr *= self.dz
-        # configure plot
-        if ax is None:
-            ax = plt.gca()
-        if plot_kwargs is None:
-            plot_kwargs = {}
-        plot_kwargs.update(dict(color=color, label=label))
-        ebar_kwargs = dict(fmt=".", ls="none")
-        ebar_kwargs.update(plot_kwargs)
-        # plot zero line
-        if zero_line:
-            lw = 0.7
-            for spine in ax.spines.values():
-                lw = spine.get_linewidth()
-            ax.axhline(0.0, color="k", lw=lw, zorder=-2)
-        # plot data
-        if error_bars:
-            ax.errorbar(x, y, yerr, **ebar_kwargs)
-        else:
-            color = ax.plot(x, y, **plot_kwargs)[0].get_color()
-            ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
-        return ax
-
-
 def _create_dummy_counts(
     counts: Any | dict[TypeScaleKey, Any]
 ) -> dict[TypeScaleKey, None]:
@@ -586,6 +378,8 @@ def autocorrelate(
     config: Configuration,
     data: CatalogBase,
     random: CatalogBase,
+    *,
+    linkage: PatchLinkage | None = None,
     compute_rr: bool = True,
     progress: bool = False
 ) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
@@ -593,17 +387,19 @@ def autocorrelate(
     Compute the angular autocorrelation amplitude in bins of redshift. Requires
     object redshifts.
     """
+    scales = config.scales.as_array()
     logger.info(
-        f"running autocorrelation ({len(config.scales.scales)} scales, "
-        f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
-    linkage = PatchLinkage.from_setup(config, random)
+        f"running autocorrelation ({len(scales)} scales, "
+        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)")
+    if linkage is None:
+        linkage = PatchLinkage.from_setup(config, random)
     kwargs = dict(linkage=linkage, progress=progress)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = data.correlate(config, binned=True, **kwargs)
-    with TimedLog(logger.info, f"counting data-random pairs"):
+    with TimedLog(logger.info, f"counting data-rand pairs"):
         DR = data.correlate(config, binned=True, other=random, **kwargs)
     if compute_rr:
-        with TimedLog(logger.info, f"counting random-random pairs"):
+        with TimedLog(logger.info, f"counting rand-rand pairs"):
             RR = random.correlate(config, binned=True, **kwargs)
     else:
         RR = _create_dummy_counts(DD)
@@ -624,6 +420,7 @@ def crosscorrelate(
     *,
     ref_rand: CatalogBase | None = None,
     unk_rand: CatalogBase | None = None,
+    linkage: PatchLinkage | None = None,
     progress: bool = False
 ) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
     """
@@ -635,28 +432,30 @@ def crosscorrelate(
     compute_rd = ref_rand is not None
     compute_rr = compute_dr and compute_rd
 
+    scales = config.scales.as_array()
     logger.info(
-        f"running crosscorrelation ({len(config.scales.scales)} scales, "
-        f"{config.scales.scales.min()}<r<={config.scales.scales.max()})")
-    linkage = PatchLinkage.from_setup(config, unknown)
+        f"running crosscorrelation ({len(scales)} scales, "
+        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)")
+    if linkage is None:
+        linkage = PatchLinkage.from_setup(config, unknown)
     kwargs = dict(linkage=linkage, progress=progress)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = reference.correlate(
             config, binned=False, other=unknown, **kwargs)
     if compute_dr:
-        with TimedLog(logger.info, f"counting data-random pairs"):
+        with TimedLog(logger.info, f"counting data-rand pairs"):
             DR = reference.correlate(
                 config, binned=False, other=unk_rand, **kwargs)
     else:
         DR = _create_dummy_counts(DD)
     if compute_rd:
-        with TimedLog(logger.info, f"counting random-data pairs"):
+        with TimedLog(logger.info, f"counting rand-data pairs"):
             RD = ref_rand.correlate(
                 config, binned=False, other=unknown, **kwargs)
     else:
         RD = _create_dummy_counts(DD)
     if compute_rr:
-        with TimedLog(logger.info, f"counting random-random pairs"):
+        with TimedLog(logger.info, f"counting rand-rand pairs"):
             RR = ref_rand.correlate(
                 config, binned=False, other=unk_rand, **kwargs)
     else:

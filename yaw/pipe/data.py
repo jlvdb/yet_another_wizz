@@ -80,6 +80,10 @@ class BinnedInput(Input):
     def get_bin_indices(self) -> set[int]:
         return set(self.filepath.keys())
 
+    @property
+    def n_bins(self) -> int:
+        return len(self.filepath)
+
     def add(self, bin_idx: int, entry: Input) -> None:
         if not isinstance(entry, Input) and not isinstance(self, BinnedInput):
             raise TypeError(f"new entry must be of type {Input}")
@@ -239,6 +243,14 @@ class InputRegister(DictRepresentation):
     @property
     def external_patches(self) -> bool:
         return self._n_patches is None
+
+    @property
+    def n_bins(self) -> int:
+        n_bins = []
+        for cat in self._unknown.values():
+            if hasattr(cat, "n_bins"):
+                n_bins.append(cat.n_bins)
+        return max(n_bins)
 
     def _check_patches_consistent(self, meta: Input) -> None:
         if meta.patches is None and self.external_patches:

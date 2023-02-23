@@ -4,6 +4,7 @@ import itertools
 import logging
 import os
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -11,12 +12,12 @@ import pandas as pd
 from tqdm import tqdm
 
 from yaw.core.catalog import CatalogBase, PatchLinkage
-from yaw.core.config import Configuration
+from yaw.core.config import Configuration, ResamplingConfig
 from yaw.core.coordinates import position_sphere2sky
 from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.paircounts import ArrayDict, PairCountResult
+from yaw.core.datapacks import RedshiftData
+from yaw.core.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.core.parallel import ParallelHelper
-from yaw.core.redshifts import NzTrue
 from yaw.core.utils import (
     LimitTracker, TypePatchKey, TypeScaleKey, scales_to_keys)
 
@@ -32,6 +33,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+@dataclass(frozen=True)
+class PatchCorrelationData:
+    patches: TypePatchKey
+    totals1: NDArray
+    totals2: NDArray
+    counts: dict[TypeScaleKey, NDArray]
+
 
 def _count_pairs_thread(
     patch1: PatchCatalog,
@@ -43,7 +51,7 @@ def _count_pairs_thread(
     bin2: bool = False,
     dist_weight_scale: float | None = None,
     dist_weight_res: int = 50
-) -> tuple[TypePatchKey, tuple[NDArray, NDArray], dict[TypeScaleKey, NDArray]]:
+) -> PatchCorrelationData:
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
     # build trees
     patch1.load(use_threads=False)
@@ -69,7 +77,11 @@ def _count_pairs_thread(
         totals1[i] = tree1.total
         totals2[i] = tree2.total
     counts = {key: count for key, count in zip(scales_to_keys(scales), counts)}
-    return (patch1.id, patch2.id), (totals1, totals2), counts
+    return PatchCorrelationData(
+        patches=(patch1.id, patch2.id),
+        totals1=totals1,
+        totals2=totals2,
+        counts=counts)
 
 
 def _histogram_thread(
@@ -342,13 +354,13 @@ class Catalog(CatalogBase):
         # prepare job scheduling
         pool = ParallelHelper(
             function=_count_pairs_thread,
-            n_items=n_jobs, num_threads=min(n_jobs, config.backend.thread_num))
+            n_items=n_jobs, num_threads=config.backend.get_threads(n_jobs))
         # patch1: PatchCatalog
         pool.add_iterable(patch1_list)
         # patch2: PatchCatalog
         pool.add_iterable(patch2_list)
         # scales: NDArray[np.float_]
-        pool.add_constant(config.scales.scales)
+        pool.add_constant(config.scales.as_array())
         # cosmology: TypeCosmology
         pool.add_constant(config.cosmology)
         # z_bins: NDArray[np.float_]
@@ -362,67 +374,56 @@ class Catalog(CatalogBase):
         # weight_res: int
         pool.add_constant(config.scales.rbin_num)
 
-        n_bins = len(config.binning.zbins) - 1
+        binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
+        n_bins = len(binning)
         n_patches = self.n_patches
-        # execute, unpack the data
+        # set up data to repack task results from [ids->scale] to [scale->ids]
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
-        count_dict = {key: {} for key in config.scales.dict_keys()}
+        count_dict = {
+            key: PatchedCount(binning=binning, n_patches=n_patches, auto=auto)
+            for key in config.scales.dict_keys()}
+        # run the scheduled tasks
         result_iter = pool.iter_result()
+        # add an optional progress bar
         if progress:
             result_iter = tqdm(
                 result_iter, total=pool.n_jobs(), delay=0.5,
-                leave=None, smoothing=0.1, unit="jobs")
-        for (id1, id2), (total1, total2), counts in result_iter:
+                leave=False, smoothing=0.1, unit="jobs")
+        patch_data: PatchCorrelationData
+        for patch_data in result_iter:
+            id1, id2 = patch_data.patches
             # record total weight per bin, overwriting OK since identical
-            totals1[id1] = total1
-            totals2[id2] = total2
+            totals1[id1] = patch_data.totals1
+            totals2[id2] = patch_data.totals2
             # record counts at each scale
-            for scale_key, count in counts.items():
-                count_dict[scale_key][(id1, id2)] = count
+            for scale_key, count in patch_data.counts.items():
+                if auto and id1 == id2:
+                    count = count * 0.5  # autocorr. pairs are counted twice
+                count_dict[scale_key][id1, id2] = count
+        total = PatchedTotal(  # not scale-dependent
+            binning=binning,
+            totals1=totals1,
+            totals2=totals2,
+            auto=auto)
 
-        # get mask of all used cross-patch combinations, upper triangle if auto
-        mask = linkage.get_mask(self, other, config.backend.crosspatch)
-        keys = [
-            tuple(key) for key in np.indices((n_patches, n_patches))[:, mask].T]
-
-        # compute patch-wise product of total of weights
-        total_matrix = np.empty((n_patches, n_patches, n_bins))
-        for i in range(n_bins):
-            # get the patch totals for the current bin
-            totals = np.multiply.outer(totals1[:, i], totals2[:, i])
-            total_matrix[:, :, i] = totals
-        # apply correction for autocorrelation, i. e. no double-counting
-        if auto:
-            total_matrix[np.diag_indices(n_patches)] *= 0.5
-        # flatten to shape (n_patches*n_patches, n_bins), also if auto:
-        # (id1, id2) not counted, i.e. dropped, if id1 > id2
-        total = total_matrix[mask]
-        del total_matrix
-
-        # sort counts into similar data structure, pack result
+        # pack result
         result = {}
-        for scale_key, counts in count_dict.items():
-            count_matrix = np.zeros((n_patches, n_patches, n_bins))
-            for patch_key, count in counts.items():
-                count_matrix[patch_key] = count
-            # apply correction for autocorrelation, i. e. no double-counting
-            if auto:
-                count_matrix[np.diag_indices(n_patches)] *= 0.5
-            count = count_matrix[mask]
-            result[scale_key] = PairCountResult(
-                count=ArrayDict(keys, count),
-                total=ArrayDict(keys, total),
-                mask=mask,
-                binning=pd.IntervalIndex.from_breaks(config.binning.zbins),
-                n_patches=n_patches)
+        for scale_key, count in count_dict.items():
+            result[scale_key] = PairCountResult(count=count, total=total)
         # drop the dictionary if there is only one scale
         if len(result) == 1:
             result = tuple(result.values())[0]
         return result
 
-    def true_redshifts(self, config: Configuration) -> NzTrue:
+    def true_redshifts(
+        self,
+        config: Configuration,
+        sampling_config: ResamplingConfig | None = None
+    ) -> RedshiftData:
         super().true_redshifts(config)
+        if sampling_config is None:
+            sampling_config = ResamplingConfig()  # default values
 
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
@@ -430,12 +431,20 @@ class Catalog(CatalogBase):
         pool = ParallelHelper(
             function=_histogram_thread,
             n_items=self.n_patches,
-            num_threads=min(self.n_patches, config.backend.thread_num))
+            num_threads=config.backend.get_threads(self.n_patches))
         # patch: PatchCatalog
-        pool.add_iterable(list(self))
+        pool.add_iterable(self._patches.values())
         # NDArray[np.float_]
-        pool.add_constant(config.binning.zbin_num)
-        hist_counts = list(pool.iter_result())
-        return NzTrue(
-            counts=np.array(hist_counts),
-            binning=pd.IntervalIndex.from_breaks(config.binning.zbins))
+        pool.add_constant(config.binning.zbins)
+        hist_counts = np.array(list(pool.iter_result()))
+
+        # construct the output data samples
+        binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
+        patch_idx = sampling_config.get_samples(self.n_patches)
+        nz_data = hist_counts.sum(axis=0)
+        nz_samp = np.sum(hist_counts[patch_idx], axis=1)
+        return RedshiftData(
+            binning=binning,
+            data=nz_data,
+            samples=nz_samp,
+            method=sampling_config.method)

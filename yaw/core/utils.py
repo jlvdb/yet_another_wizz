@@ -19,6 +19,32 @@ TypeScaleKey = str
 TypePathStr = Path | str
 
 
+def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
+    a = np.atleast_1d(a)
+    b = np.atleast_1d(b)
+    if a.shape != b.shape:
+        raise IndexError("shape of 'a' and 'b' does not match")
+    # allocate output array
+    dtype = (a[0] * b[0]).dtype  # correct dtype for product
+    N = len(a)
+    # sum all elements
+    if axis is None:
+        result = np.zeros_like(a[0], dtype=dtype)
+        for i in range(min(N, N-k)):
+            result += (a[i] * b[max(0, i+k):]).sum(axis=0)
+    # sum row-wise
+    elif axis == 1:
+        result = np.zeros_like(b, dtype=dtype)
+        for i in range(min(N, N-k)):
+            result[i] = (a[i] * b[max(0, i+k):]).sum(axis=0)
+    # sum column-wise
+    elif axis == 0:
+        result = np.zeros_like(a, dtype=dtype)
+        for i in range(max(0, k), N):
+            result[i] = (a[:min(N, max(0, i-k+1))] * b[i]).sum(axis=0)
+    return result[()]
+
+
 class LimitTracker:
 
     def __init__(self):
@@ -62,6 +88,13 @@ def bytes_format(x: float) -> str:
     return prefix + suffix
 
 
+def format_float_fixed_width(value, width):
+    string = f"{value: .{width}f}"[:width]
+    if "nan" in string or "inf" in string:
+        string = f"{string.strip():>{width}s}"
+    return string
+
+
 class PatchedQuantity(Protocol):
 
     n_patches: int
@@ -72,22 +105,27 @@ class BinnedQuantity(Protocol):
 
     binning: IntervalIndex
 
-    def __len__(self) -> int:
-        return len(self.binning)
-
     def __repr__(self) -> str:
         name = self.__class__.__name__
-        n_bins = len(self)
+        n_bins = self.n_bins
         z = f"{self.binning[0].left:.3f}...{self.binning[-1].right:.3f}"
         return f"{name}({n_bins=}, {z=})"
+
+    @property
+    def n_bins(self) -> int:
+        return len(self.binning)
 
     @property
     def mids(self) -> NDArray[np.float_]:
         return np.array([z.mid for z in self.binning])
 
     @property
+    def edges(self) -> NDArray[np.float_]:
+        return np.append(self.binning.left, self.binning.right[-1])
+
+    @property
     def dz(self) -> NDArray[np.float_]:
-        return np.array([z.right - z.left for z in self.binning])
+        return np.diff(self.edges)
 
     def is_compatible(self, other) -> bool:
         if not isinstance(other, self.__class__):
@@ -105,9 +143,11 @@ THF = TypeVar("THF", bound="HDFSerializable")
 class HDFSerializable(Protocol):
 
     @classmethod
-    def from_hdf(cls: Type[THF], source: h5py.Group) -> THF: ...
+    def from_hdf(cls: Type[THF], source: h5py.Group) -> THF:
+        raise NotImplementedError
 
-    def to_hdf(self, dest: h5py.Group) -> None: ...
+    def to_hdf(self, dest: h5py.Group) -> None:
+        raise NotImplementedError
 
     @classmethod
     def from_file(cls: Type[THF], path: TypePathStr) -> THF:

@@ -120,7 +120,7 @@ class ParallelHelper:
     def __enter__(self) -> ParallelHelper:
         return self
 
-    def __exit__(self, *args, **kwargs) -> None:
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
         self.free()
 
     def free(self) -> None:

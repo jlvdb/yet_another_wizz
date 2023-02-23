@@ -6,15 +6,14 @@ import sys
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
-import pandas as pd
-from astropy.cosmology import available as cosmology_avaliable
-
 from yaw.core import default as DEFAULT
-from yaw.core.config import Configuration
+from yaw.core.catalog import PatchLinkage
+from yaw.core.config import Configuration, ResamplingConfig
 from yaw.core.correlation import CorrelationEstimator
 from yaw.core.cosmology import get_default_cosmology
+from yaw.core.utils import format_float_fixed_width as fmt_num
 
-from yaw.logger import get_logger
+from yaw.logger import Colors, get_logger
 
 from yaw.pipe.commandline import Commandline, Path_absolute, Path_exists
 from yaw.pipe.project import (
@@ -24,13 +23,12 @@ from yaw.pipe.task_utils import Tasks
 
 if TYPE_CHECKING:
     from yaw.core.correlation import CorrelationFunction, CorrelationData
-    from yaw.core.redshifts import RedshiftData
 
 
 BACKEND_OPTIONS = ("scipy", "treecorr")
 BINNING_OPTIONS = ("linear", "comoving", "logspace")
 from astropy.cosmology import available as COSMOLOGY_OPTIONS
-METHOD_OPTIONS = ("bootstrap", "jackknife")
+METHOD_OPTIONS = ResamplingConfig.implemented_methods
 
 
 class NoCountsError(Exception):
@@ -41,13 +39,18 @@ def logged(func):
     @wraps(func)
     def wrapper(args, *posargs, **kwargs):
         levels = {0: "warn", 1: "info", 2: "debug"}
-        logger = get_logger(levels[args.verbose], plain=False)
+        logger = get_logger(levels[args.verbose], plain=True)
         # TODO: add log file at args.wdir.joinpath("events.log")
-        logger.info(f"running job '{func.__name__}'")
+        if func.__name__ == "run":
+            message = f"running setup from from:{Colors.rst} {args.setup}"
+        else:
+            message = f"running task {str(func.__name__).upper()}"
+        print(f"{Colors.grn}YAW {Colors.sep} {message}{Colors.rst}")
         try:
             return func(args, *posargs, **kwargs)
         except Exception:
             logger.exception("an unexpected error occured")
+            raise
     return wrapper
 
 
@@ -68,11 +71,14 @@ class Runner:
             self.config = project.config.modify(thread_num=threads)
         else:
             self.config = project.config
+        self._warned_patches = False
+        self._warned_linkage = False
         # create place holder attributes
         self.ref_data = None
         self.ref_rand = None
         self.unk_data = None
         self.unk_rand = None
+        self.linkage = None
         self.w_sp = None
         self.w_ss = None
         self.w_pp = None
@@ -80,15 +86,27 @@ class Runner:
         self.w_ss_data = None
         self.w_pp_data = None
 
+    def _warn_patches(self):
+        LIM = 256
+        msg = f"a large number of patches (>{LIM}) may degrade the performance"
+        if not self._warned_patches:
+            cats = (self.ref_data, self.ref_rand, self.unk_data, self.unk_rand)
+            for cat in cats:
+                if hasattr(cat, "n_patches") and cat.n_patches > LIM:
+                    self.logger.warn(msg)
+                    self._warned_patches = True
+                    break
+
     def load_reference(self):
         # load randoms first since preferrable for optional patch creation
         self.logger.info("loading reference data")
         try:
             self.ref_rand = self.project.load_reference("rand")
-        except MissingCatalogError:
-            self.logger.debug("loading reference randoms failed")
+        except MissingCatalogError as e:
+            self.logger.debug(e.args[0])
             self.ref_rand = None
         self.ref_data = self.project.load_reference("data")
+        self._warn_patches()
 
     def load_unknown(self, idx: int, skip_rand: bool = False):
         # load randoms first since preferrable for optional patch creation
@@ -99,10 +117,26 @@ class Runner:
                 self.unk_rand = None
             else:
                 self.unk_rand = self.project.load_unknown("rand", idx)
-        except MissingCatalogError:
-            self.logger.debug("loading unknown randoms failed")
+        except MissingCatalogError as e:
+            self.logger.debug(e.args[0])
             self.unk_rand = None
         self.unk_data = self.project.load_unknown("data", idx)
+        self._warn_patches()
+
+    def compute_linkage(self):
+        if self.linkage is None:
+            cats = (self.unk_rand, self.unk_data, self.ref_rand, self.ref_data)
+            for cat in cats:
+                if cat is not None:
+                    break
+            else:
+                raise MissingCatalogError("no catalogs loaded")
+            self.linkage = PatchLinkage.from_setup(self.config, cat)
+            if self.linkage.density > 0.3 and not self._warned_linkage:
+                self.logger.warn(
+                    "linkage density > 0.3, either patches overlap "
+                    "significantly or are small compared to scales")
+                self._warned_linkage = True
 
     def cf_as_dict(
         self,
@@ -123,7 +157,8 @@ class Runner:
                 "reference autocorrelation requires reference randoms")
         cfs = self.project.backend.autocorrelate(
             self.config, self.ref_data, self.ref_rand,
-            compute_rr=compute_rr, progress=self.progress)
+            linkage=self.linkage, compute_rr=compute_rr,
+            progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
             self.logger.debug(f"writing pair counts for scale '{scale}'")
@@ -143,7 +178,8 @@ class Runner:
                 "unknown autocorrelation requires unknown randoms")
         cfs = self.project.backend.autocorrelate(
             self.config, self.unk_data, self.unk_rand,
-            compute_rr=compute_rr, progress=self.progress)
+            linkage=self.linkage, compute_rr=compute_rr,
+            progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
             self.logger.debug(f"writing pair counts for scale '{scale}'")
@@ -178,7 +214,7 @@ class Runner:
                     "unknown randoms")
         cfs = self.project.backend.crosscorrelate(
             self.config, self.ref_data, self.unk_data,
-            **randoms, progress=self.progress)
+            **randoms, linkage=self.linkage, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
             self.logger.debug(f"writing pair counts for scale '{scale}'")
@@ -196,12 +232,13 @@ class Runner:
                 path = counts_dir.get_auto_reference()
                 cfs[scale] = self.backend.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
-            self.w_ss = cfs
         except (FileNotFoundError, AssertionError):
             self.logger.info("skipped missing pair counts")
+        self.w_ss = cfs
 
     def load_auto_unk(self, idx: int) -> None:
-        self.logger.info(f"loading pair counts for unknown autocorrelation function")
+        self.logger.info(
+            f"loading pair counts for unknown autocorrelation function")
         cfs = {}
         try:
             for scale in self.project.list_counts_scales():
@@ -230,11 +267,8 @@ class Runner:
         self,
         cfs_kind: str,
         *,
-        estimator: str | None,
-        method: str,
-        n_boot: int,
-        global_norm: bool,
-        seed: int
+        config: ResamplingConfig,
+        estimator: str | None
     ) -> dict[str, CorrelationData]:
         try:
             kind = {
@@ -248,18 +282,16 @@ class Runner:
         cfs = getattr(self, cfs_kind)
         data = {}
         for scale, cf in cfs.items():
-            data[scale] = cf.get(
-                estimator=estimator, method=method,
-                n_boot=n_boot, global_norm=global_norm, seed=seed)
+            data[scale] = cf.get(config, estimator=estimator)
         setattr(self, f"{cfs_kind}_data", data)
 
     def write_auto_ref(self) -> None:
-        for scale, cf in self.w_ss_data.items():
+        for scale, cf_data in self.w_ss_data.items():
             self.logger.debug(
                 f"writing reference autocorrelation data files for scale '{scale}'")
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_auto_reference()
-            cf.to_files(path)
+            cf_data.to_files(path)
 
     def write_auto_unk(self, idx: int) -> None:
         for scale, cf in self.w_pp_data.items():
@@ -283,11 +315,11 @@ class Runner:
         for scale in cross_data:
             self.logger.debug(
                 f"writing redshift data files for scale '{scale}'")
-            nz = self.backend.RedshiftData.from_correlation_data(
+            nz_data = self.backend.RedshiftData.from_correlation_data(
                 cross_data[scale], ref_data[scale], unk_data[scale])
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_cross(idx)
-            nz.to_files(path)
+            nz_data.to_files(path)
 
     def write_nz_ref(self) -> None:
         path = self.project.get_true_reference(create=True)
@@ -295,32 +327,137 @@ class Runner:
         if not path.with_suffix(".dat").exists():
             self.logger.info(
                 f"computing reference sample redshift distribution")
-            nz = self.ref_data.true_redshifts(self.config)
-            nz_data = nz.get()
+            nz_data = self.ref_data.true_redshifts(self.config)
             self.logger.debug("writing redshift data files")
             nz_data.to_files(path)
 
     def write_nz_true(self, idx: int) -> None:
         self.logger.info(f"computing true redshift distribution")
-        nz = self.unk_data.true_redshifts(self.config)
-        nz_data = nz.get()
-        path = self.project.get_true_unknown(idx, create=True)
+        nz_data = self.unk_data.true_redshifts(self.config)
         self.logger.debug("writing redshift data files")
+        path = self.project.get_true_unknown(idx, create=True)
         nz_data.to_files(path)
 
     def write_total_unk(self, idx: int) -> None:
         path = self.project.get_total_unknown()
+        table = {}  # bin index -> (count, sum weights)
+        # read existing data
         if path.exists():
-            total = pd.read_csv(str(path), index_col=0)
-        else:
-            total = pd.DataFrame(
-                columns=["count", "sum_weight"], index=pd.Index([], name="bin"))
-        total.loc[idx] = (len(self.unk_data), self.unk_data.total)
-        total.to_csv(str(path))
+            with open(str(path)) as f:
+                for line in f.readlines():
+                    if line.startswith("#"):
+                        continue
+                    bin_idx, count, sum_weight = line.strip().split()
+                    # add or update entry
+                    table[int(bin_idx)] = (int(count), float(sum_weight))
+        table[idx] = (len(self.unk_data), self.unk_data.total)
+        # write table
+        PREC = 12
+        with open(str(path), "w") as f:
+            f.write(f"# bin {'count':>{PREC}s} {'sum_weight':>{PREC}s}\n")
+            for bin_idx in sorted(table):
+                count, sum_weight = table[bin_idx]
+                sum_weight = fmt_num(sum_weight, PREC)
+                f.write(f"{bin_idx:5d} {count:{PREC}d} {sum_weight}\n")
 
     def drop_cache(self):
         self.logger.info("dropping cached data")
         self.project.get_cache().drop_all()
+
+    def print_message(self, message: str, color: str = Colors.blu) -> None:
+        print(f"{color}YAW {Colors.sep} {message}{Colors.rst}")
+
+    def plot(self):
+        import numpy as np
+        try:
+            import matplotlib.pyplot as plt
+            self.logger.info(
+                f"creating check-plots in '{self.project.estimate_dir}'")
+        except ImportError:
+            self.logger.error("could not import matplotlib, plotting disabled")
+            return
+
+        def make_plot(paths, scale, title=None, true=None):
+            # figure out which files exist
+            paths_ok = []
+            trues_ok = []
+            for i, path in enumerate(paths):
+                if path.with_suffix(".dat").exists():
+                    paths_ok.append(path)
+                    try:
+                        if true[i].with_suffix(".dat").exists():
+                            trues_ok.append(true[i])
+                    except TypeError:
+                        trues_ok.append(None)
+            if len(paths_ok) == 0:
+                return None
+            # make a figure
+            n_row, rest = divmod(len(paths_ok), 3)
+            if n_row == 0:
+                n_row, n_col = 1, rest
+            else:
+                n_col = 3
+                if rest > 0:
+                    n_row += 1
+            fig, axes = plt.subplots(
+                n_row, n_col, figsize=(4*n_col, 3*n_row),
+                sharex=True, sharey=True)
+            axes = np.asarray(axes)
+            for i, ax in enumerate(axes.flatten()):
+                if i >= len(paths_ok):
+                    ax.remove()
+            # plot the data
+            for ax, path, true in zip(axes.flatten(), paths_ok, trues_ok):
+                if true is not None:
+                    Nz = self.backend.RedshiftData.from_files(true)
+                    nz = Nz.normalised()
+                    ax = nz.plot(
+                        zero_line=True, error_bars=False, color="k", ax=ax)
+                    cf = self.backend.RedshiftData.from_files(path)
+                    ax = cf.normalised(to=nz).plot(label=scale, ax=ax)
+                else:
+                    cf = self.backend.CorrelationData.from_files(path)
+                    ax = cf.plot(zero_line=True, label=scale, ax=ax)
+                ax.legend()
+                ax.set_xlim(left=0.0)
+            if title is not None:
+                fig.suptitle(title)
+            return fig
+
+        for scale in self.project.list_estimate_scales():
+            est_dir = self.project.get_estimate(scale)
+            # reference
+            fig = make_plot(
+                [est_dir.get_auto_reference()], scale,
+                "Reference autocorrelation")
+            if fig is not None:
+                name = f"auto_reference_{scale}.png"
+                self.logger.debug(f"writing '{name}'")
+                path = self.project.estimate_dir.joinpath(name)
+                fig.savefig(path)
+            # unknown
+            fig = make_plot(
+                [est_dir.get_auto(idx) for idx in est_dir.get_auto_indices()],
+                scale, "Unknown autocorrelation")
+            if fig is not None:
+                fig.tight_layout()
+                name = f"auto_unknown_{scale}.png"
+                self.logger.debug(f"writing '{name}'")
+                path = self.project.estimate_dir.joinpath(name)
+                fig.savefig(path)
+            # ccs
+            fig = make_plot(
+                [est_dir.get_cross(idx) for idx in est_dir.get_cross_indices()],
+                scale, "Redshift estimate",
+                true=[
+                    self.project.get_true_unknown(idx)
+                    for idx in est_dir.get_cross_indices()])
+            if fig is not None:
+                fig.tight_layout()
+                name = f"nz_estimate_{scale}.png"
+                self.logger.debug(f"writing '{name}'")
+                path = self.project.estimate_dir.joinpath(name)
+                fig.savefig(path)
 
     def main(
         self,
@@ -329,7 +466,8 @@ class Runner:
         auto_unk_kwargs: dict[str, Any] | None = None,
         zcc_kwargs: dict[str, Any] | None = None,
         ztrue_kwargs: dict[str, Any] | None = None,
-        drop_cache: dict[str, Any] | None = None
+        drop_cache: bool = False,
+        plot: bool = False
     ) -> None:
         do_w_sp = cross_kwargs is not None
         do_w_ss = auto_ref_kwargs is not None
@@ -338,35 +476,33 @@ class Runner:
         do_ztrue = ztrue_kwargs is not None
         zcc_processed = False
 
-        if do_zcc:
-            sample_kwargs = dict(
-                global_norm=zcc_kwargs.get(
-                    "global_norm", DEFAULT.Resampling.global_norm),
-                method=zcc_kwargs.get(
-                    "method", DEFAULT.Resampling.method),
-                n_boot=zcc_kwargs.get(
-                    "n_boot", DEFAULT.Resampling.n_boot),
-                seed=zcc_kwargs.get(
-                    "seed", DEFAULT.Resampling.seed))
-
+        if do_w_sp or do_w_ss or do_zcc:
+            self.print_message("processing reference sample")
         if do_w_sp or do_w_ss:
             self.load_reference()
             self.write_nz_ref()
 
         if do_w_ss:
             compute_rr = (not auto_ref_kwargs.get("no_rr", False))
+            self.compute_linkage()
             self.run_auto_ref(compute_rr=compute_rr)
         elif do_zcc:
             self.load_auto_ref()
         if do_zcc and self.w_ss is not None:
             self.sample_corrfunc(
-                "w_ss", estimator=zcc_kwargs.get("est_auto"),
-                **sample_kwargs)
+                "w_ss", config=zcc_kwargs["config"],
+                estimator=zcc_kwargs.get("est_auto"))
             self.write_auto_ref()
             zcc_processed = True
 
         if do_w_sp or do_w_pp or do_zcc or do_ztrue:
-            for idx in self.project.get_bin_indices():
+            for i, idx in enumerate(self.project.get_bin_indices(), 1):
+                message = "processing unknown "
+                if self.project.n_bins == 1:
+                    message += "sample"
+                else:
+                    message += f"bin {i} / {self.project.n_bins}"
+                self.print_message(message)
 
                 if do_w_sp or do_w_pp or do_ztrue:
                     skip_rand = do_ztrue and not (do_w_sp or do_w_pp)
@@ -374,25 +510,27 @@ class Runner:
                     self.write_total_unk(idx)
 
                 if do_w_sp:
+                    self.compute_linkage()
                     compute_rr = (not cross_kwargs.get("no_rr", True))
                     self.run_cross(idx, compute_rr=compute_rr)
                 elif do_zcc:
                     self.load_cross(idx)
                 if do_zcc and self.w_sp is not None:
                     self.sample_corrfunc(
-                        "w_sp", estimator=zcc_kwargs.get("est_cross"),
-                        **sample_kwargs)
+                        "w_sp", config=zcc_kwargs["config"],
+                        estimator=zcc_kwargs.get("est_cross"))
                     zcc_processed = True
 
                 if do_w_pp:
+                    self.compute_linkage()
                     compute_rr = (not auto_unk_kwargs.get("no_rr", False))
                     self.run_auto_unk(idx, compute_rr=compute_rr)
                 elif do_zcc:
                     self.load_auto_unk(idx)
                 if do_zcc and self.w_pp is not None:
                     self.sample_corrfunc(
-                        "w_pp", estimator=zcc_kwargs.get("est_auto"),
-                        **sample_kwargs)
+                        "w_pp", config=zcc_kwargs["config"],
+                        estimator=zcc_kwargs.get("est_auto"))
                     self.write_auto_unk(idx)
                     zcc_processed = True
 
@@ -406,9 +544,14 @@ class Runner:
 
         if drop_cache:
             self.drop_cache()
+        
+        if plot:
+            self.plot()
+
+        self.print_message("done")
 
 
-###########################  SUBCOMMANDS FOR PARSER ############################
+###########################  SUBCOMMANDS FOR PARSER  ###########################
 # NOTE: the order in which the subcommands are defined is the same as when running the global help command
 
 ################################################################################
@@ -487,7 +630,7 @@ group_backend.add_argument(
     "--rbin-slop", type=float, metavar="<float>", default=DEFAULT.Backend.rbin_slop,
     help="treecorr 'rbin_slop' parameter (treecorr backend only, default: %(default)s), note that there is only a single radial bin if [--rweight] is not specified, otherwise [--rbin-num] bins")
 group_backend.add_argument(
-    "--no-crosspatch", action="store_true",  # check with DEFAULT.Backend.crosspath
+    "--no-crosspatch", action="store_true",  # check with DEFAULT.Backend.crosspatch
     help="disable counting pairs across patch boundaries (scipy backend only)")
 group_backend.add_argument(
     "--threads", type=int, metavar="<int>", default=DEFAULT.Backend.thread_num,
@@ -648,14 +791,17 @@ group_samp = parser_zcc.add_argument_group(
     title="resampling",
     description="configure the resampling used for covariance estimates")
 group_samp.add_argument(
-    "--global-norm", action="store_true",  # check with DEFAULT.Resampling.global_norm
-    help="normalise pair counts globally instead of patch-wise")
-group_samp.add_argument(
     "--method", choices=METHOD_OPTIONS, default=DEFAULT.Resampling.method,
     help="resampling method for covariance estimates (default: %(default)s)")
 group_samp.add_argument(
+    "--no-crosspatch", action="store_true",  # check with DEFAULT.Resampling.crosspatch
+    help="whether to include cross-patch pair counts when resampling")
+group_samp.add_argument(
     "--n-boot", type=int, metavar="<int>", default=DEFAULT.Resampling.n_boot,
     help="number of bootstrap samples (default: %(default)s)")
+group_samp.add_argument(
+    "--global-norm", action="store_true",  # check with DEFAULT.Resampling.global_norm
+    help="normalise pair counts globally instead of patch-wise")
 group_samp.add_argument(
     "--seed", type=int, metavar="<int>", default=DEFAULT.Resampling.seed,
     help="random seed for bootstrap sample generation (default: %(default)s)")
@@ -665,11 +811,16 @@ group_samp.add_argument(
 @Tasks.register(60)
 @logged
 def zcc(args, project: ProjectDirectory) -> dict:
+    config = ResamplingConfig(
+        method=args.method, crosspatch=(not args.no_crosspatch),
+        n_boot=args.n_boot, global_norm=args.global_norm, seed=args.seed)
     setup_args = dict(
-        est_cross=args.est_cross, est_auto=args.est_auto, method=args.method,
-        global_norm=args.global_norm, n_boot=args.n_boot, seed=args.seed)
+        est_cross=args.est_cross, est_auto=args.est_auto, config=config)
     runner = Runner(project, threads=args.threads)
     runner.main(zcc_kwargs=setup_args)
+    # replace config object with dict representation
+    setup_args.pop("config")
+    setup_args.update(config.to_dict())
     return setup_args
 
 
@@ -742,6 +893,26 @@ def merge(args):
 
 
 ################################################################################
+COMMANDNAME = "plot"
+
+parser_cache = Commandline.create_subparser(
+    name=COMMANDNAME,
+    help="generate automatic check plots",
+    description="Plot the autocorrelations and redshift estimates into the 'estimate' directory.",
+    progress=False,
+    threads=False)
+
+
+@Commandline.register(COMMANDNAME)
+@Tasks.register(70)
+@logged
+def plot(args, project: ProjectDirectory) -> dict:
+    runner = Runner(project)
+    runner.main(plot=True)
+    return {}
+
+
+################################################################################
 COMMANDNAME = "run"
 
 class DumpConfigAction(argparse.Action):
@@ -811,9 +982,15 @@ def run(args):
     with project:
         runner = Runner(project, args.progress, args.threads)
         task_kwargs = dict()
-        for task in project.list_tasks():
+        for i, task in enumerate(project.list_tasks(), 1):
             if task.name == "drop_cache":
                 task_kwargs[task.name] = True
+            elif task.name == "plot":
+                task_kwargs[task.name] = True
+            elif task.name == "zcc":
+                task.args["config"] = ResamplingConfig.from_dict(task.args)
+                task_kwargs[f"{task.name}_kwargs"] = task.args
             else:
                 task_kwargs[f"{task.name}_kwargs"] = task.args
+            print(f"    |{i:2d}) {task.name}")
         runner.main(**task_kwargs)

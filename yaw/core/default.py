@@ -31,7 +31,8 @@ class Configuration:
 
 
 class Resampling:
-    method = "bootstrap"
+    method = "jackknife"
+    crosspatch = True
     n_boot = 500
     global_norm = False  # check with 'nz' parser
     seed = 12345

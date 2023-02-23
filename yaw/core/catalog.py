@@ -16,11 +16,10 @@ from yaw.core.utils import PatchedQuantity, long_num_format
 
 if TYPE_CHECKING:
     from pandas import DataFrame
-    from yaw.core.config import Configuration
+    from yaw.core.config import Configuration, ResamplingConfig
+    from yaw.core.datapacks import RedshiftData
     from yaw.core.paircounts import PairCountResult
-    from yaw.core.redshifts import NzTrue
-    from yaw.core.utils import (
-        TypePatchKey, TypeScaleKey)
+    from yaw.core.utils import TypePatchKey, TypeScaleKey
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -246,8 +245,9 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
     @abstractmethod
     def true_redshifts(
         self,
-        config: Configuration
-    ) -> NzTrue:
+        config: Configuration,
+        sampling_config: ResamplingConfig | None = None
+    ) -> RedshiftData:
         """
         Compute the a redshift distribution histogram.
         """
@@ -273,7 +273,7 @@ class PatchLinkage(PatchedQuantity):
             # estimate maximum query radius at low, but non-zero redshift
             z_ref = max(0.05, config.binning.zmin)
             max_query_radius = r_kpc_to_angle(
-                config.scales.scales, z_ref, config.cosmology).max()
+                config.scales.as_array(), z_ref, config.cosmology).max()
         else:
             max_query_radius = 0.0  # only relevenat for cross-patch
 
@@ -309,6 +309,11 @@ class PatchLinkage(PatchedQuantity):
             patches.add(p1)
             patches.add(p2)
         return len(patches)
+
+    @property
+    def density(self) -> float:
+        n = self.n_patches
+        return len(self) / (n*n)
 
     def get_pairs(
         self,
