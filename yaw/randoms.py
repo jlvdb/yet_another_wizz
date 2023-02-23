@@ -110,8 +110,9 @@ class UniformRandoms:
                 rand = pd.DataFrame({
                     names[0]: pool.shares["ra"].to_numpy(copy=True),
                     names[1]: pool.shares["dec"].to_numpy(copy=True)})
-                for col, data in pool.shares["out"].items():
-                    rand[col] = data.to_numpy(copy=True)
+                if draw_from is not None:
+                    for col, data in pool.shares["out"].items():
+                        rand[col] = data.to_numpy(copy=True)
                 # will delete shared arrays after this
         return rand
 
