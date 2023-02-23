@@ -356,7 +356,7 @@ class RedshiftData(CorrelationData):
             norm = scipy.optimize.curve_fit(
                 lambda x, norm: y_from[mask] / norm,  # x is a dummy variable
                 xdata=to.mids[mask], ydata=y_to[mask],
-                p0=[1.0], sigma=1/y_to)[0][0]
+                p0=[1.0], sigma=1/y_to[mask])[0][0]
         return self.__class__(
             binning=self.binning,
             data=self.data / norm,

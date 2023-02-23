@@ -31,17 +31,17 @@ def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
     if axis is None:
         result = np.zeros_like(a[0], dtype=dtype)
         for i in range(min(N, N-k)):
-            result += (a[i] * b[max(0, i+k):]).sum()
+            result += (a[i] * b[max(0, i+k):]).sum(axis=0)
     # sum row-wise
     elif axis == 1:
         result = np.zeros_like(b, dtype=dtype)
         for i in range(min(N, N-k)):
-            result[i] = (a[i] * b[max(0, i+k):]).sum()
+            result[i] = (a[i] * b[max(0, i+k):]).sum(axis=0)
     # sum column-wise
     elif axis == 0:
         result = np.zeros_like(a, dtype=dtype)
         for i in range(max(0, k), N):
-            result[i] = (a[:min(N, max(0, i-k+1))] * b[i]).sum()
+            result[i] = (a[:min(N, max(0, i-k+1))] * b[i]).sum(axis=0)
     return result[()]
 
 
