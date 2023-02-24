@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
-import pandas as pd
 
 from yaw.core.catalog import PatchLinkage
 from yaw.core.config import ResamplingConfig
@@ -24,8 +23,6 @@ if TYPE_CHECKING:
     from pandas import IntervalIndex
     from yaw.core.catalog import CatalogBase
     from yaw.core.config import Configuration
-    from yaw.core.paircounts import PairCountData
-    from yaw.core.utils import TypeScaleKey
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -124,10 +121,10 @@ class CorrelationEstimator(ABC):
     def __call__(
         self,
         *,
-        dd: PairCountData,
-        dr: PairCountData,
-        rr: PairCountData,
-        rd: PairCountData | None = None
+        dd: NDArray,
+        dr: NDArray,
+        rr: NDArray,
+        rd: NDArray | None = None
     ) -> NDArray:
         raise NotImplementedError
 
@@ -140,8 +137,8 @@ class PeeblesHauser(CorrelationEstimator):
     def __call__(
         self,
         *,
-        dd: PairCountData,
-        rr: PairCountData
+        dd: NDArray,
+        rr: NDArray
     ) -> NDArray:
         self._warn_enum_zero(rr)
         return dd / rr - 1.0
@@ -155,8 +152,8 @@ class DavisPeebles(CorrelationEstimator):
     def __call__(
         self,
         *,
-        dd: PairCountData,
-        dr_rd: PairCountData
+        dd: NDArray,
+        dr_rd: NDArray
     ) -> NDArray:
         self._warn_enum_zero(dr_rd)
         return dd / dr_rd - 1.0
@@ -170,10 +167,10 @@ class Hamilton(CorrelationEstimator):
     def __call__(
         self,
         *,
-        dd: PairCountData,
-        dr: PairCountData,
-        rr: PairCountData,
-        rd: PairCountData | None = None
+        dd: NDArray,
+        dr: NDArray,
+        rr: NDArray,
+        rd: NDArray | None = None
     ) -> NDArray:
         rd = dr if rd is None else rd
         enum = dr * rd
@@ -189,10 +186,10 @@ class LandySzalay(CorrelationEstimator):
     def __call__(
         self,
         *,
-        dd: PairCountData,
-        dr: PairCountData,
-        rr: PairCountData,
-        rd: PairCountData | None = None
+        dd: NDArray,
+        dr: NDArray,
+        rr: NDArray,
+        rd: NDArray | None = None
     ) -> NDArray:
         rd = dr if rd is None else rd
         self._warn_enum_zero(rr)
@@ -365,8 +362,8 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
 
 def _create_dummy_counts(
-    counts: Any | dict[TypeScaleKey, Any]
-) -> dict[TypeScaleKey, None]:
+    counts: Any | dict[str, Any]
+) -> dict[str, None]:
     if isinstance(counts, dict):
         dummy = {scale_key: None for scale_key in counts}
     else:
@@ -382,7 +379,7 @@ def autocorrelate(
     linkage: PatchLinkage | None = None,
     compute_rr: bool = True,
     progress: bool = False
-) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
+) -> CorrelationFunction | dict[str, CorrelationFunction]:
     """
     Compute the angular autocorrelation amplitude in bins of redshift. Requires
     object redshifts.
@@ -422,7 +419,7 @@ def crosscorrelate(
     unk_rand: CatalogBase | None = None,
     linkage: PatchLinkage | None = None,
     progress: bool = False
-) -> CorrelationFunction | dict[TypeScaleKey, CorrelationFunction]:
+) -> CorrelationFunction | dict[str, CorrelationFunction]:
     """
     Compute the angular cross-correlation amplitude in bins of redshift with
     another catalogue instance. Requires object redshifts in this catalogue

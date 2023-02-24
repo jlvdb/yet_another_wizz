@@ -15,11 +15,10 @@ from yaw.core.catalog import CatalogBase, PatchLinkage
 from yaw.core.config import Configuration, ResamplingConfig
 from yaw.core.coordinates import position_sphere2sky
 from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.datapacks import RedshiftData
+from yaw.core.datapacks import PatchIDs, RedshiftData
 from yaw.core.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.core.parallel import ParallelHelper
-from yaw.core.utils import (
-    LimitTracker, TypePatchKey, TypeScaleKey, scales_to_keys)
+from yaw.core.utils import LimitTracker, scales_to_keys
 
 from yaw.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
@@ -35,10 +34,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PatchCorrelationData:
-    patches: TypePatchKey
+    patches: PatchIDs
     totals1: NDArray
     totals2: NDArray
-    counts: dict[TypeScaleKey, NDArray]
+    counts: dict[str, NDArray]
 
 
 def _count_pairs_thread(
@@ -78,7 +77,7 @@ def _count_pairs_thread(
         totals2[i] = tree2.total
     counts = {key: count for key, count in zip(scales_to_keys(scales), counts)}
     return PatchCorrelationData(
-        patches=(patch1.id, patch2.id),
+        patches=PatchIDs(patch1.id, patch2.id),
         totals1=totals1,
         totals2=totals2,
         counts=counts)
@@ -337,7 +336,7 @@ class Catalog(CatalogBase):
         other: Catalog | None = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
-    ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
+    ) -> PairCountResult | dict[str, PairCountResult]:
         super().correlate(config, binned, other, linkage)
 
         auto = other is None

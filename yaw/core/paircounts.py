@@ -15,7 +15,7 @@ import pandas as pd
 import scipy.sparse
 
 from yaw.core.config import ResamplingConfig
-from yaw.core.datapacks import SampledData
+from yaw.core.datapacks import PatchIDs, SampledData
 from yaw.core.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, outer_triu_sum)
 
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray, DTypeLike
     from pandas import Interval, IntervalIndex
     from treecorr import NNCorrelation
-    from yaw.core.utils import TypePatchKey
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -302,7 +301,7 @@ class PatchedCount(PatchedArray):
         arr = np.array([counts[i, j].toarray() for counts in self._bins[k]])
         return np.squeeze(arr, axis=squeeze_ax)
 
-    def __setitem__(self, key: TypePatchKey, item: NDArray):
+    def __setitem__(self, key: PatchIDs, item: NDArray):
         item = np.asarray(item)
         if item.shape != (self.n_bins,):
             raise ValueError(

@@ -13,9 +13,6 @@ if TYPE_CHECKING:
     from pandas import IntervalIndex
 
 
-TypePatchKey = tuple[int, int]
-TypeScaleKey = str
-
 TypePathStr = Path | str
 
 
@@ -62,7 +59,7 @@ class LimitTracker:
         return vmin, vmax
 
 
-def scales_to_keys(scales: NDArray[np.float_]) -> list[TypeScaleKey]:
+def scales_to_keys(scales: NDArray[np.float_]) -> list[str]:
     return [f"kpc{scale[0]:.0f}t{scale[1]:.0f}" for scale in scales]
 
 

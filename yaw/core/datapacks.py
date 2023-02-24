@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import warnings
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, NamedTuple, Any
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
+
+
+class PatchIDs(NamedTuple):
+    id1: int
+    id2: int
 
 
 @dataclass(frozen=True, repr=False)

@@ -12,6 +12,7 @@ from scipy.spatial import distance_matrix
 
 from yaw.core.coordinates import distance_sphere2sky, position_sphere2sky
 from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.datapacks import PatchIDs
 from yaw.core.utils import PatchedQuantity, long_num_format
 
 if TYPE_CHECKING:
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     from yaw.core.config import Configuration, ResamplingConfig
     from yaw.core.datapacks import RedshiftData
     from yaw.core.paircounts import PairCountResult
-    from yaw.core.utils import TypePatchKey, TypeScaleKey
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -235,7 +235,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
         other: CatalogBase = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
-    ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
+    ) -> PairCountResult | dict[str, PairCountResult]:
         n1 = long_num_format(len(self))
         n2 = long_num_format(len(self) if other is None else len(other))
         self.logger.debug(
@@ -258,7 +258,7 @@ class PatchLinkage(PatchedQuantity):
 
     def __init__(
         self,
-        patch_tuples: list[TypePatchKey]
+        patch_tuples: list[PatchIDs]
     ) -> None:
         self.pairs = patch_tuples
 
@@ -319,7 +319,7 @@ class PatchLinkage(PatchedQuantity):
         self,
         auto: bool,
         crosspatch: bool = True
-    ) -> list[TypePatchKey]:
+    ) -> list[PatchIDs]:
         if crosspatch:
             if auto:
                 pairs = [(i, j) for i, j in self.pairs if j >= i]

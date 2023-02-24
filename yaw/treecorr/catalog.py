@@ -17,7 +17,6 @@ from yaw.core.coordinates import (
     distance_sphere2sky, position_sky2sphere, position_sphere2sky)
 from yaw.core.cosmology import r_kpc_to_angle
 from yaw.core.paircounts import PairCountResult
-from yaw.core.utils import TypeScaleKey
 
 from yaw.logger import TimedLog
 
@@ -225,7 +224,7 @@ class Catalog(CatalogBase):
         other: Catalog = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
-    ) -> PairCountResult | dict[TypeScaleKey, PairCountResult]:
+    ) -> PairCountResult | dict[str, PairCountResult]:
         super().correlate(config, binned, other, linkage)
 
         auto = other is None
