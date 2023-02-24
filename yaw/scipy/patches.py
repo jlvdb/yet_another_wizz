@@ -259,8 +259,8 @@ try:
         **kwargs
     ) -> tuple[NDArray[np.float_], NDArray[np.int_]]:
         cat = treecorr.Catalog(
-            ra=ra, ra_units="degrees",
-            dec=dec, dec_units="degrees",
+            ra=ra, ra_units="radians",
+            dec=dec, dec_units="radians",
             npatch=n_patches)
         centers = position_sphere2sky(cat.patch_centers)
         patches = np.copy(cat.patch)
