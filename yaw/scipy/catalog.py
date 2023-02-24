@@ -155,8 +155,9 @@ class Catalog(CatalogBase):
                 if isinstance(patch_centers, Catalog):
                     patch_centers = position_sphere2sky(patch_centers.centers)
                 patch_ids = assign_patches(
-                    patch_centers,
-                    data[ra_name].to_numpy(), data[dec_name].to_numpy())
+                    centers_ra_dec=patch_centers,
+                    ra=np.deg2rad(data[ra_name].to_numpy()),
+                    dec=np.deg2rad(data[dec_name].to_numpy()))
                 n_patches = len(patch_centers)
                 log_msg = f"applying {n_patches} patches from external data"
             patch_name = "patch"  # the default name
