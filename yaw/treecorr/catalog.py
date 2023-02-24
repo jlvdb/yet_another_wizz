@@ -195,10 +195,7 @@ class Catalog(CatalogBase):
 
     @property
     def centers(self) -> NDArray[np.float_]:
-        # TODO: figure out why double transform is necessary
-        centers = position_sky2sphere(
-            position_sphere2sky(self._catalog.get_patch_centers()))
-        return centers
+        return self._catalog.get_patch_centers()
 
     @property
     def radii(self) -> NDArray[np.float_]:

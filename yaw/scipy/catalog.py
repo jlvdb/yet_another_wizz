@@ -146,8 +146,10 @@ class Catalog(CatalogBase):
         if patch_mode != "dividing":
             if patch_mode == "creating":
                 patch_centers, patch_ids = create_patches(
-                    data[ra_name].to_numpy(), data[dec_name].to_numpy(),
-                    n_patches)
+                    # NOTE: convert to radians at patch level
+                    ra=np.deg2rad(data[ra_name].to_numpy()),
+                    dec=np.deg2rad(data[dec_name].to_numpy()),
+                    n_patches=n_patches)
                 log_msg = f"creating {n_patches} patches"
             elif patch_mode == "applying":
                 if isinstance(patch_centers, Catalog):

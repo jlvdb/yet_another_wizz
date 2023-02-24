@@ -263,9 +263,12 @@ try:
             dec=dec, dec_units="radians",
             npatch=n_patches)
         centers = position_sphere2sky(cat.patch_centers)
-        patches = np.copy(cat.patch)
+        if cat.patch is None:
+            patches = np.zeros(len(ra), dtype=np.int_)
+        else:
+            patches = np.copy(cat.patch)
         del cat  # might not be necessary
-        return centers, patches
+        return np.atleast_2d(centers), patches
     
     create_patches = treecorr_patches
 

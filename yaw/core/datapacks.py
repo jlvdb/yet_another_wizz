@@ -352,7 +352,7 @@ class RedshiftData(CorrelationData):
         else:
             y_from = self.data
             y_to = to.data
-            mask = np.isfinite(y_from) & np.isfinite(y_to)
+            mask = np.isfinite(y_from) & np.isfinite(y_to) & (y_to > 0.0)
             norm = scipy.optimize.curve_fit(
                 lambda x, norm: y_from[mask] / norm,  # x is a dummy variable
                 xdata=to.mids[mask], ydata=y_to[mask],
