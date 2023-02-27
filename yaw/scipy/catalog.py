@@ -161,7 +161,7 @@ class Catalog(CatalogBase):
             data[patch_name] = patch_ids
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
-            log_msg = f"splitting data into predefined patches"
+            log_msg = f"dividing data into predefined patches"
             centers = dict()  # this can be empty
 
         # run groupby first to avoid any intermediate copies of full data
@@ -193,7 +193,7 @@ class Catalog(CatalogBase):
         # also store the patch properties
         if unload:
             property_df = pd.DataFrame(dict(ids=self.ids))
-            for colname, values in zip("xyz", self.centers.values.T):
+            for colname, values in zip("xyz", self.centers.to_3d().values.T):
                 property_df[colname] = values
             property_df["r"] = self.radii.values
             fpath = os.path.join(cache_directory, "properties.feather")
@@ -212,7 +212,7 @@ class Catalog(CatalogBase):
         # transform data frame to dictionaries
         ids = property_df["ids"]
         centers = property_df[["x", "y", "z"]].to_numpy()
-        centers = {pid: Coord3D(center) for pid, center in zip(ids, centers)}
+        centers = {pid: Coord3D(*center) for pid, center in zip(ids, centers)}
         radii = property_df["r"].to_numpy()
         radii = {pid: radius for pid, radius in zip(ids, radii)}
         # load the patches

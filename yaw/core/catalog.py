@@ -194,6 +194,9 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         self.logger.debug("computing true redshift distribution")
 
 
+LINK_ZMIN = 0.05
+
+
 class PatchLinkage(PatchedQuantity):
 
     def __init__(
@@ -211,7 +214,7 @@ class PatchLinkage(PatchedQuantity):
         # determine the additional overlap from the spatial query
         if config.backend.crosspatch:
             # estimate maximum query radius at low, but non-zero redshift
-            z_ref = max(0.05, config.binning.zmin)
+            z_ref = max(LINK_ZMIN, config.binning.zmin)
             max_query_radius = r_kpc_to_angle(
                 config.scales.as_array(), z_ref, config.cosmology).max()
         else:
@@ -224,10 +227,10 @@ class PatchLinkage(PatchedQuantity):
         # compute distance between all patch centers
         dist_mat_3d = Dist3D(distance_matrix(centers_3d, centers_3d))
         # compare minimum separation required for patchs to not overlap
-        min_sep_limit = DistSky(np.add.outer(radii, radii))
+        size_sum = DistSky(np.add.outer(radii, radii))
 
         # check which patches overlap when factoring in the query radius
-        overlaps = (dist_mat_3d.to_sky() - max_query_radius) < min_sep_limit
+        overlaps = dist_mat_3d.to_sky() < (size_sum + max_query_radius)
         patch_pairs = []
         for id1, overlap in enumerate(overlaps):
             patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])

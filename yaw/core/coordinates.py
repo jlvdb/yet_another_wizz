@@ -73,10 +73,11 @@ class Coord3D(Coordinate):
         # transform
         ra = np.arccos(x / r_d2) * sgn(y) % (2.0*np.pi)
         isnan = np.isnan(ra)
-        if np.isscalar(isnan):
-            ra = 0.0
-        else:
-            ra[np.isnan(ra)] = 0.0
+        if isnan.any():
+            if np.isscalar(isnan):
+                ra = 0.0
+            else:
+                ra[np.isnan(ra)] = 0.0
         dec = np.arcsin(self.z / r_d3)
         return CoordSky(ra, dec)
 
