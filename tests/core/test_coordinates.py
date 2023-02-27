@@ -105,6 +105,14 @@ class TestCoordSky:
         npt.assert_allclose(x, result.x, atol=1e-15)
         npt.assert_allclose(y, result.y, atol=1e-15)
         npt.assert_allclose(z, result.z, atol=1e-15)
+        # test one single point
+        ra, dec = data_sky_ra_sky[0].T
+        x, y, z = data_sky_ra_3d[0].T
+        coords = CoordSky(ra, dec)
+        result = coords.to_3d()
+        npt.assert_allclose(x, result.x, atol=1e-15)
+        npt.assert_allclose(y, result.y, atol=1e-15)
+        npt.assert_allclose(z, result.z, atol=1e-15)
 
         # trivial case
         assert coords is coords.to_sky()
@@ -214,6 +222,13 @@ class TestCoord3D:
         # along constant Dec
         x, y, z = data_3d_dec_3d.T
         ra, dec = data_3d_dec_sky.T
+        coords = Coord3D(x=x, y=y, z=z)
+        result = coords.to_sky()
+        npt.assert_allclose(ra, result.ra, atol=1e-15)
+        npt.assert_allclose(dec, result.dec, atol=1e-15)
+        # test one single point
+        x, y, z = data_3d_ra_3d[0].T
+        ra, dec = data_3d_ra_sky[0].T
         coords = Coord3D(x=x, y=y, z=z)
         result = coords.to_sky()
         npt.assert_allclose(ra, result.ra, atol=1e-15)
