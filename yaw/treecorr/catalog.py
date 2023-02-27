@@ -23,7 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval
     from yaw.core.catalog import PatchLinkage
     from yaw.core.config import ResamplingConfig
-    from yaw.core.datapacks import RedshiftData
+    from yaw.core.correlation import RedshiftData
 
 
 logger = logging.getLogger(__name__)

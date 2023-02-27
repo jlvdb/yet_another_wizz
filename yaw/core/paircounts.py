@@ -15,14 +15,13 @@ import pandas as pd
 import scipy.sparse
 
 from yaw.core.config import ResamplingConfig
-from yaw.core.datapacks import PatchIDs, SampledData
 from yaw.core.utils import (
-    BinnedQuantity, HDFSerializable, PatchedQuantity, outer_triu_sum)
+    BinnedQuantity, HDFSerializable, PatchedQuantity, PatchIDs, outer_triu_sum)
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.sparse import spmatrix
     from numpy.typing import ArrayLike, NDArray, DTypeLike
-    from pandas import Interval, IntervalIndex
+    from pandas import DataFrame, Interval, IntervalIndex, Series
     from treecorr import NNCorrelation
 
 
@@ -440,6 +439,49 @@ class PatchedCount(PatchedArray):
         dest.create_dataset("data", data=self.values(), **_compression)
         dest.create_dataset("n_patches", data=self.n_patches)
         dest.create_dataset("auto", data=self.auto)
+
+
+@dataclass(frozen=True, repr=False)
+class SampledData(BinnedQuantity):
+
+    binning: IntervalIndex
+    data: NDArray
+    samples: NDArray
+    method: str
+
+    def __post_init__(self) -> None:
+        if self.data.shape != (self.n_bins,):
+            raise ValueError("unexpected shapf of 'data' array")
+        if not self.samples.shape[1] == self.n_bins:
+            raise ValueError(
+                "number of bins for 'data' and 'samples' do not match")
+        if self.method not in ResamplingConfig.implemented_methods:
+            raise ValueError(f"unknown sampling method '{self.method}'")
+
+    def __repr__(self) -> str:
+        string = super().__repr__()[:-1]
+        samples = self.n_samples
+        method = self.method
+        return f"{string}, {samples=}, {method=})"
+
+    @property
+    def n_samples(self) -> int:
+        return len(self.samples)
+
+    def get_data(self) -> Series:
+        return pd.Series(self.data, index=self.binning)
+
+    def get_samples(self) -> DataFrame:
+        return pd.DataFrame(self.samples.T, index=self.binning)
+
+    def is_compatible(self, other: SampledData) -> bool:
+        if not super().is_compatible(other):
+            return False
+        if self.n_samples != other.n_samples:
+            return False
+        if self.method != other.method:
+            return False
+        return True
 
 
 @dataclass(frozen=True)

@@ -12,13 +12,12 @@ from scipy.spatial import distance_matrix
 
 from yaw.core.coordinates import Coordinate, CoordSky, Dist3D, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.datapacks import PatchIDs
-from yaw.core.utils import PatchedQuantity, long_num_format
+from yaw.core.utils import PatchIDs, PatchedQuantity, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.core.config import Configuration, ResamplingConfig
-    from yaw.core.datapacks import RedshiftData
+    from yaw.core.correlation import RedshiftData
     from yaw.core.paircounts import PairCountResult
 
 

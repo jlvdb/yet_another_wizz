@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING, Any, Type, TypeVar, Protocol, runtime_checkable)
+    TYPE_CHECKING, Any, NamedTuple, Type, TypeVar, Protocol, runtime_checkable)
 
 import h5py
 import numpy as np
@@ -92,6 +92,11 @@ def format_float_fixed_width(value, width):
     return string
 
 
+class PatchIDs(NamedTuple):
+    id1: int
+    id2: int
+
+    
 class PatchedQuantity(Protocol):
 
     n_patches: int
