@@ -10,6 +10,8 @@ except ImportError:
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
 
+from yaw.core.coordinates import DistSky
+
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
@@ -44,7 +46,7 @@ def r_kpc_to_angle(
     r_kpc: NDArray[np.float_],
     z: float,
     cosmology: TypeCosmology
-) -> tuple[float, float]:
+) -> NDArray[np.float_]:
     """from kpc to radian"""
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
     return np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value

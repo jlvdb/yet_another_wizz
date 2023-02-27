@@ -13,8 +13,7 @@ from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
 
 from yaw.core.catalog import CatalogBase
 from yaw.core.config import Configuration
-from yaw.core.coordinates import (
-    distance_sphere2sky, position_sky2sphere, position_sphere2sky)
+from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
 from yaw.core.paircounts import PairCountResult
 
@@ -52,7 +51,7 @@ class Catalog(CatalogBase):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: Catalog | NDArray[np.float_] | None = None,
+        patch_centers: CatalogBase | Coordinate | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -73,17 +72,14 @@ class Catalog(CatalogBase):
         elif patch_name is not None:
             kwargs["patch"] = data[patch_name]
             log_msg = f"splitting data into predefined patches"
-        # TODO: different convention of patch centers in TC and SC
         elif isinstance(patch_centers, Catalog):
             kwargs["patch_centers"] = patch_centers._catalog.get_patch_centers()
             n_patches = patch_centers.n_patches
             log_msg = f"applying {n_patches} patches from external data"
-        elif patch_centers is not None:
-            self.logger.warn(
-                "treecorr and scipy versions of the Catalog class have "
-                "different representations of patch centers internally")
-            kwargs["patch_centers"] = patch_centers
-            n_patches = len(patch_centers)
+        elif isinstance(patch_centers, Coordinate):
+            centers = patch_centers.to_3d().values
+            kwargs["patch_centers"] = centers
+            n_patches = len(centers)
             log_msg = f"applying {n_patches} patches from external data"
         else:
             raise ValueError(
@@ -130,7 +126,7 @@ class Catalog(CatalogBase):
     def n_patches(self) -> int:
         return self._catalog.npatch
 
-    def __iter__(self) -> Iterator[TreeCorrCatalog]:
+    def __iter__(self) -> Iterator[Catalog]:
         self._make_patches()
         for patch in self._catalog._patches:
             yield self.__class__.from_treecorr(patch)
@@ -193,18 +189,18 @@ class Catalog(CatalogBase):
         return np.array([patch.sumw for patch in iter(self)])
 
     @property
-    def centers(self) -> NDArray[np.float_]:
-        return self._catalog.get_patch_centers()
+    def centers(self) -> CoordSky:
+        centers = Coord3D(*self._catalog.get_patch_centers().T)
+        return centers.to_sky()
 
     @property
-    def radii(self) -> NDArray[np.float_]:
+    def radii(self) -> DistSky:
         radii = []
-        for patch, center in zip(iter(self), self.centers):
-            ra_dec = np.transpose([patch.ra, patch.dec])
-            xyz = position_sky2sphere(ra_dec)
-            radius_xyz = np.sqrt(np.sum((xyz - center)**2, axis=1)).max()
-            radii.append(distance_sphere2sky(radius_xyz))
-        return np.array(radii)
+        for patch, center in zip(iter(self), self._catalog.get_patch_centers()):
+            position = patch.pos.to_3d()
+            radius_xyz = Coord3D(center).distance(position).values.max()
+            radii.append(radius_xyz)
+        return DistSky(radii)
 
     def bin_iter(
         self,
@@ -278,16 +274,22 @@ class Catalog(CatalogBase):
         sampling_config: ResamplingConfig | None = None
     ) -> RedshiftData:
         super().true_redshifts(config)
-        raise NotImplementedError
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
         # compute the reshift histogram in each patch
         hist_counts = []
         for patch in iter(self):
-            print(patch)
             counts, bins = np.histogram(
                 patch.redshifts, config.binning.zbins, weights=patch.weights)
             hist_counts.append(counts)
-        return NzTrue(
-            counts=np.array(hist_counts),
-            binning=pd.IntervalIndex.from_breaks(bins))
+
+        # construct the output data samples
+        binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
+        patch_idx = sampling_config.get_samples(self.n_patches)
+        nz_data = hist_counts.sum(axis=0)
+        nz_samp = np.sum(hist_counts[patch_idx], axis=1)
+        return RedshiftData(
+            binning=binning,
+            data=nz_data,
+            samples=nz_samp,
+            method=sampling_config.method)

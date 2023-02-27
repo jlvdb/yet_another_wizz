@@ -10,7 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import distance_matrix
 
-from yaw.core.coordinates import distance_sphere2sky, position_sphere2sky
+from yaw.core.coordinates import Coordinate, CoordSky, Dist3D, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
 from yaw.core.datapacks import PatchIDs
 from yaw.core.utils import PatchedQuantity, long_num_format
@@ -25,12 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__.replace(".core.", "."))
 
 
-class CatalogDummy:
-    def __init__(self, centers: NDArray[np.float_]) -> None:
-        self.centers = centers
-
-
-class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
+class CatalogBase(ABC, Sequence, PatchedQuantity):
 
     logger = logging.getLogger("yaw.Catalog")
 
@@ -42,7 +37,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: CatalogBase | NDArray[np.float_] | None = None,
+        patch_centers: CatalogBase | Coordinate | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -54,7 +49,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
     def from_file(
         cls,
         filepath: str,
-        patches: int | CatalogDummy | str,
+        patches: str | int | CatalogBase | Coordinate,
         ra: str,
         dec: str,
         *,
@@ -72,14 +67,17 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
         if isinstance(patches, str):
             columns.append(patches)
             patch_kwarg = dict(patch_name=patches)
-        elif isinstance(patches, CatalogDummy):
-            patch_kwarg = dict(
-                patch_centers=position_sphere2sky(patches.centers))
         elif isinstance(patches, int):
             patch_kwarg = dict(n_patches=patches)
+        elif isinstance(patches, Coordinate):
+            patch_kwarg = dict(patch_centers=patches)
+        elif isinstance(patches, CatalogBase):
+            patch_kwarg = dict(patch_centers=patches.centers)
         else:
             raise TypeError(
-                "'patches' must be either of type 'int', 'str', or 'Catalog'")
+                "'patches' must be either of type 'str' (col. name), 'int' "
+                "(number of patches), or 'Catalog' or 'Coordinate' (specify "
+                "centers)")
 
         cls.logger.info(f"reading catalog file '{filepath}'")
         data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
@@ -149,6 +147,9 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
         """
         pass
 
+    def pos(self) -> CoordSky:
+        return CoordSky(self.ra, self.dec)
+
     @abstractproperty
     def ra(self) -> NDArray[np.float_]:
         """
@@ -213,14 +214,14 @@ class CatalogBase(ABC, Sequence, PatchedQuantity, CatalogDummy):
         pass
 
     @abstractproperty
-    def centers(self) -> NDArray[np.float_]:
+    def centers(self) -> CoordSky:
         """
         Get the patch centers in right ascension / declination (radians).
         """
         pass
 
     @abstractproperty
-    def radii(self) -> NDArray[np.float_]:
+    def radii(self) -> DistSky:
         """
         Get the distance from the patches center to its farthest member in
         radians.
@@ -275,18 +276,19 @@ class PatchLinkage(PatchedQuantity):
             max_query_radius = r_kpc_to_angle(
                 config.scales.as_array(), z_ref, config.cosmology).max()
         else:
-            max_query_radius = 0.0  # only relevenat for cross-patch
+            max_query_radius = 0.0  # only relevant for cross-patch
+        max_query_radius = DistSky(max_query_radius)
 
         logger.debug(f"computing patch linkage with {max_query_radius=:.3e}")
-        centers = catalog.centers  # in RA / Dec
-        radii = catalog.radii  # radian, maximum distance measured from center
+        centers_3d = catalog.centers.to_3d().values
+        radii = catalog.radii.values
         # compute distance between all patch centers
-        dist = distance_sphere2sky(distance_matrix(centers, centers))
+        dist_mat_3d = Dist3D(distance_matrix(centers_3d, centers_3d))
         # compare minimum separation required for patchs to not overlap
-        min_sep_deg = np.add.outer(radii, radii)
+        min_sep_limit = DistSky(np.add.outer(radii, radii))
 
         # check which patches overlap when factoring in the query radius
-        overlaps = (dist - max_query_radius) < min_sep_deg
+        overlaps = (dist_mat_3d.to_sky() - max_query_radius) < min_sep_limit
         patch_pairs = []
         for id1, overlap in enumerate(overlaps):
             patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
@@ -373,28 +375,6 @@ class PatchLinkage(PatchedQuantity):
         else:
             mask = np.eye(n_patches, dtype=np.bool_)
         return mask
-
-    def get_weight_matrix(
-        self,
-        collection1: CatalogBase,
-        collection2: CatalogBase | None = None,
-        crosspatch: bool = True
-    ) -> NDArray[np.float_]:
-        auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2)
-        n_patches = self.n_patches
-        # compute the product of the total weight per patch
-        totals1 = np.zeros(n_patches)
-        for i, total in zip(collection1.ids, collection1.get_totals()):
-            totals1[i] = total
-        totals2 = np.zeros(n_patches)
-        for i, total in zip(collection2.ids, collection2.get_totals()):
-            totals2[i] = total
-        totals = np.multiply.outer(totals1, totals2)
-        if auto:
-            totals = np.triu(totals)  # (i, j) with i > j => 0
-            totals[np.diag_indices(len(totals))] *= 0.5  # avoid double-counting
-        return totals
 
     def get_patches(
         self,

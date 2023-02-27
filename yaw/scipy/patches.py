@@ -8,8 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.cluster import vq
 
-from yaw.core.coordinates import (
-    distance_sphere2sky, position_sky2sphere, position_sphere2sky)
+from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, Dist3D, DistSky
 
 from yaw.scipy.kdtree import SphericalKDTree
 
@@ -51,8 +50,8 @@ class PatchCatalog:
         id: int,
         data: DataFrame,
         cachefile: str | None = None,
-        center: NDArray[np.float_] | None = None,
-        radius: float | None = None,
+        center: Coordinate | None = None,
+        radius: DistSky | float | None = None,
         degrees: bool = True
     ) -> None:
         self.id = id
@@ -77,8 +76,8 @@ class PatchCatalog:
 
     def _init(
         self,
-        center: NDArray[np.float_] | None = None,
-        radius: float | None = None
+        center: Coordinate | None = None,
+        radius: DistSky | float | None = None
     ) -> None:
         self._len = len(self._data)
         self._has_z = "redshift" in self._data
@@ -93,32 +92,25 @@ class PatchCatalog:
         if center is None or radius is None:
             SUBSET_SIZE = 1000  # seems a reasonable, fast but not too sparse
             if self._len < SUBSET_SIZE:
-                pos = self.pos
+                positions = self.pos.to_3d()
             else:
                 rng = np.random.default_rng(seed=12345)
                 which = rng.integers(0, self._len, size=SUBSET_SIZE)
-                pos = self.pos[which]
-            xyz = position_sky2sphere(pos)
+                positions = self.pos[which].to_3d()
 
         if center is None:
-            # compute mean coordinate, which will not be located on unit sphere
-            mean_xyz = np.mean(xyz, axis=0)
-            # map back onto unit sphere
-            mean_sky = position_sphere2sky(mean_xyz)
-            self._center = position_sky2sphere(mean_sky)
+            self._center = positions.mean()
         else:
-            if len(center) == 2:
-                self._center = position_sky2sphere(center)
-            elif len(center) == 3:
-                self._center = center
-            else:
-                raise ValueError("'center' must be length 2 or 3")
+            self._center = center.to_3d()
 
         if center is None or radius is None:  # new center requires recomputing
             # compute maximum distance to any of the data points
-            radius_xyz = np.sqrt(np.sum((xyz - self.center)**2, axis=1)).max()
-            radius = distance_sphere2sky(radius_xyz)
-        self._radius = radius
+            radius_3d = positions.distance(self._center).values.max()
+            self._radius = Dist3D(radius_3d).to_sky()
+        elif isinstance(radius, DistSky):
+            self._radius = radius
+        else:
+            self._radius = DistSky(radius)
 
     def __repr__(self) -> str:
         s = self.__class__.__name__
@@ -132,8 +124,8 @@ class PatchCatalog:
     def from_cached(
         cls,
         cachefile: str,
-        center: NDArray[np.float_] | None = None,
-        radius: float | None = None
+        center: Coordinate | None = None,
+        radius: DistSky | float | None = None
     ) -> PatchCatalog:
         # create the data instance
         new = cls.__new__(cls)
@@ -191,9 +183,9 @@ class PatchCatalog:
         return self._data["dec"].to_numpy()
 
     @property
-    def pos(self) -> NDArray[np.float_]:
+    def pos(self) -> CoordSky:
         self.require_loaded()
-        return self._data[["ra", "dec"]].to_numpy()
+        return CoordSky(self.ra, self.dec)
 
     @property
     def redshifts(self) -> NDArray[np.float_]:
@@ -216,11 +208,11 @@ class PatchCatalog:
         return self._total
 
     @property
-    def center(self) -> float:
-        return self._center
+    def center(self) -> CoordSky:
+        return self._center.to_sky()
 
     @property
-    def radius(self) -> float:
+    def radius(self) -> DistSky:
         return self._radius
 
     def iter_bins(
@@ -241,7 +233,7 @@ class PatchCatalog:
                     center=self._center, radius=self._radius)
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
-        tree = SphericalKDTree(self.ra, self.dec, self.weights, **kwargs)
+        tree = SphericalKDTree(self.pos, self.weights, **kwargs)
         tree._total = self.total  # no need to recompute this
         return tree
 
@@ -253,53 +245,50 @@ try:
     import treecorr
 
     def treecorr_patches(
-        ra: NDArray[np.float_],
-        dec: NDArray[np.float_],
+        position: Coordinate,
         n_patches: int,
         **kwargs
-    ) -> tuple[NDArray[np.float_], NDArray[np.int_]]:
+    ) -> tuple[Coord3D, NDArray[np.int_]]:
+        position = position.to_sky()
+        n_points = len(position.ra)
         cat = treecorr.Catalog(
-            ra=ra, ra_units="radians",
-            dec=dec, dec_units="radians",
+            ra=position.ra, ra_units="radians",
+            dec=position.dec, dec_units="radians",
             npatch=n_patches)
-        centers = position_sphere2sky(cat.patch_centers)
+        xyz = np.atleast_2d(cat.patch_centers)
+        centers = Coord3D(xyz[:, 0], xyz[:, 1], xyz[:, 2])
         if cat.patch is None:
-            patches = np.zeros(len(ra), dtype=np.int_)
+            patches = np.zeros(len(n_points), dtype=np.int_)
         else:
             patches = np.copy(cat.patch)
         del cat  # might not be necessary
-        return np.atleast_2d(centers), patches
-    
+        return centers, patches
+
     create_patches = treecorr_patches
 
 except ImportError:
 
     def scipy_patches(
-        ra: NDArray[np.float_],
-        dec: NDArray[np.float_],
+        position: Coordinate,
         n_patches: int,
         n_max: int = 500_000
-    ) -> tuple[NDArray[np.float_], NDArray[np.int_]]:
-        if len(ra) != len(dec):
-            raise ValueError("length of 'ra' and 'dec' does not match")
-        subset = np.random.randint(0, len(ra), size=min(n_max, len(ra)))
+    ) -> tuple[Coord3D, NDArray[np.int_]]:
+        position = position.to_3d()
+        n_points = len(position.x)
+        subset = np.random.randint(0, n_points, size=min(n_max, n_points))
         # place on unit sphere to avoid coordinate distortions
-        xyz = position_sky2sphere(np.column_stack([ra[subset], dec[subset]]))
-        centers, _ = vq.kmeans2(xyz[subset], n_patches, minit="points")
-        centers = position_sphere2sky(centers)
-        patches = assign_patches(centers, ra, dec)
+        centers, _ = vq.kmeans2(
+            position[subset].values, n_patches, minit="points")
+        centers = Coord3D(*centers.T)
+        patches = assign_patches(centers=centers, position=position)
         return centers, patches
 
     create_patches = scipy_patches
 
 
 def assign_patches(
-    centers_ra_dec: NDArray[np.float_],
-    ra: NDArray[np.float_],
-    dec: NDArray[np.float_]
+    centers: Coordinate,
+    position: Coordinate
 ) -> NDArray[np.int_]:
-    # place on unit sphere to avoid coordinate distortions
-    centers_xyz = position_sky2sphere(centers_ra_dec)
-    xyz = position_sky2sphere(np.column_stack([ra, dec]))
-    patches, _ = vq.vq(xyz, centers_xyz)
+    patches, _ = vq.vq(position.to_3d().values, centers.to_3d().values)
     return patches
