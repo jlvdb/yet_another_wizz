@@ -19,7 +19,7 @@ from yaw.core.paircounts import PairCountResult
 
 from yaw.logger import TimedLog
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval
     from yaw.core.catalog import PatchLinkage
     from yaw.core.config import ResamplingConfig

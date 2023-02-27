@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
 
@@ -14,88 +14,25 @@ def sgn(val: ArrayLike) -> ArrayLike:
     return np.where(val == 0, 1.0, np.sign(val))
 
 
-@total_ordering
-class Distance(ABC):
-
-    __slots__ = ("values",)
-
-    def __init__(self, distance: ArrayLike) -> None:
-        self.values = np.float_(distance)
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.values})"
-
-    def __format__(self, __format_spec: str) -> str:
-        return self.values.__format__(__format_spec)
-
-    @abstractmethod
-    def __add__(self, other: Distance) -> Distance:
-        raise NotImplementedError
-
-    @abstractmethod
-    def __sub__(self, other: Distance) -> Distance:
-        raise NotImplementedError
-
-    def __eq__(self, other: Distance) -> ArrayLike[np.bool_]:
-        return self.values == other.values
-
-    def __lt__(self, other: Distance) -> ArrayLike[np.bool_]:
-        return self.values < other.values
-
-
-class Dist3D(Distance):
-
-    def __add__(self, other: Dist3D) -> DistSky:
-        dist_sky = self.to_sky() + other.to_sky()
-        return dist_sky.to_3d()
-
-    def __sub__(self, other: Dist3D) -> DistSky:
-        dist_sky = self.to_sky() - other.to_sky()
-        return dist_sky.to_3d()
-
-    def to_sky(self) -> DistSky:
-        if np.any(self.values > 2.0):
-            raise ValueError("distance exceeds size of unit sphere")
-        return DistSky(2.0 * np.arcsin(self.values / 2.0))
-
-
-class DistSky(Distance):
-
-    def __add__(self, other: DistSky) -> DistSky:
-        return DistSky(self.values + other.values)
-
-    def __sub__(self, other: DistSky) -> DistSky:
-        return DistSky(self.values - other.values)
-
-    def to_3d(self) -> Dist3D:
-        return Dist3D(2.0 * np.sin(self.values / 2.0))
-
-
 class Coordinate(ABC):
 
     @abstractmethod
-    def __getitem__(self, idx: ArrayLike) -> Coordinate:
-        raise NotImplementedError
+    def __getitem__(self, idx: ArrayLike) -> Coordinate: pass
 
     @abstractproperty
-    def values(self) -> NDArray[np.float_]:
-        raise NotImplementedError
+    def values(self) -> NDArray[np.float_]: pass
 
     @abstractmethod
-    def mean(self) -> Coordinate:
-        raise NotImplementedError
+    def mean(self) -> Coordinate: pass
 
     @abstractmethod
-    def to_3d(self) -> Coord3D:
-        raise NotImplementedError
+    def to_3d(self) -> Coord3D: pass
 
     @abstractmethod
-    def to_sky(self) -> CoordSky:
-        raise NotImplementedError
+    def to_sky(self) -> CoordSky: pass
 
     @abstractmethod
-    def distance(self) -> Distance:
-        raise NotImplementedError
+    def distance(self) -> Distance: pass
 
 
 class Coord3D(Coordinate):
@@ -119,7 +56,7 @@ class Coord3D(Coordinate):
 
     @property
     def values(self) -> NDArray[np.float_]:
-        return np.column_stack([self.x, self.y, self.z])
+        return np.transpose([self.x, self.y, self.z])
 
     def mean(self) -> Coord3D:
         return Coord3D(x=self.x.mean(), y=self.y.mean(), z=self.z.mean())
@@ -169,7 +106,7 @@ class CoordSky(Coordinate):
 
     @property
     def values(self) -> NDArray[np.float_]:
-        return np.column_stack([self.ra, self.dec])
+        return np.transpose([self.ra, self.dec])
 
     def mean(self) -> CoordSky:
         return self.to_3d().mean().to_sky()
@@ -190,3 +127,58 @@ class CoordSky(Coordinate):
         other_3D = other.to_3d()
         dist = self_3D.distance(other_3D)
         return dist.to_sky()
+
+
+@total_ordering
+class Distance(ABC):
+
+    __slots__ = ("values",)
+
+    def __init__(self, distance: ArrayLike) -> None:
+        self.values = np.float_(distance)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.values})"
+
+    def __format__(self, __format_spec: str) -> str:
+        return self.values.__format__(__format_spec)
+
+    @abstractmethod
+    def __add__(self, other: Distance) -> Distance: pass
+
+    @abstractmethod
+    def __sub__(self, other: Distance) -> Distance: pass
+
+    def __eq__(self, other: Distance) -> ArrayLike[np.bool_]:
+        return self.values == other.values
+
+    def __lt__(self, other: Distance) -> ArrayLike[np.bool_]:
+        return self.values < other.values
+
+
+class Dist3D(Distance):
+
+    def __add__(self, other: Dist3D) -> DistSky:
+        dist_sky = self.to_sky() + other.to_sky()
+        return dist_sky.to_3d()
+
+    def __sub__(self, other: Dist3D) -> DistSky:
+        dist_sky = self.to_sky() - other.to_sky()
+        return dist_sky.to_3d()
+
+    def to_sky(self) -> DistSky:
+        if np.any(self.values > 2.0):
+            raise ValueError("distance exceeds size of unit sphere")
+        return DistSky(2.0 * np.arcsin(self.values / 2.0))
+
+
+class DistSky(Distance):
+
+    def __add__(self, other: DistSky) -> DistSky:
+        return DistSky(self.values + other.values)
+
+    def __sub__(self, other: DistSky) -> DistSky:
+        return DistSky(self.values - other.values)
+
+    def to_3d(self) -> Dist3D:
+        return Dist3D(2.0 * np.sin(self.values / 2.0))

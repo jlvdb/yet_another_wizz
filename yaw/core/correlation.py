@@ -18,7 +18,7 @@ from yaw.core.utils import (
 
 from yaw.logger import TimedLog
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import IntervalIndex
     from yaw.core.catalog import CatalogBase
@@ -35,12 +35,10 @@ class EstimatorNotAvailableError(Exception):
 class Cts(ABC):
 
     @abstractproperty
-    def _hash(self) -> int:
-        raise NotImplementedError
+    def _hash(self) -> int: pass
 
     @abstractproperty
-    def _str(self) -> str:
-        raise NotImplementedError
+    def _str(self) -> str: pass
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}>"
@@ -106,16 +104,13 @@ class CorrelationEstimator(ABC):
         return self.__class__.__name__
 
     @abstractproperty
-    def short(self) -> str:
-        return "CE"
+    def short(self) -> str: pass  # "CE"
 
     @abstractproperty
-    def requires(self) -> list[str]:
-        return [CtsDD(), CtsDR(), CtsRR()]
+    def requires(self) -> list[str]: pass  # [CtsDD(), CtsDR(), CtsRR()]
 
     @abstractproperty
-    def optional(self) -> list[str]:
-        return [CtsRD()]
+    def optional(self) -> list[str]: pass  # [CtsRD()]
 
     @abstractmethod
     def __call__(
@@ -125,8 +120,7 @@ class CorrelationEstimator(ABC):
         dr: NDArray,
         rr: NDArray,
         rd: NDArray | None = None
-    ) -> NDArray:
-        raise NotImplementedError
+    ) -> NDArray: pass
 
 
 class PeeblesHauser(CorrelationEstimator):

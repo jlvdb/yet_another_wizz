@@ -12,7 +12,7 @@ from astropy.cosmology import FLRW, Planck15
 
 from yaw.core.coordinates import DistSky
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
 
@@ -26,17 +26,13 @@ class CustomCosmology(ABC):
     """
 
     @abstractmethod
-    def to_format(self, format: str = "mapping") -> str:
-        # TODO: really necessary?
-        raise NotImplementedError
+    def to_format(self, format: str = "mapping") -> str: pass
 
     @abstractmethod
-    def comoving_distance(self, z: ArrayLike) -> ArrayLike:
-        raise NotImplementedError
+    def comoving_distance(self, z: ArrayLike) -> ArrayLike: pass
 
     @abstractmethod
-    def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike:
-        raise NotImplementedError
+    def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike: pass
 
 
 TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]

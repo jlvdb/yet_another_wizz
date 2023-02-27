@@ -21,7 +21,7 @@ from yaw.core.utils import DictRepresentation, TypePathStr, bytes_format
 from yaw.pipe.data import InputRegister
 from yaw.pipe.task_utils import TaskList
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from yaw.core.catalog import CatalogBase
     from yaw.pipe.data import Input
     from yaw.pipe.task_utils import TaskRecord
@@ -108,24 +108,19 @@ class CacheDirectory(Directory):
 class DataDirectory(Directory, ABC):
 
     @abstractproperty
-    def _cross_prefix(self) -> str:
-        raise NotImplementedError
+    def _cross_prefix(self) -> str: pass
 
     @abstractproperty
-    def _auto_prefix(self) -> str:
-        raise NotImplementedError
+    def _auto_prefix(self) -> str: pass
 
     @abstractmethod
-    def get_auto_reference(self) -> Path:
-        raise NotImplementedError
+    def get_auto_reference(self) -> Path: pass
 
     @abstractmethod
-    def get_auto(self, bin_idx: int) -> Path:
-        raise NotImplementedError
+    def get_auto(self, bin_idx: int) -> Path: pass
 
     @abstractmethod
-    def get_cross(self, bin_idx: int) -> Path:
-        raise NotImplementedError
+    def get_cross(self, bin_idx: int) -> Path: pass
 
     def get_cross_indices(self) -> set[int]:
         return set(

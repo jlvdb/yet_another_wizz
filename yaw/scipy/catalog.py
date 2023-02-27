@@ -24,7 +24,7 @@ from yaw.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.logger import TimedLog
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
     from yaw.core.cosmology import TypeCosmology

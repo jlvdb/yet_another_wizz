@@ -11,7 +11,7 @@ from yaw.core.parallel import (
 from yaw.core.utils import long_num_format
 from yaw.logger import TimedLog
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
     from yaw.core.catalog import CatalogBase

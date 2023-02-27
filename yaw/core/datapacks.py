@@ -16,7 +16,7 @@ from yaw.core.utils import format_float_fixed_width as fmt_num
 
 from yaw.logger import LogCustomWarning, TimedLog
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from matplotlib.axis import Axis
     from pandas import DataFrame, IntervalIndex, Series

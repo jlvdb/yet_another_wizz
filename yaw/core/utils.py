@@ -8,7 +8,7 @@ from typing import (
 import h5py
 import numpy as np
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import IntervalIndex
 

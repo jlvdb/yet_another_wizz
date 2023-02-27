@@ -12,7 +12,7 @@ from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, Dist3D, DistSky
 
 from yaw.scipy.kdtree import SphericalKDTree
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval
 

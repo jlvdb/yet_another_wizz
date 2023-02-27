@@ -15,7 +15,7 @@ from yaw.core.cosmology import r_kpc_to_angle
 from yaw.core.datapacks import PatchIDs
 from yaw.core.utils import PatchedQuantity, long_num_format
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.core.config import Configuration, ResamplingConfig
     from yaw.core.datapacks import RedshiftData
@@ -42,8 +42,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None
-    ) -> None:
-        raise NotImplementedError
+    ) -> None: pass
 
     @classmethod
     def from_file(
@@ -101,30 +100,19 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         return f"{name}({arg_str})"
 
     @abstractmethod
-    def __len__(self) -> int:
-        pass
+    def __len__(self) -> int: pass
 
     @abstractmethod
-    def __getitem__(self, item: int) -> Any:
-        pass
+    def __getitem__(self, item: int) -> Any: pass
 
     @abstractproperty
-    def ids(self) -> list[int]:
-        """
-        Get a list of patch IDs.
-        """
-        pass
+    def ids(self) -> list[int]: pass
 
     @abstractmethod
-    def __iter__(self) -> Iterator:
-        pass
+    def __iter__(self) -> Iterator: pass
 
     @abstractmethod
-    def is_loaded(self) -> bool:
-        """
-        Whether the data has been loaded into memory.
-        """
-        pass
+    def is_loaded(self) -> bool: pass
 
     @abstractmethod
     def load(self) -> None:
@@ -141,92 +129,43 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         self.logger.debug("bulk unloading catalog")
 
     @abstractmethod
-    def has_redshifts(self) -> bool:
-        """
-        Whether the catalogue has redshift data.
-        """
-        pass
+    def has_redshifts(self) -> bool: pass
 
     def pos(self) -> CoordSky:
         return CoordSky(self.ra, self.dec)
 
     @abstractproperty
-    def ra(self) -> NDArray[np.float_]:
-        """
-        Array of right ascensions in radians.
-        """
-        pass
+    def ra(self) -> NDArray[np.float_]: pass
 
     @abstractproperty
-    def dec(self) -> NDArray[np.float_]:
-        """
-        Array of declinations in radians.
-        """
-        pass
+    def dec(self) -> NDArray[np.float_]: pass
 
     @abstractproperty
-    def redshifts(self) -> NDArray[np.float_] | None:
-        """
-        Array of redshifts.
-        """
-        pass
+    def redshifts(self) -> NDArray[np.float_] | None: pass
 
     @abstractproperty
-    def weights(self) -> NDArray[np.float_]:
-        """
-        Array of individual object weights.
-        """
-        pass
+    def weights(self) -> NDArray[np.float_]: pass
 
     @abstractproperty
-    def patch(self) -> NDArray[np.int_]:
-        """
-        Array of patch memberships.
-        """
-        pass
+    def patch(self) -> NDArray[np.int_]: pass
 
     @abstractmethod
-    def get_min_redshift(self) -> float:
-        """
-        Get the minimum redshift in the catalogue.
-        """
-        pass
+    def get_min_redshift(self) -> float: pass
 
     @abstractmethod
-    def get_max_redshift(self) -> float:
-        """
-        Get the maximum redshift in the catalogue.
-        """
-        pass
+    def get_max_redshift(self) -> float: pass
 
     @abstractproperty
-    def total(self) -> float:
-        """
-        Get the sum of object weights.
-        """
-        pass
+    def total(self) -> float: pass
 
     @abstractmethod
-    def get_totals(self) -> NDArray[np.float_]:
-        """
-        Get the sum of object weights per patch.
-        """
-        pass
+    def get_totals(self) -> NDArray[np.float_]: pass
 
     @abstractproperty
-    def centers(self) -> CoordSky:
-        """
-        Get the patch centers in right ascension / declination (radians).
-        """
-        pass
+    def centers(self) -> CoordSky: pass
 
     @abstractproperty
-    def radii(self) -> DistSky:
-        """
-        Get the distance from the patches center to its farthest member in
-        radians.
-        """
-        pass
+    def radii(self) -> DistSky: pass
 
     @abstractmethod
     def correlate(

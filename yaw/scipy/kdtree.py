@@ -7,7 +7,7 @@ from scipy.spatial import cKDTree
 
 from yaw.core.coordinates import Coordinate, DistSky
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
 

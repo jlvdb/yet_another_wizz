@@ -19,7 +19,7 @@ from yaw.core.datapacks import PatchIDs, SampledData
 from yaw.core.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, outer_triu_sum)
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from scipy.sparse import spmatrix
     from numpy.typing import ArrayLike, NDArray, DTypeLike
     from pandas import Interval, IntervalIndex
