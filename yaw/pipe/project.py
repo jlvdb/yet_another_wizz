@@ -410,7 +410,7 @@ class ProjectDirectory(DictRepresentation):
 
         catalog = self.backend.Catalog.from_file(**load_kwargs)
         # store patch centers for consecutive loads
-        if not self._inputs.external_patches and not self.patch_file.exists():
+        if not self.patch_file.exists():
             centers = pd.DataFrame(dict(
                 ra=catalog.centers.ra,
                 dec=catalog.centers.dec))
