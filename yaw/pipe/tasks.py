@@ -87,7 +87,7 @@ class Runner:
         self.w_pp_data = None
 
     def _warn_patches(self):
-        LIM = 256
+        LIM = 512
         msg = f"a large number of patches (>{LIM}) may degrade the performance"
         if not self._warned_patches:
             cats = (self.ref_data, self.ref_rand, self.unk_data, self.unk_rand)
