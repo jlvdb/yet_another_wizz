@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 from scipy.cluster import vq
 
-from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, Dist3D, DistSky
+from yaw.core.coordinates import (
+    Coordinate, Coord3D, CoordSky, Distance, DistSky)
 
 from yaw.scipy.kdtree import SphericalKDTree
 
@@ -51,7 +52,7 @@ class PatchCatalog:
         data: DataFrame,
         cachefile: str | None = None,
         center: Coordinate | None = None,
-        radius: DistSky | float | None = None,
+        radius: Distance | None = None,
         degrees: bool = True
     ) -> None:
         self.id = id
@@ -77,7 +78,7 @@ class PatchCatalog:
     def _init(
         self,
         center: Coordinate | None = None,
-        radius: DistSky | float | None = None
+        radius: Distance | None = None
     ) -> None:
         self._len = len(self._data)
         self._has_z = "redshift" in self._data
@@ -98,6 +99,7 @@ class PatchCatalog:
                 which = rng.integers(0, self._len, size=SUBSET_SIZE)
                 positions = self.pos[which].to_3d()
 
+        # store in xyz coordinates
         if center is None:
             self._center = positions.mean()
         else:
@@ -105,12 +107,10 @@ class PatchCatalog:
 
         if center is None or radius is None:  # new center requires recomputing
             # compute maximum distance to any of the data points
-            radius_3d = positions.distance(self._center).values.max()
-            self._radius = Dist3D(radius_3d).to_sky()
-        elif isinstance(radius, DistSky):
-            self._radius = radius
-        else:
-            self._radius = DistSky(radius)
+            radius = positions.distance(self._center).max()
+
+        # store radius in radians
+        self._radius = radius.to_sky()
 
     def __repr__(self) -> str:
         s = self.__class__.__name__
@@ -125,7 +125,7 @@ class PatchCatalog:
         cls,
         cachefile: str,
         center: Coordinate | None = None,
-        radius: DistSky | float | None = None
+        radius: Distance | None = None
     ) -> PatchCatalog:
         # create the data instance
         new = cls.__new__(cls)
@@ -250,15 +250,14 @@ try:
         **kwargs
     ) -> tuple[Coord3D, NDArray[np.int_]]:
         position = position.to_sky()
-        n_points = len(position.ra)
         cat = treecorr.Catalog(
             ra=position.ra, ra_units="radians",
             dec=position.dec, dec_units="radians",
             npatch=n_patches)
         xyz = np.atleast_2d(cat.patch_centers)
-        centers = Coord3D(xyz[:, 0], xyz[:, 1], xyz[:, 2])
+        centers = Coord3D.from_array(xyz)
         if cat.patch is None:
-            patches = np.zeros(len(n_points), dtype=np.int_)
+            patches = np.zeros(len(position), dtype=np.int_)
         else:
             patches = np.copy(cat.patch)
         del cat  # might not be necessary
@@ -274,12 +273,12 @@ except ImportError:
         n_max: int = 500_000
     ) -> tuple[Coord3D, NDArray[np.int_]]:
         position = position.to_3d()
-        n_points = len(position.x)
-        subset = np.random.randint(0, n_points, size=min(n_max, n_points))
+        subset = np.random.randint(
+            0, len(position), size=min(n_max, len(position)))
         # place on unit sphere to avoid coordinate distortions
         centers, _ = vq.kmeans2(
             position[subset].values, n_patches, minit="points")
-        centers = Coord3D(*centers.T)
+        centers = Coord3D.from_array(centers)
         patches = assign_patches(centers=centers, position=position)
         return centers, patches
 
@@ -290,5 +289,5 @@ def assign_patches(
     centers: Coordinate,
     position: Coordinate
 ) -> NDArray[np.int_]:
-    patches, _ = vq.vq(position.to_3d().values, centers.to_3d().values)
+    patches, dist = vq.vq(position.to_3d().values, centers.to_3d().values)
     return patches

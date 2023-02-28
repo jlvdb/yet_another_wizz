@@ -143,16 +143,15 @@ class Catalog(CatalogBase):
 
         # create new patches
         if patch_mode != "dividing":
-            position = CoordSky(
-                ra=np.deg2rad(data[ra_name].to_numpy()),
-                dec=np.deg2rad(data[dec_name].to_numpy()))
+            position = CoordSky.from_array(
+                np.deg2rad(data[[ra_name, dec_name]].to_numpy()))
             if patch_mode == "creating":
                 patch_centers, patch_ids = create_patches(
                     position=position, n_patches=n_patches)
                 log_msg = f"creating {n_patches} patches"
             else:
                 if isinstance(patch_centers, Catalog):
-                    patch_centers = patch_centers.centers
+                    patch_centers = patch_centers.centers.to_3d()
                 patch_ids = assign_patches(
                     centers=patch_centers, position=position)
                 n_patches = len(patch_centers)
@@ -192,10 +191,13 @@ class Catalog(CatalogBase):
 
         # also store the patch properties
         if unload:
-            property_df = pd.DataFrame(dict(ids=self.ids))
-            for colname, values in zip("xyz", self.centers.to_3d().values.T):
-                property_df[colname] = values
-            property_df["r"] = self.radii.values
+            centers = self.centers.to_3d()
+            property_df = pd.DataFrame(dict(
+                ids=self.ids,
+                x=centers.x,
+                y=centers.y,
+                z=centers.z,
+                r=self.radii.values))
             fpath = os.path.join(cache_directory, "properties.feather")
             property_df.to_feather(fpath)
 
@@ -211,9 +213,10 @@ class Catalog(CatalogBase):
         property_df = pd.read_feather(fpath)
         # transform data frame to dictionaries
         ids = property_df["ids"]
-        centers = property_df[["x", "y", "z"]].to_numpy()
-        centers = {pid: Coord3D(*center) for pid, center in zip(ids, centers)}
-        radii = property_df["r"].to_numpy()
+        centers = Coord3D.from_array(property_df[["x", "y", "z"]].to_numpy())
+        radii = DistSky(property_df["r"].to_numpy())
+        # transform to dictionary
+        centers = {pid: center for pid, center in zip(ids, centers)}
         radii = {pid: radius for pid, radius in zip(ids, radii)}
         # load the patches
         limits = LimitTracker()
@@ -321,16 +324,13 @@ class Catalog(CatalogBase):
 
     @property
     def centers(self) -> CoordSky:
-        ra, dec = [], []
-        for pid in self.ids:
-            center = self._patches[pid].center
-            ra.append(center.ra)
-            dec.append(center.dec)
-        return CoordSky(ra, dec)
+        return CoordSky.from_coords(
+            [self._patches[pid].center for pid in self.ids])
 
     @property
     def radii(self) -> DistSky:
-        return DistSky([self._patches[pid].radius.values for pid in self.ids])
+        return DistSky.from_dists(
+            [self._patches[pid].radius for pid in self.ids])
 
     def correlate(
         self,
