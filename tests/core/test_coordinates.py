@@ -66,13 +66,34 @@ class TestCoordSky:
         npt.assert_equal(ra, coords.ra)
         npt.assert_equal(dec, coords.dec)
         npt.assert_equal(data_sky_ra_sky, coords.values)
+        assert coords.ndim == 2
+        assert len(coords) == len(data_sky_ra_sky)
         # single coordinate
         ra, dec = data_sky_ra_sky[0]
         coords = CoordSky(ra=ra, dec=dec)
-        assert ra == coords.ra
-        assert dec == coords.dec
+        npt.assert_equal([ra], coords.ra)
+        npt.assert_equal([dec], coords.dec)
         npt.assert_equal(data_sky_ra_sky[0], coords.values)
+        assert len(coords) == 1
         coords.__repr__()
+
+    def test_from_array(self, data_sky_ra_sky):
+        # array of coordinates
+        coords = CoordSky.from_array(data_sky_ra_sky)
+        npt.assert_equal(data_sky_ra_sky, coords.values)
+        # single coordinate
+        coords = CoordSky.from_array(data_sky_ra_sky[0])
+        npt.assert_equal(data_sky_ra_sky[0], coords.values)
+
+    def test_from_coords_iter(self, data_sky_ra_sky):
+        # array of coordinates
+        coord_list = []
+        for ra, dec in data_sky_ra_sky:
+            coord_list.append(CoordSky(ra, dec))
+        coords = CoordSky.from_coords(coord_list)
+        npt.assert_equal(data_sky_ra_sky, coords.values)
+        for coord1, coord2 in zip(coords, coord_list):
+            assert coord1.ra == coord2.ra
 
     def test_slicing(self, data_sky_ra_sky):
         ra, dec = data_sky_ra_sky.T
@@ -184,15 +205,35 @@ class TestCoord3D:
         npt.assert_equal(y, coords.y)
         npt.assert_equal(z, coords.z)
         npt.assert_equal(data_3d_ra_3d, coords.values)
+        assert coords.ndim == 3
+        assert len(coords) == len(data_3d_ra_3d)
         # single coordinate
         x, y, z = data_3d_ra_3d[0]
         coords = Coord3D(x=x, y=y, z=z)
-        assert x == coords.x
-        assert z == coords.y
-        assert z == coords.z
+        npt.assert_equal([x], coords.x)
+        npt.assert_equal([y], coords.y)
+        npt.assert_equal([z], coords.z)
         npt.assert_equal(data_3d_ra_3d[0], coords.values)
-        # just try to run
+        assert len(coords) == 1
         coords.__repr__()
+
+    def test_from_array(self, data_sky_ra_3d):
+        # array of coordinates
+        coords = Coord3D.from_array(data_sky_ra_3d)
+        npt.assert_equal(data_sky_ra_3d, coords.values)
+        # single coordinate
+        coords = Coord3D.from_array(data_sky_ra_3d[0])
+        npt.assert_equal(data_sky_ra_3d[0], coords.values)
+
+    def test_from_coords_iter(self, data_sky_ra_3d):
+        # array of coordinates
+        coord_list = []
+        for x, y, z in data_sky_ra_3d:
+            coord_list.append(Coord3D(x, y, z))
+        coords = Coord3D.from_coords(coord_list)
+        npt.assert_equal(data_sky_ra_3d, coords.values)
+        for coord1, coord2 in zip(coords, coord_list):
+            assert coord1.x == coord2.x
 
     def test_slicing(self, data_3d_ra_3d):
         x, y, z = data_3d_ra_3d.T
@@ -244,11 +285,20 @@ class TestCoord3D:
 class TestDist3D:
 
     def test_values(self):
+        # single value
         assert Dist3D(1).values == 1.0
+        assert len(Dist3D(1)) == 1
+        # array
         dists = Dist3D([0.1, 1.0])
         npt.assert_equal(dists.values, [0.1, 1.0])
+        assert len(dists) == 2
         dists.__repr__()
         f"{Dist3D(2.0)}"
+
+    def test_from_dists(self):
+        dists = np.array([0.1, 1.0])
+        dist_list = [Dist3D(d) for d in dists]
+        npt.assert_equal(dists, Dist3D.from_dists(dist_list).values)
 
     def test_ordering(self):
         assert Dist3D(1.0) == Dist3D(1.0)
@@ -273,7 +323,7 @@ class TestDist3D:
         # wrap around unit sphere
         assert Dist3D(2.0) + dist_90deg == dist_90deg
 
-    def test_to_sky(self):
+    def test_conversion(self):
         assert Dist3D(0.0).to_sky() == DistSky(0.0)
         # test at 90 degree separation -> sqrt(2)
         npt.assert_allclose(
@@ -287,6 +337,9 @@ class TestDist3D:
         with raises(ValueError):
             Dist3D(2.000001).to_sky()
 
+        # trivial case
+        assert DistSky(0.0) == DistSky(0.0).to_sky()
+
 
 class TestDistSky:
     # other methods covered above
@@ -298,7 +351,7 @@ class TestDistSky:
         dists.__repr__()
         f"{DistSky(2.0)}"
 
-    def test_to_3d(self):
+    def test_conversion(self):
         # see also TestDist3D.test_to_sky
         assert DistSky(0.0).to_3d() == Dist3D(0.0)
         npt.assert_allclose(
@@ -312,3 +365,6 @@ class TestDistSky:
         npt.assert_allclose(
             DistSky(1.5*np.pi).to_3d().values,
             Dist3D(np.sqrt(2.0)).values, atol=1e-15)
+
+        # trivial case
+        assert Dist3D(0.0) == Dist3D(0.0).to_3d()
