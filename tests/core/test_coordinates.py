@@ -161,6 +161,9 @@ class TestCoordSky:
         a = CoordSky([0.0, 0.0], [0.0, np.pi/2])
         b = CoordSky([0.0, 0.0], [0.0, 0.0])
         npt.assert_allclose(a.distance(b).values, [0.0, np.pi/2])
+        a = CoordSky([0.0, 0.0], [0.0, np.pi/2])
+        b = CoordSky(0.0, 0.0)
+        npt.assert_allclose(a.distance(b).values, [0.0, np.pi/2])
 
 
 @fixture
@@ -300,6 +303,12 @@ class TestDist3D:
         dist_list = [Dist3D(d) for d in dists]
         npt.assert_equal(dists, Dist3D.from_dists(dist_list).values)
 
+    def test_iter(self):
+        dists = np.array([0.1, 1.0])
+        dists = Dist3D(dists)
+        for a, b in zip(dists, dists.values):
+            assert a == Dist3D(b)
+
     def test_ordering(self):
         assert Dist3D(1.0) == Dist3D(1.0)
         assert Dist3D(1.0) <= Dist3D(1.0)
@@ -338,7 +347,13 @@ class TestDist3D:
             Dist3D(2.000001).to_sky()
 
         # trivial case
-        assert DistSky(0.0) == DistSky(0.0).to_sky()
+        assert Dist3D(0.0) == Dist3D(0.0).to_3d()
+
+    def test_min_max(self):
+        dists = [0., -1., 1.]
+        dists = Dist3D(dists)
+        assert dists.min() == Dist3D(-1.0)
+        assert dists.max() == Dist3D(1.0)
 
 
 class TestDistSky:
@@ -367,4 +382,4 @@ class TestDistSky:
             Dist3D(np.sqrt(2.0)).values, atol=1e-15)
 
         # trivial case
-        assert Dist3D(0.0) == Dist3D(0.0).to_3d()
+        assert DistSky(0.0) == DistSky(0.0).to_sky()

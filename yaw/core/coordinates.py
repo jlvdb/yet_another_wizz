@@ -179,7 +179,7 @@ class CoordSky(Coordinate):
 
 
 @total_ordering
-class Distance(ABC):
+class Distance(ABC, Sequence):
 
     def __init__(self, distance: ArrayLike) -> None:
         self._values = np.atleast_1d(distance).astype(np.float_)
@@ -190,6 +190,13 @@ class Distance(ABC):
 
     def __len__(self) -> int:
         return len(self._values)
+
+    def __getitem__(self, idx: ArrayLike) -> CoordSky:
+        return self.__class__(self._values[idx])
+
+    def __iter__(self) -> Iterator[CoordSky]:
+        for i in range(len(self)):
+            yield self[i]
 
     @property
     def values(self) -> NDArray[np.float_]:
@@ -212,6 +219,12 @@ class Distance(ABC):
 
     @abstractmethod
     def __sub__(self, other: Distance) -> Distance: pass
+
+    def min(self) -> Distance:
+        return self.__class__(self.values.min())
+
+    def max(self) -> Distance:
+        return self.__class__(self.values.max())
 
     @abstractmethod
     def to_3d(self) -> Dist3D: pass
