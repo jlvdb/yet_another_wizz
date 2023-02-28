@@ -167,12 +167,6 @@ class PatchedTotal(PatchedArray):
 
     # methods implementing the signal
 
-    def _sum_cross_diag(self) -> NDArray:
-        return np.einsum("i...,i...->...", self.totals1, self.totals2)
-
-    def _sum_auto_diag(self) -> NDArray:
-        return 0.5 * self._sum_cross_diag()
-
     def _sum_cross(self) -> NDArray:
         # sum of outer product
         return np.einsum("i...,j...->...", self.totals1, self.totals2)
@@ -180,29 +174,16 @@ class PatchedTotal(PatchedArray):
     def _sum_auto(self) -> NDArray:
         # sum of upper triangle (without diagonal) of outer product
         sum_upper = outer_triu_sum(self.totals1, self.totals2, k=1)
-        return sum_upper + self._sum_auto_diag()
+        sum_diag = np.einsum("i...,i...->...", self.totals1, self.totals2)
+        return sum_upper + 0.5 * sum_diag
 
     def _sum(self, config: ResamplingConfig) -> NDArray:
-        if config.crosspatch:
-            if self.auto:
-                return self._sum_auto()
-            else:
-                return self._sum_cross()
+        if self.auto:
+            return self._sum_auto()
         else:
-            if self.auto:
-                return self._sum_auto_diag()
-            else:
-                return self._sum_cross_diag()
+            return self._sum_cross()
 
     # methods implementing jackknife samples
-
-    def _jackknife_cross_diag(self, signal: NDArray) -> NDArray:
-        diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
-        return signal - diag
-
-    def _jackknife_auto_diag(self, signal: NDArray) -> NDArray:
-        diag = 0.5 * np.einsum("i...,i...->i...", self.totals1, self.totals2)
-        return signal - diag
 
     def _jackknife_cross(self, signal: NDArray) -> NDArray:
         diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
@@ -218,16 +199,10 @@ class PatchedTotal(PatchedArray):
         return signal - rows - cols - diag  # diag not in rows or cols
 
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
-        if config.crosspatch:
-            if self.auto:
-                return self._jackknife_auto(signal)
-            else:
-                return self._jackknife_cross(signal)
+        if self.auto:
+            return self._jackknife_auto(signal)
         else:
-            if self.auto:
-                return self._jackknife_auto_diag(signal)
-            else:
-                return self._jackknife_cross_diag(signal)
+            return self._jackknife_cross(signal)
 
     # methods implementing bootstrap samples
 
