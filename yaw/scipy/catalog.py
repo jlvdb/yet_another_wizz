@@ -13,18 +13,18 @@ from tqdm import tqdm
 
 from yaw.core.catalog import CatalogBase, PatchLinkage
 from yaw.core.config import Configuration, ResamplingConfig
-from yaw.core.coordinates import position_sphere2sky
+from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.core.correlation import RedshiftData
 from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.datapacks import PatchIDs, RedshiftData
 from yaw.core.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.core.parallel import ParallelHelper
-from yaw.core.utils import LimitTracker, scales_to_keys
+from yaw.core.utils import LimitTracker, PatchIDs, scales_to_keys
 
 from yaw.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.logger import TimedLog
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
     from yaw.core.cosmology import TypeCosmology
@@ -104,7 +104,7 @@ class Catalog(CatalogBase):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: Catalog | NDArray[np.float_] | None = None,
+        patch_centers: CatalogBase | Coordinate | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -143,27 +143,25 @@ class Catalog(CatalogBase):
 
         # create new patches
         if patch_mode != "dividing":
+            position = CoordSky(
+                ra=np.deg2rad(data[ra_name].to_numpy()),
+                dec=np.deg2rad(data[dec_name].to_numpy()))
             if patch_mode == "creating":
                 patch_centers, patch_ids = create_patches(
-                    # NOTE: convert to radians at patch level
-                    ra=np.deg2rad(data[ra_name].to_numpy()),
-                    dec=np.deg2rad(data[dec_name].to_numpy()),
-                    n_patches=n_patches)
+                    position=position, n_patches=n_patches)
                 log_msg = f"creating {n_patches} patches"
-            elif patch_mode == "applying":
+            else:
                 if isinstance(patch_centers, Catalog):
-                    patch_centers = position_sphere2sky(patch_centers.centers)
+                    patch_centers = patch_centers.centers
                 patch_ids = assign_patches(
-                    centers_ra_dec=patch_centers,
-                    ra=np.deg2rad(data[ra_name].to_numpy()),
-                    dec=np.deg2rad(data[dec_name].to_numpy()))
+                    centers=patch_centers, position=position)
                 n_patches = len(patch_centers)
                 log_msg = f"applying {n_patches} patches from external data"
             patch_name = "patch"  # the default name
             data[patch_name] = patch_ids
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
-            log_msg = f"splitting data into predefined patches"
+            log_msg = f"dividing data into predefined patches"
             centers = dict()  # this can be empty
 
         # run groupby first to avoid any intermediate copies of full data
@@ -195,9 +193,9 @@ class Catalog(CatalogBase):
         # also store the patch properties
         if unload:
             property_df = pd.DataFrame(dict(ids=self.ids))
-            for colname, values in zip("xyz", self.centers.T):
+            for colname, values in zip("xyz", self.centers.to_3d().values.T):
                 property_df[colname] = values
-            property_df["r"] = self.radii
+            property_df["r"] = self.radii.values
             fpath = os.path.join(cache_directory, "properties.feather")
             property_df.to_feather(fpath)
 
@@ -214,7 +212,7 @@ class Catalog(CatalogBase):
         # transform data frame to dictionaries
         ids = property_df["ids"]
         centers = property_df[["x", "y", "z"]].to_numpy()
-        centers = {pid: center for pid, center in zip(ids, centers)}
+        centers = {pid: Coord3D(*center) for pid, center in zip(ids, centers)}
         radii = property_df["r"].to_numpy()
         radii = {pid: radius for pid, radius in zip(ids, radii)}
         # load the patches
@@ -322,12 +320,17 @@ class Catalog(CatalogBase):
         return np.array([patch.total for patch in self._patches.values()])
 
     @property
-    def centers(self) -> NDArray[np.float_]:
-        return np.array([self._patches[pid].center for pid in self.ids])
+    def centers(self) -> CoordSky:
+        ra, dec = [], []
+        for pid in self.ids:
+            center = self._patches[pid].center
+            ra.append(center.ra)
+            dec.append(center.dec)
+        return CoordSky(ra, dec)
 
     @property
-    def radii(self) -> NDArray[np.float_]:
-        return np.array([self._patches[pid].radius for pid in self.ids])
+    def radii(self) -> DistSky:
+        return DistSky([self._patches[pid].radius.values for pid in self.ids])
 
     def correlate(
         self,

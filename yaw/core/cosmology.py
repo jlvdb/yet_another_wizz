@@ -10,7 +10,9 @@ except ImportError:
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
 
-if TYPE_CHECKING:
+from yaw.core.coordinates import DistSky
+
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
 
@@ -24,17 +26,13 @@ class CustomCosmology(ABC):
     """
 
     @abstractmethod
-    def to_format(self, format: str = "mapping") -> str:
-        # TODO: really necessary?
-        raise NotImplementedError
+    def to_format(self, format: str = "mapping") -> str: pass
 
     @abstractmethod
-    def comoving_distance(self, z: ArrayLike) -> ArrayLike:
-        raise NotImplementedError
+    def comoving_distance(self, z: ArrayLike) -> ArrayLike: pass
 
     @abstractmethod
-    def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike:
-        raise NotImplementedError
+    def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike: pass
 
 
 TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
@@ -44,7 +42,7 @@ def r_kpc_to_angle(
     r_kpc: NDArray[np.float_],
     z: float,
     cosmology: TypeCosmology
-) -> tuple[float, float]:
+) -> NDArray[np.float_]:
     """from kpc to radian"""
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
     return np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value

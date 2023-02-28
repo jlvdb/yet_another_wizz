@@ -21,7 +21,7 @@ from yaw.pipe.project import (
     load_config_from_setup, load_setup_as_dict)
 from yaw.pipe.task_utils import Tasks
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from yaw.core.correlation import CorrelationFunction, CorrelationData
 
 

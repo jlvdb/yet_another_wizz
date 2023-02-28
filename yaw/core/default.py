@@ -1,6 +1,6 @@
 class _none_meta(type):
     def __repr__(self) -> str:
-        return "NoDefault"
+        return "NoDefault"  # pragma: no cover
 
 
 class none(metaclass=_none_meta):

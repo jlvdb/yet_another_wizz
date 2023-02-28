@@ -2,27 +2,32 @@ from __future__ import annotations
 
 import logging
 import warnings
-from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
+import pandas as pd
+import scipy.optimize
 
+from yaw.core import default as DEFAULT
 from yaw.core.catalog import PatchLinkage
 from yaw.core.config import ResamplingConfig
-from yaw.core.datapacks import CorrelationData
-from yaw.core.paircounts import PairCountResult
+from yaw.core.estimators import CorrelationEstimator, CtsMix, cts_from_code
+from yaw.core.paircounts import PairCountResult, SampledData
 from yaw.core.utils import (
-    BinnedQuantity, HDFSerializable, PatchedQuantity)
+    BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
+from yaw.core.utils import format_float_fixed_width as fmt_num
 
-from yaw.logger import TimedLog
+from yaw.logger import LogCustomWarning, TimedLog
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
-    from pandas import IntervalIndex
+    from matplotlib.axis import Axis
+    from pandas import DataFrame, IntervalIndex, Series
     from yaw.core.catalog import CatalogBase
     from yaw.core.config import Configuration
+    from yaw.core.estimators import Cts
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -32,168 +37,172 @@ class EstimatorNotAvailableError(Exception):
     pass
 
 
-class Cts(ABC):
+@dataclass(frozen=True, repr=False)
+class CorrelationData(SampledData):
 
-    @abstractproperty
-    def _hash(self) -> int:
+    covariance: NDArray = field(init=False)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        with LogCustomWarning(
+            logger, "invalid values encountered in correlation samples"
+        ):
+            if self.method == "bootstrap":
+                covmat = np.cov(self.samples, rowvar=False, ddof=1)
+            else:  # jackknife
+                covmat = np.cov(self.samples, rowvar=False, ddof=0)
+                covmat = covmat * (self.n_samples - 1)
+        object.__setattr__(self, "covariance", covmat)
+
+    @classmethod
+    def from_files(cls, path_prefix: TypePathStr) -> CorrelationData:
+        # load data and errors
+        ext = "dat"
+        data_error = np.loadtxt(f"{path_prefix}.{ext}")
+        # restore index
+        binning = pd.IntervalIndex.from_arrays(
+            data_error[:, 0], data_error[:, 1])
+        # load samples
+        ext = "smp"
+        samples = np.loadtxt(f"{path_prefix}.{ext}")
+        # load header
+        with open(f"{path_prefix}.{ext}") as f:
+            for line in f.readlines():
+                if "z_low" in line:
+                    line = line[2:].strip("\n")  # remove leading '# '
+                    header = [col for col in line.split(" ") if len(col) > 0]
+                    break
+            else:
+                raise ValueError("sample file header misformatted")
+        method_key, n_samples = header[-1].rsplit("_", 1)
+        n_samples = int(n_samples) + 1
+        # reconstruct sampling method
+        for method in ResamplingConfig.implemented_methods:
+            if method.startswith(method_key):
+                break
+        else:
+            raise ValueError(f"invalid sampling method key '{method_key}'")
+        return cls(
+            binning=binning,
+            data=data_error[:, 2],  # take data column
+            samples=samples.T[2:],  # remove redshift bin columns
+            method=method)
+
+    def get_error(self) -> Series:
+        return pd.Series(np.sqrt(np.diag(self.covariance)), index=self.binning)
+
+    def get_covariance(self) -> DataFrame:
+        return pd.DataFrame(
+            data=self.covariance, index=self.binning, columns=self.binning)
+
+    def get_correlation(self) -> DataFrame:
+        stdev = np.sqrt(np.diag(self.covariance))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            corr = self.covariance / np.outer(stdev, stdev)
+        corr[self.covariance == 0] = 0
+        return corr
+
+    @property
+    def _dat_desc(self) -> str:
+        return "# correlation function estimate with symmetric 68% percentile confidence"
+
+    @property
+    def _smp_desc(self) -> str:
+        return f"# {self.n_samples} {self.method} correlation function samples"
+
+    @property
+    def _cov_desc(self) -> str:
+        return f"# correlation function estimate covariance matrix ({self.n_bins}x{self.n_bins})"
+
+    def to_files(self, path_prefix: TypePathStr) -> None:
+        PREC = 10
+        DELIM = " "
+
+        def write_head(f, description, header, delim=DELIM):
+            f.write(f"{description}\n")
+            line = delim.join(f"{h:>{PREC}s}" for h in header)
+            f.write(f"# {line[2:]}\n")
+
+        # write data and errors
+        ext = "dat"
+        header = ["z_low", "z_high", "nz", "nz_err"]
+        with open(f"{path_prefix}.{ext}", "w") as f:
+            write_head(f, self._dat_desc, header, delim=DELIM)
+            for zlow, zhigh, nz, nz_err in zip(
+                self.edges[:-1], self.edges[1:],
+                self.data, self.get_error().to_numpy()
+            ):
+                values = [
+                    fmt_num(val, PREC) for val in (zlow, zhigh, nz, nz_err)]
+                f.write(DELIM.join(values) + "\n")
+
+        # write samples
+        ext = "smp"
+        header = ["z_low", "z_high"]
+        header.extend(
+            f"{self.method[:4]}_{i}" for i in range(self.n_samples))
+        with open(f"{path_prefix}.{ext}", "w") as f:
+            write_head(f, self._smp_desc, header, delim=DELIM)
+            for zlow, zhigh, samples in zip(
+                self.edges[:-1], self.edges[1:], self.samples.T
+            ):
+                values = [fmt_num(zlow, PREC), fmt_num(zhigh, PREC)]
+                values.extend(fmt_num(val, PREC) for val in samples)
+                f.write(DELIM.join(values) + "\n")
+
+        # write covariance (just for convenience)
+        ext = "cov"
+        fmt_str = DELIM.join("{: .{prec}e}" for _ in range(self.n_bins)) + "\n"
+        with open(f"{path_prefix}.{ext}", "w") as f:
+            f.write(f"{self._cov_desc}\n")
+            for values in self.covariance:
+                f.write(fmt_str.format(*values, prec=PREC-3))
+
+    def plot(
+        self,
+        *,
+        color: str | NDArray | None = None,
+        label: str | None = None,
+        error_bars: bool = True,
+        ax: Axis | None = None,
+        xoffset: float = 0.0,
+        plot_kwargs: dict[str, Any] | None = None,
+        zero_line: bool = False,
+        scale_by_dz: bool = False
+    ) -> Axis:
+        from matplotlib import pyplot as plt
+
+        x = self.mids + xoffset
+        y = self.data
+        yerr = self.get_error().to_numpy()
+        if scale_by_dz:
+            y *= self.dz
+            yerr *= self.dz
+        # configure plot
+        if ax is None:
+            ax = plt.gca()
+        if plot_kwargs is None:
+            plot_kwargs = {}
+        plot_kwargs.update(dict(color=color, label=label))
+        ebar_kwargs = dict(fmt=".", ls="none")
+        ebar_kwargs.update(plot_kwargs)
+        # plot zero line
+        if zero_line:
+            lw = 0.7
+            for spine in ax.spines.values():
+                lw = spine.get_linewidth()
+            ax.axhline(0.0, color="k", lw=lw, zorder=-2)
+        # plot data
+        if error_bars:
+            ax.errorbar(x, y, yerr, **ebar_kwargs)
+        else:
+            color = ax.plot(x, y, **plot_kwargs)[0].get_color()
+            ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
+        return ax
+
+    def plot_corr(self) -> Axis:
         raise NotImplementedError
-
-    @abstractproperty
-    def _str(self) -> str:
-        raise NotImplementedError
-
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}>"
-
-    def __str__(self) -> str:
-        return self._str
-
-    def __hash__(self) -> int:
-        return self._hash
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Cts):
-            return False
-        var1 = set(self._str.split("_"))
-        var2 = set(other._str.split("_"))
-        return not var1.isdisjoint(var2)
-
-
-class CtsDD(Cts):
-    _str = "dd"
-    _hash = 1
-
-
-class CtsDR(Cts):
-    _str = "dr"
-    _hash = 2
-
-
-class CtsRD(Cts):
-    _str = "rd"
-    _hash = 2
-
-
-class CtsMix(Cts):
-    _str = "dr_rd"
-    _hash = 2
-
-
-class CtsRR(Cts):
-    _str = "rr"
-    _hash = 3
-
-
-def cts_from_code(code: str) -> Cts:
-    codes = dict(dd=CtsDD, dr=CtsDR, rd=CtsRD, rr=CtsRR)
-    return codes[code]()
-
-
-class CorrelationEstimator(ABC):
-
-    variants: list[CorrelationEstimator] = []
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.variants.append(cls)
-
-    def _warn_enum_zero(self, counts: NDArray):
-        if np.any(counts == 0.0):
-            logger.warn(
-                f"estimator {self.short} encontered zeros in enumerator")
-
-    def name(self) -> str:
-        return self.__class__.__name__
-
-    @abstractproperty
-    def short(self) -> str:
-        return "CE"
-
-    @abstractproperty
-    def requires(self) -> list[str]:
-        return [CtsDD(), CtsDR(), CtsRR()]
-
-    @abstractproperty
-    def optional(self) -> list[str]:
-        return [CtsRD()]
-
-    @abstractmethod
-    def __call__(
-        self,
-        *,
-        dd: NDArray,
-        dr: NDArray,
-        rr: NDArray,
-        rd: NDArray | None = None
-    ) -> NDArray:
-        raise NotImplementedError
-
-
-class PeeblesHauser(CorrelationEstimator):
-    short: str = "PH"
-    requires = [CtsDD(), CtsRR()]
-    optional = []
-
-    def __call__(
-        self,
-        *,
-        dd: NDArray,
-        rr: NDArray
-    ) -> NDArray:
-        self._warn_enum_zero(rr)
-        return dd / rr - 1.0
-
-
-class DavisPeebles(CorrelationEstimator):
-    short = "DP"
-    requires = [CtsDD(), CtsMix()]
-    optional = []
-
-    def __call__(
-        self,
-        *,
-        dd: NDArray,
-        dr_rd: NDArray
-    ) -> NDArray:
-        self._warn_enum_zero(dr_rd)
-        return dd / dr_rd - 1.0
-
-
-class Hamilton(CorrelationEstimator):
-    short = "HM"
-    requires = [CtsDD(), CtsDR(), CtsRR()]
-    optional = [CtsRD()]
-
-    def __call__(
-        self,
-        *,
-        dd: NDArray,
-        dr: NDArray,
-        rr: NDArray,
-        rd: NDArray | None = None
-    ) -> NDArray:
-        rd = dr if rd is None else rd
-        enum = dr * rd
-        self._warn_enum_zero(enum)
-        return (dd * rr) / enum - 1.0
-
-
-class LandySzalay(CorrelationEstimator):
-    short = "LS"
-    requires = [CtsDD(), CtsDR(), CtsRR()]
-    optional = [CtsRD()]
-
-    def __call__(
-        self,
-        *,
-        dd: NDArray,
-        dr: NDArray,
-        rr: NDArray,
-        rd: NDArray | None = None
-    ) -> NDArray:
-        rd = dr if rd is None else rd
-        self._warn_enum_zero(rr)
-        return (dd - (dr + rd) + rr) / rr
 
 
 @dataclass(frozen=True)
@@ -466,3 +475,130 @@ def crosscorrelate(
     else:
         result = CorrelationFunction(dd=DD, dr=DR, rd=RD, rr=RR)
     return result
+
+
+class RedshiftData(CorrelationData):
+
+    @classmethod
+    def from_correlation_data(
+        cls,
+        cross_data: CorrelationData,
+        ref_data: CorrelationData | None = None,
+        unk_data: CorrelationData | None = None
+    ) -> RedshiftData:
+        logger.debug(
+            "computing clustering redshifts from correlation function samples")
+        w_sp_data = cross_data.data
+        w_sp_samp = cross_data.samples
+
+        if ref_data is None:
+            w_ss_data = np.float64(1.0)
+            w_ss_samp = np.float64(1.0)
+        else:
+            if not ref_data.is_compatible(cross_data):
+                raise ValueError(
+                    "'ref_corr' correlation data is not compatible with "
+                    "'cross_data'")
+            w_ss_data = ref_data.data
+            w_ss_samp = ref_data.samples
+
+        if unk_data is None:
+            w_pp_data = np.float64(1.0)
+            w_pp_samp = np.float64(1.0)
+        else:
+            if not ref_data.is_compatible(cross_data):
+                raise ValueError(
+                    "'unk_data' correlation data is not compatible with "
+                    "'cross_data'")
+            w_pp_data = unk_data.data
+            w_pp_samp = unk_data.samples
+
+        N = cross_data.n_samples
+        dzsq_data = cross_data.dz**2
+        dzsq_samp = np.tile(dzsq_data, N).reshape((N, -1))
+        with LogCustomWarning(
+            logger, "invalid values encountered in redshift estimate"
+        ):
+            nz_data = w_sp_data / np.sqrt(dzsq_data * w_ss_data * w_pp_data)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            nz_samp = w_sp_samp / np.sqrt(dzsq_samp * w_ss_samp * w_pp_samp)
+        return cls(
+            binning=cross_data.binning,
+            data=nz_data,
+            samples=nz_samp,
+            method=cross_data.method)
+
+    @classmethod
+    def from_correlation_functions(
+        cls,
+        cross_corr: CorrelationFunction,
+        ref_corr: CorrelationFunction | None = None,
+        unk_corr: CorrelationFunction | None = None,
+        *,
+        cross_est: str | None = None,
+        ref_est: str | None = None,
+        unk_est: str | None = None,
+        method: str = DEFAULT.Resampling.method,
+        n_boot: int = DEFAULT.Resampling.n_boot,
+        patch_idx: NDArray[np.int_] | None = None,
+        global_norm: bool = DEFAULT.Resampling.global_norm,
+        seed: int = DEFAULT.Resampling.seed
+    ) -> RedshiftData:
+        with TimedLog(
+            logger.debug,
+            f"estimating clustering redshifts with method '{method}'"
+        ):
+            kwargs = dict(
+                method=method, n_boot=n_boot, patch_idx=patch_idx,
+                global_norm=global_norm, seed=seed)
+            # check compatibilty before sampling anything
+            if ref_corr is not None:
+                ref_corr.is_compatible(cross_corr)
+            if unk_corr is not None:
+                unk_corr.is_compatible(cross_corr)
+            # sample pair counts and evaluate estimator
+            cross_data = cross_corr.get(estimator=cross_est, **kwargs)
+            if ref_corr is not None:
+                ref_data = ref_corr.get(estimator=ref_est, **kwargs)
+            else:
+                ref_data = None
+            if unk_corr is not None:
+                unk_data = unk_corr.get(estimator=unk_est, **kwargs)
+            else:
+                unk_data = None
+            return cls.from_correlation_data(
+                cross_data=cross_data,
+                ref_data=ref_data,
+                unk_data=unk_data)
+
+    @property
+    def _dat_desc(self) -> str:
+        return "# n(z) estimate with symmetric 68% percentile confidence"
+
+    @property
+    def _smp_desc(self) -> str:
+        return f"# {self.n_samples} {self.method} n(z) samples"
+
+    @property
+    def _cov_desc(self) -> str:
+        return f"# n(z) estimate covariance matrix ({self.n_bins}x{self.n_bins})"
+
+    def normalised(self, to: CorrelationData | None = None) -> CorrelationData:
+        if to is None:
+            # normalise by integration
+            mask = np.isfinite(self.data)
+            norm = np.trapz(self.data[mask], x=self.mids)
+        else:
+            y_from = self.data
+            y_to = to.data
+            mask = np.isfinite(y_from) & np.isfinite(y_to) & (y_to > 0.0)
+            norm = scipy.optimize.curve_fit(
+                lambda x, norm: y_from[mask] / norm,  # x is a dummy variable
+                xdata=to.mids[mask], ydata=y_to[mask],
+                p0=[1.0], sigma=1/y_to[mask])[0][0]
+        return self.__class__(
+            binning=self.binning,
+            data=self.data / norm,
+            samples=self.samples / norm,
+            method=self.method)

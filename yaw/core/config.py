@@ -17,7 +17,7 @@ from yaw.core.cosmology import (
     BinFactory, TypeCosmology, get_default_cosmology, r_kpc_to_angle)
 from yaw.core.utils import DictRepresentation, scales_to_keys
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
     from yaw.core.catalog import CatalogBase

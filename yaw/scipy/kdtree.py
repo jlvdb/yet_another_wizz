@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from yaw.core.coordinates import position_sky2sphere, distance_sky2sphere
+from yaw.core.coordinates import Coordinate, DistSky
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
 
@@ -21,20 +21,16 @@ class SphericalKDTree:
 
     def __init__(
         self,
-        RA: NDArray[np.float_],  # radian
-        DEC: NDArray[np.float_],  # radian
+        position: Coordinate,
         weights: NDArray[np.float_] | None = None,
         leafsize: int = 16
     ) -> None:
-        # convert angular coordinates to 3D points on unit sphere
-        assert(len(RA) == len(DEC))
-        pos_sphere = np.atleast_2d(
-            position_sky2sphere(np.column_stack([RA, DEC])))
-        self.tree = cKDTree(pos_sphere, leafsize)
+        position = np.atleast_2d(position.to_3d().values)
+        self.tree = cKDTree(position, leafsize)
         if weights is None:
-            self.weights = np.ones(len(pos_sphere))
+            self.weights = np.ones(len(position))
         else:
-            assert(len(weights) == len(RA))
+            assert(len(weights) == len(position))
             self.weights = np.asarray(weights)
 
     def __len__(self) -> int:
@@ -70,7 +66,7 @@ class SphericalKDTree:
         # count pairs
         try:
             counts = self.tree.count_neighbors(
-                other.tree, distance_sky2sphere(r_edges), 
+                other.tree, DistSky(r_edges).to_3d().values,
                 weights=(self.weights, other.weights), cumulative=False)
         except IndexError:
             counts = np.zeros_like(r_edges)
@@ -78,7 +74,7 @@ class SphericalKDTree:
         # apply the distance weights
         if dist_weight_scale is not None:
             rlog_centers = (rlog_edges[:-1] + rlog_edges[1:]) / 2.0
-            counts *= distance_sky2sphere(10**rlog_centers) ** dist_weight_scale
+            counts *= (10**rlog_centers) ** dist_weight_scale
         # compute counts for original bins
         result = np.empty(len(scales))
         for i, scale in enumerate(scales):
