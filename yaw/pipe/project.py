@@ -15,7 +15,7 @@ import yaml
 
 from yaw.core import default as DEFAULT
 from yaw.core.config import Configuration
-from yaw.core.coordinates import Coord3D
+from yaw.core.coordinates import CoordSky
 from yaw.core.utils import DictRepresentation, TypePathStr, bytes_format
 
 from yaw.pipe.data import InputRegister
@@ -402,8 +402,8 @@ class ProjectDirectory(DictRepresentation):
             # load and apply existing patch centers
             if self.patch_file.exists():
                 centers = pd.read_csv(str(self.patch_file))
-                load_kwargs["patches"] = Coord3D(
-                    centers["x"], centers["y"], centers["z"])
+                load_kwargs["patches"] = CoordSky(
+                    ra=centers["ra"], dec=centers["dec"]).to_3d()
             # schedule patch creation
             else:
                 load_kwargs["patches"] = self._inputs.n_patches
@@ -411,8 +411,9 @@ class ProjectDirectory(DictRepresentation):
         catalog = self.backend.Catalog.from_file(**load_kwargs)
         # store patch centers for consecutive loads
         if not self._inputs.external_patches and not self.patch_file.exists():
-            centers = pd.DataFrame({
-                coord: val for coord, val in zip("xyz", catalog.centers.T)})
+            centers = pd.DataFrame(dict(
+                ra=catalog.centers.ra,
+                dec=catalog.centers.dec))
             centers.to_csv(str(self.patch_file), index=False)
         return catalog
 

@@ -10,8 +10,6 @@ except ImportError:
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
 
-from yaw.core.coordinates import DistSky
-
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 

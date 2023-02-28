@@ -73,12 +73,12 @@ class Catalog(CatalogBase):
             kwargs["patch"] = data[patch_name]
             log_msg = f"splitting data into predefined patches"
         elif isinstance(patch_centers, Catalog):
-            kwargs["patch_centers"] = patch_centers._catalog.get_patch_centers()
+            kwargs["patch_centers"] = patch_centers.centers.to_3d().values
             n_patches = patch_centers.n_patches
             log_msg = f"applying {n_patches} patches from external data"
         elif isinstance(patch_centers, Coordinate):
-            centers = patch_centers.to_3d().values
-            kwargs["patch_centers"] = centers
+            centers = patch_centers.to_3d()
+            kwargs["patch_centers"] = centers.values
             n_patches = len(centers)
             log_msg = f"applying {n_patches} patches from external data"
         else:
@@ -190,17 +190,17 @@ class Catalog(CatalogBase):
 
     @property
     def centers(self) -> CoordSky:
-        centers = Coord3D(*self._catalog.get_patch_centers().T)
+        centers = Coord3D.from_array(self._catalog.get_patch_centers())
         return centers.to_sky()
 
     @property
     def radii(self) -> DistSky:
         radii = []
-        for patch, center in zip(iter(self), self._catalog.get_patch_centers()):
+        for patch in iter(self):
             position = patch.pos.to_3d()
-            radius_xyz = Coord3D(center).distance(position).values.max()
-            radii.append(radius_xyz)
-        return DistSky(radii)
+            radius = patch.centers.to_3d().distance(position).max()
+            radii.append(radius.to_sky())
+        return DistSky.from_dists(radii)
 
     def bin_iter(
         self,
