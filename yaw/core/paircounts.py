@@ -21,8 +21,7 @@ from yaw.core.utils import (
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.sparse import spmatrix
     from numpy.typing import ArrayLike, NDArray, DTypeLike
-    from pandas import DataFrame, Interval, IntervalIndex, Series
-    from treecorr import NNCorrelation
+    from pandas import DataFrame, IntervalIndex, Series
 
 
 logger = logging.getLogger(__name__.replace(".core.", "."))
@@ -32,6 +31,49 @@ _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 
 TypeSlice: TypeAlias = Union[slice, int, None]
+
+
+@dataclass(frozen=True, repr=False)
+class SampledData(BinnedQuantity):
+
+    binning: IntervalIndex
+    data: NDArray
+    samples: NDArray
+    method: str
+
+    def __post_init__(self) -> None:
+        if self.data.shape != (self.n_bins,):
+            raise ValueError("unexpected shapf of 'data' array")
+        if not self.samples.shape[1] == self.n_bins:
+            raise ValueError(
+                "number of bins for 'data' and 'samples' do not match")
+        if self.method not in ResamplingConfig.implemented_methods:
+            raise ValueError(f"unknown sampling method '{self.method}'")
+
+    def __repr__(self) -> str:
+        string = super().__repr__()[:-1]
+        samples = self.n_samples
+        method = self.method
+        return f"{string}, {samples=}, {method=})"
+
+    @property
+    def n_samples(self) -> int:
+        return len(self.samples)
+
+    def get_data(self) -> Series:
+        return pd.Series(self.data, index=self.binning)
+
+    def get_samples(self) -> DataFrame:
+        return pd.DataFrame(self.samples.T, index=self.binning)
+
+    def is_compatible(self, other: SampledData) -> bool:
+        if not super().is_compatible(other):
+            return False
+        if self.n_samples != other.n_samples:
+            return False
+        if self.method != other.method:
+            return False
+        return True
 
 
 class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
@@ -416,49 +458,6 @@ class PatchedCount(PatchedArray):
         dest.create_dataset("auto", data=self.auto)
 
 
-@dataclass(frozen=True, repr=False)
-class SampledData(BinnedQuantity):
-
-    binning: IntervalIndex
-    data: NDArray
-    samples: NDArray
-    method: str
-
-    def __post_init__(self) -> None:
-        if self.data.shape != (self.n_bins,):
-            raise ValueError("unexpected shapf of 'data' array")
-        if not self.samples.shape[1] == self.n_bins:
-            raise ValueError(
-                "number of bins for 'data' and 'samples' do not match")
-        if self.method not in ResamplingConfig.implemented_methods:
-            raise ValueError(f"unknown sampling method '{self.method}'")
-
-    def __repr__(self) -> str:
-        string = super().__repr__()[:-1]
-        samples = self.n_samples
-        method = self.method
-        return f"{string}, {samples=}, {method=})"
-
-    @property
-    def n_samples(self) -> int:
-        return len(self.samples)
-
-    def get_data(self) -> Series:
-        return pd.Series(self.data, index=self.binning)
-
-    def get_samples(self) -> DataFrame:
-        return pd.DataFrame(self.samples.T, index=self.binning)
-
-    def is_compatible(self, other: SampledData) -> bool:
-        if not super().is_compatible(other):
-            return False
-        if self.n_samples != other.n_samples:
-            return False
-        if self.method != other.method:
-            return False
-        return True
-
-
 @dataclass(frozen=True)
 class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
@@ -472,78 +471,6 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         if self.count.n_bins != self.total.n_bins:
             raise ValueError(
                 "number of bins of 'count' and total' do not match")
-
-    @classmethod
-    def from_nncorrelation(
-        cls,
-        interval: Interval,
-        correlation: NNCorrelation
-    ) -> PairCountResult:
-        raise NotImplementedError
-        # extract the (cross-patch) pair counts
-        n_patches = max(correlation.npatch1, correlation.npatch2)
-        
-        keys = []
-        count = np.empty((len(correlation.results), 1))
-        total = np.empty((len(correlation.results), 1))
-        for i, (patches, result) in enumerate(correlation.results.items()):
-            keys.append(patches)
-            count[i] = result.weight
-            total[i] = result.tot
-        return cls(
-            n_patches=n_patches,
-            count=PatchedCount(keys, count),
-            total=PatchedTotal(keys, total),
-            mask=correlation._ok,
-            binning=pd.IntervalIndex([interval]))
-
-    @classmethod
-    def from_bins(
-        cls,
-        zbins: Iterable[PairCountResult]
-    ) -> PairCountResult:
-        raise NotImplementedError
-        # check that the data is compatible
-        if len(zbins) == 0:
-            raise ValueError("'zbins' is empty")
-        n_patches = zbins[0].n_patches
-        mask = zbins[0].mask
-        keys = tuple(zbins[0].keys())
-        nbins = len(zbins[0])
-        for zbin in zbins[1:]:
-            if zbin.n_patches != n_patches:
-                raise ValueError("the patch numbers are inconsistent")
-            if not np.array_equal(mask, zbin.mask):
-                raise ValueError("pair masks are inconsistent")
-            if tuple(zbin.keys()) != keys:
-                raise ValueError("patches are inconsistent")
-            if len(zbin) != nbins:
-                raise IndexError("number of bins is inconsistent")
-
-        # check the ordering of the bins based on the provided intervals
-        binning = pd.IntervalIndex.from_tuples([
-            zbin.binning.to_tuples()[0]  # contains just one entry
-            for zbin in zbins])
-        if not binning.is_non_overlapping_monotonic:
-            raise ValueError(
-                "the binning interval is overlapping or not monotonic")
-        for this, following in zip(binning[:-1], binning[1:]):
-            if this.right != following.left:
-                raise ValueError(f"the binning interval is not contiguous")
-
-        # merge the ArrayDicts
-        """
-        count = ArrayDict(
-            keys, np.column_stack([zbin.count.as_array() for zbin in zbins]))
-        total = ArrayDict(
-            keys, np.column_stack([zbin.total.as_array() for zbin in zbins]))
-        return cls(
-            n_patches=n_patches,
-            count=count,
-            total=total,
-            mask=mask,
-            binning=binning)
-        """
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -578,35 +505,3 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         self.count.to_hdf(group)
         group = dest.create_group("total")
         self.total.to_hdf(group)
-
-
-
-if __name__ == "__main__":
-    t1 = np.array([1, 2, 3, 4])
-    t2 = np.array([5, 4, 3, 2])
-
-    Tc = np.outer(t1, t2)
-    Ta = np.triu(np.outer(t1, t2)) - 0.5*np.diag(t1*t2)
-    Tc = np.atleast_3d(Tc)
-    Ta = np.atleast_3d(Ta)
-
-    print(Tc[:, :, 0])
-    print(Ta[:, :, 0])
-    print()
-
-    for cross in (False, True):
-        auto=False
-        print(f"{cross=}, {auto=}")
-        cts = PatchedCount.from_matrix(
-            binning=pd.IntervalIndex.from_breaks([0.1, 0.5]),
-            matrix=Tc, auto=auto)
-        print(cts.get_sum(ResamplingConfig(crosspatch=cross)).samples.T)
-        print()
-
-        auto=True
-        print(f"{cross=}, {auto=}")
-        cts = PatchedCount.from_matrix(
-            binning=pd.IntervalIndex.from_breaks([0.1, 0.5]),
-            matrix=Ta, auto=auto)
-        print(cts.get_sum(ResamplingConfig(crosspatch=cross)).samples.T)
-        print()
