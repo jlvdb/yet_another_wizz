@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Union
-try:
+try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:
     from typing_extensions import TypeAlias

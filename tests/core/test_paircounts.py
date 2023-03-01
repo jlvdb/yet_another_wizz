@@ -1,13 +1,26 @@
 """
 NOTE: Bootstrap implementation missing.
 """
+import os
+
+import h5py
 import numpy as np
 import numpy.testing as npt
 import pandas as pd
 import pandas.testing as pdt
-from pytest import fixture, raises
+from pytest import fixture, mark, raises
 
 from yaw.core import paircounts
+from yaw.core.config import ResamplingConfig
+
+
+@fixture
+def tmp_hdf5():
+    fpath = "_mock.hdf"
+    f = h5py.File(fpath, mode="w")
+    yield f
+    f.close()
+    os.remove(fpath)
 
 
 @fixture
@@ -54,7 +67,7 @@ def patch_diag_full(patch_matrix_full):
     """
     These are patch totals / counts in the no-crosspatch mode.
     """
-    return np.diag(patch_matrix_full)
+    return np.diag(np.diag(patch_matrix_full))
 
 
 @fixture
@@ -63,7 +76,7 @@ def patch_diag_auto(patch_matrix_auto):
     These are patch totals / counts in the no-crosspatch mode for the
     autocorrelation case.
     """
-    return np.diag(patch_matrix_auto)
+    return np.diag(np.diag(patch_matrix_auto))
 
 
 @fixture
@@ -118,8 +131,12 @@ def expect_diag_auto():
 
 
 @fixture
-def test_data_samples():
-    binning = pd.IntervalIndex.from_breaks([0.0, 0.5, 1.0])
+def binning():
+    return pd.IntervalIndex.from_breaks([0.0, 0.5, 1.0])
+
+
+@fixture
+def test_data_samples(binning):
     n_bins, n_samples = 2, 7
     data = np.full(n_bins, 4)
     samples = np.repeat(np.arange(1, 8), 2).reshape((n_samples, n_bins))
@@ -142,6 +159,9 @@ class TestSampledData:
         # check some of the representation
         assert f"n_bins={samples.shape[1]}" in repr(sd)
         assert f"n_samples={samples.shape[0]}" in repr(sd)  # tests .n_samples
+        # wrong sampling method
+        with raises(ValueError):
+            paircounts.SampledData(binning, data, samples, method="garbage")
 
     def test_getters(self, test_data_samples):
         binning, data, samples = test_data_samples
@@ -183,12 +203,189 @@ class TestSampledData:
         npt.assert_equal(sd.dz, np.array([0.5, 0.5]))
 
 
+def test_binning_hdf(tmp_hdf5):
+    closed = "left"
+    binning = pd.IntervalIndex.from_breaks(
+        np.linspace(0.0, 1.0, 11), closed=closed)
+    paircounts.binning_to_hdf(binning, dest=tmp_hdf5)
+    assert "binning" in tmp_hdf5
+    restored = paircounts.binning_from_hdf(tmp_hdf5)
+    assert restored.closed == closed
+    pdt.assert_index_equal(binning, restored)
+
+
+@fixture
+def patched_totals_full(binning, patch_totals):
+    n_bins = len(binning)
+    t1, t2 = patch_totals
+    return paircounts.PatchedTotal(
+        binning,
+        add_zbin_dimension(t1, n_bins),
+        add_zbin_dimension(t2, n_bins),
+        auto=False)
+
+
+@fixture
+def patched_totals_auto(binning, patch_totals):
+    n_bins = len(binning)
+    t1, t2 = patch_totals
+    return paircounts.PatchedTotal(
+        binning,
+        add_zbin_dimension(t1, n_bins),
+        add_zbin_dimension(t2, n_bins),
+        auto=True)
+
 class TestPatchedTotal:
-    pass
+
+    def test_init(self, binning, patch_totals, patched_totals_full):
+        n_bins = len(binning)
+        t1, t2 = patch_totals
+        pt = patched_totals_full
+        assert pt.n_patches == len(t1)
+        assert pt.dtype == np.float_
+        assert pt.ndim == 3
+        assert pt.shape == (len(t1), len(t2), n_bins)
+        # just call once
+        repr(pt)
+
+    def test_array(self, patched_totals_full, patch_matrix_full):
+        pt = patched_totals_full
+        n_bins = pt.n_bins
+        # expand matrix with extra bins dimension
+        full_matrix = add_zbin_dimension(patch_matrix_full, n_bins)
+        # full array
+        npt.assert_equal(pt.as_array(), full_matrix)
+        # some slices
+        npt.assert_equal(pt[:], full_matrix[:])
+        npt.assert_equal(pt[-1], full_matrix[-1])
+        npt.assert_equal(pt[:, -1], full_matrix[:, -1])
+        npt.assert_equal(pt[:, :, -1], full_matrix[:, :, -1])
+        npt.assert_equal(pt[:2], full_matrix[:2])
+        npt.assert_equal(pt[:, :2], full_matrix[:, :2])
+        npt.assert_equal(pt[:, :, :2], full_matrix[:, :, :2])
+        npt.assert_equal(pt[1:2], full_matrix[1:2])
+        npt.assert_equal(pt[:, 1:2], full_matrix[:, 1:2])
+        npt.assert_equal(pt[:, :, 1:2], full_matrix[:, :, 1:2])
+
+    def test_jackknife(
+            self,
+            patched_totals_full, expect_matrix_full,
+            patched_totals_auto, expect_matrix_auto):
+        # results for crosspatch on/off must be identical
+        for crosspatch in (False, True):
+            config = ResamplingConfig(method="jackknife", crosspatch=crosspatch)
+
+            # cross-correlation case
+            result = patched_totals_full.get_sum(config)
+            # compare to expected results, take only first bin
+            data, jack, boot = expect_matrix_full
+            assert result.data[0] == data
+            npt.assert_equal(result.samples[:, 0], jack)
+
+            # autocorrelation case
+            result = patched_totals_auto.get_sum(config)
+            # compare to expected results, take only first bin
+            data, jack, boot = expect_matrix_auto
+            assert result.data[0] == data
+            npt.assert_equal(result.samples[:, 0], jack)
+
+    def test_bootstrap(self, patched_totals_full):
+        with raises(NotImplementedError):
+            patched_totals_full.get_sum(ResamplingConfig(method="bootstrap"))
+
+
+def patched_counts_from_matrix(binning, matrix, auto):
+    n_bins = len(binning)
+    counts = add_zbin_dimension(matrix, n_bins)
+    return paircounts.PatchedCount.from_matrix(
+        binning, counts, auto=auto)
 
 
 class TestPatchedCount:
-    pass
+
+    def test_init(self, binning, patch_totals, patched_totals_full):
+        n_bins = len(binning)
+        t1, t2 = patch_totals
+        pt = patched_totals_full
+        assert pt.n_patches == len(t1)
+        assert pt.dtype == np.float_
+        assert pt.ndim == 3
+        assert pt.shape == (len(t1), len(t2), n_bins)
+        # just call once
+        repr(pt)
+
+    @mark.xfail
+    def test_array(self, binning, patch_matrix_full):
+        counts = patched_counts_from_matrix(
+            binning, patch_matrix_full, auto=False)
+        n_bins = counts.n_bins
+        # expand matrix with extra bins dimension
+        full_matrix = add_zbin_dimension(patch_matrix_full, n_bins)
+        # full array
+        npt.assert_equal(counts.as_array(), full_matrix)
+        # some slices
+        npt.assert_equal(counts[:], full_matrix[:])
+        npt.assert_equal(counts[-1], full_matrix[-1])
+        npt.assert_equal(counts[:, -1], full_matrix[:, -1])
+        npt.assert_equal(counts[:, :, -1], full_matrix[:, :, -1])
+        npt.assert_equal(counts[:2], full_matrix[:2])
+        npt.assert_equal(counts[:, :2], full_matrix[:, :2])
+        npt.assert_equal(counts[:, :, :2], full_matrix[:, :, :2])
+        npt.assert_equal(counts[1:2], full_matrix[1:2])
+        npt.assert_equal(counts[:, 1:2], full_matrix[:, 1:2])
+        npt.assert_equal(counts[:, :, 1:2], full_matrix[:, :, 1:2])
+
+    def test_jackknife(
+            self, binning,
+            patch_matrix_full, expect_matrix_full,
+            patch_diag_full, expect_diag_full,
+            patch_matrix_auto, expect_matrix_auto,
+            patch_diag_auto, expect_diag_auto):
+        # case: cross-patch, cross-correlation
+        config = ResamplingConfig(method="jackknife", crosspatch=True)
+        counts = patched_counts_from_matrix(
+            binning, patch_matrix_full, auto=False)
+        result = counts.get_sum(config)
+        # compare to expected results, take only first bin
+        data, jack, boot = expect_matrix_full
+        assert result.data[0] == data
+        npt.assert_equal(result.samples[:, 0], jack)
+
+        # case: diagonal, cross-correlation
+        config = ResamplingConfig(method="jackknife", crosspatch=False)
+        counts = patched_counts_from_matrix(
+            binning, patch_diag_full, auto=False)
+        result = counts.get_sum(config)
+        # compare to expected results, take only first bin
+        data, jack, boot = expect_diag_full
+        assert result.data[0] == data
+        npt.assert_equal(result.samples[:, 0], jack)
+
+        # case: cross-patch, autocorrelation
+        config = ResamplingConfig(method="jackknife", crosspatch=True)
+        counts = patched_counts_from_matrix(
+            binning, patch_matrix_auto, auto=True)
+        result = counts.get_sum(config)
+        # compare to expected results, take only first bin
+        data, jack, boot = expect_matrix_auto
+        assert result.data[0] == data
+        npt.assert_equal(result.samples[:, 0], jack)
+
+        # case: diagonal, autocorrelation
+        config = ResamplingConfig(method="jackknife", crosspatch=False)
+        counts = patched_counts_from_matrix(
+            binning, patch_diag_auto, auto=True)
+        result = counts.get_sum(config)
+        # compare to expected results, take only first bin
+        data, jack, boot = expect_diag_auto
+        assert result.data[0] == data
+        npt.assert_equal(result.samples[:, 0], jack)
+
+    def test_bootstrap(self, binning, patch_matrix_full):
+        counts = patched_counts_from_matrix(
+            binning, patch_matrix_full, auto=False)
+        with raises(NotImplementedError):
+            counts.get_sum(ResamplingConfig(method="bootstrap"))
 
 
 class TestPairCountResult:

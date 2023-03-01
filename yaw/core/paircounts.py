@@ -4,7 +4,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
-try:
+try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:
     from typing_extensions import TypeAlias
@@ -106,7 +106,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         return i, j, k
 
     def __getitem__(self, key) -> ArrayLike:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @property
     def dtype(self) -> DTypeLike:
@@ -128,13 +128,13 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         return self[:, :, :]
 
     def _sum(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     def _bootstrap(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     def get_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         if config is None:

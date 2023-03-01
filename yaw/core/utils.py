@@ -17,6 +17,12 @@ TypePathStr = Path | str
 
 
 def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
+    """
+    Equivalent to
+        np.triu(np.outer(a, b), k).sum(axis)
+    but supports extra dimensions in a and b and does not construct the full
+    outer product matrix.
+    """
     a = np.atleast_1d(a)
     b = np.atleast_1d(b)
     if a.shape != b.shape:
