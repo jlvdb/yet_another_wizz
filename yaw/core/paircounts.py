@@ -43,7 +43,7 @@ class SampledData(BinnedQuantity):
 
     def __post_init__(self) -> None:
         if self.data.shape != (self.n_bins,):
-            raise ValueError("unexpected shapf of 'data' array")
+            raise ValueError("unexpected shape of 'data' array")
         if not self.samples.shape[1] == self.n_bins:
             raise ValueError(
                 "number of bins for 'data' and 'samples' do not match")
@@ -52,9 +52,9 @@ class SampledData(BinnedQuantity):
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
-        samples = self.n_samples
+        n_samples = self.n_samples
         method = self.method
-        return f"{string}, {samples=}, {method=})"
+        return f"{string}, {n_samples=}, {method=})"
 
     @property
     def n_samples(self) -> int:
