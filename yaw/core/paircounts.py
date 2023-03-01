@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 try:  # pragma: no cover
     from typing import TypeAlias
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import TypeAlias
 
 import h5py
@@ -138,7 +138,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
 
     def get_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         if config is None:
-            config = ResamplingConfig()
+            config = ResamplingConfig()  # pragma: no cover
         data = self._sum(config)
         if config.method == "bootstrap":
             samples = self._bootstrap(config)
@@ -304,9 +304,16 @@ class PatchedCount(PatchedArray):
             raise IndexError(
                 "matrix must be of shape (n_patches, n_patches, n_bins)")
         _, n_patches, n_bins = matrix.shape
+        if n_bins != len(binning):
+            raise ValueError("'binning' and matrix dimension 2 do not match")
         new = cls(binning, n_patches, auto=auto, dtype=matrix.dtype)
-        new._bins = [
-            scipy.sparse.dok_matrix(matrix[:, :, i]) for i in range(n_bins)]
+        # paste the third dimension of the input matrix into the _bins list and
+        # record the superset of keys encountered
+        new._bins = []  # discard preallocated empty matrices
+        for i in range(n_bins):
+            spmat = scipy.sparse.dok_matrix(matrix[:, :, i])
+            new._bins.append(spmat)
+            new._keys.update(set(spmat.keys()))
         return new
 
     def __getitem__(self, key) -> ArrayLike:
@@ -314,7 +321,14 @@ class PatchedCount(PatchedArray):
         squeeze_ax = tuple(
             a for a, val in enumerate((i, j, k))
             if isinstance(val, (int, np.integer)))
-        arr = np.array([counts[i, j].toarray() for counts in self._bins[k]])
+        elems = []
+        for counts in np.atleast_1d(self._bins[k]):
+            sub = counts[i, j]
+            try:
+                elems.append(sub.toarray())
+            except AttributeError:
+                elems.append(np.atleast_2d(sub))
+        arr = np.rollaxis(np.array(elems), 0, 3)
         return np.squeeze(arr, axis=squeeze_ax)
 
     def __setitem__(self, key: PatchIDs, item: NDArray):
@@ -323,7 +337,7 @@ class PatchedCount(PatchedArray):
             raise ValueError(
                 f"can only set items with length 'n_bins'={self.n_bins}")
         if not isinstance(key, tuple):
-            raise TypeAlias(f"slice must be of type {tuple}")
+            raise TypeError(f"slice must be of type {tuple}")
         elif len(key) != 2:
             raise IndexError(
                 f"too many indices for array assignment: index must be "
@@ -338,7 +352,11 @@ class PatchedCount(PatchedArray):
         self._keys.add(key)
 
     def keys(self) -> NDArray:
-        return np.array(list(self._keys))
+        key_list = list(self._keys)
+        if len(key_list) == 0:
+            return np.empty((0, 2), dtype=np.int_)
+        else:
+            return np.array(key_list)
 
     def values(self) -> NDArray:
         idx_ax0, idx_ax1 = self.keys().T
