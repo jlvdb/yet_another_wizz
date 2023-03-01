@@ -101,7 +101,8 @@ class CorrelationData(SampledData):
             warnings.simplefilter("ignore")
             corr = self.covariance / np.outer(stdev, stdev)
         corr[self.covariance == 0] = 0
-        return corr
+        return pd.DataFrame(
+            data=corr, index=self.binning, columns=self.binning)
 
     @property
     def _dat_desc(self) -> str:
@@ -170,7 +171,7 @@ class CorrelationData(SampledData):
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
         scale_by_dz: bool = False
-    ) -> Axis:
+    ) -> Axis:  # pragma: no cover
         from matplotlib import pyplot as plt
 
         x = self.mids + xoffset
@@ -201,7 +202,7 @@ class CorrelationData(SampledData):
             ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
         return ax
 
-    def plot_corr(self) -> Axis:
+    def plot_corr(self) -> Axis:  # pragma: no cover
         raise NotImplementedError
 
 

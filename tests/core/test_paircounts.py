@@ -8,7 +8,7 @@ import numpy as np
 import numpy.testing as npt
 import pandas as pd
 import pandas.testing as pdt
-from pytest import fixture, mark, raises
+from pytest import fixture, raises
 
 from yaw.core import paircounts
 from yaw.core.config import ResamplingConfig
@@ -365,7 +365,6 @@ class TestPatchedCount:
         with raises(TypeError):  # wrong key type
             counts[(1.0, 1.0)] = [1.0] * n_bins
 
-    @mark.xfail
     def test_array(self, binning, patch_matrix_full):
         counts = patched_counts_from_matrix(
             binning, patch_matrix_full, auto=False)
