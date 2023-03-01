@@ -34,7 +34,7 @@ def patch_totals():
     return t1, t2
 
 
-def add_zbin_dimension(array, nbins=2):
+def add_zbin_dimension(array, nbins):
     """
     The total/count data is usually of shape (n_patches, n_bins). This
     function can emulate this by repeating the data to add a bin dimension.
@@ -132,14 +132,14 @@ def expect_diag_auto():
 
 @fixture
 def binning():
-    return pd.IntervalIndex.from_breaks([0.0, 0.5, 1.0])
+    return pd.IntervalIndex.from_breaks([0.0, 0.5, 1.0, 1.5])
 
 
 @fixture
 def test_data_samples(binning):
-    n_bins, n_samples = 2, 7
+    n_bins, n_samples = len(binning), 7
     data = np.full(n_bins, 4)
-    samples = np.repeat(np.arange(1, 8), 2).reshape((n_samples, n_bins))
+    samples = np.repeat(np.arange(1, 8), n_bins).reshape((n_samples, n_bins))
     return binning, data, samples
 
 
@@ -181,7 +181,8 @@ class TestSampledData:
         with raises(TypeError):
             sd.is_compatible(1)
         # different binning
-        binning2 = pd.IntervalIndex.from_breaks([1.0, 2.0, 3.0])
+        binning2 = pd.IntervalIndex.from_breaks(
+            np.linspace(1.0, 2.0, len(binning)+1))
         sd2 = paircounts.SampledData(
             binning2, data, samples, method="jackknife")
         assert not sd.is_compatible(sd2)
@@ -198,9 +199,9 @@ class TestSampledData:
         binning, data, samples = test_data_samples
         sd = paircounts.SampledData(binning, data, samples, method="jackknife")
         assert sd.n_bins == len(data)
-        npt.assert_equal(sd.mids, np.array([0.25, 0.75]))
-        npt.assert_equal(sd.edges, np.array([0.0, 0.5, 1.0]))
-        npt.assert_equal(sd.dz, np.array([0.5, 0.5]))
+        npt.assert_equal(sd.mids, np.array([0.25, 0.75, 1.25]))
+        npt.assert_equal(sd.edges, np.array([0.0, 0.5, 1.0, 1.5]))
+        npt.assert_equal(sd.dz, np.array([0.5, 0.5, 0.5]))
 
 
 def test_binning_hdf(tmp_hdf5):
@@ -245,6 +246,20 @@ class TestPatchedTotal:
         assert pt.dtype == np.float_
         assert pt.ndim == 3
         assert pt.shape == (len(t1), len(t2), n_bins)
+        # wrong shape for bins
+        with raises(ValueError, match="dimensional"):
+            paircounts.PatchedTotal(binning, t1, t2, auto=False)
+        with raises(ValueError, match="binning"):
+            paircounts.PatchedTotal(
+                binning, add_zbin_dimension(t1, 1),
+                add_zbin_dimension(t2, 1), auto=False)
+        # patches don't match
+        with raises(ValueError, match="patches"):
+            return paircounts.PatchedTotal(
+                binning,
+                add_zbin_dimension(t1[1:], n_bins),
+                add_zbin_dimension(t2, n_bins),
+                auto=True)
         # just call once
         repr(pt)
 
@@ -258,6 +273,8 @@ class TestPatchedTotal:
         # some slices
         npt.assert_equal(pt[:], full_matrix[:])
         npt.assert_equal(pt[-1], full_matrix[-1])
+        npt.assert_equal(pt[-1, -1], full_matrix[-1, -1])
+        npt.assert_equal(pt[-1, -1, -1], full_matrix[-1, -1, -1])
         npt.assert_equal(pt[:, -1], full_matrix[:, -1])
         npt.assert_equal(pt[:, :, -1], full_matrix[:, :, -1])
         npt.assert_equal(pt[:2], full_matrix[:2])
@@ -266,6 +283,9 @@ class TestPatchedTotal:
         npt.assert_equal(pt[1:2], full_matrix[1:2])
         npt.assert_equal(pt[:, 1:2], full_matrix[:, 1:2])
         npt.assert_equal(pt[:, :, 1:2], full_matrix[:, :, 1:2])
+        # invalid index
+        with raises(IndexError):
+            pt[0, 0, 0, 0]
 
     def test_jackknife(
             self,
@@ -303,16 +323,47 @@ def patched_counts_from_matrix(binning, matrix, auto):
 
 class TestPatchedCount:
 
-    def test_init(self, binning, patch_totals, patched_totals_full):
+    def test_init(self, binning, patch_matrix_full):
         n_bins = len(binning)
-        t1, t2 = patch_totals
-        pt = patched_totals_full
-        assert pt.n_patches == len(t1)
-        assert pt.dtype == np.float_
-        assert pt.ndim == 3
-        assert pt.shape == (len(t1), len(t2), n_bins)
+        matrix = add_zbin_dimension(patch_matrix_full, n_bins)
+        counts = paircounts.PatchedCount.from_matrix(
+            binning, matrix, auto=False)
+        for bin in counts._bins:
+            npt.assert_equal(bin.toarray(), patch_matrix_full)
+        # wrong shape
+        with raises(ValueError):
+            counts = paircounts.PatchedCount.from_matrix(
+                binning, matrix[:, :, :-1], auto=False)  # missing bin
+        with raises(IndexError):
+            counts = paircounts.PatchedCount.from_matrix(
+                binning, matrix[:, :-1], auto=False)  # not square
+        with raises(IndexError):
+            counts = paircounts.PatchedCount.from_matrix(
+                binning, matrix[:-1], auto=False)  # not square
         # just call once
-        repr(pt)
+        repr(counts)
+
+    def test_keys_values(self, binning):
+        n_bins = len(binning)
+        counts = paircounts.PatchedCount(binning, 2, auto=False)
+        # check zero matrix
+        npt.assert_equal(counts.keys(), np.empty((0, 2), dtype=np.int_))
+        npt.assert_equal(counts.values(), np.empty((0, n_bins)))
+        # insert single item
+        key = (0, 1)
+        value = [1.0] * n_bins
+        counts[key] = value
+        npt.assert_equal(counts.keys(), np.atleast_2d(key))
+        npt.assert_equal(counts.values(), np.atleast_2d(value))
+        # check wrong assignments
+        with raises(ValueError):  # extra element
+            counts[key] = [1.0] * (n_bins+1)
+        with raises(TypeError):  # wrong key type
+            counts[1] = [1.0] * n_bins
+        with raises(IndexError):  # wrong key shape
+            counts[(1,)] = [1.0] * n_bins
+        with raises(TypeError):  # wrong key type
+            counts[(1.0, 1.0)] = [1.0] * n_bins
 
     @mark.xfail
     def test_array(self, binning, patch_matrix_full):
@@ -324,6 +375,9 @@ class TestPatchedCount:
         # full array
         npt.assert_equal(counts.as_array(), full_matrix)
         # some slices
+        npt.assert_equal(counts[-1], full_matrix[-1])
+        npt.assert_equal(counts[-1, -1], full_matrix[-1, -1])
+        npt.assert_equal(counts[-1, -1, -1], full_matrix[-1, -1, -1])
         npt.assert_equal(counts[:], full_matrix[:])
         npt.assert_equal(counts[-1], full_matrix[-1])
         npt.assert_equal(counts[:, -1], full_matrix[:, -1])
@@ -388,6 +442,59 @@ class TestPatchedCount:
             counts.get_sum(ResamplingConfig(method="bootstrap"))
 
 
+@fixture
+def pair_count_result(patched_totals_full, patch_matrix_full):
+    totals = patched_totals_full
+    counts = patched_counts_from_matrix(
+        totals.binning, patch_matrix_full, auto=False)
+    return paircounts.PairCountResult(total=totals, count=counts)
+
+
 class TestPairCountResult:
-    pass
-    # test from/to_file instead of from/to_hdf
+
+    def test_init(self, patched_totals_full, patch_matrix_full):
+        totals = patched_totals_full
+        counts = patched_counts_from_matrix(
+            totals.binning, patch_matrix_full, auto=False)
+        res = paircounts.PairCountResult(total=totals, count=counts)
+        # wrong number of bins
+        with raises(ValueError, match="bins"):
+            counts = patched_counts_from_matrix(
+                totals.binning[:-1], patch_matrix_full, auto=False)
+            paircounts.PairCountResult(total=totals, count=counts)
+        # wrong number of patches
+        with raises(ValueError, match="patches"):
+            counts = patched_counts_from_matrix(
+                totals.binning, patch_matrix_full[:-1, :-1], auto=False)
+            paircounts.PairCountResult(total=totals, count=counts)
+        # just call once
+        repr(res)
+
+    def test_get(self, pair_count_result, expect_matrix_full):
+        config = ResamplingConfig(method="jackknife")
+        result = pair_count_result.get(config)
+        data, jack, boot = expect_matrix_full
+        # since totals and counts are identical, expect ones everywhere
+        npt.assert_equal(result.data[0], np.ones_like(data))
+        npt.assert_equal(result.samples[:, 0], np.ones_like(jack))
+
+    def test_hdf(self, pair_count_result, tmp_hdf5):
+        pair_count_result.to_hdf(tmp_hdf5)
+        assert "count" in tmp_hdf5
+        assert "total" in tmp_hdf5
+        restored = paircounts.PairCountResult.from_hdf(tmp_hdf5)
+        assert restored.n_bins == pair_count_result.n_bins
+        assert restored.n_patches == pair_count_result.n_patches
+        pdt.assert_index_equal(restored.binning, pair_count_result.binning)
+        # compare total
+        npt.assert_equal(
+            restored.total.totals1, pair_count_result.total.totals1)
+        npt.assert_equal(
+            restored.total.totals2, pair_count_result.total.totals2)
+        assert restored.total.auto == pair_count_result.total.auto
+        # compare count
+        for binA, binB in zip(
+            restored.count._bins, pair_count_result.count._bins
+        ):
+            npt.assert_equal(binA.toarray(), binB.toarray())
+        assert restored.total.auto == pair_count_result.total.auto
