@@ -38,10 +38,10 @@ class BaseCatalog(ABC, Sequence, PatchedQuantity):
         super().__init_subclass__(**kwargs)
         if not cls.__name__.endswith("Catalog"):
             raise BackendError(
-                f"subclasses of '{cls}' must follow naming convention "
-                f"'[Backend]Catalog, (e.g. ScipyCatalog)")
+                f"subclasses of 'BaseCatalog' must follow naming convention "
+                f"'[Backend name]Catalog for registration (e.g. ScipyCatalog "
+                f"-> 'scipy')")
         backend = cls.__name__.strip("Catalog").lower()
-        print(f"registering backend '{backend}'")
         cls.backends[backend] = cls
 
     @abstractmethod

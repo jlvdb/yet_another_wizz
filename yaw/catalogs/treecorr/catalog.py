@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
+from treecorr import Catalog, NNCorrelation
 
 from yaw.catalogs import BaseCatalog
 from yaw.config import Configuration
@@ -87,7 +87,7 @@ class TreecorrCatalog(BaseCatalog):
                 "must be provided")
 
         with TimedLog(self.logger.info, log_msg):
-            self._catalog = TreeCorrCatalog(
+            self._catalog = Catalog(
                 ra=data[ra_name], ra_units="degrees",
                 dec=data[dec_name], dec_units="degrees",
                 r=None if redshift_name is None else data[redshift_name],
@@ -105,12 +105,12 @@ class TreecorrCatalog(BaseCatalog):
         raise NotImplementedError
 
     @classmethod
-    def from_treecorr(cls, cat: TreeCorrCatalog) -> TreecorrCatalog:
+    def from_treecorr(cls, cat: Catalog) -> TreecorrCatalog:
         new = cls.__new__(cls)
         new._catalog = cat
         return new
 
-    def to_treecorr(self) -> TreeCorrCatalog:
+    def to_treecorr(self) -> Catalog:
         return self._catalog
 
     def __len__(self) -> int:

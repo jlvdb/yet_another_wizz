@@ -13,7 +13,8 @@ class NewCatalog:
 
     def __init__(self, backend: str) -> None:
         try:
-            self.catalog = BaseCatalog.backends[backend]
+            self.catalog: BaseCatalog = BaseCatalog.backends[backend]
+            self.backend_name = backend
         except KeyError as e:
             raise BackendError(f"invalid backend '{backend}'") from e
 
@@ -55,7 +56,7 @@ class NewCatalog:
         file_ext: str | None = None,
         **kwargs
     ) -> BaseCatalog:
-        return self.catalog(
+        return self.catalog.from_file(
             filepath,
             patches,
             ra,
@@ -70,4 +71,4 @@ class NewCatalog:
         self,
         cache_directory: str
     ) -> BaseCatalog:
-        return self.catalog(cache_directory)
+        return self.catalog.from_cache(cache_directory)
