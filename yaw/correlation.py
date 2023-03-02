@@ -30,7 +30,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.estimators import Cts
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 class EstimatorNotAvailableError(Exception):

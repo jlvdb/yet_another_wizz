@@ -16,7 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.config import Configuration
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 LINK_ZMIN = 0.05

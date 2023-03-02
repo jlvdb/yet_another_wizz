@@ -23,7 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 class ConfigurationError(Exception):

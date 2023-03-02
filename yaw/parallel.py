@@ -13,7 +13,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import DTypeLike, NDArray
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)

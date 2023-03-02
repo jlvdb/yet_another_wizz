@@ -24,7 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, IntervalIndex, Series
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)

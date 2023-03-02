@@ -10,7 +10,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 class Cts(ABC):
