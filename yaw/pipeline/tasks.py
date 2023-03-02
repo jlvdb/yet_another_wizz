@@ -13,6 +13,8 @@ from yaw.correlation import CorrelationEstimator
 from yaw.cosmology import get_default_cosmology
 from yaw.utils import format_float_fixed_width as fmt_num
 
+import yaw
+from yaw.catalogs import BaseCatalog
 from yaw.logger import Colors, get_logger
 
 from yaw.pipeline.commandline import Commandline, Path_absolute, Path_exists
@@ -25,7 +27,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.correlation import CorrelationFunction, CorrelationData
 
 
-BACKEND_OPTIONS = ("scipy", "treecorr")
+BACKEND_OPTIONS = tuple(sorted(BaseCatalog.backends.keys()))
 BINNING_OPTIONS = ("linear", "comoving", "logspace")
 from astropy.cosmology import available as COSMOLOGY_OPTIONS
 METHOD_OPTIONS = ResamplingConfig.implemented_methods
@@ -65,7 +67,6 @@ class Runner:
         threads: int | None = None
     ) -> None:
         self.project = project
-        self.backend = self.project.backend
         self.progress = progress
         if threads is not None:
             self.config = project.config.modify(thread_num=threads)
@@ -155,7 +156,7 @@ class Runner:
         if self.ref_rand is None:
             raise MissingCatalogError(
                 "reference autocorrelation requires reference randoms")
-        cfs = self.project.backend.autocorrelate(
+        cfs = yaw.autocorrelate(
             self.config, self.ref_data, self.ref_rand,
             linkage=self.linkage, compute_rr=compute_rr,
             progress=self.progress)
@@ -176,7 +177,7 @@ class Runner:
         if self.unk_rand is None:
             raise MissingCatalogError(
                 "unknown autocorrelation requires unknown randoms")
-        cfs = self.project.backend.autocorrelate(
+        cfs = yaw.autocorrelate(
             self.config, self.unk_data, self.unk_rand,
             linkage=self.linkage, compute_rr=compute_rr,
             progress=self.progress)
@@ -212,7 +213,7 @@ class Runner:
                 raise MissingCatalogError(
                     "crosscorrelation requires either reference or "
                     "unknown randoms")
-        cfs = self.project.backend.crosscorrelate(
+        cfs = yaw.crosscorrelate(
             self.config, self.ref_data, self.unk_data,
             **randoms, linkage=self.linkage, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
@@ -230,7 +231,7 @@ class Runner:
             for scale in self.project.list_counts_scales():
                 counts_dir = self.project.get_counts(scale)
                 path = counts_dir.get_auto_reference()
-                cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+                cfs[scale] = yaw.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
         except (FileNotFoundError, AssertionError):
             self.logger.info("skipped missing pair counts")
@@ -244,7 +245,7 @@ class Runner:
             for scale in self.project.list_counts_scales():
                 counts_dir = self.project.get_counts(scale)
                 path = counts_dir.get_auto(idx)
-                cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+                cfs[scale] = yaw.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
             self.w_pp = cfs
         except (FileNotFoundError, AssertionError):
@@ -257,7 +258,7 @@ class Runner:
             for scale in self.project.list_counts_scales():
                 counts_dir = self.project.get_counts(scale)
                 path = counts_dir.get_cross(idx)
-                cfs[scale] = self.backend.CorrelationFunction.from_file(path)
+                cfs[scale] = yaw.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
             self.w_sp = cfs
         except (FileNotFoundError, AssertionError):
@@ -315,7 +316,7 @@ class Runner:
         for scale in cross_data:
             self.logger.debug(
                 f"writing redshift data files for scale '{scale}'")
-            nz_data = self.backend.RedshiftData.from_correlation_data(
+            nz_data = yaw.RedshiftData.from_correlation_data(
                 cross_data[scale], ref_data[scale], unk_data[scale])
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_cross(idx)
@@ -409,14 +410,14 @@ class Runner:
             # plot the data
             for ax, path, true in zip(axes.flatten(), paths_ok, trues_ok):
                 if true is not None:
-                    Nz = self.backend.RedshiftData.from_files(true)
+                    Nz = yaw.RedshiftData.from_files(true)
                     nz = Nz.normalised()
                     ax = nz.plot(
                         zero_line=True, error_bars=False, color="k", ax=ax)
-                    cf = self.backend.RedshiftData.from_files(path)
+                    cf = yaw.RedshiftData.from_files(path)
                     ax = cf.normalised(to=nz).plot(label=scale, ax=ax)
                 else:
-                    cf = self.backend.CorrelationData.from_files(path)
+                    cf = yaw.CorrelationData.from_files(path)
                     ax = cf.plot(zero_line=True, label=scale, ax=ax)
                 ax.legend()
                 ax.set_xlim(left=0.0)

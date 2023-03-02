@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import importlib
 import os
 import shutil
 import textwrap
 from abc import ABC, abstractmethod, abstractproperty
 from collections.abc import Iterator
 from pathlib import Path, _posix_flavour, _windows_flavour
-from types import ModuleType
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import pandas as pd
 import yaml
 
 from yaw import default as DEFAULT
+from yaw.catalogs import NewCatalog
 from yaw.config import Configuration
 from yaw.coordinates import CoordSky
 from yaw.utils import DictRepresentation, TypePathStr, bytes_format
@@ -25,10 +24,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
     from yaw.pipeline.data import Input
     from yaw.pipeline.task_utils import TaskRecord
-
-
-class InvalidBackendError(Exception):
-    pass
 
 
 class SetupError(Exception):
@@ -298,7 +293,7 @@ class ProjectDirectory(DictRepresentation):
             data=dict(
                 cachepath=cache_dir,
                 **self._inputs.to_dict()),
-            backend=self._backend_name,
+            backend=self.catalog_factory.backend_name,
             tasks=self._tasks.to_list())
         return setup
 
@@ -321,10 +316,7 @@ class ProjectDirectory(DictRepresentation):
     def setup_reload(self) -> None:
         with open(self.setup_file) as f:
             setup = yaml.safe_load(f.read())
-        # get the backend first which is used to import the backend package
-        self._backend_name = setup["backend"]
-        self._backend = None
-        self.backend  # try to import
+        self.catalog_factory = NewCatalog(setup["backend"])
         # configuration is straight forward
         self._config = parse_config_from_setup(setup)
         # set up the data management
@@ -345,18 +337,6 @@ class ProjectDirectory(DictRepresentation):
         write_setup_file(self.setup_file, self.to_dict())
 
     @property
-    def backend(self) -> ModuleType:
-        if self._backend is None:
-            try:
-                self._backend = importlib.import_module(
-                    f"yaw.{self._backend_name}")
-            except ImportError as e:
-                raise InvalidBackendError(
-                    f"backend '{self._backend_name}' invalid or "
-                    "yaw import failed") from e
-        return self._backend
-
-    @property
     def config(self) -> Configuration:
         return self._config
 
@@ -370,10 +350,6 @@ class ProjectDirectory(DictRepresentation):
             return self._path.joinpath("cache")
         else:
             return Path(self._cachepath)
-
-    @property
-    def cache_restore_supported(self) -> bool:
-        return hasattr(self.backend.Catalog, "from_cache")
 
     def get_cache(self) -> CacheDirectory:
         return self._cache
@@ -408,7 +384,7 @@ class ProjectDirectory(DictRepresentation):
             else:
                 load_kwargs["patches"] = self._inputs.n_patches
 
-        catalog = self.backend.Catalog.from_file(**load_kwargs)
+        catalog = self.catalog_factory.from_file(**load_kwargs)
         # store patch centers for consecutive loads
         if not self.patch_file.exists():
             centers = pd.DataFrame(dict(
@@ -455,8 +431,8 @@ class ProjectDirectory(DictRepresentation):
         exists = cachepath.exists()
 
         # already cached and backend supports restoring
-        if self.cache_restore_supported and exists and input.cache:
-            catalog = self.backend.Catalog.from_cache(cachepath)
+        if exists and input.cache:
+            catalog = self.catalog_factory.from_cache(cachepath)
         # no caching requested or not supported
         else:
             if input.cache:
