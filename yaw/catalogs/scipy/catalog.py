@@ -11,17 +11,15 @@ import pandas as pd
 from tqdm import tqdm
 
 from yaw.catalogs import BaseCatalog, PatchLinkage
+from yaw.catalogs.scipy.patches import (
+    PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.config import Configuration, ResamplingConfig
 from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.correlation import RedshiftData
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.parallel import ParallelHelper
-from yaw.utils import LimitTracker, PatchIDs, scales_to_keys
-
-from yaw.catalogs.scipy.patches import (
-    PatchCatalog, patch_id_from_path, create_patches, assign_patches)
-from yaw.logger import TimedLog
+from yaw.utils import LimitTracker, PatchIDs, TimedLog, scales_to_keys
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

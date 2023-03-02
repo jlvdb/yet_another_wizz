@@ -8,8 +8,7 @@ import pandas as pd
 
 from yaw.parallel import (
     POOL_SHARE, ParallelHelper, SharedArray)
-from yaw.utils import long_num_format
-from yaw.logger import TimedLog
+from yaw.utils import TimedLog, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

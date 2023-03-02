@@ -15,8 +15,7 @@ from yaw.config import Configuration
 from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult
-
-from yaw.logger import TimedLog
+from yaw.utils import TimedLog
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval

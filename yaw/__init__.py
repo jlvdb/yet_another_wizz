@@ -10,5 +10,4 @@ from yaw.config import Configuration, ResamplingConfig
 from yaw.correlation import (
     CorrelationData, CorrelationFunction, RedshiftData,
     autocorrelate, crosscorrelate)
-from yaw.logger import get_logger
 from yaw.randoms import UniformRandoms

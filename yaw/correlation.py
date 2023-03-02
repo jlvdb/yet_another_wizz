@@ -17,9 +17,8 @@ from yaw.estimators import CorrelationEstimator, CtsMix, cts_from_code
 from yaw.paircounts import PairCountResult, SampledData
 from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
-from yaw.utils import format_float_fixed_width as fmt_num
-
-from yaw.logger import LogCustomWarning, TimedLog
+from yaw.utils import (
+    LogCustomWarning, TimedLog, format_float_fixed_width as fmt_num)
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

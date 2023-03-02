@@ -15,9 +15,9 @@ from yaw.utils import format_float_fixed_width as fmt_num
 
 import yaw
 from yaw.catalogs import BaseCatalog
-from yaw.logger import Colors, get_logger
 
 from yaw.pipeline.commandline import Commandline, Path_absolute, Path_exists
+from yaw.pipeline.logger import Colors, get_logger
 from yaw.pipeline.project import (
     MissingCatalogError, ProjectDirectory,
     load_config_from_setup, load_setup_as_dict)
