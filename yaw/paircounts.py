@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 
-from yaw.core.config import ResamplingConfig
-from yaw.core.utils import (
+from yaw.config import ResamplingConfig
+from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, PatchIDs, outer_triu_sum)
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -24,7 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, IntervalIndex, Series
 
 
-logger = logging.getLogger(__name__.replace(".core.", "."))
+logger = logging.getLogger()
 
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)

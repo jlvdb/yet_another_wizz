@@ -21,7 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.core.paircounts import PairCountResult
 
 
-logger = logging.getLogger(__name__.replace(".core.", "."))
+logger = logging.getLogger()
 
 
 class CatalogBase(ABC, Sequence, PatchedQuantity):

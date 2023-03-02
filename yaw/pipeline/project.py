@@ -13,18 +13,18 @@ from typing import TYPE_CHECKING, Any, NoReturn
 import pandas as pd
 import yaml
 
-from yaw.core import default as DEFAULT
-from yaw.core.config import Configuration
-from yaw.core.coordinates import CoordSky
-from yaw.core.utils import DictRepresentation, TypePathStr, bytes_format
+from yaw import default as DEFAULT
+from yaw.config import Configuration
+from yaw.coordinates import CoordSky
+from yaw.utils import DictRepresentation, TypePathStr, bytes_format
 
-from yaw.pipe.data import InputRegister
-from yaw.pipe.task_utils import TaskList
+from yaw.pipeline.data import InputRegister
+from yaw.pipeline.task_utils import TaskList
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.core.catalog import CatalogBase
-    from yaw.pipe.data import Input
-    from yaw.pipe.task_utils import TaskRecord
+    from yaw.catalog import CatalogBase
+    from yaw.pipeline.data import Input
+    from yaw.pipeline.task_utils import TaskRecord
 
 
 class InvalidBackendError(Exception):

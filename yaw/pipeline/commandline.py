@@ -8,8 +8,8 @@ from typing import Any
 
 from yaw import __version__
 
-from yaw.pipe.data import BinnedInput, Input
-from yaw.pipe.task_utils import Registry
+from yaw.pipeline.data import BinnedInput, Input
+from yaw.pipeline.task_utils import Registry
 
 
 def Path_absolute(path: str) -> Path:

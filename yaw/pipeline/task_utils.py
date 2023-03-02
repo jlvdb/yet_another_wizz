@@ -86,7 +86,7 @@ class _Tasks(Registry):
         def task(func):
             @wraps(func)
             def wrapper(args, *posargs, **kwargs) -> TaskRecord:
-                from yaw.pipe.project import ProjectDirectory
+                from yaw.pipeline.project import ProjectDirectory
 
                 with ProjectDirectory(args.wdir) as project:
                     setup_args = func(args, project, *posargs, **kwargs)

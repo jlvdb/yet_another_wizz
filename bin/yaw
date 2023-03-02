@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from yaw.pipe import Commandline
+from yaw.pipeline import Commandline
 
 
 if __name__ == "__main__":

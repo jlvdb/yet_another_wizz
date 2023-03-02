@@ -4,7 +4,7 @@ from dataclasses import _MISSING_TYPE, asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
-from yaw.core.utils import DictRepresentation, TypePathStr
+from yaw.utils import DictRepresentation, TypePathStr
 
 
 class InputCatalogError(Exception):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from yaw.core import default as DEFAULT
+from yaw import default as DEFAULT
 
 
 setup_types = """# yet_another_wizz setup type annotations

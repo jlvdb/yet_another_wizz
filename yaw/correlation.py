@@ -10,14 +10,14 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 
-from yaw.core import default as DEFAULT
-from yaw.core.catalog import PatchLinkage
-from yaw.core.config import ResamplingConfig
-from yaw.core.estimators import CorrelationEstimator, CtsMix, cts_from_code
-from yaw.core.paircounts import PairCountResult, SampledData
-from yaw.core.utils import (
+from yaw import default as DEFAULT
+from yaw.catalog import PatchLinkage
+from yaw.config import ResamplingConfig
+from yaw.estimators import CorrelationEstimator, CtsMix, cts_from_code
+from yaw.paircounts import PairCountResult, SampledData
+from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
-from yaw.core.utils import format_float_fixed_width as fmt_num
+from yaw.utils import format_float_fixed_width as fmt_num
 
 from yaw.logger import LogCustomWarning, TimedLog
 
@@ -25,12 +25,12 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from matplotlib.axis import Axis
     from pandas import DataFrame, IntervalIndex, Series
-    from yaw.core.catalog import CatalogBase
-    from yaw.core.config import Configuration
-    from yaw.core.estimators import Cts
+    from yaw.catalog import CatalogBase
+    from yaw.config import Configuration
+    from yaw.estimators import Cts
 
 
-logger = logging.getLogger(__name__.replace(".core.", "."))
+logger = logging.getLogger()
 
 
 class EstimatorNotAvailableError(Exception):

@@ -6,18 +6,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.core.parallel import (
+from yaw.parallel import (
     POOL_SHARE, ParallelHelper, SharedArray)
-from yaw.core.utils import long_num_format
+from yaw.utils import long_num_format
 from yaw.logger import TimedLog
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
-    from yaw.core.catalog import CatalogBase
+    from yaw.catalog import CatalogBase
 
 
-logger = logging.getLogger(__name__.replace(".core.", "."))
+logger = logging.getLogger()
 
 
 class UniformRandoms:

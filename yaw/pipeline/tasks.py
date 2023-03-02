@@ -6,23 +6,23 @@ import sys
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
-from yaw.core import default as DEFAULT
-from yaw.core.catalog import PatchLinkage
-from yaw.core.config import Configuration, ResamplingConfig
-from yaw.core.correlation import CorrelationEstimator
-from yaw.core.cosmology import get_default_cosmology
-from yaw.core.utils import format_float_fixed_width as fmt_num
+from yaw import default as DEFAULT
+from yaw.catalog import PatchLinkage
+from yaw.config import Configuration, ResamplingConfig
+from yaw.correlation import CorrelationEstimator
+from yaw.cosmology import get_default_cosmology
+from yaw.utils import format_float_fixed_width as fmt_num
 
 from yaw.logger import Colors, get_logger
 
-from yaw.pipe.commandline import Commandline, Path_absolute, Path_exists
-from yaw.pipe.project import (
+from yaw.pipeline.commandline import Commandline, Path_absolute, Path_exists
+from yaw.pipeline.project import (
     MissingCatalogError, ProjectDirectory,
     load_config_from_setup, load_setup_as_dict)
-from yaw.pipe.task_utils import Tasks
+from yaw.pipeline.task_utils import Tasks
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.core.correlation import CorrelationFunction, CorrelationData
+    from yaw.correlation import CorrelationFunction, CorrelationData
 
 
 BACKEND_OPTIONS = ("scipy", "treecorr")
@@ -925,14 +925,14 @@ class DumpConfigAction(argparse.Action):
             const=const, required=required, help=help)
     def __call__(self, parser, namespace, values, option_string):
         if self.const == "default":
-            from yaw.pipe.default_setup import setup_default
+            from yaw.pipeline.default_setup import setup_default
             print(setup_default.format(
                 backend_options=", ".join(BACKEND_OPTIONS),
                 binning_options=", ".join(BINNING_OPTIONS),
                 cosmology_options=", ".join(COSMOLOGY_OPTIONS),
                 method_options=", ".join(METHOD_OPTIONS)))
         else:
-            from yaw.pipe.default_setup import setup_types
+            from yaw.pipeline.default_setup import setup_types
             print(setup_types)
         parser.exit()
 
