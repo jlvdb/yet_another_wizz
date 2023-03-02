@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 import warnings
+from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from dataclasses import asdict
 from datetime import timedelta
 from pathlib import Path
 from timeit import default_timer
-from typing import (
-    TYPE_CHECKING, Any, Callable, NamedTuple, Type, TypeVar, Protocol,
-    runtime_checkable)
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 import h5py
 import numpy as np
@@ -108,33 +107,35 @@ class PatchIDs(NamedTuple):
     id2: int
 
     
-class PatchedQuantity(Protocol):
+class PatchedQuantity(ABC):
 
-    n_patches: int
+    @abstractproperty
+    def n_patches(self) -> int: pass
 
 
-@runtime_checkable
-class BinnedQuantity(Protocol):
+class BinnedQuantity(ABC):
 
-    binning: IntervalIndex
+    def get_binning(self) -> IntervalIndex: raise NotImplementedError
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
         n_bins = self.n_bins
-        z = f"{self.binning[0].left:.3f}...{self.binning[-1].right:.3f}"
+        binning = self.get_binning()
+        z = f"{binning[0].left:.3f}...{binning[-1].right:.3f}"
         return f"{name}({n_bins=}, {z=})"
 
     @property
     def n_bins(self) -> int:
-        return len(self.binning)
+        return len(self.get_binning())
 
     @property
     def mids(self) -> NDArray[np.float_]:
-        return np.array([z.mid for z in self.binning])
+        return np.array([z.mid for z in self.get_binning()])
 
     @property
     def edges(self) -> NDArray[np.float_]:
-        return np.append(self.binning.left, self.binning.right[-1])
+        binning = self.get_binning()
+        return np.append(binning.left, binning.right[-1])
 
     @property
     def dz(self) -> NDArray[np.float_]:
@@ -145,25 +146,24 @@ class BinnedQuantity(Protocol):
             raise TypeError(
                 f"object of type {type(other)} is not compatible with "
                 f"{self.__class__}")
-        if np.any(self.binning != other.binning):
+        if np.any(self.get_binning() != other.get_binning()):
             return False
         return True
 
 
-THF = TypeVar("THF", bound="HDFSerializable")
+class HDFSerializable(ABC):
 
+    @abstractclassmethod
+    def from_hdf(
+        cls,
+        source: h5py.Group
+    ) -> HDFSerializable: raise NotImplementedError
 
-class HDFSerializable(Protocol):
+    @abstractmethod
+    def to_hdf(self, dest: h5py.Group) -> None: raise NotImplementedError
 
     @classmethod
-    def from_hdf(cls: Type[THF], source: h5py.Group) -> THF:
-        raise NotImplementedError
-
-    def to_hdf(self, dest: h5py.Group) -> None:
-        raise NotImplementedError
-
-    @classmethod
-    def from_file(cls: Type[THF], path: TypePathStr) -> THF:
+    def from_file(cls, path: TypePathStr) -> HDFSerializable:
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
@@ -172,19 +172,17 @@ class HDFSerializable(Protocol):
             self.to_hdf(f)
 
 
-TDR = TypeVar("TDR", bound="DictRepresentation")
+class DictRepresentation(ABC):
 
-
-class DictRepresentation(Protocol):
-
-    @classmethod
+    @abstractclassmethod
     def from_dict(
-        cls: Type[TDR],
+        cls,
         the_dict: dict[str, Any],
         **kwargs: dict[str, Any]  # passing additinal constructor data
-    ) -> TDR:
+    ) -> DictRepresentation:
         return cls(**the_dict)
 
+    @abstractmethod
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 

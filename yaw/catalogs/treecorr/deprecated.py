@@ -67,7 +67,7 @@ class PairCountResult:
 
         # check the ordering of the bins based on the provided intervals
         binning = pd.IntervalIndex.from_tuples([
-            zbin.binning.to_tuples()[0]  # contains just one entry
+            zbin.get_binning().to_tuples()[0]  # contains just one entry
             for zbin in zbins])
         if not binning.is_non_overlapping_monotonic:
             raise ValueError(

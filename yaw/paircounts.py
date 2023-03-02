@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from abc import abstractmethod, abstractproperty
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
@@ -56,6 +57,9 @@ class SampledData(BinnedQuantity):
         method = self.method
         return f"{string}, {n_samples=}, {method=})"
 
+    def get_binning(self) -> IntervalIndex:
+        return self.binning
+
     @property
     def n_samples(self) -> int:
         return len(self.samples)
@@ -77,8 +81,6 @@ class SampledData(BinnedQuantity):
 
 
 class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
-
-    density: float
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -105,8 +107,10 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
                     f"{len(key)} were indexed")
         return i, j, k
 
-    def __getitem__(self, key) -> ArrayLike:
-        raise NotImplementedError  # pragma: no cover
+    def __getitem__(self, key) -> ArrayLike: raise NotImplementedError
+
+    @abstractproperty
+    def density(self) -> float: raise NotImplementedError
 
     @property
     def dtype(self) -> DTypeLike:
@@ -127,14 +131,24 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     def as_array(self) -> NDArray:
         return self[:, :, :]
 
-    def _sum(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError  # pragma: no cover
+    @abstractmethod
+    def _sum(
+        self,
+        config: ResamplingConfig
+    ) -> NDArray: raise NotImplementedError
 
-    def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
-        raise NotImplementedError  # pragma: no cover
+    @abstractmethod
+    def _jackknife(
+        self,
+        config: ResamplingConfig,
+        signal: NDArray
+    ) -> NDArray: raise NotImplementedError
 
-    def _bootstrap(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError  # pragma: no cover
+    @abstractmethod
+    def _bootstrap(
+        self,
+        config: ResamplingConfig
+    ) -> NDArray: raise NotImplementedError
 
     def get_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         if config is None:
@@ -145,7 +159,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         else:
             samples = self._jackknife(config, signal=data)
         return SampledData(
-            binning=self.binning,
+            binning=self.get_binning(),
             data=data,
             samples=samples,
             method=config.method)
@@ -174,7 +188,7 @@ class PatchedTotal(PatchedArray):
         *,
         auto: bool
     ) -> None:
-        self.binning = binning
+        self._binning = binning
         for i, totals in enumerate((totals1, totals2), 1):
             if totals.ndim != 2:
                 raise ValueError(f"'totals{i}' must be two dimensional")
@@ -198,6 +212,9 @@ class PatchedTotal(PatchedArray):
             a for a, val in enumerate((i, j))
             if isinstance(val, (int, np.integer)))
         return np.squeeze(arr, axis=squeeze_ax)
+
+    def get_binning(self) -> IntervalIndex:
+        return self._binning
 
     @property
     def n_patches(self) -> int:
@@ -267,7 +284,7 @@ class PatchedTotal(PatchedArray):
 
     def to_hdf(self, dest: h5py.Group) -> None:
         # store the binning
-        binning_to_hdf(self.binning, dest)
+        binning_to_hdf(self.get_binning(), dest)
         # store the data
         dest.create_dataset("totals1", data=self.totals1, **_compression)
         dest.create_dataset("totals2", data=self.totals2, **_compression)
@@ -284,7 +301,7 @@ class PatchedCount(PatchedArray):
         auto: bool,
         dtype: DTypeLike = np.float_
     ) -> None:
-        self.binning = binning
+        self._binning = binning
         self._keys = set()
         self._n_patches = n_patches
         self._bins: list[spmatrix] = [
@@ -365,13 +382,16 @@ class PatchedCount(PatchedArray):
             for counts in self._bins])
         return values
 
+    def get_binning(self) -> IntervalIndex:
+        return self._binning
+
     @property
     def n_patches(self) -> int:
         return self._n_patches
 
     @property
     def n_bins(self) -> int:
-        return len(self.binning)
+        return len(self.get_binning())
 
     @property
     def density(self) -> float:
@@ -468,7 +488,7 @@ class PatchedCount(PatchedArray):
 
     def to_hdf(self, dest: h5py.Group) -> None:
         # store the binning
-        binning_to_hdf(self.binning, dest)
+        binning_to_hdf(self.get_binning(), dest)
         # store the data
         dest.create_dataset("keys", data=self.keys(), **_compression)
         dest.create_dataset("data", data=self.values(), **_compression)
@@ -495,9 +515,8 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         n_patches = self.n_patches
         return f"{string}, {n_patches=})"
 
-    @property
-    def binning(self) -> IntervalIndex:
-        return self.total.binning
+    def get_binning(self) -> IntervalIndex:
+        return self.total.get_binning()
 
     @property
     def n_patches(self) -> int:
@@ -507,7 +526,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         counts = self.count.get_sum(config)
         totals = self.total.get_sum(config)
         return SampledData(
-            binning=self.binning,
+            binning=self.get_binning(),
             data=(counts.data / totals.data),
             samples=(counts.samples / totals.samples),
             method=config.method)

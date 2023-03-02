@@ -138,6 +138,13 @@ class ScalesConfig(DictRepresentation):
             raise ConfigurationError(
                 "'rmin' and 'rmax' must be both sequences or float")
 
+    @classmethod
+    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> ScalesConfig:
+        return super().from_dict(the_dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return super().to_dict()
+
     def __eq__(self, other: ScalesConfig) -> bool:
         if not _array_equal(self.as_array(), other.as_array()):
             return False
@@ -284,6 +291,13 @@ class BackendConfig(DictRepresentation):
     def __post_init__(self) -> None:
         if self.thread_num is None:
             object.__setattr__(self, "thread_num", os.cpu_count())
+
+    @classmethod
+    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> BackendConfig:
+        return super().from_dict(the_dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return super().to_dict()
 
     def get_threads(self, max=None) -> int:
         if self.thread_num is None:
@@ -573,6 +587,10 @@ class ResamplingConfig(DictRepresentation):
 
     def reset(self) -> None:
         object.__setattr__(self, "_resampling_idx", None)
+
+    @classmethod
+    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> ResamplingConfig:
+        return super().from_dict(the_dict)
 
     def to_dict(self) -> dict[str, Any]:
         if self.method == "jackknife":

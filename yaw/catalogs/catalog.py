@@ -24,7 +24,7 @@ class BackendError(Exception):
     pass
 
 
-class BaseCatalog(ABC, Sequence, PatchedQuantity):
+class BaseCatalog(Sequence, PatchedQuantity):
 
     logger = logging.getLogger("yaw.catalog")
     backends = dict()

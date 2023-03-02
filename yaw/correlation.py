@@ -212,10 +212,8 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
     dr: PairCountResult | None = field(default=None)
     rd: PairCountResult | None = field(default=None)
     rr: PairCountResult | None = field(default=None)
-    n_patches: int = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "n_patches", self.dd.n_patches)
         # check if any random pairs are required
         if self.dr is None and self.rd is None and self.rr is None:
             raise ValueError("either 'dr', 'rd' or 'rr' is required")
@@ -235,11 +233,14 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
 
-    @property
-    def binning(self) -> IntervalIndex:
-        return self.dd.binning
+    def get_binning(self) -> IntervalIndex:
+        return self.dd.get_binning()
 
-    def is_compatible(self, other: PairCountResult) -> bool:
+    @property
+    def n_patches(self) -> int:
+        return self.dd.n_patches
+
+    def is_compatible(self, other: CorrelationFunction) -> bool:
         return self.dd.is_compatible(other.dd)
 
     @property
@@ -338,7 +339,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         data = est_fun(**required_data, **optional_data)
         samples = est_fun(**required_samples, **optional_samples)
         return CorrelationData(
-            binning=self.binning,
+            binning=self.get_binning(),
             data=data,
             samples=samples,
             method=config.method)
@@ -598,7 +599,7 @@ class RedshiftData(CorrelationData):
                 xdata=to.mids[mask], ydata=y_to[mask],
                 p0=[1.0], sigma=1/y_to[mask])[0][0]
         return self.__class__(
-            binning=self.binning,
+            binning=self.get_binning(),
             data=self.data / norm,
             samples=self.samples / norm,
             method=self.method)
