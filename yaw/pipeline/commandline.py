@@ -9,6 +9,7 @@ from typing import Any
 from yaw import __version__
 
 from yaw.pipeline.data import BinnedInput, Input
+from yaw.pipeline.logger import Colors, init_logger
 from yaw.pipeline.task_utils import Registry
 
 
@@ -219,11 +220,23 @@ class _Commandline(Registry):
 
     def main(self) -> Any:
         args = self.parse_args()
-        if args.task:
-            func = self[args.task]
-            return func(args)
-        else:
-            Commandline.print_usage()
+        # create a logger and execute the task
+        levels = {0: "warn", 1: "info", 2: "debug"}
+        logger = init_logger(levels[args.verbose], plain=True)
+        try:
+            if args.task:
+                if args.task == "run":
+                    message = f"running setup from from:{Colors.rst} {args.setup}"
+                else:
+                    message = f"running task {args.task.upper()}"
+                print(f"{Colors.grn}YAW {Colors.sep} {message}{Colors.rst}")
+                func = self[args.task]
+                return func(args)
+            else:
+                Commandline.print_usage()
+        except Exception:
+            logger.exception("an unexpected error occured")
+            raise
 
 
 Commandline = _Commandline()

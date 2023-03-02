@@ -58,7 +58,11 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def get_logger(
+def get_logger() -> logging.Logger:
+    return logging.getLogger("yaw")
+
+
+def init_logger(
     level: str = "info",
     plain: bool = True
 ) -> logging.Logger:
@@ -72,4 +76,4 @@ def get_logger(
     handler.setLevel(level)
     handler.addFilter(OnlyYAWFilter())
     logging.basicConfig(level=level, handlers=[handler])
-    return logging.getLogger("yaw")
+    return get_logger()

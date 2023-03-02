@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import textwrap
@@ -18,6 +19,7 @@ from yaw.coordinates import CoordSky
 from yaw.utils import DictRepresentation, TypePathStr, bytes_format
 
 from yaw.pipeline.data import InputRegister
+from yaw.pipeline.logger import get_logger
 from yaw.pipeline.task_utils import TaskList
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -234,10 +236,21 @@ class ProjectDirectory(DictRepresentation):
         if not self.setup_file.exists:
             raise FileNotFoundError(
                 f"setup file '{self.setup_file}' does not exist")
+        self._add_log_file_handle()
         self.setup_reload()
         # create any missing directories
         self.counts_dir.mkdir(exist_ok=True)
         self.estimate_dir.mkdir(exist_ok=True)
+
+    def _add_log_file_handle(self):
+        # create the file logger
+        logger = get_logger()
+        fh = logging.FileHandler(self.log_file, mode="a")
+        fh.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
 
     @classmethod
     def from_dict(
@@ -308,6 +321,10 @@ class ProjectDirectory(DictRepresentation):
     @property
     def path(self) -> Path:
         return self._path
+
+    @property
+    def log_file(self) -> Path:
+        return self._path.joinpath("setup.log")
 
     @property
     def setup_file(self) -> Path:
