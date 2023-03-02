@@ -8,11 +8,9 @@ from typing import TYPE_CHECKING, Any
 import astropandas as apd
 import numpy as np
 from numpy.typing import NDArray
-from scipy.spatial import distance_matrix
 
-from yaw.coordinates import Coordinate, CoordSky, Dist3D, DistSky
-from yaw.cosmology import r_kpc_to_angle
-from yaw.utils import PatchIDs, PatchedQuantity, long_num_format
+from yaw.coordinates import Coordinate, CoordSky, DistSky
+from yaw.utils import PatchedQuantity, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
@@ -20,9 +18,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.config import Configuration, ResamplingConfig
     from yaw.correlation import RedshiftData
     from yaw.paircounts import PairCountResult
-
-
-logger = logging.getLogger()
 
 
 class BackendError(Exception):

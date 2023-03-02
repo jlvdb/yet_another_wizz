@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import logging
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -29,8 +28,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.cosmology import TypeCosmology
 
-
-logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PatchCorrelationData:

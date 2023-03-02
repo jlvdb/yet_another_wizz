@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import logging
 import os
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
@@ -24,9 +23,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import PatchLinkage
     from yaw.config import ResamplingConfig
     from yaw.correlation import RedshiftData
-
-
-logger = logging.getLogger(__name__)
 
 
 def _iter_bin_masks(
