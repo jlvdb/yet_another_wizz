@@ -7,7 +7,8 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 
 from yaw.catalogs import NewCatalog
 from yaw.config import Configuration, ResamplingConfig
-from yaw.correlation import CorrelationData, CorrelationFunction, RedshiftData, autocorrelate, crosscorrelate
-from yaw.cosmology import CustomCosmology
+from yaw.correlation import (
+    CorrelationData, CorrelationFunction, RedshiftData,
+    autocorrelate, crosscorrelate)
 from yaw.logger import get_logger
 from yaw.randoms import UniformRandoms
