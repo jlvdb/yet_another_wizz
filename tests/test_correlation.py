@@ -1,14 +1,9 @@
-import os
-
-import h5py
 import numpy as np
 import numpy.testing as npt
 import pandas as pd
-import pandas.testing as pdt
-from pytest import fixture, mark, raises
+from pytest import fixture, raises
 
-from yaw.core import correlation
-from yaw.core.config import ResamplingConfig
+from yaw import correlation
 
 
 @fixture

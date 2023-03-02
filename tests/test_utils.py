@@ -2,7 +2,7 @@ import numpy as np
 import numpy.testing as npt
 from pytest import mark
 
-from yaw.core import utils
+from yaw import utils
 
 
 @mark.parametrize("axis", [None, 0, 1])

@@ -6,7 +6,7 @@ import pandas as pd
 import pandas.testing as pdt
 from pytest import fixture, mark, raises
 
-from yaw.scipy import patches
+from yaw.catalogs.scipy import patches
 
 
 def test_patch_id_from_path():

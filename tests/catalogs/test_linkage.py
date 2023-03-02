@@ -2,9 +2,10 @@ import numpy as np
 import numpy.testing as npt
 from pytest import fixture
 
-from yaw.core.catalog import PatchLinkage, LINK_ZMIN
-from yaw.core.config import Configuration
-from yaw.core.coordinates import CoordSky, DistSky
+from yaw.catalogs import PatchLinkage
+from yaw.catalogs.linkage import LINK_ZMIN
+from yaw.config import Configuration
+from yaw.coordinates import CoordSky, DistSky
 
 
 class MockCatalog:

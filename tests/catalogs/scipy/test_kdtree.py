@@ -4,8 +4,8 @@ import numpy as np
 from numpy import testing as npt
 from pytest import fixture, raises
 
-from yaw.core import coordinates
-from yaw.scipy import kdtree
+from yaw import coordinates
+from yaw.catalogs.scipy import kdtree
 
 
 @fixture
