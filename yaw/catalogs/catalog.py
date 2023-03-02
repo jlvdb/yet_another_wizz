@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -10,23 +10,39 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import distance_matrix
 
-from yaw.core.coordinates import Coordinate, CoordSky, Dist3D, DistSky
-from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.utils import PatchIDs, PatchedQuantity, long_num_format
+from yaw.coordinates import Coordinate, CoordSky, Dist3D, DistSky
+from yaw.cosmology import r_kpc_to_angle
+from yaw.utils import PatchIDs, PatchedQuantity, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
-    from yaw.core.config import Configuration, ResamplingConfig
-    from yaw.core.correlation import RedshiftData
-    from yaw.core.paircounts import PairCountResult
+    from yaw.catalogs import PatchLinkage
+    from yaw.config import Configuration, ResamplingConfig
+    from yaw.correlation import RedshiftData
+    from yaw.paircounts import PairCountResult
 
 
 logger = logging.getLogger()
 
 
-class CatalogBase(ABC, Sequence, PatchedQuantity):
+class BackendError(Exception):
+    pass
 
-    logger = logging.getLogger("yaw.Catalog")
+
+class BaseCatalog(ABC, Sequence, PatchedQuantity):
+
+    logger = logging.getLogger("yaw.catalog")
+    backends = dict()
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not cls.__name__.endswith("Catalog"):
+            raise BackendError(
+                f"subclasses of '{cls}' must follow naming convention "
+                f"'[Backend]Catalog, (e.g. ScipyCatalog)")
+        backend = cls.__name__.strip("Catalog").lower()
+        print(f"registering backend '{backend}'")
+        cls.backends[backend] = cls
 
     @abstractmethod
     def __init__(
@@ -36,7 +52,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: CatalogBase | Coordinate | None = None,
+        patch_centers: BaseCatalog | Coordinate | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -47,7 +63,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
     def from_file(
         cls,
         filepath: str,
-        patches: str | int | CatalogBase | Coordinate,
+        patches: str | int | BaseCatalog | Coordinate,
         ra: str,
         dec: str,
         *,
@@ -57,7 +73,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         cache_directory: str | None = None,
         file_ext: str | None = None,
         **kwargs
-    ) -> CatalogBase:
+    ) -> BaseCatalog:
         """
         TODO
         """
@@ -69,7 +85,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
             patch_kwarg = dict(n_patches=patches)
         elif isinstance(patches, Coordinate):
             patch_kwarg = dict(patch_centers=patches)
-        elif isinstance(patches, CatalogBase):
+        elif isinstance(patches, BaseCatalog):
             patch_kwarg = dict(patch_centers=patches.centers)
         else:
             raise TypeError(
@@ -87,6 +103,12 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
             redshift_name=redshift,
             weight_name=weight,
             cache_directory=cache_directory)
+
+    @abstractclassmethod
+    def from_cache(
+        cls,
+        cache_directory: str
+    ) -> BaseCatalog: pass
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -171,7 +193,7 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         self,
         config: Configuration,
         binned: bool,
-        other: CatalogBase = None,
+        other: BaseCatalog = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
     ) -> PairCountResult | dict[str, PairCountResult]:
@@ -191,145 +213,3 @@ class CatalogBase(ABC, Sequence, PatchedQuantity):
         Compute the a redshift distribution histogram.
         """
         self.logger.debug("computing true redshift distribution")
-
-
-LINK_ZMIN = 0.05
-
-
-class PatchLinkage(PatchedQuantity):
-
-    def __init__(
-        self,
-        patch_tuples: list[PatchIDs]
-    ) -> None:
-        self.pairs = patch_tuples
-
-    @classmethod
-    def from_setup(
-        cls,
-        config: Configuration,
-        catalog: CatalogBase
-    ) -> PatchLinkage:
-        # determine the additional overlap from the spatial query
-        if config.backend.crosspatch:
-            # estimate maximum query radius at low, but non-zero redshift
-            z_ref = max(LINK_ZMIN, config.binning.zmin)
-            max_query_radius = r_kpc_to_angle(
-                config.scales.as_array(), z_ref, config.cosmology).max()
-        else:
-            max_query_radius = 0.0  # only relevant for cross-patch
-        max_query_radius = DistSky(max_query_radius)
-
-        logger.debug(f"computing patch linkage with {max_query_radius=:.3e}")
-        centers_3d = catalog.centers.to_3d().values
-        radii = catalog.radii.values
-        # compute distance between all patch centers
-        dist_mat_3d = Dist3D(distance_matrix(centers_3d, centers_3d))
-        # compare minimum separation required for patchs to not overlap
-        size_sum = DistSky(np.add.outer(radii, radii))
-
-        # check which patches overlap when factoring in the query radius
-        overlaps = dist_mat_3d.to_sky() < (size_sum + max_query_radius)
-        patch_pairs = []
-        for id1, overlap in enumerate(overlaps):
-            patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
-        logger.debug(
-            f"found {len(patch_pairs)} patch links "
-            f"for {catalog.n_patches} patches")
-        return cls(patch_pairs)
-
-    def __len__(self) -> int:
-        return len(self.pairs)
-
-    def __repr__(self) -> str:
-        name = self.__class__.__name__
-        return f"{name}(n_patches={self.n_patches}, n_pairs={len(self)})"
-
-    @property
-    def n_patches(self) -> int:
-        patches = set()
-        for p1, p2 in self.pairs:
-            patches.add(p1)
-            patches.add(p2)
-        return len(patches)
-
-    @property
-    def density(self) -> float:
-        n = self.n_patches
-        return len(self) / (n*n)
-
-    def get_pairs(
-        self,
-        auto: bool,
-        crosspatch: bool = True
-    ) -> list[PatchIDs]:
-        if crosspatch:
-            if auto:
-                pairs = [(i, j) for i, j in self.pairs if j >= i]
-            else:
-                pairs = self.pairs
-        else:
-            pairs = [(i, j) for i, j in self.pairs if i == j]
-        return pairs
-
-    @staticmethod
-    def _parse_collections(
-        collection1: CatalogBase,
-        collection2: CatalogBase | None = None
-    ) -> tuple[bool, CatalogBase, CatalogBase]:
-        auto = collection2 is None
-        if auto:
-            collection2 = collection1
-        return auto, collection1, collection2
-
-    def get_matrix(
-        self,
-        collection1: CatalogBase,
-        collection2: CatalogBase | None = None,
-        crosspatch: bool = True
-    ) -> NDArray[np.bool_]:
-        auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2)
-        pairs = self.get_pairs(auto, crosspatch)
-        # make a boolean matrix indicating the exisiting patch combinations
-        n_patches = self.n_patches
-        matrix = np.zeros((n_patches, n_patches), dtype=np.bool_)
-        for pair in pairs:
-            matrix[pair] = True
-        return matrix
-
-    def get_mask(
-        self,
-        collection1: CatalogBase,
-        collection2: CatalogBase | None = None,
-        crosspatch: bool = True
-    ) -> NDArray[np.bool_]:
-        auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2)
-        # make a boolean mask indicating all patch combinations
-        n_patches = self.n_patches
-        shape = (n_patches, n_patches)
-        if crosspatch:
-            mask = np.ones(shape, dtype=np.bool_)
-            if auto:
-                mask = np.triu(mask)
-        else:
-            mask = np.eye(n_patches, dtype=np.bool_)
-        return mask
-
-    def get_patches(
-        self,
-        collection1: CatalogBase,
-        collection2: CatalogBase | None = None,
-        crosspatch: bool = True
-    ) -> tuple[list[CatalogBase], list[CatalogBase]]:
-        auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2)
-        pairs = self.get_pairs(auto, crosspatch)
-        # generate the patch lists
-        patches1 = []
-        patches2 = []
-        for id1, id2 in pairs:
-            patches1.append(collection1[id1])
-            patches2.append(collection2[id2])
-        return patches1, patches2

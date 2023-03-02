@@ -11,23 +11,23 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from yaw.core.catalog import CatalogBase, PatchLinkage
-from yaw.core.config import Configuration, ResamplingConfig
-from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.core.correlation import RedshiftData
-from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.paircounts import PairCountResult, PatchedCount, PatchedTotal
-from yaw.core.parallel import ParallelHelper
-from yaw.core.utils import LimitTracker, PatchIDs, scales_to_keys
+from yaw.catalogs import BaseCatalog, PatchLinkage
+from yaw.config import Configuration, ResamplingConfig
+from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.correlation import RedshiftData
+from yaw.cosmology import r_kpc_to_angle
+from yaw.paircounts import PairCountResult, PatchedCount, PatchedTotal
+from yaw.parallel import ParallelHelper
+from yaw.utils import LimitTracker, PatchIDs, scales_to_keys
 
-from yaw.scipy.patches import (
+from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.logger import TimedLog
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
-    from yaw.core.cosmology import TypeCosmology
+    from yaw.cosmology import TypeCosmology
 
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ def _histogram_thread(
     return counts
 
 
-class Catalog(CatalogBase):
+class ScipyCatalog(BaseCatalog):
 
     def __init__(
         self,
@@ -104,7 +104,7 @@ class Catalog(CatalogBase):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: CatalogBase | Coordinate | None = None,
+        patch_centers: BaseCatalog | Coordinate | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -150,7 +150,7 @@ class Catalog(CatalogBase):
                     position=position, n_patches=n_patches)
                 log_msg = f"creating {n_patches} patches"
             else:
-                if isinstance(patch_centers, Catalog):
+                if isinstance(patch_centers, BaseCatalog):
                     patch_centers = patch_centers.centers.to_3d()
                 patch_ids = assign_patches(
                     centers=patch_centers, position=position)
@@ -205,7 +205,7 @@ class Catalog(CatalogBase):
     def from_cache(
         cls,
         cache_directory: str
-    ) -> Catalog:
+    ) -> ScipyCatalog:
         cls.logger.info(f"restoring from cache directory '{cache_directory}'")
         new = cls.__new__(cls)
         # load the patch properties
@@ -336,14 +336,14 @@ class Catalog(CatalogBase):
         self,
         config: Configuration,
         binned: bool,
-        other: Catalog | None = None,
+        other: ScipyCatalog | None = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
     ) -> PairCountResult | dict[str, PairCountResult]:
         super().correlate(config, binned, other, linkage)
 
         auto = other is None
-        if not auto and not isinstance(other, Catalog):
+        if not auto and not isinstance(other, ScipyCatalog):
             raise TypeError
 
         if linkage is None:

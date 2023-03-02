@@ -11,7 +11,7 @@ import pandas as pd
 import scipy.optimize
 
 from yaw import default as DEFAULT
-from yaw.catalog import PatchLinkage
+from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
 from yaw.estimators import CorrelationEstimator, CtsMix, cts_from_code
 from yaw.paircounts import PairCountResult, SampledData
@@ -25,7 +25,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from matplotlib.axis import Axis
     from pandas import DataFrame, IntervalIndex, Series
-    from yaw.catalog import CatalogBase
+    from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
     from yaw.estimators import Cts
 
@@ -383,8 +383,8 @@ def _create_dummy_counts(
 
 def autocorrelate(
     config: Configuration,
-    data: CatalogBase,
-    random: CatalogBase,
+    data: BaseCatalog,
+    random: BaseCatalog,
     *,
     linkage: PatchLinkage | None = None,
     compute_rr: bool = True,
@@ -422,11 +422,11 @@ def autocorrelate(
 
 def crosscorrelate(
     config: Configuration,
-    reference: CatalogBase,
-    unknown: CatalogBase,
+    reference: BaseCatalog,
+    unknown: BaseCatalog,
     *,
-    ref_rand: CatalogBase | None = None,
-    unk_rand: CatalogBase | None = None,
+    ref_rand: BaseCatalog | None = None,
+    unk_rand: BaseCatalog | None = None,
     linkage: PatchLinkage | None = None,
     progress: bool = False
 ) -> CorrelationFunction | dict[str, CorrelationFunction]:

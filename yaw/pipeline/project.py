@@ -22,7 +22,7 @@ from yaw.pipeline.data import InputRegister
 from yaw.pipeline.task_utils import TaskList
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.catalog import CatalogBase
+    from yaw.catalogs import BaseCatalog
     from yaw.pipeline.data import Input
     from yaw.pipeline.task_utils import TaskRecord
 
@@ -393,7 +393,7 @@ class ProjectDirectory(DictRepresentation):
     ) -> None:
         self._inputs.add_unknown(bin_idx, data, rand)
 
-    def _build_catalog(self, load_kwargs) -> CatalogBase:
+    def _build_catalog(self, load_kwargs) -> BaseCatalog:
         # patches must be created or applied
         if not self._inputs.external_patches:
             if "patches" in load_kwargs:
@@ -422,7 +422,7 @@ class ProjectDirectory(DictRepresentation):
         sample: str,
         kind: str,
         bin_idx: int | None = None
-    ) -> CatalogBase:
+    ) -> BaseCatalog:
         # get the correct sample type
         if sample == "reference":
             inputs = self._inputs.get_reference()
@@ -465,10 +465,10 @@ class ProjectDirectory(DictRepresentation):
             catalog = self._build_catalog(kwargs)
         return catalog
 
-    def load_reference(self, kind: str) -> CatalogBase:
+    def load_reference(self, kind: str) -> BaseCatalog:
         return self._load_catalog("reference", kind)
 
-    def load_unknown(self, kind: str, bin_idx: int) -> CatalogBase:
+    def load_unknown(self, kind: str, bin_idx: int) -> BaseCatalog:
         return self._load_catalog("unknown", kind, bin_idx=bin_idx)
 
     def get_bin_indices(self) -> set[int]:

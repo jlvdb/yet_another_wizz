@@ -20,7 +20,7 @@ from yaw.utils import DictRepresentation, scales_to_keys
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
-    from yaw.catalog import CatalogBase
+    from yaw.catalogs import BaseCatalog
 
 
 logger = logging.getLogger()
@@ -420,7 +420,7 @@ class Configuration(DictRepresentation):
 
     def plot_scales(
         self,
-        catalog: CatalogBase,
+        catalog: BaseCatalog,
         log: bool = True,
         legend: bool = True
     ) -> Figure:

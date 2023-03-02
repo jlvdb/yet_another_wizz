@@ -14,7 +14,7 @@ from yaw.logger import TimedLog
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
-    from yaw.catalog import CatalogBase
+    from yaw.catalogs import BaseCatalog
 
 
 logger = logging.getLogger()
@@ -37,7 +37,7 @@ class UniformRandoms:
     @classmethod
     def from_catalog(
         cls,
-        cat: CatalogBase,
+        cat: BaseCatalog,
         seed: int = 12345
     ) -> UniformRandoms:
         return cls(

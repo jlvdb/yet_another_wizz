@@ -7,7 +7,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 from yaw import default as DEFAULT
-from yaw.catalog import PatchLinkage
+from yaw.catalogs import PatchLinkage
 from yaw.config import Configuration, ResamplingConfig
 from yaw.correlation import CorrelationEstimator
 from yaw.cosmology import get_default_cosmology

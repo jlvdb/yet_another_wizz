@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Union
 try:  # pragma: no cover
     from typing import TypeAlias
-except ImportError:
+except ImportError:  # pragma: no cover
     from typing_extensions import TypeAlias
 
 import numpy as np

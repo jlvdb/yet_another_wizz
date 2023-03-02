@@ -11,19 +11,19 @@ import pandas as pd
 from numpy.typing import NDArray
 from treecorr import Catalog as TreeCorrCatalog, NNCorrelation
 
-from yaw.core.catalog import CatalogBase
-from yaw.core.config import Configuration
-from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.paircounts import PairCountResult
+from yaw.catalogs import BaseCatalog
+from yaw.config import Configuration
+from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.cosmology import r_kpc_to_angle
+from yaw.paircounts import PairCountResult
 
 from yaw.logger import TimedLog
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval
-    from yaw.core.catalog import PatchLinkage
-    from yaw.core.config import ResamplingConfig
-    from yaw.core.correlation import RedshiftData
+    from yaw.catalogs import PatchLinkage
+    from yaw.config import ResamplingConfig
+    from yaw.correlation import RedshiftData
 
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ def _iter_bin_masks(
         yield interval, bin_ids==i
 
 
-class Catalog(CatalogBase):
+class TreecorrCatalog(BaseCatalog):
 
     def __init__(
         self,
@@ -51,7 +51,7 @@ class Catalog(CatalogBase):
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: CatalogBase | Coordinate | None = None,
+        patch_centers: BaseCatalog | Coordinate | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
@@ -72,7 +72,7 @@ class Catalog(CatalogBase):
         elif patch_name is not None:
             kwargs["patch"] = data[patch_name]
             log_msg = f"splitting data into predefined patches"
-        elif isinstance(patch_centers, Catalog):
+        elif isinstance(patch_centers, BaseCatalog):
             kwargs["patch_centers"] = patch_centers.centers.to_3d().values
             n_patches = patch_centers.n_patches
             log_msg = f"applying {n_patches} patches from external data"
@@ -98,7 +98,14 @@ class Catalog(CatalogBase):
             self.unload()
 
     @classmethod
-    def from_treecorr(cls, cat: TreeCorrCatalog) -> Catalog:
+    def from_cache(
+        cls,
+        cache_directory: str
+    ) -> TreecorrCatalog:
+        raise NotImplementedError
+
+    @classmethod
+    def from_treecorr(cls, cat: TreeCorrCatalog) -> TreecorrCatalog:
         new = cls.__new__(cls)
         new._catalog = cat
         return new
@@ -114,7 +121,7 @@ class Catalog(CatalogBase):
         low_mem = (not self.is_loaded()) and (c.save_patch_dir is not None)
         c.get_patches(low_mem=low_mem)
 
-    def __getitem__(self, item: int) -> Catalog:
+    def __getitem__(self, item: int) -> TreecorrCatalog:
         self._make_patches()
         return self._catalog._patches[item]
 
@@ -126,7 +133,7 @@ class Catalog(CatalogBase):
     def n_patches(self) -> int:
         return self._catalog.npatch
 
-    def __iter__(self) -> Iterator[Catalog]:
+    def __iter__(self) -> Iterator[TreecorrCatalog]:
         self._make_patches()
         for patch in self._catalog._patches:
             yield self.__class__.from_treecorr(patch)
@@ -205,7 +212,7 @@ class Catalog(CatalogBase):
     def bin_iter(
         self,
         z_bins: NDArray[np.float_],
-    ) -> Iterator[tuple[Interval, Catalog]]:
+    ) -> Iterator[tuple[Interval, TreecorrCatalog]]:
         if not self.has_redshifts():
             raise ValueError("no redshifts for iteration provided")
         for interval, bin_mask in _iter_bin_masks(self.redshifts, z_bins):
@@ -217,14 +224,14 @@ class Catalog(CatalogBase):
         self,
         config: Configuration,
         binned: bool,
-        other: Catalog = None,
+        other: TreecorrCatalog = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
     ) -> PairCountResult | dict[str, PairCountResult]:
         super().correlate(config, binned, other, linkage)
 
         auto = other is None
-        if not auto and not isinstance(other, Catalog):
+        if not auto and not isinstance(other, TreecorrCatalog):
             raise TypeError
         nncorr_config = dict(
             sep_units="radian",
