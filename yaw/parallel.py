@@ -5,7 +5,7 @@ import logging
 import multiprocessing
 from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import numpy as np
 
@@ -97,7 +97,10 @@ def _threadwrapper(arg_tuple, function):
     return function(*arg_tuple)
 
 
-class ParallelHelper:
+_T = TypeVar("_T")
+
+
+class ParallelHelper(Generic[_T]):
     """
     Helper class to apply a series of arguments to a function using
     multiprocessing.Pool.
@@ -105,7 +108,7 @@ class ParallelHelper:
 
     def __init__(
         self,
-        function: Callable,
+        function: Callable[..., _T],
         n_items: int,
         num_threads: int | None = None
     ) -> None:
@@ -187,7 +190,7 @@ class ParallelHelper:
         self,
         initializer: Callable | None = None,
         initargs: Iterable | None = None
-    ) -> list:
+    ) -> list[_T]:
         """
         Apply the accumulated arguments to a function in a pool of threads.
         The threads are blocking until all results are received.
@@ -199,13 +202,19 @@ class ParallelHelper:
     def iter_result(
         self,
         initializer: Callable | None = None,
-        initargs: Iterable | None = None
-    ) -> Iterator:
+        initargs: Iterable | None = None,
+        ordered: bool = True
+    ) -> Iterator[_T]:
         """
         Apply the accumulated arguments to a function in a pool of threads.
         The results are processed unordered and yielded as an iterator.
         """
         function = functools.partial(_threadwrapper, function=self.function)
         with self._init_pool(initializer, initargs) as pool:
-            for result in pool.imap_unordered(function, zip(*self.args)):
-                yield result
+            imap_args = (function, zip(*self.args))
+            if ordered:
+                for result in pool.imap(*imap_args):
+                    yield result
+            else:
+                for result in pool.imap_unordered(*imap_args):
+                    yield result

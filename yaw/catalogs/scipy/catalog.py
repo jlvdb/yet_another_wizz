@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy.patches import (
@@ -20,7 +19,8 @@ from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.parallel import ParallelHelper
 from yaw.utils import (
-    LimitTracker, PatchIDs, TimedLog, long_num_format, scales_to_keys)
+    LimitTracker, PatchIDs, TimedLog, job_progress_bar, long_num_format,
+    scales_to_keys)
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -104,7 +104,8 @@ class ScipyCatalog(BaseCatalog):
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
-        cache_directory: str | None = None
+        cache_directory: str | None = None,
+        progress: bool = True
     ) -> None:
         if len(data) == 0:
             raise ValueError("data catalog is empty")
@@ -156,7 +157,8 @@ class ScipyCatalog(BaseCatalog):
             data[patch_name] = patch_ids
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
-            log_msg = f"dividing data into predefined patches"
+            n_patches = len(data[patch_name].unique())
+            log_msg = f"dividing data into {n_patches} predefined patches"
             centers = dict()  # this can be empty
         self.logger.debug(log_msg)
 
@@ -165,7 +167,10 @@ class ScipyCatalog(BaseCatalog):
         with TimedLog(self.logger.info, f"processed {n_obj_str} records"):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
-            for patch_id, patch_data in data.groupby(patch_name):
+            patch_iter = data.groupby(patch_name)
+            if progress:
+                patch_iter = job_progress_bar(patch_iter, total=n_patches)
+            for patch_id, patch_data in patch_iter:
                 if patch_id < 0:
                     raise ValueError("negative patch IDs are not supported")
                 # drop extra columns
@@ -184,6 +189,8 @@ class ScipyCatalog(BaseCatalog):
                 if unload:
                     patch.unload()
                 patches[patch.id] = patch
+            if progress:  # clean up if any patch was empty and skipped
+                patch_iter.close()
             self._zmin, self._zmax = limits.get()
             self._patches = patches
 
@@ -202,7 +209,8 @@ class ScipyCatalog(BaseCatalog):
     @classmethod
     def from_cache(
         cls,
-        cache_directory: str
+        cache_directory: str,
+        progress: bool = False
     ) -> ScipyCatalog:
         super().from_cache(cache_directory)
         new = cls.__new__(cls)
@@ -219,7 +227,10 @@ class ScipyCatalog(BaseCatalog):
         # load the patches
         limits = LimitTracker()
         new._patches = {}
-        for path in os.listdir(cache_directory):
+        patch_files = list(os.listdir(cache_directory))
+        if progress:
+            patch_files = job_progress_bar(patch_files)
+        for path in patch_files:
             if not path.startswith("patch"):
                 continue
             abspath = os.path.join(cache_directory, path)
@@ -387,13 +398,10 @@ class ScipyCatalog(BaseCatalog):
             key: PatchedCount(binning=binning, n_patches=n_patches, auto=auto)
             for key in config.scales.dict_keys()}
         # run the scheduled tasks
-        result_iter = pool.iter_result()
+        result_iter = pool.iter_result(ordered=False)
         # add an optional progress bar
         if progress:
-            result_iter = tqdm(
-                result_iter, total=pool.n_jobs(), delay=0.5,
-                leave=False, smoothing=0.1, unit="jobs")
-        patch_data: PatchCorrelationData
+            result_iter = job_progress_bar(result_iter, total=pool.n_jobs())
         for patch_data in result_iter:
             id1, id2 = patch_data.patches
             # record total weight per bin, overwriting OK since identical
@@ -422,7 +430,8 @@ class ScipyCatalog(BaseCatalog):
     def true_redshifts(
         self,
         config: Configuration,
-        sampling_config: ResamplingConfig | None = None
+        sampling_config: ResamplingConfig | None = None,
+        progress: bool = False
     ) -> RedshiftData:
         super().true_redshifts(config)
         if sampling_config is None:
@@ -439,7 +448,10 @@ class ScipyCatalog(BaseCatalog):
         pool.add_iterable(self._patches.values())
         # NDArray[np.float_]
         pool.add_constant(config.binning.zbins)
-        hist_counts = np.array(list(pool.iter_result()))
+        iterator = pool.iter_result()
+        if progress:
+            iterator = job_progress_bar(iterator)
+        hist_counts = np.array(list(iterator))
 
         # construct the output data samples
         binning = pd.IntervalIndex.from_breaks(config.binning.zbins)

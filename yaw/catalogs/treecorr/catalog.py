@@ -50,7 +50,8 @@ class TreecorrCatalog(BaseCatalog):
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
-        cache_directory: str | None = None
+        cache_directory: str | None = None,
+        progress: bool = False
     ) -> None:
         # construct the underlying TreeCorr catalogue
         kwargs = dict()
@@ -95,7 +96,8 @@ class TreecorrCatalog(BaseCatalog):
     @classmethod
     def from_cache(
         cls,
-        cache_directory: str
+        cache_directory: str,
+        progress: bool = False
     ) -> TreecorrCatalog:
         # super().from_cache(cache_directory)
         raise NotImplementedError
@@ -274,7 +276,8 @@ class TreecorrCatalog(BaseCatalog):
     def true_redshifts(
         self,
         config: Configuration,
-        sampling_config: ResamplingConfig | None = None
+        sampling_config: ResamplingConfig | None = None,
+        progress: bool = False
     ) -> RedshiftData:
         super().true_redshifts(config)
         if not self.has_redshifts():

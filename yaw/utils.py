@@ -3,14 +3,16 @@ from __future__ import annotations
 import logging
 import warnings
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
+from collections.abc import Iterable
 from dataclasses import asdict
 from datetime import timedelta
 from pathlib import Path
 from timeit import default_timer
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, TypeVar
 
 import h5py
 import numpy as np
+import tqdm
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
@@ -62,6 +64,17 @@ def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
 
 def sgn(val: ArrayLike) -> ArrayLike:
     return np.where(val == 0, 1.0, np.sign(val))
+
+
+Tjob = TypeVar("Tjob")
+
+
+def job_progress_bar(
+    iterable: Iterable[Tjob],
+    total: int | None = None
+) -> Iterable[Tjob]:
+    config = dict(delay=0.5, leave=False, smoothing=0.1, unit="jobs")
+    return tqdm.tqdm(iterable, total=total, **config)
 
 
 class LimitTracker:

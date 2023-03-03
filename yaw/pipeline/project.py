@@ -429,7 +429,8 @@ class ProjectDirectory(DictRepresentation):
         self,
         sample: str,
         kind: str,
-        bin_idx: int | None = None
+        bin_idx: int | None = None,
+        progress: bool = False
     ) -> BaseCatalog:
         # get the correct sample type
         if sample == "reference":
@@ -454,6 +455,7 @@ class ProjectDirectory(DictRepresentation):
 
         # get arguments for Catalog.from_file()
         kwargs = input.to_dict()
+        kwargs["progress"] = progress
         kwargs.pop("cache", False)
         # attempt to load the catalog into memory
         if sample == "reference":
@@ -464,7 +466,7 @@ class ProjectDirectory(DictRepresentation):
 
         # already cached and backend supports restoring
         if exists and input.cache:
-            catalog = self.catalog_factory.from_cache(cachepath)
+            catalog = self.catalog_factory.from_cache(cachepath, progress)
         # no caching requested or not supported
         else:
             if input.cache:
@@ -473,16 +475,26 @@ class ProjectDirectory(DictRepresentation):
             catalog = self._build_catalog(kwargs)
         return catalog
 
-    def load_reference(self, kind: str) -> BaseCatalog:
+    def load_reference(
+            self,
+        kind: str,
+        progress: bool = False
+    ) -> BaseCatalog:
         logger.info(
             f"loading reference {'random' if kind == 'rand' else kind} catalog")
-        return self._load_catalog("reference", kind)
+        return self._load_catalog("reference", kind, progress=progress)
 
-    def load_unknown(self, kind: str, bin_idx: int) -> BaseCatalog:
+    def load_unknown(
+        self,
+        kind: str,
+        bin_idx: int,
+        progress: bool = False
+    ) -> BaseCatalog:
         logger.info(
             f"loading unknown bin {bin_idx} "
             f"{'random' if kind == 'rand' else kind} catalog")
-        return self._load_catalog("unknown", kind, bin_idx=bin_idx)
+        return self._load_catalog(
+            "unknown", kind, bin_idx=bin_idx, progress=progress)
 
     def get_bin_indices(self) -> set[int]:
         return self._inputs.get_bin_indices()

@@ -84,11 +84,13 @@ class Runner:
     def load_reference(self):
         # load randoms first since preferrable for optional patch creation
         try:
-            self.ref_rand = self.project.load_reference("rand")
+            self.ref_rand = self.project.load_reference(
+                "rand", progress=self.progress)
         except MissingCatalogError as e:
             logger.debug(e.args[0])
             self.ref_rand = None
-        self.ref_data = self.project.load_reference("data")
+        self.ref_data = self.project.load_reference(
+            "data", progress=self.progress)
         self._warn_patches()
 
     def load_unknown(self, idx: int, skip_rand: bool = False):
@@ -98,11 +100,13 @@ class Runner:
                 logger.debug("skipping unknown randoms")
                 self.unk_rand = None
             else:
-                self.unk_rand = self.project.load_unknown("rand", idx)
+                self.unk_rand = self.project.load_unknown(
+                    "rand", idx, progress=self.progress)
         except MissingCatalogError as e:
             logger.debug(e.args[0])
             self.unk_rand = None
-        self.unk_data = self.project.load_unknown("data", idx)
+        self.unk_data = self.project.load_unknown(
+            "data", idx, progress=self.progress)
         self._warn_patches()
 
     def compute_linkage(self):

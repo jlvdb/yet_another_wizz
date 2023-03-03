@@ -51,7 +51,8 @@ class BaseCatalog(Sequence, PatchedQuantity):
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
-        cache_directory: str | None = None
+        cache_directory: str | None = None,
+        progress: bool = False
     ) -> None: pass
 
     @classmethod
@@ -67,6 +68,7 @@ class BaseCatalog(Sequence, PatchedQuantity):
         sparse: int | None = None,
         cache_directory: str | None = None,
         file_ext: str | None = None,
+        progress: bool = False,
         **kwargs
     ) -> BaseCatalog:
         """
@@ -97,12 +99,14 @@ class BaseCatalog(Sequence, PatchedQuantity):
             data, ra, dec, **patch_kwarg,
             redshift_name=redshift,
             weight_name=weight,
-            cache_directory=cache_directory)
+            cache_directory=cache_directory,
+            progress=progress)
 
     @abstractclassmethod
     def from_cache(
         cls,
-        cache_directory: str
+        cache_directory: str,
+        progress: bool = False
     ) -> BaseCatalog:
         cls.logger.info(f"restoring from cache directory '{cache_directory}'")
 
@@ -203,7 +207,8 @@ class BaseCatalog(Sequence, PatchedQuantity):
     def true_redshifts(
         self,
         config: Configuration,
-        sampling_config: ResamplingConfig | None = None
+        sampling_config: ResamplingConfig | None = None,
+        progress: bool = False
     ) -> RedshiftData:
         """
         Compute the a redshift distribution histogram.

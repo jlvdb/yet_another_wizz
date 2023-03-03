@@ -29,7 +29,8 @@ class NewCatalog:
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
-        cache_directory: str | None = None
+        cache_directory: str | None = None,
+        progress: bool = False
     ) -> BaseCatalog:
         return self.catalog(
             data,
@@ -40,7 +41,8 @@ class NewCatalog:
             n_patches=n_patches,
             redshift_name=redshift_name,
             weight_name=weight_name,
-            cache_directory=cache_directory)
+            cache_directory=cache_directory,
+            progress=progress)
 
     def from_file(
         self,
@@ -54,6 +56,7 @@ class NewCatalog:
         sparse: int | None = None,
         cache_directory: str | None = None,
         file_ext: str | None = None,
+        progress: bool = False,
         **kwargs
     ) -> BaseCatalog:
         return self.catalog.from_file(
@@ -65,10 +68,13 @@ class NewCatalog:
             weight=weight,
             sparse=sparse,
             cache_directory=cache_directory,
-            file_ext=file_ext)
+            file_ext=file_ext,
+            progress=progress,
+            **kwargs)
 
     def from_cache(
         self,
-        cache_directory: str
+        cache_directory: str,
+        progress: bool = False
     ) -> BaseCatalog:
-        return self.catalog.from_cache(cache_directory)
+        return self.catalog.from_cache(cache_directory, progress=progress)
