@@ -13,7 +13,8 @@ import scipy.optimize
 from yaw import default as DEFAULT
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
-from yaw.estimators import CorrelationEstimator, CtsMix, cts_from_code
+from yaw.estimators import (
+    CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
 from yaw.paircounts import PairCountResult, SampledData
 from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
@@ -30,10 +31,6 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
-
-
-class EstimatorNotAvailableError(Exception):
-    pass
 
 
 @dataclass(frozen=True, repr=False)
@@ -290,8 +287,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                     continue
                 cts = cts_from_code(name)
                 if getattr(self, name) is None and cts in est_class.requires:
-                    raise EstimatorNotAvailableError(
-                        f"estimator requires {name}")
+                    raise EstimatorError(f"estimator requires {name}")
             else:
                 raise RuntimeError()
         # select the correct estimator

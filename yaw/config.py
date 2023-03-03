@@ -16,7 +16,7 @@ from yaw import default as DEFAULT
 from yaw.default import NotSet
 from yaw.cosmology import (
     BinFactory, TypeCosmology, get_default_cosmology, r_kpc_to_angle)
-from yaw.utils import DictRepresentation, scales_to_keys
+from yaw.utils import DictRepresentation, array_equal, scales_to_keys
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
@@ -31,29 +31,25 @@ class ConfigurationError(Exception):
     pass
 
 
-def _parse_section_error(exception: Exception, section: str) -> NoReturn:
+def parse_section_error(
+    exception: Exception,
+    section: str,
+    reraise: Exception = ConfigurationError
+) -> NoReturn:
     msg = exception.args[0]
     item = msg.split("'")[1]
     if isinstance(exception, TypeError):
         if "__init__() got an unexpected keyword argument" in msg:
-            raise ConfigurationError(
+            raise reraise(
                 f"encountered unknown option '{item}' in section '{section}'"
             ) from exception
         elif "missing" in msg:
-            raise ConfigurationError(
+            raise reraise(
                 f"missing option '{item}' in section '{section}'"
             ) from exception
     elif isinstance(exception, KeyError):
-        raise ConfigurationError(f"missing section '{section}'") from exception
+        raise reraise(f"missing section '{section}'") from exception
     raise
-
-
-def _array_equal(arr1: NDArray, arr2: NDArray) -> bool:
-    return (
-        isinstance(arr1, np.ndarray) and
-        isinstance(arr2, np.ndarray) and
-        arr1.shape == arr2.shape and
-        (arr1 == arr2).all())
 
 
 def _check_version(version: str) -> None:
@@ -72,7 +68,7 @@ def _check_version(version: str) -> None:
             raise ConfigurationError(msg)
 
 
-def _cosmology_to_yaml(cosmology: TypeCosmology) -> str:
+def cosmology_to_yaml(cosmology: TypeCosmology) -> str:
     if not isinstance(cosmology, astropy.cosmology.FLRW):
         raise ConfigurationError("cannot serialise custom cosmoligies to YAML")
     if cosmology.name not in astropy.cosmology.available:
@@ -81,7 +77,7 @@ def _cosmology_to_yaml(cosmology: TypeCosmology) -> str:
     return cosmology.name
 
 
-def _yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
+def yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
     if cosmo_name not in astropy.cosmology.available:
         raise ConfigurationError(
             f"unknown cosmology with name '{cosmo_name}', see "
@@ -89,11 +85,11 @@ def _yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
     return getattr(astropy.cosmology, cosmo_name)
 
 
-def _parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
+def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
     if cosmology is None:
         cosmology = get_default_cosmology()
     elif isinstance(cosmology, str):
-        cosmology = _yaml_to_cosmology(cosmology)
+        cosmology = yaml_to_cosmology(cosmology)
     elif not isinstance(cosmology, get_args(TypeCosmology)):
         which = ", ".join(get_args(TypeCosmology))
         raise ConfigurationError(
@@ -147,7 +143,7 @@ class ScalesConfig(DictRepresentation):
         return super().to_dict()
 
     def __eq__(self, other: ScalesConfig) -> bool:
-        if not _array_equal(self.as_array(), other.as_array()):
+        if not array_equal(self.as_array(), other.as_array()):
             return False
         if self.rweight != other.rweight:
             return False
@@ -199,7 +195,7 @@ class ManualBinningConfig(BaseBinningConfig):
         object.__setattr__(self, "zbins", np.asarray(self.zbins))
 
     def __eq__(self, other: ManualBinningConfig) -> bool:
-        if not _array_equal(self.zbins, other.zbins):
+        if not array_equal(self.zbins, other.zbins):
             return False
         return True
 
@@ -238,7 +234,7 @@ class AutoBinningConfig(BaseBinningConfig):
         return cls(zbins, method)
 
     def __eq__(self, other: ManualBinningConfig) -> bool:
-        if not _array_equal(self.zbins, other.zbins):
+        if not array_equal(self.zbins, other.zbins):
             return False
         if self.method != other.method:
             return False
@@ -269,6 +265,7 @@ def warn_binning_args_ignored(
     if zmin or zmax or zbin_num:
         logger.warn(
             "'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
+
 
 def make_binning_config(
     cosmology: TypeCosmology | str | None,
@@ -337,14 +334,14 @@ class Configuration(DictRepresentation):
         if self.cosmology is None:
             cosmology = get_default_cosmology()
         elif isinstance(self.cosmology, str):
-            cosmology = _yaml_to_cosmology(self.cosmology)
+            cosmology = yaml_to_cosmology(self.cosmology)
         elif not isinstance(self.cosmology, get_args(TypeCosmology)):
             which = ", ".join(get_args(TypeCosmology))
             raise ConfigurationError(
                 f"'cosmology' must be instance of: {which}")
         else:
             cosmology = self.cosmology
-        cosmology = _parse_cosmology(self.cosmology)
+        cosmology = parse_cosmology(self.cosmology)
         object.__setattr__(self, "cosmology", cosmology)
 
     @classmethod
@@ -368,7 +365,7 @@ class Configuration(DictRepresentation):
         crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
         rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop
     ) -> Configuration:
-        cosmology = _parse_cosmology(cosmology)
+        cosmology = parse_cosmology(cosmology)
         scales = ScalesConfig(
             rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
         binning = make_binning_config(
@@ -403,8 +400,8 @@ class Configuration(DictRepresentation):
         config = self.to_dict()
         if cosmology is not NotSet:
             if isinstance(cosmology, str):
-                cosmology = _yaml_to_cosmology(cosmology)
-            config["cosmology"] = _cosmology_to_yaml(cosmology)
+                cosmology = yaml_to_cosmology(cosmology)
+            config["cosmology"] = cosmology_to_yaml(cosmology)
         # ScalesConfig
         if rmin is not NotSet:
             config["scales"]["rmin"] = rmin
@@ -480,13 +477,13 @@ class Configuration(DictRepresentation):
     ) -> Configuration:
         config = {k: v for k, v in the_dict.items()}
         _check_version(config.pop("version", "0.0"))
-        cosmology = _parse_cosmology(config.pop(
+        cosmology = parse_cosmology(config.pop(
             "cosmology", DEFAULT.Configuration.cosmology))
         # parse the required subgroups
         try:
             scales = ScalesConfig.from_dict(config.pop("scales"))
         except (TypeError, KeyError) as e:
-            _parse_section_error(e, "scales")
+            parse_section_error(e, "scales")
         try:
             binning_conf = config.pop("binning")
             if "zbins" in binning_conf:
@@ -495,14 +492,14 @@ class Configuration(DictRepresentation):
                 binning = AutoBinningConfig.generate(
                     cosmology=cosmology, **binning_conf)
         except (TypeError, KeyError) as e:
-            _parse_section_error(e, "binning")
+            parse_section_error(e, "binning")
         # parse the optional subgroups
         try:
             backend = BackendConfig.from_dict(config.pop("backend"))
         except KeyError:
             backend = BackendConfig()
         except TypeError as e:
-            _parse_section_error(e, "backend")
+            parse_section_error(e, "backend")
         # check that there are no entries left
         if len(config) > 0:
             key = next(iter(config.keys()))
@@ -516,7 +513,7 @@ class Configuration(DictRepresentation):
         for attr in asdict(self):
             value = getattr(self, attr)  # avoid asdict() recursion
             if attr == "cosmology":
-                values[attr] = _cosmology_to_yaml(value)
+                values[attr] = cosmology_to_yaml(value)
             else:
                 values[attr] = value.to_dict()
         return values

@@ -13,6 +13,10 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
+class EstimatorError(Exception):
+    pass
+
+
 class Cts(ABC):
 
     @abstractproperty
@@ -65,6 +69,8 @@ class CtsRR(Cts):
 
 def cts_from_code(code: str) -> Cts:
     codes = dict(dd=CtsDD, dr=CtsDR, rd=CtsRD, rr=CtsRR)
+    if code not in codes:
+        raise EstimatorError(f"unknown estimator '{code}'")
     return codes[code]()
 
 

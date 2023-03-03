@@ -14,7 +14,7 @@ import yaml
 
 from yaw import default as DEFAULT
 from yaw.catalogs import NewCatalog
-from yaw.config import Configuration
+from yaw.config import Configuration, parse_section_error
 from yaw.coordinates import CoordSky
 from yaw.utils import DictRepresentation, TypePathStr, bytes_format
 
@@ -177,12 +177,6 @@ class EstimateDirectory(DataDirectory):
         return Path(self.joinpath(f"{self._cross_prefix}_{bin_idx}"))
 
 
-def _parse_section_error(exception: Exception, section: str) -> NoReturn:
-    if isinstance(exception, KeyError):
-        raise SetupError(f"missing section '{section}'") from exception
-    raise
-
-
 def write_setup_file(
     path: TypePathStr,
     setup_dict: dict[str, Any]
@@ -228,7 +222,7 @@ def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
     try:
         return Configuration.from_dict(setup_dict["configuration"])
     except KeyError as e:
-        _parse_section_error(e, "configuration")
+        parse_section_error(e, "configuration", SetupError)
 
 
 class ProjectDirectory(DictRepresentation):
@@ -350,7 +344,7 @@ class ProjectDirectory(DictRepresentation):
         try:
             data = setup["data"]
         except KeyError as e:
-            _parse_section_error(e, "data")
+            parse_section_error(e, "data", SetupError)
         self._cachepath = data.pop("cachepath", None)
         self._cache = CacheDirectory(self.cache_dir)
         self._cache.mkdir(exist_ok=True, parents=True)

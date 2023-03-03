@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw.utils import sgn
+
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
-
-
-def sgn(val: ArrayLike) -> ArrayLike:
-    return np.where(val == 0, 1.0, np.sign(val))
 
 
 class Coordinate(Sequence, ABC):

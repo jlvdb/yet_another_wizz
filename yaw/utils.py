@@ -13,11 +13,19 @@ import h5py
 import numpy as np
 
 if TYPE_CHECKING:  # pragma: no cover
-    from numpy.typing import NDArray
+    from numpy.typing import ArrayLike, NDArray
     from pandas import IntervalIndex
 
 
 TypePathStr = Path | str
+
+
+def array_equal(arr1: NDArray, arr2: NDArray) -> bool:
+    return (
+        isinstance(arr1, np.ndarray) and
+        isinstance(arr2, np.ndarray) and
+        arr1.shape == arr2.shape and
+        (arr1 == arr2).all())
 
 
 def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
@@ -50,6 +58,10 @@ def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
         for i in range(max(0, k), N):
             result[i] = (a[:min(N, max(0, i-k+1))] * b[i]).sum(axis=0)
     return result[()]
+
+
+def sgn(val: ArrayLike) -> ArrayLike:
+    return np.where(val == 0, 1.0, np.sign(val))
 
 
 class LimitTracker:
