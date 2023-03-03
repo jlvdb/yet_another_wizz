@@ -241,6 +241,15 @@ class PatchCatalog:
 # Determine patch centers with k-means clustering. The implementation in
 # treecorr is quite good, but might not be available. Implement a fallback using
 # the scipy.cluster module.
+
+def assign_patches(
+    centers: Coordinate,
+    position: Coordinate
+) -> NDArray[np.int_]:
+    patches, dist = vq.vq(position.to_3d().values, centers.to_3d().values)
+    return patches
+
+
 try:
     import treecorr
 
@@ -256,10 +265,10 @@ try:
             npatch=n_patches)
         xyz = np.atleast_2d(cat.patch_centers)
         centers = Coord3D.from_array(xyz)
-        if cat.patch is None:
+        if n_patches == 1:
             patches = np.zeros(len(position), dtype=np.int_)
         else:
-            patches = np.copy(cat.patch)
+            patches = assign_patches(centers=centers, position=position)
         del cat  # might not be necessary
         return centers, patches
 
@@ -283,11 +292,3 @@ except ImportError:
         return centers, patches
 
     create_patches = scipy_patches
-
-
-def assign_patches(
-    centers: Coordinate,
-    position: Coordinate
-) -> NDArray[np.int_]:
-    patches, dist = vq.vq(position.to_3d().values, centers.to_3d().values)
-    return patches
