@@ -13,6 +13,7 @@ import yaml
 from yaw import __version__
 
 from yaw import default as DEFAULT
+from yaw.default import NotSet
 from yaw.cosmology import (
     BinFactory, TypeCosmology, get_default_cosmology, r_kpc_to_angle)
 from yaw.utils import DictRepresentation, scales_to_keys
@@ -161,25 +162,6 @@ class ScalesConfig(DictRepresentation):
         return scales_to_keys(self.as_array())
 
 
-def _is_manual_binning(
-    zbins,
-    *auto_args,
-    require: bool = True,
-    warn: bool = True
-) -> bool:
-    has_no_auto_args = any(val is None for val in auto_args)
-    if zbins is None:
-        if has_no_auto_args and require:
-            raise ConfigurationError(
-                "either 'zbins' or 'zmin', 'zmax', 'nbins' are required")
-        return False
-    else:
-        if not has_no_auto_args and warn:
-            logger.warn(
-                "'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
-        return True
-
-
 class BaseBinningConfig(DictRepresentation):
 
     zbins: NDArray[np.float_]
@@ -278,6 +260,37 @@ class AutoBinningConfig(BaseBinningConfig):
             method=self.method)
 
 
+def warn_binning_args_ignored(
+    zmin: bool | float | None,
+    zmax: bool | float | None,
+    zbin_num: bool | int | None
+) -> None:
+    # NOTE: NotSet is also False
+    if zmin or zmax or zbin_num:
+        logger.warn(
+            "'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
+
+def make_binning_config(
+    cosmology: TypeCosmology | str | None,
+    zmin: float | None = None,
+    zmax: float | None = None,
+    zbin_num: int | None = None,
+    method: str | None = None,
+    zbins: NDArray[np.float_] | None = None,
+) -> ManualBinningConfig | AutoBinningConfig:
+    auto_args_set =  (zmin is not None, zmax is not None, zbin_num is not None)
+    if zbins is None and not all(auto_args_set):
+        raise ConfigurationError(
+            "either 'zbins' or 'zmin', 'zmax', 'zbin_num' are required")
+    elif all(auto_args_set):
+        return AutoBinningConfig.generate(
+            zmin=zmin, zmax=zmax, zbin_num=zbin_num,
+            method=method, cosmology=cosmology)
+    else:
+        warn_binning_args_ignored(*auto_args_set)
+        return ManualBinningConfig(zbins)
+
+
 @dataclass(frozen=True)
 class BackendConfig(DictRepresentation):
 
@@ -358,12 +371,9 @@ class Configuration(DictRepresentation):
         cosmology = _parse_cosmology(cosmology)
         scales = ScalesConfig(
             rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
-        if _is_manual_binning(zbins, zmin, zmax, zbin_num):
-            binning = ManualBinningConfig(zbins)
-        else:
-            binning = AutoBinningConfig.generate(
-                zmin=zmin, zmax=zmax, zbin_num=zbin_num, method=method,
-                cosmology=cosmology)
+        binning = make_binning_config(
+            cosmology=cosmology, zmin=zmin, zmax=zmax, zbin_num=zbin_num,
+            method=method, zbins=zbins)
         backend = BackendConfig(
             thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop)
         return cls(
@@ -373,62 +383,56 @@ class Configuration(DictRepresentation):
     def modify(
         self,
         *,
-        cosmology: TypeCosmology | str | None = DEFAULT.none,
+        cosmology: TypeCosmology | str | None = NotSet,
         # ScalesConfig
-        rmin: ArrayLike | None = DEFAULT.none,
-        rmax: ArrayLike | None = DEFAULT.none,
-        rweight: float | None = DEFAULT.none,
-        rbin_num: int | None = DEFAULT.none,
+        rmin: ArrayLike | None = NotSet,
+        rmax: ArrayLike | None = NotSet,
+        rweight: float | None = NotSet,
+        rbin_num: int | None = NotSet,
         # AutoBinningConfig /  ManualBinningConfig
-        zmin: float | None = DEFAULT.none,
-        zmax: float | None = DEFAULT.none,
-        zbin_num: int | None = DEFAULT.none,
-        method: str | None = DEFAULT.none,
-        zbins: NDArray[np.float_] | None = DEFAULT.none,
+        zmin: float | None = NotSet,
+        zmax: float | None = NotSet,
+        zbin_num: int | None = NotSet,
+        method: str | None = NotSet,
+        zbins: NDArray[np.float_] | None = NotSet,
         # BackendConfig
-        thread_num: int | None = DEFAULT.none,
-        crosspatch: bool | None = DEFAULT.none,
-        rbin_slop: float | None = DEFAULT.none
+        thread_num: int | None = NotSet,
+        crosspatch: bool | None = NotSet,
+        rbin_slop: float | None = NotSet
     ) -> Configuration:
         config = self.to_dict()
-        if cosmology is not DEFAULT.none:
+        if cosmology is not NotSet:
             if isinstance(cosmology, str):
                 cosmology = _yaml_to_cosmology(cosmology)
             config["cosmology"] = _cosmology_to_yaml(cosmology)
         # ScalesConfig
-        if rmin is not DEFAULT.none:
+        if rmin is not NotSet:
             config["scales"]["rmin"] = rmin
-        if rmax is not DEFAULT.none:
+        if rmax is not NotSet:
             config["scales"]["rmax"] = rmax
-        if rweight is not DEFAULT.none:
+        if rweight is not NotSet:
             config["scales"]["rweight"] = rweight
-        if rbin_num is not DEFAULT.none:
+        if rbin_num is not NotSet:
             config["scales"]["rbin_num"] = rbin_num
         # AutoBinningConfig /  ManualBinningConfig
-        if _is_manual_binning(
-            None if zbins is DEFAULT.none else zbins,
-            None if zmin is DEFAULT.none else zmin,
-            None if zmax is DEFAULT.none else zmax,
-            None if zbin_num is DEFAULT.none else zbin_num,
-            require=False
-        ):
-            if zbins is not DEFAULT.none:
-                config["binning"]["zbins"] = zbins
+        if zbins is not NotSet:
+            warn_binning_args_ignored(zmin, zmax, zbin_num)
+            config["binning"]["zbins"] = zbins
         else:
-            if zmin is not DEFAULT.none:
+            if zmin is not NotSet:
                 config["binning"]["zmin"] = zmin
-            if zmax is not DEFAULT.none:
+            if zmax is not NotSet:
                 config["binning"]["zmax"] = zmax
-            if zbin_num is not DEFAULT.none:
+            if zbin_num is not NotSet:
                 config["binning"]["zbin_num"] = zbin_num
-            if method is not DEFAULT.none:
+            if method is not NotSet:
                 config["binning"]["method"] = method
         # BackendConfig
-        if thread_num is not DEFAULT.none:
+        if thread_num is not NotSet:
             config["backend"]["thread_num"] = thread_num
-        if crosspatch is not DEFAULT.none:
+        if crosspatch is not NotSet:
             config["backend"]["crosspatch"] = crosspatch
-        if rbin_slop is not DEFAULT.none:
+        if rbin_slop is not NotSet:
             config["backend"]["rbin_slop"] = rbin_slop
         return self.__class__.from_dict(config)
 

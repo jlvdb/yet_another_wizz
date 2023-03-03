@@ -1,9 +1,13 @@
-class _none_meta(type):
+class _NotSet_meta(type):
+
     def __repr__(self) -> str:
-        return "NoDefault"  # pragma: no cover
+        return "NotSet"  # pragma: no cover
+
+    def __bool__(self) -> bool:
+        return False
 
 
-class none(metaclass=_none_meta):
+class NotSet(metaclass=_NotSet_meta):
     pass
 
 
