@@ -46,11 +46,11 @@ class CustomFormatter(logging.Formatter):
     level = "%(levelname).3s"
     msg = "%(message)s"
     FORMATS = {
-        logging.DEBUG: f"{Colors.gry}{level} {Colors.sep} {msg}{Colors.rst}",
-        logging.INFO: f"{level} {Colors.sep} {msg}",
-        logging.WARNING: f"{Colors.ylw}{level} {Colors.sep} {msg}{Colors.rst}",
-        logging.ERROR: f"{Colors.red}{level} {Colors.sep} {msg}{Colors.rst}",
-        logging.CRITICAL: f"{Colors.red}{level} {Colors.sep} {msg}{Colors.rst}"}
+        logging.DEBUG: f"{Colors.gry}DBG {Colors.sep} {msg}{Colors.rst}",
+        logging.INFO: f"INF {Colors.sep} {msg}",
+        logging.WARNING: f"{Colors.ylw}WRN {Colors.sep} {msg}{Colors.rst}",
+        logging.ERROR: f"{Colors.red}ERR {Colors.sep} {msg}{Colors.rst}",
+        logging.CRITICAL: f"{Colors.red}CRT {Colors.sep} {msg}{Colors.rst}"}
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno, self.FORMATS[logging.INFO])

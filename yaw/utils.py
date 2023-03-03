@@ -178,7 +178,7 @@ class DictRepresentation(ABC):
     def from_dict(
         cls,
         the_dict: dict[str, Any],
-        **kwargs: dict[str, Any]  # passing additinal constructor data
+        **kwargs: dict[str, Any]  # passing additional constructor data
     ) -> DictRepresentation:
         return cls(**the_dict)
 

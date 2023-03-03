@@ -97,6 +97,7 @@ class TreecorrCatalog(BaseCatalog):
         cls,
         cache_directory: str
     ) -> TreecorrCatalog:
+        # super().from_cache(cache_directory)
         raise NotImplementedError
 
     @classmethod

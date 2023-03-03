@@ -55,6 +55,8 @@ class CorrelationData(SampledData):
 
     @classmethod
     def from_files(cls, path_prefix: TypePathStr) -> CorrelationData:
+        name = cls.__name__.lower()[:-4]
+        logger.debug(f"reading {name} data from '{path_prefix}.*'")
         # load data and errors
         ext = "dat"
         data_error = np.loadtxt(f"{path_prefix}.{ext}")
@@ -116,6 +118,8 @@ class CorrelationData(SampledData):
         return f"# correlation function estimate covariance matrix ({self.n_bins}x{self.n_bins})"
 
     def to_files(self, path_prefix: TypePathStr) -> None:
+        name = self.__class__.__name__.lower()[:-4]
+        logger.info(f"writing {name} data to '{path_prefix}.*'")
         PREC = 10
         DELIM = " "
 
@@ -291,7 +295,11 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             else:
                 raise RuntimeError()
         # select the correct estimator
-        return options[estimator]()  # return estimator class instance        
+        cls = options[estimator]
+        logger.debug(
+            f"selecting estimator '{cls.short}' from "
+            f"{'/'.join(self.estimators)}")
+        return cls()  # return estimator class instance        
 
     def _getattr_from_cts(self, cts: Cts) -> PairCountResult | None:
         if isinstance(cts, CtsMix):
@@ -312,7 +320,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         if config is None:
             config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
-        logger.debug(f"computing correlation with '{est_fun.short}' estimator")
+        logger.debug(f"computing correlation and {config.method} samples")
         # get the pair counts for the required terms
         required_data = {}
         required_samples = {}
@@ -370,6 +378,17 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 data.to_hdf(group)
         dest.create_dataset("n_patches", data=self.n_patches)
 
+    @classmethod
+    def from_file(cls, path: TypePathStr) -> HDFSerializable:
+        logger.info(f"reading pair counts from '{path}'")
+        with h5py.File(str(path)) as f:
+            return cls.from_hdf(f)
+
+    def to_file(self, path: TypePathStr) -> None:
+        logger.info(f"writing pair counts to '{path}'")
+        with h5py.File(str(path), mode="w") as f:
+            self.to_hdf(f)
+
 
 def _create_dummy_counts(
     counts: Any | dict[str, Any]
@@ -401,6 +420,7 @@ def autocorrelate(
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, random)
     kwargs = dict(linkage=linkage, progress=progress)
+    logger.debug("scheduling DD, DR" + (", RR" if compute_rr else ""))
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = data.correlate(config, binned=True, **kwargs)
     with TimedLog(logger.info, f"counting data-rand pairs"):
@@ -445,6 +465,9 @@ def crosscorrelate(
         f"{scales.min():.0f}<r<={scales.max():.0f}kpc)")
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, unknown)
+    logger.debug(
+        "scheduling DD" + (", DR" if compute_dr else "") +
+        (", RD" if compute_rd else "") + (", RR" if compute_rr else ""))
     kwargs = dict(linkage=linkage, progress=progress)
     with TimedLog(logger.info, f"counting data-data pairs"):
         DD = reference.correlate(

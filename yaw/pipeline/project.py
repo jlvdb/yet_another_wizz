@@ -28,6 +28,9 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.pipeline.task_utils import TaskRecord
 
 
+logger = logging.getLogger(__name__)
+
+
 class SetupError(Exception):
     pass
 
@@ -184,6 +187,7 @@ def write_setup_file(
     path: TypePathStr,
     setup_dict: dict[str, Any]
 ) -> None:
+    logger.debug("writing setup file")
     lines = yaml.dump(setup_dict).split("\n")
     # some postprocessing for better readibility
     indent = " " * 4
@@ -215,6 +219,7 @@ def load_setup_as_dict(setup_file: TypePathStr) -> dict[str, Any]:
 
 
 def load_config_from_setup(setup_file: TypePathStr) -> Configuration:
+    logger.info(f"importing configuration from '{setup_file}'")
     setup_dict = load_setup_as_dict(setup_file)
     return parse_config_from_setup(setup_dict)
 
@@ -236,6 +241,10 @@ class ProjectDirectory(DictRepresentation):
         if not self.setup_file.exists:
             raise FileNotFoundError(
                 f"setup file '{self.setup_file}' does not exist")
+        if not self.log_file.exists():
+            logger.info(f"setting up log file '{self.log_file}'")
+        else:
+            logger.info(f"resuming project at '{self._path}'")
         self._add_log_file_handle()
         self.setup_reload()
         # create any missing directories
@@ -274,6 +283,7 @@ class ProjectDirectory(DictRepresentation):
         cachepath: TypePathStr | None = None,
         backend: str = DEFAULT.backend
     ) -> ProjectDirectory:
+        logger.info(f"creating new project at '{path}'")
         setup_dict = dict(
             configuration=config.to_dict(),
             data=dict(
@@ -376,6 +386,10 @@ class ProjectDirectory(DictRepresentation):
         data: Input,
         rand: Input | None = None
     ) -> None:
+        logger.debug(f"registering reference data catalog '{data.filepath}'")
+        if rand is not None:
+            logger.debug(
+                f"registering reference random catalog '{rand.filepath}'")
         self._inputs.set_reference(data, rand)
     
     def add_unknown(
@@ -384,6 +398,13 @@ class ProjectDirectory(DictRepresentation):
         data: Input,
         rand: Input | None = None
     ) -> None:
+        logger.debug(
+            f"registering unknown bin {bin_idx} data catalog "
+            f"'{data.filepath}'")
+        if rand is not None:
+            logger.debug(
+                f"registering unknown bin {bin_idx} random catalog "
+                f"'{rand.filepath}'")
         self._inputs.add_unknown(bin_idx, data, rand)
 
     def _build_catalog(self, load_kwargs) -> BaseCatalog:
@@ -459,9 +480,14 @@ class ProjectDirectory(DictRepresentation):
         return catalog
 
     def load_reference(self, kind: str) -> BaseCatalog:
+        logger.info(
+            f"loading reference {'random' if kind == 'rand' else kind} catalog")
         return self._load_catalog("reference", kind)
 
     def load_unknown(self, kind: str, bin_idx: int) -> BaseCatalog:
+        logger.info(
+            f"loading unknown bin {bin_idx} "
+            f"{'random' if kind == 'rand' else kind} catalog")
         return self._load_catalog("unknown", kind, bin_idx=bin_idx)
 
     def get_bin_indices(self) -> set[int]:

@@ -103,7 +103,8 @@ class BaseCatalog(Sequence, PatchedQuantity):
     def from_cache(
         cls,
         cache_directory: str
-    ) -> BaseCatalog: pass
+    ) -> BaseCatalog:
+        cls.logger.info(f"restoring from cache directory '{cache_directory}'")
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -207,4 +208,4 @@ class BaseCatalog(Sequence, PatchedQuantity):
         """
         Compute the a redshift distribution histogram.
         """
-        self.logger.debug("computing true redshift distribution")
+        self.logger.info("computing true redshift distribution")

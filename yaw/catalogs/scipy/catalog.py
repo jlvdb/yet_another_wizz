@@ -19,7 +19,8 @@ from yaw.correlation import RedshiftData
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.parallel import ParallelHelper
-from yaw.utils import LimitTracker, PatchIDs, TimedLog, scales_to_keys
+from yaw.utils import (
+    LimitTracker, PatchIDs, TimedLog, long_num_format, scales_to_keys)
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -134,7 +135,7 @@ class ScipyCatalog(BaseCatalog):
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'")
-            self.logger.info(f"using cache directory '{cache_directory}'")
+            self.logger.debug(f"using cache directory '{cache_directory}'")
 
         # create new patches
         if patch_mode != "dividing":
@@ -157,9 +158,11 @@ class ScipyCatalog(BaseCatalog):
         else:
             log_msg = f"dividing data into predefined patches"
             centers = dict()  # this can be empty
+        self.logger.debug(log_msg)
 
         # run groupby first to avoid any intermediate copies of full data
-        with TimedLog(self.logger.info, log_msg):
+        n_obj_str = long_num_format(len(data))
+        with TimedLog(self.logger.info, f"processed {n_obj_str} records"):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
             for patch_id, patch_data in data.groupby(patch_name):
@@ -201,7 +204,7 @@ class ScipyCatalog(BaseCatalog):
         cls,
         cache_directory: str
     ) -> ScipyCatalog:
-        cls.logger.info(f"restoring from cache directory '{cache_directory}'")
+        super().from_cache(cache_directory)
         new = cls.__new__(cls)
         # load the patch properties
         fpath = os.path.join(cache_directory, "properties.feather")

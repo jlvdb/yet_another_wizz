@@ -176,6 +176,8 @@ class ParallelHelper:
                 all_initargs.append(None)
             else:
                 raise TypeError("'initargs' must be an iterable")
+        logger.debug(
+            f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
         return multiprocessing.Pool(
             initializer=_threadinit,
             initargs=all_initargs,
@@ -190,8 +192,6 @@ class ParallelHelper:
         Apply the accumulated arguments to a function in a pool of threads.
         The threads are blocking until all results are received.
         """
-        logger.debug(
-            f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
         with self._init_pool(initializer, initargs) as pool:
             results = pool.starmap(self.function, zip(*self.args))
         return results
@@ -205,8 +205,6 @@ class ParallelHelper:
         Apply the accumulated arguments to a function in a pool of threads.
         The results are processed unordered and yielded as an iterator.
         """
-        logger.debug(
-            f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
         function = functools.partial(_threadwrapper, function=self.function)
         with self._init_pool(initializer, initargs) as pool:
             for result in pool.imap_unordered(function, zip(*self.args)):

@@ -27,7 +27,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.correlation import CorrelationFunction, CorrelationData
 
 
-logger = logging.getLogger("yaw.run")
+logger = logging.getLogger(__name__)
 
 
 BACKEND_OPTIONS = tuple(sorted(BaseCatalog.backends.keys()))
@@ -83,7 +83,6 @@ class Runner:
 
     def load_reference(self):
         # load randoms first since preferrable for optional patch creation
-        logger.info("loading reference data")
         try:
             self.ref_rand = self.project.load_reference("rand")
         except MissingCatalogError as e:
@@ -94,7 +93,6 @@ class Runner:
 
     def load_unknown(self, idx: int, skip_rand: bool = False):
         # load randoms first since preferrable for optional patch creation
-        logger.info(f"loading unknown data bin {idx}")
         try:
             if skip_rand:
                 logger.debug("skipping unknown randoms")
@@ -135,7 +133,6 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
-        logger.info(f"measuring reference autocorrelation function")
         if self.ref_rand is None:
             raise MissingCatalogError(
                 "reference autocorrelation requires reference randoms")
@@ -145,7 +142,6 @@ class Runner:
             progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
-            logger.debug(f"writing pair counts for scale '{scale}'")
             counts_dir = self.project.get_counts(scale, create=True)
             cf.to_file(counts_dir.get_auto_reference())
         self.w_ss = cfs
@@ -156,7 +152,6 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
-        logger.info(f"measuring unknown autocorrelation function")
         if self.unk_rand is None:
             raise MissingCatalogError(
                 "unknown autocorrelation requires unknown randoms")
@@ -166,7 +161,6 @@ class Runner:
             progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
-            logger.debug(f"writing pair counts for scale '{scale}'")
             counts_dir = self.project.get_counts(scale, create=True)
             cf.to_file(counts_dir.get_auto(idx))
         self.w_pp = cfs
@@ -177,7 +171,6 @@ class Runner:
         *,
         compute_rr: bool
     ) -> dict[str, CorrelationFunction]:
-        logger.info(f"measuring crosscorrelation function")
         if compute_rr:
             if self.ref_rand is None:
                 raise MissingCatalogError(
@@ -201,14 +194,11 @@ class Runner:
             **randoms, linkage=self.linkage, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
         for scale, cf in cfs.items():
-            logger.debug(f"writing pair counts for scale '{scale}'")
             counts_dir = self.project.get_counts(scale, create=True)
             cf.to_file(counts_dir.get_cross(idx))
         self.w_sp = cfs
 
     def load_auto_ref(self) -> None:
-        logger.info(
-            f"loading pair counts for reference autocorrelation function")
         cfs = {}
         try:
             for scale in self.project.list_counts_scales():
@@ -217,12 +207,10 @@ class Runner:
                 cfs[scale] = yaw.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
         except (FileNotFoundError, AssertionError):
-            logger.info("skipped missing pair counts")
+            logger.debug("skipped missing pair counts")
         self.w_ss = cfs
 
     def load_auto_unk(self, idx: int) -> None:
-        logger.info(
-            f"loading pair counts for unknown autocorrelation function")
         cfs = {}
         try:
             for scale in self.project.list_counts_scales():
@@ -232,10 +220,9 @@ class Runner:
             assert len(cfs) > 0
             self.w_pp = cfs
         except (FileNotFoundError, AssertionError):
-            logger.info("skipped missing pair counts")
+            logger.debug("skipped missing pair counts")
 
     def load_cross(self, idx: int) -> None:
-        logger.info(f"loading pair counts for crosscorrelation function")
         cfs = {}
         try:
             for scale in self.project.list_counts_scales():
@@ -245,7 +232,7 @@ class Runner:
             assert len(cfs) > 0
             self.w_sp = cfs
         except (FileNotFoundError, AssertionError):
-            logger.info("skipped missing pair counts")
+            logger.debug("skipped missing pair counts")
 
     def sample_corrfunc(
         self,
@@ -254,15 +241,6 @@ class Runner:
         config: ResamplingConfig,
         estimator: str | None
     ) -> dict[str, CorrelationData]:
-        try:
-            kind = {
-                "w_sp": "cross",
-                "w_ss": "reference auto",
-                "w_pp": "unknown auto"
-            }[cfs_kind]
-        except KeyError:
-            raise ValueError(f"invalid correlation function kind '{cfs_kind}'")
-        logger.info(f"sampling {kind}correlation function")
         cfs = getattr(self, cfs_kind)
         data = {}
         for scale, cf in cfs.items():
@@ -271,22 +249,17 @@ class Runner:
 
     def write_auto_ref(self) -> None:
         for scale, cf_data in self.w_ss_data.items():
-            logger.debug(
-                f"writing reference autocorrelation data files for scale '{scale}'")
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_auto_reference()
             cf_data.to_files(path)
 
     def write_auto_unk(self, idx: int) -> None:
         for scale, cf in self.w_pp_data.items():
-            logger.debug(
-                f"writing unknown autocorrelation data files for scale '{scale}'")
             est_dir = self.project.get_estimate(scale, create=True)
             path = est_dir.get_auto(idx)
             cf.to_files(path)
 
     def write_nz_cc(self, idx: int) -> None:
-        logger.info(f"estimating clustering redshifts")
         cross_data = self.w_sp_data
         if self.w_ss_data is None:
             ref_data = {scale: None for scale in cross_data}
@@ -297,8 +270,6 @@ class Runner:
         else:
             unk_data = self.w_pp_data
         for scale in cross_data:
-            logger.debug(
-                f"writing redshift data files for scale '{scale}'")
             nz_data = yaw.RedshiftData.from_correlation_data(
                 cross_data[scale], ref_data[scale], unk_data[scale])
             est_dir = self.project.get_estimate(scale, create=True)
@@ -309,16 +280,11 @@ class Runner:
         path = self.project.get_true_reference(create=True)
         # this data should always be produced unless it already exists
         if not path.with_suffix(".dat").exists():
-            logger.info(
-                f"computing reference sample redshift distribution")
             nz_data = self.ref_data.true_redshifts(self.config)
-            logger.debug("writing redshift data files")
             nz_data.to_files(path)
 
     def write_nz_true(self, idx: int) -> None:
-        logger.info(f"computing true redshift distribution")
         nz_data = self.unk_data.true_redshifts(self.config)
-        logger.debug("writing redshift data files")
         path = self.project.get_true_unknown(idx, create=True)
         nz_data.to_files(path)
 
@@ -416,7 +382,7 @@ class Runner:
                 "Reference autocorrelation")
             if fig is not None:
                 name = f"auto_reference_{scale}.png"
-                logger.debug(f"writing '{name}'")
+                logger.debug(f"plotting to '{name}'")
                 path = self.project.estimate_dir.joinpath(name)
                 fig.savefig(path)
             # unknown
@@ -426,7 +392,7 @@ class Runner:
             if fig is not None:
                 fig.tight_layout()
                 name = f"auto_unknown_{scale}.png"
-                logger.debug(f"writing '{name}'")
+                logger.debug(f"plotting to '{name}'")
                 path = self.project.estimate_dir.joinpath(name)
                 fig.savefig(path)
             # ccs
@@ -439,7 +405,7 @@ class Runner:
             if fig is not None:
                 fig.tight_layout()
                 name = f"nz_estimate_{scale}.png"
-                logger.debug(f"writing '{name}'")
+                logger.debug(f"plotting to '{name}'")
                 path = self.project.estimate_dir.joinpath(name)
                 fig.savefig(path)
 
@@ -658,7 +624,6 @@ def init(args) -> None:
         config = Configuration.create(**config_args)
 
     # create the project directory
-    logger.info(f"creating new project at '{args.wdir}'")
     with ProjectDirectory.create(
         args.wdir, config, n_patches=args.n_patches,
         cachepath=args.cache_path, backend=args.backend
@@ -942,7 +907,6 @@ group_dump.add_argument(
 
 @Commandline.register(COMMANDNAME)
 def run(args):
-    logger.info(f"creating new project at '{args.wdir}'")
     # get the configuration from an external file
     if args.config_from is not None:
         setup = load_setup_as_dict(args.setup)
