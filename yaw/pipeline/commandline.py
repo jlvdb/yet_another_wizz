@@ -235,7 +235,7 @@ class _Commandline(Registry):
             else:
                 Commandline.print_usage()
         except Exception:
-            logger.exception("an unexpected error occured")
+            logger.critical("an unexpected error occured", exc_info=True)
             raise
 
 

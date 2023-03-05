@@ -42,7 +42,6 @@ class NoCountsError(Exception):
 
 class Runner:
 
-
     def __init__(
         self,
         project: ProjectDirectory,
