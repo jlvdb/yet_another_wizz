@@ -1,24 +1,20 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
-import textwrap
-from abc import ABC, abstractmethod, abstractproperty
 from collections.abc import Iterator
-from pathlib import Path, _posix_flavour, _windows_flavour
-from typing import TYPE_CHECKING, Any, NoReturn
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 import yaml
 
 from yaw import default as DEFAULT
-from yaw.catalogs import NewCatalog
 from yaw.config import Configuration, parse_section_error
-from yaw.coordinates import CoordSky
-from yaw.utils import DictRepresentation, TypePathStr, bytes_format
-
-from yaw.pipeline.data import InputRegister
+from yaw.utils import DictRepresentation, TypePathStr
+from yaw.pipeline.data import InputManager
+from yaw.pipeline.directories import (
+    CountsDirectory, EstimateDirectory, TrueDirectory)
 from yaw.pipeline.logger import get_logger
 from yaw.pipeline.task_utils import TaskList
 
@@ -33,148 +29,6 @@ logger = logging.getLogger(__name__)
 
 class SetupError(Exception):
     pass
-
-
-class MissingCatalogError(Exception):
-    pass
-
-
-def _get_numeric_suffix(path: Path) -> int:
-    base = path.with_suffix(suffix="").name
-    _, num = base.rsplit("_", 1)
-    return int(num)
-
-
-class Directory(Path):
-
-    # seems to be the easiest way to subclass pathlib.Path
-    _flavour = _windows_flavour if os.name == 'nt' else _posix_flavour
-
-    def print_contents(self) -> None:
-        sizes = dict()
-        for path in self.iterdir():
-            if path.is_dir():
-                sizes[path.name] = ("d", sum(
-                    file.stat().st_size for file in path.rglob("*")))
-            else:
-                sizes[path.name] = ("f", path.stat().st_size)
-        print(f"cache path: {self}")
-        if len(sizes) == 0:
-            width = 10
-            total = bytes_format(0)
-        else:
-            width = min(30, max(len(name) for name in sizes))
-            for i, name in enumerate(sorted(sizes), 1):
-                print_name = textwrap.shorten(
-                    name, width=width, placeholder="...")
-                kind, bytes = sizes[name]
-                bytes_fmt = bytes_format(bytes)
-                print(f"{kind}> {print_name:{width}s}{bytes_fmt:>10s}")
-            total = bytes_format(sum(b for _, b in sizes.values()))
-        print("-" * (width + 13))
-        print(f"{'total':{width+3}s}{total:>10s}")
-
-
-class CacheDirectory(Directory):
-
-    def _generate_filenames(self, base: str) -> dict[str, Path]:
-        tags = ("data", "rand")
-        return {tag: Path(self.joinpath(f"{base}.{tag}")) for tag in tags}
-
-    def get_reference(self) -> dict[str, Path]:
-        return self._generate_filenames("reference")
-
-    def get_unknown(self, bin_idx: int) -> dict[str, Path]:
-        return self._generate_filenames(f"unknown_{bin_idx}")
-
-    def get_bin_indices(self) -> set(int):
-        return set(
-            _get_numeric_suffix(path)
-            for path in self.iterdir()
-            if path.name.startswith("unknown"))
-
-    def drop(self, name: str) -> None:
-        path = self.joinpath(name)
-        if path.is_dir():
-            shutil.rmtree(str(path))
-        else:
-            path.unlink()
-
-    def drop_all(self) -> None:
-        for path in self.iterdir():
-            self.drop(path.name)
-
-
-class DataDirectory(Directory, ABC):
-
-    @abstractproperty
-    def _cross_prefix(self) -> str: pass
-
-    @abstractproperty
-    def _auto_prefix(self) -> str: pass
-
-    @abstractmethod
-    def get_auto_reference(self) -> Path: pass
-
-    @abstractmethod
-    def get_auto(self, bin_idx: int) -> Path: pass
-
-    @abstractmethod
-    def get_cross(self, bin_idx: int) -> Path: pass
-
-    def get_cross_indices(self) -> set[int]:
-        return set(
-            _get_numeric_suffix(path)
-            for path in self.iterdir()
-            if path.name.startswith(self._cross_prefix))
-
-    def get_auto_indices(self) -> set[int]:
-        return set(
-            _get_numeric_suffix(path)
-            for path in self.iterdir()
-            if path.name.startswith(self._auto_prefix))
-
-    def iter_cross(self) -> Iterator[tuple(int, Any)]:
-        for idx in sorted(self.get_cross_indices()):
-            yield idx, self.get_cross(idx)
-
-    def iter_auto(self) -> Iterator[tuple(int, Any)]:
-        for idx in sorted(self.get_auto_indices()):
-            yield idx, self.get_auto(idx)
-
-
-class CountsDirectory(DataDirectory):
-
-    _cross_prefix = "cross"
-    _auto_prefix = "auto_unknown"
-
-    def get_auto_reference(self) -> Path:
-        return Path(self.joinpath("auto_reference.hdf"))
-
-    def get_auto(self, bin_idx: int) -> Path:
-        return Path(self.joinpath(f"{self._auto_prefix}_{bin_idx}.hdf"))
-
-    def get_cross(self, bin_idx: int) -> Path:
-        return Path(self.joinpath(f"{self._cross_prefix}_{bin_idx}.hdf"))
-
-
-class EstimateDirectory(DataDirectory):
-
-    _cross_prefix = "nz_unknown"
-    _auto_prefix = "auto_unknown"
-
-    def _generate_filenames(self, base: str) -> dict[str, Path]:
-        extensions = ("dat", "cov", "boot")
-        return {ext: Path(self.joinpath(f"{base}.{ext}")) for ext in extensions}
-
-    def get_auto_reference(self) -> dict[str, Path]:
-        return Path(self.joinpath("auto_reference"))
-
-    def get_auto(self, bin_idx: int) -> dict[str, Path]:
-        return Path(self.joinpath(f"{self._auto_prefix}_{bin_idx}"))
-
-    def get_cross(self, bin_idx: int) -> dict[str, Path]:
-        return Path(self.joinpath(f"{self._cross_prefix}_{bin_idx}"))
 
 
 def write_setup_file(
@@ -244,6 +98,7 @@ class ProjectDirectory(DictRepresentation):
         # create any missing directories
         self.counts_dir.mkdir(exist_ok=True)
         self.estimate_dir.mkdir(exist_ok=True)
+        self.true_dir.mkdir(exist_ok=True)
 
     def _add_log_file_handle(self):
         # create the file logger
@@ -278,12 +133,16 @@ class ProjectDirectory(DictRepresentation):
         backend: str = DEFAULT.backend
     ) -> ProjectDirectory:
         logger.info(f"creating new project at '{path}'")
+        data = dict()
+        if n_patches is not None:
+            data["n_patches"] = n_patches
+        if cachepath is not None:
+            data["cachepath"] = cachepath
+        if backend != DEFAULT.backend:
+            data["backend"] = backend
         setup_dict = dict(
             configuration=config.to_dict(),
-            data=dict(
-                cachepath=str(cachepath) if cachepath is not None else None,
-                **InputRegister(n_patches).to_dict()),
-            backend=backend,
+            data=data,
             tasks=TaskList().to_list())
         return cls.from_dict(setup_dict, path=path)
 
@@ -301,17 +160,14 @@ class ProjectDirectory(DictRepresentation):
         return cls(path)
 
     def to_dict(self) -> dict[str, Any]:
-        if self._cachepath is None:
-            cache_dir = None
-        else:
-            cache_dir = str(self._cachepath)
         setup = dict(
             configuration=self._config.to_dict(),
-            data=dict(
-                cachepath=cache_dir,
-                **self._inputs.to_dict()),
-            backend=self.catalog_factory.backend_name,
+            data=self._inputs.to_dict(),
             tasks=self._tasks.to_list())
+        # cache: if default location set to None. Reason: if clonding setup
+        # original cache would be used (unless manually overridden)
+        if setup["data"]["cachepath"] == str(self.cache_dir):
+            setup["data"].pop("cachepath")
         return setup
 
     def __enter__(self) -> ProjectDirectory:
@@ -337,7 +193,6 @@ class ProjectDirectory(DictRepresentation):
     def setup_reload(self) -> None:
         with open(self.setup_file) as f:
             setup = yaml.safe_load(f.read())
-        self.catalog_factory = NewCatalog(setup["backend"])
         # configuration is straight forward
         self._config = parse_config_from_setup(setup)
         # set up the data management
@@ -345,10 +200,14 @@ class ProjectDirectory(DictRepresentation):
             data = setup["data"]
         except KeyError as e:
             parse_section_error(e, "data", SetupError)
-        self._cachepath = data.pop("cachepath", None)
-        self._cache = CacheDirectory(self.cache_dir)
-        self._cache.mkdir(exist_ok=True, parents=True)
-        self._inputs = InputRegister.from_dict(data)
+        # cache needs extra care: if None, set to default location
+        if "cachepath" not in data or data["cachepath"] is None:
+            data["cachepath"] = str(self.cache_dir)
+        self._inputs = InputManager.from_dict(data)
+        # try loading existsing patch centers
+        if self.patch_file.exists():
+            self._inputs.centers_from_file(self.patch_file)
+        # set up task management
         try:
             self._tasks = TaskList.from_list(setup["tasks"])
         except KeyError:
@@ -362,25 +221,22 @@ class ProjectDirectory(DictRepresentation):
         return self._config
 
     @property
-    def patch_file(self) -> Path:
-        return self._path.joinpath("patch_centers.csv")
+    def input(self) -> InputManager:
+        return self._inputs
 
     @property
     def cache_dir(self) -> Path:
-        if self._cachepath is None:
-            return self._path.joinpath("cache")
-        else:
-            return Path(self._cachepath)
+        return self._path.joinpath("cache")
 
-    def get_cache(self) -> CacheDirectory:
-        return self._cache
+    @property
+    def patch_file(self) -> Path:
+        return self._path.joinpath("patch_centers.dat")
 
     def set_reference(
         self,
         data: Input,
         rand: Input | None = None
     ) -> None:
-        logger.debug(f"registering reference data catalog '{data.filepath}'")
         if rand is not None:
             logger.debug(
                 f"registering reference random catalog '{rand.filepath}'")
@@ -392,97 +248,21 @@ class ProjectDirectory(DictRepresentation):
         data: Input,
         rand: Input | None = None
     ) -> None:
-        logger.debug(
-            f"registering unknown bin {bin_idx} data catalog "
-            f"'{data.filepath}'")
         if rand is not None:
             logger.debug(
                 f"registering unknown bin {bin_idx} random catalog "
                 f"'{rand.filepath}'")
         self._inputs.add_unknown(bin_idx, data, rand)
 
-    def _build_catalog(self, load_kwargs) -> BaseCatalog:
-        # patches must be created or applied
-        if not self._inputs.external_patches:
-            if "patches" in load_kwargs:
-                msg = "'n_patches' and catalog 'patches' are mutually exclusive"
-                raise SetupError(msg)
-            # load and apply existing patch centers
-            if self.patch_file.exists():
-                centers = pd.read_csv(str(self.patch_file))
-                load_kwargs["patches"] = CoordSky(
-                    ra=centers["ra"], dec=centers["dec"]).to_3d()
-            # schedule patch creation
-            else:
-                load_kwargs["patches"] = self._inputs.n_patches
-
-        catalog = self.catalog_factory.from_file(**load_kwargs)
-        # store patch centers for consecutive loads
-        if not self.patch_file.exists():
-            centers = pd.DataFrame(dict(
-                ra=catalog.centers.ra,
-                dec=catalog.centers.dec))
-            centers.to_csv(str(self.patch_file), index=False)
-        return catalog
-
-    def _load_catalog(
-        self,
-        sample: str,
-        kind: str,
-        bin_idx: int | None = None,
-        progress: bool = False
-    ) -> BaseCatalog:
-        # get the correct sample type
-        if sample == "reference":
-            inputs = self._inputs.get_reference()
-        elif sample == "unknown":
-            if bin_idx is None:
-                raise ValueError("no 'bin_idx' provided")
-            inputs = self._inputs.get_unknown(bin_idx)
-        else:
-            raise ValueError("'sample' must be either of 'reference'/'unknown'")
-        # get the correct sample kind
-        try:
-            input = inputs[kind]
-        except KeyError as e:
-            raise ValueError("'kind' must be either of 'data'/'rand'") from e
-        if input is None:
-            if kind == "rand":
-                kind = "random"
-            bin_info = f" bin {bin_idx} " if bin_idx is not None else " "
-            raise MissingCatalogError(
-                f"no {sample} {kind}{bin_info}catalog specified")
-
-        # get arguments for Catalog.from_file()
-        kwargs = input.to_dict()
-        kwargs["progress"] = progress
-        kwargs.pop("cache", False)
-        # attempt to load the catalog into memory
-        if sample == "reference":
-            cachepath = self._cache.get_reference()[kind]
-        else:
-            cachepath = self._cache.get_unknown(bin_idx)[kind]
-        exists = cachepath.exists()
-
-        # already cached and backend supports restoring
-        if exists and input.cache:
-            catalog = self.catalog_factory.from_cache(cachepath, progress)
-        # no caching requested or not supported
-        else:
-            if input.cache:
-                kwargs["cache_directory"] = str(cachepath)
-                cachepath.mkdir(exist_ok=True)
-            catalog = self._build_catalog(kwargs)
-        return catalog
-
     def load_reference(
             self,
         kind: str,
         progress: bool = False
     ) -> BaseCatalog:
-        logger.info(
-            f"loading reference {'random' if kind == 'rand' else kind} catalog")
-        return self._load_catalog("reference", kind, progress=progress)
+        cat = self._inputs.load_reference(kind=kind, progress=progress)
+        if not self.patch_file.exists():
+            self._inputs.centers_to_file(self.patch_file)
+        return cat
 
     def load_unknown(
         self,
@@ -490,18 +270,18 @@ class ProjectDirectory(DictRepresentation):
         bin_idx: int,
         progress: bool = False
     ) -> BaseCatalog:
-        logger.info(
-            f"loading unknown bin {bin_idx} "
-            f"{'random' if kind == 'rand' else kind} catalog")
-        return self._load_catalog(
-            "unknown", kind, bin_idx=bin_idx, progress=progress)
+        cat = self._inputs.load_unknown(
+            kind=kind, bin_idx=bin_idx, progress=progress)
+        if not self.patch_file.exists():
+            self._inputs.centers_to_file(self.patch_file)
+        return cat
 
     def get_bin_indices(self) -> set[int]:
         return self._inputs.get_bin_indices()
 
     @property
     def n_bins(self):
-        return self._inputs.n_bins
+        return self._inputs.n_tomo_bins
 
     def show_catalogs(self) -> None:
         print(yaml.dump(self._inputs.to_dict()))
@@ -524,6 +304,14 @@ class ProjectDirectory(DictRepresentation):
         return [
             path.name for path in self.counts_dir.iterdir() if path.is_dir()]
 
+    def iter_counts(
+        self,
+        create: bool = False
+    ) -> Iterator[tuple[str, CountsDirectory]]:
+        for scale in self.list_counts_scales():
+            counts = self.get_counts(scale, create=create)
+            yield scale, counts
+
     @property
     def estimate_dir(self) -> Path:
         return self.path.joinpath("estimate")
@@ -542,29 +330,29 @@ class ProjectDirectory(DictRepresentation):
         return [
             path.name for path in self.estimate_dir.iterdir() if path.is_dir()]
 
+    def iter_estimate(
+        self,
+        create: bool = False
+    ) -> Iterator[tuple[str, EstimateDirectory]]:
+        for scale in self.list_estimate_scales():
+            counts = self.get_estimate(scale, create=create)
+            yield scale, counts
+
     @property
     def true_dir(self) -> Path:
         return self.path.joinpath("true")
 
-    def get_true_reference(
+    def get_true_dir(
         self,
         create: bool = False
-    ) -> Path:
+    ) -> TrueDirectory:
         if create:
             self.true_dir.mkdir(exist_ok=True)
-        return self.true_dir.joinpath(f"nz_reference")
+        return TrueDirectory(self.true_dir)
 
-    def get_true_unknown(
-        self,
-        bin_idx: int,
-        create: bool = False
-    ) -> Path:
-        if create:
-            self.true_dir.mkdir(exist_ok=True)
-        return self.true_dir.joinpath(f"nztrue_{bin_idx}")
-
-    def get_total_unknown(self) -> Path:
-        return self.true_dir.joinpath("bin_counts.dat")
+    @property
+    def bin_weight_file(self) -> Path:
+        return self._path.joinpath("bin_weights.dat")
 
     def add_task(self, task: TaskRecord) -> None:
         self._tasks.add(task)

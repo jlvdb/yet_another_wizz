@@ -215,16 +215,21 @@ class InputManager(DictRepresentation):
 
     def __init__(
         self,
+        cachepath: TypePathStr,
         n_patches: int | None = None,
         patch_centers: Coordinate | None = None,
-        cachepath: TypePathStr | None = None,
         backend: str = DEFAULT.backend
     ) -> None:
+        if not isinstance(cachepath, (str, Path)):
+            raise TypeError("'cachepath' must be 'str' or 'Path'")
+        self._cachepath = cachepath
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # set up patch centers
         self._raise_n_patch_mismatch(patch_centers, n_patches)
-        self.catalog_factory = NewCatalog(backend)
         self._n_patches = n_patches
         self._centers = patch_centers
-        self._cachepath = cachepath
+        # create file backend
+        self.catalog_factory = NewCatalog(backend)
         self._reference: dict[str, Input | None] = dict(data=None, rand=None)
         self._unknown: dict[str, BinnedInput | None] = dict(data=None, rand=None)
 
@@ -247,9 +252,9 @@ class InputManager(DictRepresentation):
         inputs = {k: v for k, v in the_dict.items()}
         # parse optional parameters
         new = cls(
+            cachepath=inputs.pop("cachepath"),
             patch_centers=patch_centers,
             n_patches=inputs.pop("n_patches", None),
-            cachepath=inputs.pop("cachepath", None),
             backend=inputs.pop("backend", DEFAULT.backend))
         # parse reference
         new._reference = _parse_catalog_dict(
@@ -276,26 +281,29 @@ class InputManager(DictRepresentation):
         inputs = dict()
         if self.n_patches is not None:
             inputs["n_patches"] = self.n_patches
-        if self._cachepath is None:
-            inputs["cachepath"] = None
-        else:
-            inputs["cachepath"] = str(self._cachepath)
+        inputs["cachepath"] = str(self._cachepath)
         inputs["backend"] = self.catalog_factory.backend_name
         # parse the input files
-        inputs["reference"] = {
-            kind: None if inp is None else inp.to_dict()
-            for kind, inp in self._reference.items()}
-        inputs["unknown"] = {
-            kind: None if inp is None else inp.to_dict()
-            for kind, inp in self._unknown.items()}
+        ref = {
+            kind: inp.to_dict()
+            for kind, inp in self._reference.items() if inp is not None}
+        if len(ref) > 0:
+            inputs["reference"] = ref
+        unk = {
+            kind: inp.to_dict()
+            for kind, inp in self._unknown.items() if inp is not None}
+        if len(unk) > 0:
+            inputs["unknown"] = unk
         return inputs
 
     def centers_from_file(self, fpath: TypePathStr) -> None:
+        logger.debug("restoring patch centers")
         centers = np.loadtxt(str(fpath))
         self._raise_n_patch_mismatch(centers, self._n_patches)
         self._centers = CoordSky.from_array(centers)
 
     def centers_to_file(self, fpath: TypePathStr) -> None:
+        logger.debug("writing patch centers")
         PREC = 10
         DELIM = " "
 
@@ -306,12 +314,13 @@ class InputManager(DictRepresentation):
 
         if self._centers is None:
             raise InputConfigError("patch centers undetermined")
-        with open(str(fpath)) as f:
+        with open(str(fpath), "w") as f:
             write_head(
-                f, f"# {len(self._centers)} patch centers in sky coordinates\n",
+                f, f"# {len(self._centers)} patch centers in sky coordinates",
                 ["ra", "dec"])
-            for c in self.patch_centers:
-                f.write(f"{fmt_num(c.ra, PREC)}{DELIM}{fmt_num(c.dec, PREC)}\n")
+            for coord in self.patch_centers:
+                ra, dec = coord.ra[0], coord.dec[0]
+                f.write(f"{fmt_num(ra, PREC)}{DELIM}{fmt_num(dec, PREC)}\n")
 
     @property
     def n_patches(self) -> int | None:
@@ -328,11 +337,8 @@ class InputManager(DictRepresentation):
         return None
 
     @property
-    def cache_dir(self) -> Path:
-        if self._cachepath is None:
-            return self._path.joinpath("cache")
-        else:
-            return Path(self._cachepath)
+    def cache_dir(self) -> Path | None:
+        return Path(self._cachepath)
 
     def get_cache(self) -> CacheDirectory:
         return CacheDirectory(self.cache_dir)
@@ -358,6 +364,7 @@ class InputManager(DictRepresentation):
         data: Input,
         rand: Input | None = None
     ) -> None:
+        logger.debug(f"registering reference data catalog '{data.filepath}'")
         self._check_patches_consistent(data)
         self._reference["data"] = data
         if rand is not None:
@@ -370,6 +377,9 @@ class InputManager(DictRepresentation):
         data: Input,
         rand: Input | None = None
     ) -> None:
+        logger.debug(
+            f"registering unknown bin {bin_idx} data catalog "
+            f"'{data.filepath}'")
         # make sure the bin indices will remain aligned
         if self._unknown["rand"] is not None and rand is None:
             raise ValueError(
@@ -456,11 +466,11 @@ class InputManager(DictRepresentation):
             load_kwargs.pop("cache", False)
             # determine which patch argument to use, if patch column provided it
             # is included in 'input'
-            if self.external_patches:
+            if not self.external_patches:
                 if self._centers is None:
                     load_kwargs["patches"] = self.n_patches
                 else:
-                    load_kwargs["patch_centers"] = self.patch_centers
+                    load_kwargs["patches"] = self.patch_centers
             load_kwargs["progress"] = progress
             if input.cache:
                 cachepath.mkdir(exist_ok=True)
@@ -477,6 +487,8 @@ class InputManager(DictRepresentation):
         kind: str,
         progress: bool = False
     ) -> BaseCatalog:
+        logger.info(
+            f"loading reference {'random' if kind == 'rand' else kind} catalog")
         return self._load_catalog("reference", kind, progress=progress)
 
     def load_unknown(
@@ -485,4 +497,7 @@ class InputManager(DictRepresentation):
         bin_idx: int,
         progress: bool = False
     ) -> BaseCatalog:
+        logger.info(
+            f"loading unknown bin {bin_idx} "
+            f"{'random' if kind == 'rand' else kind} catalog")
         return self._load_catalog("unknown", kind, bin_idx, progress=progress)

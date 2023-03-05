@@ -17,10 +17,10 @@ import yaw
 from yaw.catalogs import BaseCatalog
 
 from yaw.pipeline.commandline import Commandline, Path_absolute, Path_exists
+from yaw.pipeline.data import MissingCatalogError
 from yaw.pipeline.logger import Colors
 from yaw.pipeline.project import (
-    MissingCatalogError, ProjectDirectory,
-    load_config_from_setup, load_setup_as_dict)
+    ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 from yaw.pipeline.task_utils import Tasks
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -280,7 +280,7 @@ class Runner:
             nz_data.to_files(path)
 
     def write_nz_ref(self) -> None:
-        path = self.project.get_true_reference(create=True)
+        path = self.project.get_true_dir(create=True).get_reference()
         # this data should always be produced unless it already exists
         if not path.with_suffix(".dat").exists():
             nz_data = self.ref_data.true_redshifts(self.config)
@@ -288,34 +288,42 @@ class Runner:
 
     def write_nz_true(self, idx: int) -> None:
         nz_data = self.unk_data.true_redshifts(self.config)
-        path = self.project.get_true_unknown(idx, create=True)
+        path = self.project.get_true_dir(create=True).get_unknown(idx)
         nz_data.to_files(path)
 
     def write_total_unk(self, idx: int) -> None:
-        path = self.project.get_total_unknown()
-        table = {}  # bin index -> (count, sum weights)
+        # important: exclude data outside the redshift binning range
+        any_scale = self.config.scales.dict_keys()[0]
+        if self.w_sp is not None:
+            total = self.w_sp[any_scale].dd.total.totals2.sum()
+        elif self.w_pp is not None:
+            total = self.w_pp[any_scale].dd.total.totals2.sum()
+        else:
+            raise ValueError("no correlation data available")
+
+        path = self.project.bin_weight_file
+        table = {}  # bin index -> sum weights
         # read existing data
         if path.exists():
             with open(str(path)) as f:
                 for line in f.readlines():
                     if line.startswith("#"):
                         continue
-                    bin_idx, count, sum_weight = line.strip().split()
+                    bin_idx, sum_weight = line.strip().split()
                     # add or update entry
-                    table[int(bin_idx)] = (int(count), float(sum_weight))
-        table[idx] = (len(self.unk_data), self.unk_data.total)
+                    table[int(bin_idx)] = float(sum_weight)
+        table[idx] = total
         # write table
         PREC = 12
         with open(str(path), "w") as f:
-            f.write(f"# bin {'count':>{PREC}s} {'sum_weight':>{PREC}s}\n")
+            f.write(f"# bin {'sum_weight':>{PREC}s}\n")
             for bin_idx in sorted(table):
-                count, sum_weight = table[bin_idx]
-                sum_weight = fmt_num(sum_weight, PREC)
-                f.write(f"{bin_idx:5d} {count:{PREC}d} {sum_weight}\n")
+                sum_weight = fmt_num(table[bin_idx], PREC)
+                f.write(f"{bin_idx:5d} {sum_weight}\n")
 
     def drop_cache(self):
         logger.info("dropping cached data")
-        self.project.get_cache().drop_all()
+        self.project.input.get_cache().drop_all()
 
     def print_message(self, message: str, color: str = Colors.blu) -> None:
         print(f"{color}YAW {Colors.sep} {message}{Colors.rst}")
@@ -377,8 +385,7 @@ class Runner:
                 fig.suptitle(title)
             return fig
 
-        for scale in self.project.list_estimate_scales():
-            est_dir = self.project.get_estimate(scale)
+        for scale, est_dir in self.project.iter_estimate():
             # reference
             fig = make_plot(
                 [est_dir.get_auto_reference()], scale,
@@ -390,7 +397,7 @@ class Runner:
                 fig.savefig(path)
             # unknown
             fig = make_plot(
-                [est_dir.get_auto(idx) for idx in est_dir.get_auto_indices()],
+                [cf_data for _, cf_data in est_dir.iter_auto()],
                 scale, "Unknown autocorrelation")
             if fig is not None:
                 fig.tight_layout()
@@ -400,11 +407,11 @@ class Runner:
                 fig.savefig(path)
             # ccs
             fig = make_plot(
-                [est_dir.get_cross(idx) for idx in est_dir.get_cross_indices()],
+                [nz_data for _, nz_data in est_dir.iter_cross()],
                 scale, "Redshift estimate",
                 true=[
-                    self.project.get_true_unknown(idx)
-                    for idx in est_dir.get_cross_indices()])
+                    nz_data
+                    for _, nz_data in self.project.get_true_dir().iter_bins()])
             if fig is not None:
                 fig.tight_layout()
                 name = f"nz_estimate_{scale}.png"
@@ -460,12 +467,12 @@ class Runner:
                 if do_w_sp or do_w_pp or do_ztrue:
                     skip_rand = do_ztrue and not (do_w_sp or do_w_pp)
                     self.load_unknown(idx, skip_rand=skip_rand)
-                    self.write_total_unk(idx)
 
                 if do_w_sp:
                     self.compute_linkage()
                     compute_rr = (not cross_kwargs.get("no_rr", True))
                     self.run_cross(idx, compute_rr=compute_rr)
+                    self.write_total_unk(idx)
                 elif do_zcc:
                     self.load_cross(idx)
                 if do_zcc and self.w_sp is not None:
@@ -478,6 +485,7 @@ class Runner:
                     self.compute_linkage()
                     compute_rr = (not auto_unk_kwargs.get("no_rr", False))
                     self.run_auto_unk(idx, compute_rr=compute_rr)
+                    self.write_total_unk(idx)
                 elif do_zcc:
                     self.load_auto_unk(idx)
                 if do_zcc and self.w_pp is not None:
@@ -809,13 +817,13 @@ def cache(args) -> dict:
         return drop_cache(args)
     else:
         with ProjectDirectory(args.wdir) as project:
-            cachedir = project.get_cache()
+            cachedir = project.input.get_cache()
             cachedir.print_contents()
 
 
 @Tasks.register(50)
 def drop_cache(args, project: ProjectDirectory) -> dict:
-    project.get_cache().drop_all()
+    project.input.get_cache().drop_all()
     return {}
 
 
