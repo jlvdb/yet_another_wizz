@@ -12,6 +12,7 @@ import yaml
 from yaw import default as DEFAULT
 from yaw.config import Configuration, parse_section_error
 from yaw.utils import DictRepresentation, TypePathStr
+
 from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)

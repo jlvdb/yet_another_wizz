@@ -10,7 +10,7 @@ from yaw.utils import format_float_fixed_width as fmt_num
 
 import yaw
 
-from yaw.pipeline.project import ProjectDirectory
+from yaw.pipeline.project import ProjectDirectory, ProjectState
 
 from yaw.pipeline.data import MissingCatalogError
 from yaw.pipeline.logger import print_yaw_message
@@ -59,11 +59,15 @@ class Runner:
         self.w_ss_data: _Tcd | None = None
         self.w_pp_data: _Tcd | None = None
 
+    @property
+    def state(self) -> ProjectState:
+        return self.project.get_state()
+
     def _warn_patches(self):
         LIM = 512
         msg = f"a large number of patches (>{LIM}) may degrade the performance"
         if not self._warned_patches:
-            if self.project.input.get_n_patches() > LIM:
+            if self.project.inputs.get_n_patches() > LIM:
                 logger.warn(msg)
                 self._warned_patches = True
 
@@ -187,35 +191,23 @@ class Runner:
 
     def load_auto_ref(self) -> None:
         cfs = {}
-        try:
-            for scale, counts_dir in self.project.iter_counts():
-                path = counts_dir.get_auto_reference()
-                cfs[scale] = yaw.CorrelationFunction.from_file(path)
-            assert len(cfs) > 0
-        except (FileNotFoundError, AssertionError):
-            logger.debug("skipped missing pair counts")
+        for scale, counts_dir in self.project.iter_counts():
+            path = counts_dir.get_auto_reference()
+            cfs[scale] = yaw.CorrelationFunction.from_file(path)
         self.w_ss = cfs
 
     def load_auto_unk(self, idx: int) -> None:
         cfs = {}
-        try:
-            for scale, counts_dir in self.project.iter_counts():
-                path = counts_dir.get_auto(idx)
-                cfs[scale] = yaw.CorrelationFunction.from_file(path)
-            assert len(cfs) > 0
-        except (FileNotFoundError, AssertionError):
-            logger.debug("skipped missing pair counts")
+        for scale, counts_dir in self.project.iter_counts():
+            path = counts_dir.get_auto(idx)
+            cfs[scale] = yaw.CorrelationFunction.from_file(path)
         self.w_pp = cfs
 
     def load_cross(self, idx: int) -> None:
         cfs = {}
-        try:
-            for scale, counts_dir in self.project.iter_counts():
-                path = counts_dir.get_cross(idx)
-                cfs[scale] = yaw.CorrelationFunction.from_file(path)
-            assert len(cfs) > 0
-        except (FileNotFoundError, AssertionError):
-            logger.debug("skipped missing pair counts")
+        for scale, counts_dir in self.project.iter_counts():
+            path = counts_dir.get_cross(idx)
+            cfs[scale] = yaw.CorrelationFunction.from_file(path)
         self.w_sp = cfs
 
     def sample_corrfunc(
@@ -303,7 +295,6 @@ class Runner:
                 f.write(f"{bin_idx:5d} {sum_weight}\n")
 
     def drop_cache(self):
-        logger.info("dropping cached data")
         self.project.get_cache_dir().drop_all()
 
     def plot(self):
@@ -363,39 +354,54 @@ class Runner:
                 fig.suptitle(title)
             return fig
 
+        plotted = False
         for scale, est_dir in self.project.iter_estimate():
             # reference
-            fig = make_plot(
-                [est_dir.get_auto_reference()], scale,
-                "Reference autocorrelation")
-            if fig is not None:
-                name = f"auto_reference_{scale}.png"
-                logger.debug(f"plotting to '{name}'")
-                path = self.project.estimate_path.joinpath(name)
-                fig.savefig(path)
+            if self.state.has_w_ss_cf:
+                fig = make_plot(
+                    [est_dir.get_auto_reference()], scale,
+                    "Reference autocorrelation")
+                if fig is not None:
+                    name = f"auto_reference_{scale}.png"
+                    logger.debug(f"plotting to '{name}'")
+                    path = self.project.estimate_path.joinpath(name)
+                    fig.savefig(path)
+                    plt.close(fig)
+                    plotted = True
             # unknown
-            fig = make_plot(
-                [cf_data for _, cf_data in est_dir.iter_auto()],
-                scale, "Unknown autocorrelation")
-            if fig is not None:
-                fig.tight_layout()
-                name = f"auto_unknown_{scale}.png"
-                logger.debug(f"plotting to '{name}'")
-                path = self.project.estimate_path.joinpath(name)
-                fig.savefig(path)
+            if self.state.has_w_pp_cf:
+                fig = make_plot(
+                    [cf_data for _, cf_data in est_dir.iter_auto()],
+                    scale, "Unknown autocorrelation")
+                if fig is not None:
+                    fig.tight_layout()
+                    name = f"auto_unknown_{scale}.png"
+                    logger.debug(f"plotting to '{name}'")
+                    path = self.project.estimate_path.joinpath(name)
+                    fig.savefig(path)
+                    plt.close(fig)
+                    plotted = True
             # ccs
-            fig = make_plot(
-                [nz_data for _, nz_data in est_dir.iter_cross()],
-                scale, "Redshift estimate",
-                true=[
-                    nz_data
-                    for _, nz_data in self.project.get_true_dir().iter_bins()])
-            if fig is not None:
-                fig.tight_layout()
-                name = f"nz_estimate_{scale}.png"
-                logger.debug(f"plotting to '{name}'")
-                path = self.project.estimate_path.joinpath(name)
-                fig.savefig(path)
+            if self.state.has_nz_cc:
+                if self.state.has_nz_true:
+                    true_dir = self.project.get_true_dir()
+                    true = [nz_data for _, nz_data in true_dir.iter_bins()]
+                else:
+                    true = None
+                fig = make_plot(
+                    [nz_data for _, nz_data in est_dir.iter_cross()],
+                    scale, "Redshift estimate",
+                    true=true)
+                if fig is not None:
+                    fig.tight_layout()
+                    name = f"nz_estimate_{scale}.png"
+                    logger.debug(f"plotting to '{name}'")
+                    path = self.project.estimate_path.joinpath(name)
+                    fig.savefig(path)
+                    plt.close(fig)
+                    plotted = True
+            if not plotted:
+                logger.warn("there was no data to plot")
 
     def main(
         self,
@@ -411,10 +417,16 @@ class Runner:
         do_w_ss = auto_ref_kwargs is not None
         do_w_pp = auto_unk_kwargs is not None
         do_zcc = zcc_kwargs is not None
-        do_ztrue = ztrue_kwargs is not None
+        do_true = ztrue_kwargs is not None
         zcc_processed = False
 
-        if do_w_sp or do_w_ss or do_zcc:
+        # some state parameters
+        state = self.state
+        has_w_ss = state.has_w_ss
+        has_w_sp = state.has_w_sp
+        has_w_pp = state.has_w_pp
+
+        if do_w_sp or do_w_ss or (do_zcc and has_w_ss):
             print_yaw_message("processing reference sample")
         if do_w_sp or do_w_ss:
             self.load_reference()
@@ -424,7 +436,7 @@ class Runner:
             compute_rr = (not auto_ref_kwargs.get("no_rr", False))
             self.compute_linkage()
             self.run_auto_ref(compute_rr=compute_rr)
-        elif do_zcc:
+        elif do_zcc and has_w_ss:
             self.load_auto_ref()
         if do_zcc and self.w_ss is not None:
             self.sample_corrfunc(
@@ -433,7 +445,7 @@ class Runner:
             self.write_auto_ref()
             zcc_processed = True
 
-        if do_w_sp or do_w_pp or do_zcc or do_ztrue:
+        if do_w_sp or do_w_pp or (do_zcc and (has_w_sp or has_w_pp)) or do_true:
             for i, idx in enumerate(self.project.get_bin_indices(), 1):
                 message = "processing unknown "
                 if self.project.n_bins == 1:
@@ -442,8 +454,8 @@ class Runner:
                     message += f"bin {i} / {self.project.n_bins}"
                 print_yaw_message(message)
 
-                if do_w_sp or do_w_pp or do_ztrue:
-                    skip_rand = do_ztrue and not (do_w_sp or do_w_pp)
+                if do_w_sp or do_w_pp or do_true:
+                    skip_rand = do_true and not (do_w_sp or do_w_pp)
                     self.load_unknown(idx, skip_rand=skip_rand)
 
                 if do_w_sp:
@@ -451,7 +463,7 @@ class Runner:
                     compute_rr = (not cross_kwargs.get("no_rr", True))
                     self.run_cross(idx, compute_rr=compute_rr)
                     self.write_total_unk(idx)
-                elif do_zcc:
+                elif do_zcc and has_w_sp:
                     self.load_cross(idx)
                 if do_zcc and self.w_sp is not None:
                     self.sample_corrfunc(
@@ -464,7 +476,7 @@ class Runner:
                     compute_rr = (not auto_unk_kwargs.get("no_rr", False))
                     self.run_auto_unk(idx, compute_rr=compute_rr)
                     self.write_total_unk(idx)
-                elif do_zcc:
+                elif do_zcc and has_w_pp:
                     self.load_auto_unk(idx)
                 if do_zcc and self.w_pp is not None:
                     self.sample_corrfunc(
@@ -475,7 +487,7 @@ class Runner:
 
                 if do_zcc and self.w_sp is not None:
                     self.write_nz_cc(idx)
-                if do_ztrue:
+                if do_true:
                     self.write_nz_true(idx)
 
         if do_zcc and not zcc_processed:
@@ -485,4 +497,5 @@ class Runner:
             self.drop_cache()
         
         if plot:
+            print_yaw_message("plotting data")
             self.plot()
