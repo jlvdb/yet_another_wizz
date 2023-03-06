@@ -411,6 +411,14 @@ class InputManager(DictRepresentation):
             else:
                 self._unknown[key].add(bin_idx, value)
 
+    @property
+    def has_reference(self) -> bool:
+        return self._reference["data"] is not None
+
+    @property
+    def has_unknown(self) -> bool:
+        return self._unknown["data"] is not None
+
     def get_reference(self) -> dict[str, Input]:
         return {k: v for k, v in self._reference.items()}
 

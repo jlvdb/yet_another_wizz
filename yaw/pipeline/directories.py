@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import textwrap
@@ -9,6 +10,9 @@ from pathlib import Path, _posix_flavour, _windows_flavour
 from typing import Any
 
 from yaw.utils import bytes_format
+
+
+logger = logging.getLogger(__name__)
 
 
 def _get_numeric_suffix(path: Path) -> int:
@@ -66,6 +70,7 @@ class CacheDirectory(Directory):
             if path.name.startswith("unknown"))
 
     def drop(self, name: str) -> None:
+        logger.debug(f"dropping cache '{name}'")
         path = self.joinpath(name)
         if path.is_dir():
             shutil.rmtree(str(path))
@@ -73,11 +78,15 @@ class CacheDirectory(Directory):
             path.unlink()
 
     def drop_all(self) -> None:
+        logger.info("dropping cached data")
         for path in self.iterdir():
             self.drop(path.name)
 
 
 class DataDirectory(Directory, ABC):
+
+    @abstractproperty
+    def _auto_reference_prefix(self) -> str: pass
 
     @abstractproperty
     def _cross_prefix(self) -> str: pass
@@ -88,11 +97,35 @@ class DataDirectory(Directory, ABC):
     @abstractmethod
     def get_auto_reference(self) -> Path: pass
 
+    @property
+    def has_auto_reference(self) -> bool:
+        try:
+            next(self.glob(self._auto_reference_prefix + "*"))
+            return True
+        except StopIteration:
+            return False
+
     @abstractmethod
     def get_auto(self, bin_idx: int) -> Path: pass
 
+    @property
+    def has_auto(self) -> bool:
+        try:
+            next(self.glob(self._auto_prefix + "*"))
+            return True
+        except StopIteration:
+            return False
+
     @abstractmethod
     def get_cross(self, bin_idx: int) -> Path: pass
+
+    @property
+    def has_cross(self) -> bool:
+        try:
+            next(self.glob(self._cross_prefix + "*"))
+            return True
+        except StopIteration:
+            return False
 
     def get_cross_indices(self) -> set[int]:
         return set(
@@ -121,11 +154,12 @@ class DataDirectory(Directory, ABC):
 
 class CountsDirectory(DataDirectory):
 
+    _auto_reference_prefix = "auto_reference"
     _cross_prefix = "cross"
     _auto_prefix = "auto_unknown"
 
     def get_auto_reference(self) -> Path:
-        return Path(self.joinpath("auto_reference.hdf"))
+        return Path(self.joinpath(f"{self._auto_reference_prefix}.hdf"))
 
     def get_auto(self, bin_idx: int) -> Path:
         return Path(self.joinpath(f"{self._auto_prefix}_{bin_idx}.hdf"))
@@ -136,11 +170,12 @@ class CountsDirectory(DataDirectory):
 
 class EstimateDirectory(DataDirectory):
 
+    _auto_reference_prefix = "auto_reference"
     _cross_prefix = "nz_cc"
     _auto_prefix = "auto_unknown"
 
     def get_auto_reference(self) -> Path:
-        return Path(self.joinpath("auto_reference"))
+        return Path(self.joinpath(self._auto_reference_prefix))
 
     def get_auto(self, bin_idx: int) -> Path:
         return Path(self.joinpath(f"{self._auto_prefix}_{bin_idx}"))
@@ -151,10 +186,27 @@ class EstimateDirectory(DataDirectory):
 
 class TrueDirectory(Directory):
 
+    _auto_reference_prefix = "nz_reference"
     _true_prefix = "nz_true"
 
+    @property
+    def has_reference(self) -> bool:
+        try:
+            next(self.glob(self._auto_reference_prefix + "*"))
+            return True
+        except StopIteration:
+            return False
+
     def get_reference(self) -> Path:
-        return Path(self.joinpath("nz_reference"))
+        return Path(self.joinpath(self._auto_reference_prefix))
+
+    @property
+    def has_unknown(self) -> bool:
+        try:
+            next(self.glob(self._true_prefix + "*"))
+            return True
+        except StopIteration:
+            return False
 
     def get_unknown(self, bin_idx: int) -> Path:
         return Path(self.joinpath(f"{self._true_prefix}_{bin_idx}"))

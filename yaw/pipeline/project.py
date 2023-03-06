@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 import shutil
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import pandas as pd
 import yaml
 
 from yaw import default as DEFAULT
@@ -77,6 +77,20 @@ def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
         return Configuration.from_dict(setup_dict["configuration"])
     except KeyError as e:
         parse_section_error(e, "configuration", SetupError)
+
+
+@dataclass(frozen=True)
+class ProjectState:
+    has_reference: bool
+    has_unknown: bool
+    has_w_ss: bool
+    has_w_sp: bool
+    has_w_pp: bool
+    has_w_ss_cf: bool
+    has_w_pp_cf: bool
+    has_nz_cc: bool
+    has_nz_ref: bool
+    has_nz_true: bool
 
 
 class ProjectDirectory(DictRepresentation):
@@ -204,6 +218,22 @@ class ProjectDirectory(DictRepresentation):
         if exc_type is None:
             self.setup_write()
 
+    def get_state(self) -> ProjectState:
+        _, counts_dir = next(self.iter_counts())
+        _, est_dir = next(self.iter_estimate())
+        true_dir = self.get_true_dir()
+        return ProjectState(
+            has_reference=self.inputs.has_reference,
+            has_unknown=self.inputs.has_unknown,
+            has_w_ss=counts_dir.has_auto_reference,
+            has_w_sp=counts_dir.has_cross,
+            has_w_pp=counts_dir.has_auto,
+            has_w_ss_cf=est_dir.has_auto_reference,
+            has_w_pp_cf=est_dir.has_auto,
+            has_nz_cc=est_dir.has_cross,
+            has_nz_ref=true_dir.has_reference,
+            has_nz_true=true_dir.has_unknown)
+
     def iter_scales(self) -> Iterator[str]:
         for scale in self.config.scales.dict_keys():
             yield scale
@@ -225,7 +255,7 @@ class ProjectDirectory(DictRepresentation):
         return self._config
 
     @property
-    def input(self) -> InputManager:
+    def inputs(self) -> InputManager:
         return self._inputs
 
     @property
@@ -233,7 +263,7 @@ class ProjectDirectory(DictRepresentation):
         return self._path.joinpath("cache")
 
     def get_cache_dir(self) -> CacheDirectory:
-        return self.input.get_cache()
+        return self.inputs.get_cache()
 
     @property
     def patch_file(self) -> Path:

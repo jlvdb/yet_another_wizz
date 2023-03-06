@@ -327,13 +327,13 @@ def cache(args) -> dict:
         return drop_cache(args)
     else:
         with ProjectDirectory(args.wdir) as project:
-            cachedir = project.input.get_cache()
+            cachedir = project.inputs.get_cache()
             cachedir.print_contents()
 
 
 @Tasks.register(50)
 def drop_cache(args, project: ProjectDirectory) -> dict:
-    project.input.get_cache().drop_all()
+    project.inputs.get_cache().drop_all()
     return {}
 
 
