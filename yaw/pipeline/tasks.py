@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import TYPE_CHECKING
 
 from yaw import default as DEFAULT
 from yaw.config import Configuration, ResamplingConfig
@@ -14,7 +15,10 @@ from yaw.pipeline.commandline import Commandline, Path_absolute, Path_exists
 from yaw.pipeline.project import (
     ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 from yaw.pipeline.runner import Runner
-from yaw.pipeline.task_utils import Tasks
+from yaw.pipeline.task_utils import Tasks, UndefinedTaskError, TaskArgumentError
+
+if TYPE_CHECKING:  # pragma: no cover
+    from yaw.pipeline.task_utils import TaskRecord
 
 
 BACKEND_OPTIONS = tuple(sorted(BaseCatalog.backends.keys()))
@@ -188,6 +192,9 @@ def cross(args, project: ProjectDirectory) -> dict:
     setup_args = dict(no_rr=args.no_rr)
     runner = Runner(project, progress=args.progress, threads=args.threads)
     runner.main(cross_kwargs=setup_args)
+    # drop default values
+    if not setup_args["no_rr"]:
+        setup_args.pop("no_rr")
     return setup_args
 
 
@@ -222,6 +229,9 @@ def auto_ref(args, project: ProjectDirectory) -> dict:
     setup_args = dict(no_rr=args.no_rr)
     runner = Runner(project, progress=args.progress, threads=args.threads)
     runner.main(auto_ref_kwargs=setup_args)
+    # drop default values
+    if not setup_args["no_rr"]:
+        setup_args.pop("no_rr")
     return setup_args
 
 
@@ -231,6 +241,9 @@ def auto_unk(args, project: ProjectDirectory) -> dict:
     setup_args = dict(no_rr=args.no_rr)
     runner = Runner(project, progress=args.progress, threads=args.threads)
     runner.main(auto_unk_kwargs=setup_args)
+    # drop default values
+    if not setup_args["no_rr"]:
+        setup_args.pop("no_rr")
     return setup_args
 
 
@@ -287,6 +300,17 @@ def zcc(args, project: ProjectDirectory) -> dict:
     # replace config object with dict representation
     setup_args.pop("config")
     setup_args.update(config.to_dict())
+    # drop default values
+    if setup_args["method"] == DEFAULT.Resampling.method:
+        setup_args.pop("method")
+    if setup_args["crosspatch"]:
+        setup_args.pop("crosspatch")
+    if "n_boot" in setup_args and setup_args["n_boot"] == DEFAULT.Resampling.n_boot:
+        setup_args.pop("n_boot")
+    if "global_norm" in setup_args and not setup_args["global_norm"]:
+        setup_args.pop("global_norm")
+    if "seed" in setup_args and setup_args["seed"] == DEFAULT.Resampling.seed:
+        setup_args.pop("seed")
     return setup_args
 
 
@@ -426,6 +450,12 @@ group_dump.add_argument(
     help="dump a pseudo setup file with parameter type annotations")
 
 
+def check_unknown_args(task: TaskRecord, allowed: tuple[str]) -> None:
+    for arg in task.args:
+        if arg not in allowed:
+            raise TaskArgumentError(arg, task.name, allowed)
+
+
 @Commandline.register(COMMANDNAME)
 def run(args):
     # get the configuration from an external file
@@ -444,15 +474,34 @@ def run(args):
         runner = Runner(project, args.progress, args.threads)
         task_kwargs = dict()
         for i, task in enumerate(project.list_tasks(), 1):
-            if task.name == "drop_cache":
+            name = task.name
+            if name == "cross":
+                check_unknown_args(task, ("no_rr",))
+                task_kwargs[f"{task.name}_kwargs"] = task.args
+            elif name == "auto_ref":
+                check_unknown_args(task, ("no_rr",))
+                task_kwargs[f"{task.name}_kwargs"] = task.args
+            elif name == "auto_unk":
+                check_unknown_args(task, ("no_rr",))
+                task_kwargs[f"{task.name}_kwargs"] = task.args
+            elif name == "ztrue":
+                check_unknown_args(task, ())
+                task_kwargs[f"{task.name}_kwargs"] = task.args
+            elif name == "drop_cache":
+                check_unknown_args(task, ())
                 task_kwargs[task.name] = True
-            elif task.name == "plot":
-                task_kwargs[task.name] = True
-            elif task.name == "zcc":
+            elif name == "zcc":
+                allowed = (
+                    "est_cross", "est_auto", "resampling", "method",
+                    "no_crosspatch", "n_boot", "global_norm", "seed")
+                check_unknown_args(task, allowed)
                 run_args = {k: v for k, v in task.args.items()}
                 run_args["config"] = ResamplingConfig.from_dict(task.args)
                 task_kwargs[f"{task.name}_kwargs"] = run_args
+            elif name == "plot":
+                check_unknown_args(task, ())
+                task_kwargs[task.name] = True
             else:
-                task_kwargs[f"{task.name}_kwargs"] = task.args
+                raise UndefinedTaskError(task.name)
             print(f"    |{i:2d}) {task.name}")
         runner.main(**task_kwargs)

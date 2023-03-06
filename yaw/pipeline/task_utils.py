@@ -7,6 +7,30 @@ from functools import wraps
 from typing import Any, Callable
 
 
+class TaskError(Exception):
+    pass
+
+
+class UndefinedTaskError(TaskError):
+
+    def __init__(self, task: str) -> None:
+        msg = f"got undefined task with name '{task}', options are: "
+        msg += ", ".join(f"'{name}'" for name in Tasks)
+        super().__init__(msg)
+
+
+class TaskArgumentError(TaskError):
+
+    def __init__(self, argument, taskname, options=None) -> None:
+        msg = f"encountered unknown argument '{argument}' in task '{taskname}'"
+        if options is not None:
+            if len(options) == 0:
+                msg += " (none allowed)"
+            else:
+                msg += " " + ", ".join(f"'{opt}'" for opt in options)
+        super().__init__(msg)
+
+
 @dataclass
 class TaskRecord:
 
@@ -80,7 +104,10 @@ class _Tasks(Registry):
     def get_priority(self, task: TaskRecord | str) -> int:
         if isinstance(task, TaskRecord):
             task = task.name
-        return self._order[task]
+        try:
+            return self._order[task]
+        except KeyError:
+            raise UndefinedTaskError(task)
 
     def register(self, priority: int):
         def task(func):

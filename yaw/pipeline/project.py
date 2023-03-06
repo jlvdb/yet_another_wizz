@@ -192,10 +192,8 @@ class ProjectDirectory(DictRepresentation):
         if self.patch_file.exists():
             self._inputs.centers_from_file(self.patch_file)
         # set up task management
-        try:
-            self._tasks = TaskList.from_list(setup["tasks"])
-        except KeyError:
-            self._tasks = TaskList()
+        task_list = setup.get("tasks", [])
+        self._tasks = TaskList.from_list(task_list)
 
     def to_dict(self) -> dict[str, Any]:
         setup = dict(
