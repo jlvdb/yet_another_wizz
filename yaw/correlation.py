@@ -500,6 +500,10 @@ def crosscorrelate(
 class RedshiftData(CorrelationData):
 
     @classmethod
+    def from_files(cls, path_prefix: TypePathStr) -> RedshiftData:
+        return super().from_files(path_prefix)
+
+    @classmethod
     def from_correlation_data(
         cls,
         cross_data: CorrelationData,
@@ -604,11 +608,11 @@ class RedshiftData(CorrelationData):
     def _cov_desc(self) -> str:
         return f"# n(z) estimate covariance matrix ({self.n_bins}x{self.n_bins})"
 
-    def normalised(self, to: CorrelationData | None = None) -> CorrelationData:
+    def normalised(self, to: CorrelationData | None = None) -> RedshiftData:
         if to is None:
             # normalise by integration
             mask = np.isfinite(self.data)
-            norm = np.trapz(self.data[mask], x=self.mids)
+            norm = np.trapz(self.data[mask], x=self.mids[mask])
         else:
             y_from = self.data
             y_to = to.data

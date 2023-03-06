@@ -298,110 +298,42 @@ class Runner:
         self.project.get_cache_dir().drop_all()
 
     def plot(self):
-        import numpy as np
+        plot_dir = self.project.estimate_path
         try:
             import matplotlib.pyplot as plt
+            from yaw.pipeline.plot import Plotter
             logger.info(
-                f"creating check-plots in '{self.project.estimate_path}'")
+                f"creating check-plots in '{plot_dir}'")
         except ImportError:
             logger.error("could not import matplotlib, plotting disabled")
             return
 
-        def make_plot(paths, scale, title=None, true=None):
-            # figure out which files exist
-            paths_ok = []
-            trues_ok = []
-            for i, path in enumerate(paths):
-                if path.with_suffix(".dat").exists():
-                    paths_ok.append(path)
-                    try:
-                        if true[i].with_suffix(".dat").exists():
-                            trues_ok.append(true[i])
-                    except TypeError:
-                        trues_ok.append(None)
-            if len(paths_ok) == 0:
-                return None
-            # make a figure
-            n_row, rest = divmod(len(paths_ok), 3)
-            if n_row == 0:
-                n_row, n_col = 1, rest
-            else:
-                n_col = 3
-                if rest > 0:
-                    n_row += 1
-            fig, axes = plt.subplots(
-                n_row, n_col, figsize=(4*n_col, 3*n_row),
-                sharex=True, sharey=True)
-            axes = np.asarray(axes)
-            for i, ax in enumerate(axes.flatten()):
-                if i >= len(paths_ok):
-                    ax.remove()
-            # plot the data
-            for ax, path, true in zip(axes.flatten(), paths_ok, trues_ok):
-                if true is not None:
-                    Nz = yaw.RedshiftData.from_files(true)
-                    nz = Nz.normalised()
-                    ax = nz.plot(
-                        zero_line=True, error_bars=False, color="k", ax=ax)
-                    cf = yaw.RedshiftData.from_files(path)
-                    ax = cf.normalised(to=nz).plot(label=scale, ax=ax)
-                else:
-                    cf = yaw.CorrelationData.from_files(path)
-                    ax = cf.plot(zero_line=True, label=scale, ax=ax)
-                ax.legend()
-                ax.set_xlim(left=0.0)
-            if title is not None:
-                fig.suptitle(title)
-            return fig
+        def plot_wrapper(method, title, name):
+            fig = method(title)
+            if fig is not None:
+                fig.tight_layout()
+                logger.info(f"plotting to '{name}'")
+                fig.savefig(plot_dir.joinpath(name))
+                plt.close(fig)
+                return True
+            return False
 
+        plotter = Plotter(self.project)
         plotted = False
-        for scale, est_dir in self.project.iter_estimate():
-            # reference
-            if self.state.has_w_ss_cf:
-                fig = make_plot(
-                    [est_dir.get_auto_reference()], scale,
-                    "Reference autocorrelation")
-                if fig is not None:
-                    name = f"auto_reference_{scale}.png"
-                    logger.debug(f"plotting to '{name}'")
-                    path = self.project.estimate_path.joinpath(name)
-                    fig.savefig(path)
-                    plt.close(fig)
-                    plotted = True
-            # unknown
-            if self.state.has_w_pp_cf:
-                fig = make_plot(
-                    [cf_data for _, cf_data in est_dir.iter_auto()],
-                    scale, "Unknown autocorrelation")
-                if fig is not None:
-                    fig.tight_layout()
-                    name = f"auto_unknown_{scale}.png"
-                    logger.debug(f"plotting to '{name}'")
-                    path = self.project.estimate_path.joinpath(name)
-                    fig.savefig(path)
-                    plt.close(fig)
-                    plotted = True
-            # ccs
-            if self.state.has_nz_cc:
-                if self.state.has_nz_true:
-                    true_dir = self.project.get_true_dir()
-                    true = [nz_data for _, nz_data in true_dir.iter_bins()]
-                else:
-                    true = None
-                fig = make_plot(
-                    [nz_data for _, nz_data in est_dir.iter_cross()],
-                    scale, "Redshift estimate",
-                    true=true)
-                if fig is not None:
-                    fig.tight_layout()
-                    name = f"nz_estimate_{scale}.png"
-                    logger.debug(f"plotting to '{name}'")
-                    path = self.project.estimate_path.joinpath(name)
-                    fig.savefig(path)
-                    plt.close(fig)
-                    plotted = True
-            if not plotted:
-                logger.warn("there was no data to plot")
+        plotted |= plot_wrapper(
+            method=plotter.auto_reference,
+            title="Reference autocorrelation",
+            name="auto_reference.png")
+        plotted |= plot_wrapper(
+            method=plotter.auto_unknown,
+            title="Unknown autocorrelation",
+            name="auto_unknown.png")
+        plotted |= plot_wrapper(
+            method=plotter.nz,
+            title="Redshift estimate",
+            name="nz_estimate.png")
+        if not plotted:
+            logger.warn("there was no data to plot")
 
     def main(
         self,
