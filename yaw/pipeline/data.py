@@ -152,7 +152,8 @@ class BinnedInput(Input):
     def from_dict(
         cls,
         filedata: dict[str, dict | str | None],
-        **kwargs) -> BinnedInput:
+        **kwargs
+    ) -> BinnedInput:
         return super().from_dict(filedata)
 
     def _filepath_to_dict(self) -> str:
@@ -283,7 +284,7 @@ class InputManager(DictRepresentation):
             inputs["n_patches"] = self.n_patches
         inputs["cachepath"] = str(self._cachepath)
         inputs["backend"] = self.catalog_factory.backend_name
-        # parse the input files
+        # parse the input files, omit empty sections
         ref = {
             kind: inp.to_dict()
             for kind, inp in self._reference.items() if inp is not None}
@@ -326,6 +327,14 @@ class InputManager(DictRepresentation):
     def n_patches(self) -> int | None:
         return self._n_patches
 
+    def get_n_patches(self) -> int | None:
+        if self.n_patches is not None:
+            return self.n_patches
+        try:
+            return len(self._centers)
+        except TypeError:
+            return None
+
     @property
     def external_patches(self) -> bool:
         return self._n_patches is None
@@ -337,21 +346,21 @@ class InputManager(DictRepresentation):
         return None
 
     @property
-    def cache_dir(self) -> Path | None:
+    def cache_dir(self) -> Path:
         return Path(self._cachepath)
 
     def get_cache(self) -> CacheDirectory:
         return CacheDirectory(self.cache_dir)
 
     @property
-    def n_tomo_bins(self) -> int:
+    def n_bins(self) -> int:
         n_bins = []
         for cat in self._unknown.values():
             if hasattr(cat, "n_bins"):
                 n_bins.append(cat.n_bins)
         return max(n_bins)
 
-    def _check_patches_consistent(self, catalog: Input) -> None:
+    def _check_patch_definition(self, catalog: Input) -> None:
         if catalog.patches is None and self.external_patches:
             raise InputConfigError(
                 "'n_patches' not set and no patch index column provided")
@@ -365,10 +374,10 @@ class InputManager(DictRepresentation):
         rand: Input | None = None
     ) -> None:
         logger.debug(f"registering reference data catalog '{data.filepath}'")
-        self._check_patches_consistent(data)
+        self._check_patch_definition(data)
         self._reference["data"] = data
         if rand is not None:
-            self._check_patches_consistent(rand)
+            self._check_patch_definition(rand)
             self._reference["rand"] = rand
     
     def add_unknown(
@@ -383,7 +392,7 @@ class InputManager(DictRepresentation):
         # make sure the bin indices will remain aligned
         if self._unknown["rand"] is not None and rand is None:
             raise ValueError(
-                "unknown rands exist but no randoms for curent bin provided")
+                "unknown randoms exist but no randoms for current bin provided")
         elif (
             self._unknown["data"] is not None and
             self._unknown["rand"] is None and
@@ -396,7 +405,7 @@ class InputManager(DictRepresentation):
         for key, value in zip(["data", "rand"], [data, rand]):
             if value is None:
                 continue
-            self._check_patches_consistent(value)
+            self._check_patch_definition(value)
             if self._unknown[key] is None:
                 self._unknown[key] = BinnedInput.from_inputs({bin_idx: value})
             else:
@@ -463,7 +472,7 @@ class InputManager(DictRepresentation):
         else:
             # patches must be created or applied
             load_kwargs = input.to_dict()
-            load_kwargs.pop("cache", False)
+            load_kwargs.pop("cache", False)  # not an argument of .from_file()
             # determine which patch argument to use, if patch column provided it
             # is included in 'input'
             if not self.external_patches:
@@ -471,9 +480,10 @@ class InputManager(DictRepresentation):
                     load_kwargs["patches"] = self.n_patches
                 else:
                     load_kwargs["patches"] = self.patch_centers
+            # else: load_kwargs["patches"] is None is ruled out by checks
             load_kwargs["progress"] = progress
             if input.cache:
-                cachepath.mkdir(exist_ok=True)
+                cachepath.mkdir()
                 load_kwargs["cache_directory"] = str(cachepath)
             catalog = self.catalog_factory.from_file(**load_kwargs)
             # store patch centers for consecutive loads

@@ -59,7 +59,7 @@ class CacheDirectory(Directory):
     def get_unknown(self, bin_idx: int) -> dict[str, Path]:
         return self._generate_filenames(f"unknown_{bin_idx}")
 
-    def get_bin_indices(self) -> set(int):
+    def get_bin_indices(self) -> set[int]:
         return set(
             _get_numeric_suffix(path)
             for path in self.iterdir()

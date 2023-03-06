@@ -4,13 +4,14 @@ import argparse
 import logging
 import sys
 from functools import wraps
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from yaw import default as DEFAULT
 from yaw.catalogs import PatchLinkage
 from yaw.config import Configuration, ResamplingConfig
-from yaw.correlation import CorrelationEstimator
+from yaw.correlation import CorrelationData, CorrelationFunction
 from yaw.cosmology import get_default_cosmology
+from yaw.estimators import CorrelationEstimator
 from yaw.utils import format_float_fixed_width as fmt_num
 
 import yaw
@@ -18,13 +19,10 @@ from yaw.catalogs import BaseCatalog
 
 from yaw.pipeline.commandline import Commandline, Path_absolute, Path_exists
 from yaw.pipeline.data import MissingCatalogError
-from yaw.pipeline.logger import Colors
+from yaw.pipeline.logger import print_yaw_message
 from yaw.pipeline.project import (
     ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 from yaw.pipeline.task_utils import Tasks
-
-if TYPE_CHECKING:  # pragma: no cover
-    from yaw.correlation import CorrelationFunction, CorrelationData
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +36,10 @@ METHOD_OPTIONS = ResamplingConfig.implemented_methods
 
 class NoCountsError(Exception):
     pass
+
+
+_Tcf = dict[str, CorrelationFunction]
+_Tcd = dict[str, CorrelationData]
 
 
 class Runner:
@@ -57,28 +59,25 @@ class Runner:
         self._warned_patches = False
         self._warned_linkage = False
         # create place holder attributes
-        self.ref_data = None
-        self.ref_rand = None
-        self.unk_data = None
-        self.unk_rand = None
-        self.linkage = None
-        self.w_sp = None
-        self.w_ss = None
-        self.w_pp = None
-        self.w_sp_data = None
-        self.w_ss_data = None
-        self.w_pp_data = None
+        self.ref_data: BaseCatalog | None = None
+        self.ref_rand: BaseCatalog | None = None
+        self.unk_data: BaseCatalog | None = None
+        self.unk_rand: BaseCatalog | None = None
+        self.linkage: PatchLinkage | None = None
+        self.w_sp: _Tcf | None = None
+        self.w_ss: _Tcf | None = None
+        self.w_pp: _Tcf | None = None
+        self.w_sp_data: _Tcd | None = None
+        self.w_ss_data: _Tcd | None = None
+        self.w_pp_data: _Tcd | None = None
 
     def _warn_patches(self):
         LIM = 512
         msg = f"a large number of patches (>{LIM}) may degrade the performance"
         if not self._warned_patches:
-            cats = (self.ref_data, self.ref_rand, self.unk_data, self.unk_rand)
-            for cat in cats:
-                if hasattr(cat, "n_patches") and cat.n_patches > LIM:
-                    logger.warn(msg)
-                    self._warned_patches = True
-                    break
+            if self.project.input.get_n_patches() > LIM:
+                logger.warn(msg)
+                self._warned_patches = True
 
     def load_reference(self):
         # load randoms first since preferrable for optional patch creation
@@ -144,9 +143,8 @@ class Runner:
             linkage=self.linkage, compute_rr=compute_rr,
             progress=self.progress)
         cfs = self.cf_as_dict(cfs)
-        for scale, cf in cfs.items():
-            counts_dir = self.project.get_counts(scale, create=True)
-            cf.to_file(counts_dir.get_auto_reference())
+        for scale, counts_dir in self.project.iter_counts(create=True):
+            cfs[scale].to_file(counts_dir.get_auto_reference())
         self.w_ss = cfs
 
     def run_auto_unk(
@@ -163,9 +161,8 @@ class Runner:
             linkage=self.linkage, compute_rr=compute_rr,
             progress=self.progress)
         cfs = self.cf_as_dict(cfs)
-        for scale, cf in cfs.items():
-            counts_dir = self.project.get_counts(scale, create=True)
-            cf.to_file(counts_dir.get_auto(idx))
+        for scale, counts_dir in self.project.iter_counts(create=True):
+            cfs[scale].to_file(counts_dir.get_auto(idx))
         self.w_pp = cfs
 
     def run_cross(
@@ -196,16 +193,14 @@ class Runner:
             self.config, self.ref_data, self.unk_data,
             **randoms, linkage=self.linkage, progress=self.progress)
         cfs = self.cf_as_dict(cfs)
-        for scale, cf in cfs.items():
-            counts_dir = self.project.get_counts(scale, create=True)
-            cf.to_file(counts_dir.get_cross(idx))
+        for scale, counts_dir in self.project.iter_counts(create=True):
+            cfs[scale].to_file(counts_dir.get_cross(idx))
         self.w_sp = cfs
 
     def load_auto_ref(self) -> None:
         cfs = {}
         try:
-            for scale in self.project.list_counts_scales():
-                counts_dir = self.project.get_counts(scale)
+            for scale, counts_dir in self.project.iter_counts():
                 path = counts_dir.get_auto_reference()
                 cfs[scale] = yaw.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
@@ -216,26 +211,24 @@ class Runner:
     def load_auto_unk(self, idx: int) -> None:
         cfs = {}
         try:
-            for scale in self.project.list_counts_scales():
-                counts_dir = self.project.get_counts(scale)
+            for scale, counts_dir in self.project.iter_counts():
                 path = counts_dir.get_auto(idx)
                 cfs[scale] = yaw.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
-            self.w_pp = cfs
         except (FileNotFoundError, AssertionError):
             logger.debug("skipped missing pair counts")
+        self.w_pp = cfs
 
     def load_cross(self, idx: int) -> None:
         cfs = {}
         try:
-            for scale in self.project.list_counts_scales():
-                counts_dir = self.project.get_counts(scale)
+            for scale, counts_dir in self.project.iter_counts():
                 path = counts_dir.get_cross(idx)
                 cfs[scale] = yaw.CorrelationFunction.from_file(path)
             assert len(cfs) > 0
-            self.w_sp = cfs
         except (FileNotFoundError, AssertionError):
             logger.debug("skipped missing pair counts")
+        self.w_sp = cfs
 
     def sample_corrfunc(
         self,
@@ -244,23 +237,21 @@ class Runner:
         config: ResamplingConfig,
         estimator: str | None
     ) -> dict[str, CorrelationData]:
-        cfs = getattr(self, cfs_kind)
+        cfs: _Tcf = getattr(self, cfs_kind)
         data = {}
         for scale, cf in cfs.items():
             data[scale] = cf.get(config, estimator=estimator)
         setattr(self, f"{cfs_kind}_data", data)
 
     def write_auto_ref(self) -> None:
-        for scale, cf_data in self.w_ss_data.items():
-            est_dir = self.project.get_estimate(scale, create=True)
+        for scale, est_dir in self.project.iter_estimate(create=True):
             path = est_dir.get_auto_reference()
-            cf_data.to_files(path)
+            self.w_ss_data[scale].to_files(path)
 
     def write_auto_unk(self, idx: int) -> None:
-        for scale, cf in self.w_pp_data.items():
-            est_dir = self.project.get_estimate(scale, create=True)
+        for scale, est_dir in self.project.iter_estimate(create=True):
             path = est_dir.get_auto(idx)
-            cf.to_files(path)
+            self.w_pp_data[scale].to_files(path)
 
     def write_nz_cc(self, idx: int) -> None:
         cross_data = self.w_sp_data
@@ -272,11 +263,10 @@ class Runner:
             unk_data = {scale: None for scale in cross_data}
         else:
             unk_data = self.w_pp_data
-        for scale in cross_data:
+        for scale, est_dir in self.project.iter_estimate(create=True):
+            path = est_dir.get_cross(idx)
             nz_data = yaw.RedshiftData.from_correlation_data(
                 cross_data[scale], ref_data[scale], unk_data[scale])
-            est_dir = self.project.get_estimate(scale, create=True)
-            path = est_dir.get_cross(idx)
             nz_data.to_files(path)
 
     def write_nz_ref(self) -> None:
@@ -303,6 +293,7 @@ class Runner:
 
         path = self.project.bin_weight_file
         table = {}  # bin index -> sum weights
+
         # read existing data
         if path.exists():
             with open(str(path)) as f:
@@ -312,7 +303,9 @@ class Runner:
                     bin_idx, sum_weight = line.strip().split()
                     # add or update entry
                     table[int(bin_idx)] = float(sum_weight)
-        table[idx] = total
+
+        table[idx] = total  # add current bin
+
         # write table
         PREC = 12
         with open(str(path), "w") as f:
@@ -323,17 +316,14 @@ class Runner:
 
     def drop_cache(self):
         logger.info("dropping cached data")
-        self.project.input.get_cache().drop_all()
-
-    def print_message(self, message: str, color: str = Colors.blu) -> None:
-        print(f"{color}YAW {Colors.sep} {message}{Colors.rst}")
+        self.project.get_cache().drop_all()
 
     def plot(self):
         import numpy as np
         try:
             import matplotlib.pyplot as plt
             logger.info(
-                f"creating check-plots in '{self.project.estimate_dir}'")
+                f"creating check-plots in '{self.project.estimate_path}'")
         except ImportError:
             logger.error("could not import matplotlib, plotting disabled")
             return
@@ -393,7 +383,7 @@ class Runner:
             if fig is not None:
                 name = f"auto_reference_{scale}.png"
                 logger.debug(f"plotting to '{name}'")
-                path = self.project.estimate_dir.joinpath(name)
+                path = self.project.estimate_path.joinpath(name)
                 fig.savefig(path)
             # unknown
             fig = make_plot(
@@ -403,7 +393,7 @@ class Runner:
                 fig.tight_layout()
                 name = f"auto_unknown_{scale}.png"
                 logger.debug(f"plotting to '{name}'")
-                path = self.project.estimate_dir.joinpath(name)
+                path = self.project.estimate_path.joinpath(name)
                 fig.savefig(path)
             # ccs
             fig = make_plot(
@@ -416,7 +406,7 @@ class Runner:
                 fig.tight_layout()
                 name = f"nz_estimate_{scale}.png"
                 logger.debug(f"plotting to '{name}'")
-                path = self.project.estimate_dir.joinpath(name)
+                path = self.project.estimate_path.joinpath(name)
                 fig.savefig(path)
 
     def main(
@@ -437,7 +427,7 @@ class Runner:
         zcc_processed = False
 
         if do_w_sp or do_w_ss or do_zcc:
-            self.print_message("processing reference sample")
+            print_yaw_message("processing reference sample")
         if do_w_sp or do_w_ss:
             self.load_reference()
             self.write_nz_ref()
@@ -462,7 +452,7 @@ class Runner:
                     message += "sample"
                 else:
                     message += f"bin {i} / {self.project.n_bins}"
-                self.print_message(message)
+                print_yaw_message(message)
 
                 if do_w_sp or do_w_pp or do_ztrue:
                     skip_rand = do_ztrue and not (do_w_sp or do_w_pp)
@@ -508,8 +498,6 @@ class Runner:
         
         if plot:
             self.plot()
-
-        self.print_message("done")
 
 
 ###########################  SUBCOMMANDS FOR PARSER  ###########################

@@ -14,7 +14,7 @@ from yaw.config import Configuration, parse_section_error
 from yaw.utils import DictRepresentation, TypePathStr
 from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (
-    CountsDirectory, EstimateDirectory, TrueDirectory)
+    CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
 from yaw.pipeline.logger import get_logger
 from yaw.pipeline.task_utils import TaskList
 
@@ -96,9 +96,9 @@ class ProjectDirectory(DictRepresentation):
         self._add_log_file_handle()
         self.setup_reload()
         # create any missing directories
-        self.counts_dir.mkdir(exist_ok=True)
-        self.estimate_dir.mkdir(exist_ok=True)
-        self.true_dir.mkdir(exist_ok=True)
+        self.counts_path.mkdir(exist_ok=True)
+        self.estimate_path.mkdir(exist_ok=True)
+        self.get_true_dir().mkdir(exist_ok=True)
 
     def _add_log_file_handle(self):
         # create the file logger
@@ -159,16 +159,42 @@ class ProjectDirectory(DictRepresentation):
         shutil.copy(str(setup_file), str(new.setup_file))
         return cls(path)
 
+    def setup_reload(self) -> None:
+        with open(self.setup_file) as f:
+            setup = yaml.safe_load(f.read())
+        # configuration is straight forward
+        self._config = parse_config_from_setup(setup)
+        # set up the data management
+        try:
+            data = setup["data"]
+        except KeyError as e:
+            parse_section_error(e, "data", SetupError)
+        # cache needs extra care: if None, set to default location
+        if "cachepath" not in data or data["cachepath"] is None:
+            data["cachepath"] = str(self.default_cache_path)
+        self._inputs = InputManager.from_dict(data)
+        # try loading existsing patch centers
+        if self.patch_file.exists():
+            self._inputs.centers_from_file(self.patch_file)
+        # set up task management
+        try:
+            self._tasks = TaskList.from_list(setup["tasks"])
+        except KeyError:
+            self._tasks = TaskList()
+
     def to_dict(self) -> dict[str, Any]:
         setup = dict(
             configuration=self._config.to_dict(),
             data=self._inputs.to_dict(),
             tasks=self._tasks.to_list())
-        # cache: if default location set to None. Reason: if clonding setup
+        # cache: if default location set to None. Reason: if cloning setup,
         # original cache would be used (unless manually overridden)
-        if setup["data"]["cachepath"] == str(self.cache_dir):
+        if setup["data"]["cachepath"] == str(self.default_cache_path):
             setup["data"].pop("cachepath")
         return setup
+
+    def setup_write(self) -> None:
+        write_setup_file(self.setup_file, self.to_dict())
 
     def __enter__(self) -> ProjectDirectory:
         return self
@@ -177,6 +203,10 @@ class ProjectDirectory(DictRepresentation):
         # TODO: this is sometimes executed even if an exception was raised
         if exc_type is None:
             self.setup_write()
+
+    def iter_scales(self) -> Iterator[str]:
+        for scale in self.config.scales.dict_keys():
+            yield scale
 
     @property
     def path(self) -> Path:
@@ -190,32 +220,6 @@ class ProjectDirectory(DictRepresentation):
     def setup_file(self) -> Path:
         return self._path.joinpath("setup.yaml")
 
-    def setup_reload(self) -> None:
-        with open(self.setup_file) as f:
-            setup = yaml.safe_load(f.read())
-        # configuration is straight forward
-        self._config = parse_config_from_setup(setup)
-        # set up the data management
-        try:
-            data = setup["data"]
-        except KeyError as e:
-            parse_section_error(e, "data", SetupError)
-        # cache needs extra care: if None, set to default location
-        if "cachepath" not in data or data["cachepath"] is None:
-            data["cachepath"] = str(self.cache_dir)
-        self._inputs = InputManager.from_dict(data)
-        # try loading existsing patch centers
-        if self.patch_file.exists():
-            self._inputs.centers_from_file(self.patch_file)
-        # set up task management
-        try:
-            self._tasks = TaskList.from_list(setup["tasks"])
-        except KeyError:
-            self._tasks = TaskList()
-
-    def setup_write(self) -> None:
-        write_setup_file(self.setup_file, self.to_dict())
-
     @property
     def config(self) -> Configuration:
         return self._config
@@ -225,12 +229,19 @@ class ProjectDirectory(DictRepresentation):
         return self._inputs
 
     @property
-    def cache_dir(self) -> Path:
+    def default_cache_path(self) -> Path:
         return self._path.joinpath("cache")
+
+    def get_cache_dir(self) -> CacheDirectory:
+        return self.input.get_cache()
 
     @property
     def patch_file(self) -> Path:
         return self._path.joinpath("patch_centers.dat")
+
+    @property
+    def bin_weight_file(self) -> Path:
+        return self._path.joinpath("bin_weights.dat")
 
     def set_reference(
         self,
@@ -281,78 +292,60 @@ class ProjectDirectory(DictRepresentation):
 
     @property
     def n_bins(self):
-        return self._inputs.n_tomo_bins
-
-    def show_catalogs(self) -> None:
-        print(yaml.dump(self._inputs.to_dict()))
+        return self._inputs.n_bins
 
     @property
-    def counts_dir(self) -> Path:
+    def counts_path(self) -> Path:
         return self.path.joinpath("paircounts")
 
-    def get_counts(
+    def get_counts_dir(
         self,
         scale_key: str,
         create: bool = False
     ) -> CountsDirectory:
-        path = self.counts_dir.joinpath(scale_key)
+        path = self.counts_path.joinpath(scale_key)
         if create:
             path.mkdir(exist_ok=True)
         return CountsDirectory(path)
-
-    def list_counts_scales(self) -> list(str):
-        return [
-            path.name for path in self.counts_dir.iterdir() if path.is_dir()]
 
     def iter_counts(
         self,
         create: bool = False
     ) -> Iterator[tuple[str, CountsDirectory]]:
-        for scale in self.list_counts_scales():
-            counts = self.get_counts(scale, create=create)
+        for scale in self.iter_scales():
+            counts = self.get_counts_dir(scale, create=create)
             yield scale, counts
 
     @property
-    def estimate_dir(self) -> Path:
+    def estimate_path(self) -> Path:
         return self.path.joinpath("estimate")
 
-    def get_estimate(
+    def get_estimate_dir(
         self,
         scale_key: str,
         create: bool = False
     ) -> EstimateDirectory:
-        path = self.estimate_dir.joinpath(scale_key)
+        path = self.estimate_path.joinpath(scale_key)
         if create:
             path.mkdir(exist_ok=True)
         return EstimateDirectory(path)
-
-    def list_estimate_scales(self) -> list(str):
-        return [
-            path.name for path in self.estimate_dir.iterdir() if path.is_dir()]
 
     def iter_estimate(
         self,
         create: bool = False
     ) -> Iterator[tuple[str, EstimateDirectory]]:
-        for scale in self.list_estimate_scales():
-            counts = self.get_estimate(scale, create=create)
+        for scale in self.iter_scales():
+            counts = self.get_estimate_dir(scale, create=create)
             yield scale, counts
-
-    @property
-    def true_dir(self) -> Path:
-        return self.path.joinpath("true")
 
     def get_true_dir(
         self,
         create: bool = False
     ) -> TrueDirectory:
+        path = self.path.joinpath("true")
         if create:
-            self.true_dir.mkdir(exist_ok=True)
-        return TrueDirectory(self.true_dir)
-
-    @property
-    def bin_weight_file(self) -> Path:
-        return self._path.joinpath("bin_weights.dat")
+            path.mkdir(exist_ok=True)
+        return TrueDirectory(path)
 
     def add_task(self, task: TaskRecord) -> None:
         self._tasks.add(task)

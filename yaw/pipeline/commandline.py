@@ -9,7 +9,7 @@ from typing import Any
 from yaw import __version__
 
 from yaw.pipeline.data import BinnedInput, Input
-from yaw.pipeline.logger import Colors, init_logger
+from yaw.pipeline.logger import Colors, init_logger, print_yaw_message
 from yaw.pipeline.task_utils import Registry
 
 
@@ -231,7 +231,9 @@ class _Commandline(Registry):
                     message = f"running task {args.task.upper()}"
                 print(f"{Colors.grn}YAW {Colors.sep} {message}{Colors.rst}")
                 func = self[args.task]
-                return func(args)
+                result = func(args)
+                print_yaw_message("done")
+                return result
             else:
                 Commandline.print_usage()
         except Exception:

@@ -58,6 +58,9 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
+def print_yaw_message(msg: str, color: str = Colors.blu) -> None:
+    print(f"{color}YAW {Colors.sep} {msg}{Colors.rst}")
+
 def get_logger() -> logging.Logger:
     return logging.getLogger("yaw")
 
