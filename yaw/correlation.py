@@ -526,7 +526,7 @@ class RedshiftData(CorrelationData):
             w_pp_data = np.float64(1.0)
             w_pp_samp = np.float64(1.0)
         else:
-            if not ref_data.is_compatible(cross_data):
+            if not unk_data.is_compatible(cross_data):
                 raise ValueError(
                     "'unk_data' correlation data is not compatible with "
                     "'cross_data'")
