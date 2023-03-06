@@ -449,8 +449,9 @@ def run(args):
             elif task.name == "plot":
                 task_kwargs[task.name] = True
             elif task.name == "zcc":
-                task.args["config"] = ResamplingConfig.from_dict(task.args)
-                task_kwargs[f"{task.name}_kwargs"] = task.args
+                run_args = {k: v for k, v in task.args.items()}
+                run_args["config"] = ResamplingConfig.from_dict(task.args)
+                task_kwargs[f"{task.name}_kwargs"] = run_args
             else:
                 task_kwargs[f"{task.name}_kwargs"] = task.args
             print(f"    |{i:2d}) {task.name}")
