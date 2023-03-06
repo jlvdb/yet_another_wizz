@@ -409,17 +409,14 @@ class DumpConfigAction(argparse.Action):
         super().__init__(
             option_strings=option_strings, dest=dest, nargs=0,
             const=const, required=required, help=help)
+
     def __call__(self, parser, namespace, values, option_string):
-        if self.const == "default":
-            from yaw.pipeline.default_setup import setup_default
-            print(setup_default.format(
-                backend_options=", ".join(BACKEND_OPTIONS),
-                binning_options=", ".join(BINNING_OPTIONS),
-                cosmology_options=", ".join(COSMOLOGY_OPTIONS),
-                method_options=", ".join(METHOD_OPTIONS)))
-        else:
-            from yaw.pipeline.default_setup import setup_types
-            print(setup_types)
+        from yaw.pipeline.default_setup import setup_default
+        print(setup_default.format(
+            backend_options=", ".join(BACKEND_OPTIONS),
+            binning_options=", ".join(BINNING_OPTIONS),
+            cosmology_options=", ".join(COSMOLOGY_OPTIONS),
+            method_options=", ".join(METHOD_OPTIONS)))
         parser.exit()
 
 parser_run = Commandline.create_subparser(
@@ -445,9 +442,6 @@ group_dump = parser_run.add_argument_group(
 group_dump.add_argument(
     "-d", "--dump", action=DumpConfigAction, const="default", nargs=0,
     help="dump an empty setup file with default values to the terminal")
-group_dump.add_argument(
-    "--annotate", action=DumpConfigAction, const="annotate", nargs=0,
-    help="dump a pseudo setup file with parameter type annotations")
 
 
 def check_unknown_args(task: TaskRecord, allowed: tuple[str]) -> None:
