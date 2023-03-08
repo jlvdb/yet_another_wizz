@@ -36,9 +36,10 @@ class TaskArgumentError(TaskError):
 
     def __init__(self, argument, taskname, options=None) -> None:
         msg = f"encountered unknown argument '{argument}' in task '{taskname}'"
+        msg += ", options are:"
         if options is not None:
             if len(options) == 0:
-                msg += " (none allowed)"
+                msg += " no arguments"
             else:
                 msg += " " + ", ".join(f"'{opt}'" for opt in options)
         super().__init__(msg)

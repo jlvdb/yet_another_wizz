@@ -236,7 +236,7 @@ class CommandCrosscorr(SubCommand):
                 task(project)
 
 
-class CommandCrosscorr(SubCommand):
+class CommandAutocorr(SubCommand):
 
     @classmethod
     def get_name(cls) -> str:
