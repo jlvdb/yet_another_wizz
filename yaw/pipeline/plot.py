@@ -108,6 +108,7 @@ class Plotter:
             return
 
         fig, axes = self.mkfig(self.project.n_bins)
+        axes = np.atleast_2d(axes)
         for scale, est_dir in self.project.iter_estimate():
             for ax, (index, path) in zip(axes.flatten(), est_dir.iter_auto()):
                 cf = CorrelationData.from_files(path)
@@ -126,6 +127,7 @@ class Plotter:
             return
 
         fig, axes = self.mkfig(self.project.n_bins)
+        axes = np.atleast_2d(axes)
         true_dir = self.project.get_true_dir()
         for scale, est_dir in self.project.iter_estimate():
             for ax, (index, path) in zip(axes.flatten(), est_dir.iter_cross()):
