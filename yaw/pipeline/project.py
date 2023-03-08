@@ -17,12 +17,12 @@ from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
 from yaw.pipeline.logger import get_logger
-from yaw.pipeline.task_utils import TaskList
+from yaw.pipeline.engine import Engine
+from yaw.pipeline.tasks import Task, TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
     from yaw.pipeline.data import Input
-    from yaw.pipeline.task_utils import TaskRecord
 
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,8 @@ class ProjectDirectory(DictRepresentation):
         self.counts_path.mkdir(exist_ok=True)
         self.estimate_path.mkdir(exist_ok=True)
         self.get_true_dir().mkdir(exist_ok=True)
+        # create an engine instance for the lifetime of the project
+        self._engine = Engine(self)
 
     def _add_log_file_handle(self):
         # create the file logger
@@ -158,7 +160,7 @@ class ProjectDirectory(DictRepresentation):
         setup_dict = dict(
             configuration=config.to_dict(),
             data=data,
-            tasks=TaskList().to_list())
+            tasks=TaskManager().to_list())
         return cls.from_dict(setup_dict, path=path)
 
     @classmethod
@@ -193,7 +195,7 @@ class ProjectDirectory(DictRepresentation):
             self._inputs.centers_from_file(self.patch_file)
         # set up task management
         task_list = setup.get("tasks", [])
-        self._tasks = TaskList.from_list(task_list)
+        self._tasks = TaskManager.from_list(task_list)
 
     def to_dict(self) -> dict[str, Any]:
         setup = dict(
@@ -376,8 +378,15 @@ class ProjectDirectory(DictRepresentation):
             path.mkdir(exist_ok=True)
         return TrueDirectory(path)
 
-    def add_task(self, task: TaskRecord) -> None:
+    @property
+    def engine(self) -> Engine:
+        return self._engine
+
+    def add_task(self, task: Task) -> None:
         self._tasks.add(task)
 
-    def list_tasks(self) -> list[TaskRecord]:
-        return list(self._tasks)
+    def get_tasks(self) -> tuple[Task]:
+        return self._tasks.get_tasks()
+
+    def view_tasks(self) -> str:
+        return str(self._tasks)

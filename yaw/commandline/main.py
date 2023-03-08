@@ -2,47 +2,24 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
-from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from yaw import __version__
 
 from yaw.pipeline.data import BinnedInput, Input
 from yaw.pipeline.logger import Colors, init_logger, print_yaw_message
-from yaw.pipeline.task_utils import Registry
+
+from yaw.commandline import utils
+
+if TYPE_CHECKING:  # pragma: no cover
+    from yaw.commandline.subcommands import SubCommand
 
 
-def Path_absolute(path: str) -> Path:
-    return Path(path).expanduser().absolute()
-
-
-def Path_exists(path: str) -> Path:
-    filepath = Path_absolute(path)
-    if not filepath.exists():
-        raise argparse.ArgumentTypeError(f"file '{path}' not found")
-    if not filepath.is_file():
-        raise argparse.ArgumentTypeError(f"path '{path}' is not a file")
-    return filepath
-
-
-def Directory_exists(path: str) -> Path:
-    filepath = Path_absolute(path)
-    if not filepath.exists():
-        raise argparse.ArgumentTypeError(f"file '{path}' not found")
-    if not filepath.is_dir():
-        raise argparse.ArgumentTypeError(f"path '{path}' is not a directory")
-    return filepath
-
-
-class CommandlineInitError(Exception):
-    pass
-
-
-class _Commandline(Registry):
+class _Commandline:
 
     def __init__(self) -> None:
-        super().__init__()
+        self._subcommands: dict[str, SubCommand] = {}
         # add parser
         self.parser = argparse.ArgumentParser(
             description="yet_another_wizz: modular clustering redshift pipeline.",
@@ -53,14 +30,16 @@ class _Commandline(Registry):
             title="modules",
             description="The pipeline is split into modules which perform specifc tasks as listed below. Each module has its own dedicated --help command.",
             dest="task")
-        # subparser names
-        self._names = set()
+
+    def register_subcommand(self, command: SubCommand) -> None:
+        name = command.get_name()
+        if name in self._subcommands:
+            raise utils.CommandlineInitError(
+                f"subcommand with name '{name}' already exists")
+        self._subcommands[name] = command
+        command.add_parser()
 
     def parse_args(self, args: Sequence[str] | None = None) -> argparse.Namespace:
-        for missing in self._names - set(self._register):
-            raise CommandlineInitError(
-                f"no callback registered for parser '{missing}'")
-        # parse arguments
         return self.parser.parse_args(args)
 
     def print_usage(self) -> None:
@@ -75,17 +54,14 @@ class _Commandline(Registry):
         threads: bool = False,
         progress: bool = False
     ) -> argparse.ArgumentParser:
-        if name in self._names:
-            raise ValueError(f"subparser with name '{name}' already exists")
         parser = self.subparsers.add_parser(
             name=name, help=help, description=description)
-        self._names.add(name)  # register
         parser.add_argument(
             "-v", "--verbose", action="count", default=0,
             help="show additional information in terminal, repeat to show debug messages")
         if wdir:
             parser.add_argument(
-                "wdir", metavar="<directory>", type=Directory_exists,
+                "wdir", metavar="<directory>", type=utils.Directory_exists,
                 help="project directory, must exist")
         if threads:
             parser.add_argument(
@@ -112,11 +88,11 @@ class _Commandline(Registry):
             title=title, description=f"specify the {title} input file{opt}")
         if binned:
             group.add_argument(
-                f"--{prefix}-path", required=required, nargs="+", type=Path_exists, metavar="<file>",
+                f"--{prefix}-path", required=required, nargs="+", type=utils.Path_exists, metavar="<file>",
                 help="(list of) input file paths (e.g. if the data sample is binned tomographically)")
         else:
             group.add_argument(
-                f"--{prefix}-path", required=required, type=Path_exists, metavar="<file>",
+                f"--{prefix}-path", required=required, type=utils.Path_exists, metavar="<file>",
                 help="input file path")
         group.add_argument(
             f"--{prefix}-ra", required=required, metavar="<str>",
@@ -206,18 +182,6 @@ class _Commandline(Registry):
             else:
                 return Input.from_dict(kwargs)
 
-    def register(self, name):
-        def command(func):
-            if name not in self._names:
-                raise ValueError(f"invalid '{name}'")
-            else:
-                self._register[name] = func
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                return func(*args, **kwargs)
-            return wrapper
-        return command
-
     def main(self) -> Any:
         args = self.parse_args()
         # create a logger and execute the task
@@ -230,10 +194,9 @@ class _Commandline(Registry):
                 else:
                     message = f"running task {args.task.upper()}"
                 print(f"{Colors.grn}YAW {Colors.sep} {message}{Colors.rst}")
-                func = self[args.task]
-                result = func(args)
+                command = self._subcommands[args.task]
+                command.run(args)
                 print_yaw_message("done")
-                return result
             else:
                 Commandline.print_usage()
         except Exception:

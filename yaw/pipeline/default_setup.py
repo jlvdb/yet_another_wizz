@@ -88,7 +88,7 @@ data:               # define input files, can be FITS, PARQUET, CSV or FEATHER f
 # parameters listed below (all values optional, defaults listed).
 tasks:
   - cross:                  # compute the crosscorrelation
-        no_rr: false            # <b> do not compute the random-random pair counts if both random
+        rr: false               # <b> compute the random-random pair counts if both random
                                 # catalogs are provided
   - auto_ref:               # compute the reference sample autocorrelation for bias mitigation
         no_rr: false            # <b> do not compute random-random pair counts

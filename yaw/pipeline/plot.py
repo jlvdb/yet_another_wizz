@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -25,6 +24,11 @@ logger = logging.getLogger(__name__)
 def despine(ax: Axis) -> None:
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
+
+
+def scale_key_to_math(scale: str) -> str:
+    rmin, rmax = scale[3:].split("t")
+    return rf"${rmin} < r \leq {rmax}$ kpc"
 
 
 class Plotter:
@@ -87,7 +91,7 @@ class Plotter:
         fig, ax = self.mkfig(1)
         for scale, est_dir in self.project.iter_estimate():
             cf = CorrelationData.from_files(est_dir.get_auto_reference())
-            cf.plot(zero_line=True, label=scale, ax=ax)
+            cf.plot(zero_line=True, label=scale_key_to_math(scale), ax=ax)
 
             ax.set_ylabel(r"$w_{\sf ss}$", fontsize=self.label_fontsize)
             ax.legend()
@@ -107,7 +111,7 @@ class Plotter:
         for scale, est_dir in self.project.iter_estimate():
             for ax, (index, path) in zip(axes.flatten(), est_dir.iter_auto()):
                 cf = CorrelationData.from_files(path)
-                cf.plot(zero_line=True, label=scale, ax=ax)
+                cf.plot(zero_line=True, label=scale_key_to_math(scale), ax=ax)
                 ax.legend(title=f"{index=}")
 
             self._decorate_subplots(axes, r"$w_{\sf pp}$")
@@ -134,7 +138,7 @@ class Plotter:
                     nz_true = None
                 # plot optional 
                 nz = RedshiftData.from_files(path).normalised(to=nz_true)
-                nz.plot(zero_line=True, label=scale, ax=ax)
+                nz.plot(zero_line=True, label=scale_key_to_math(scale), ax=ax)
                 ax.legend(title=f"{index=}")
 
             self._decorate_subplots(axes, r"$n_{\sf cc}$")

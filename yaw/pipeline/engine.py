@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
@@ -10,13 +10,13 @@ from yaw.utils import format_float_fixed_width as fmt_num
 
 import yaw
 
-from yaw.pipeline.project import ProjectDirectory, ProjectState
-
 from yaw.pipeline.data import MissingCatalogError
 from yaw.pipeline.logger import print_yaw_message
 
 if TYPE_CHECKING: ## pragma: no cover
     from yaw.catalogs import BaseCatalog
+    from yaw.pipeline import tasks
+    from yaw.pipeline.project import ProjectDirectory, ProjectState
 
 
 logger = logging.getLogger(__name__)
@@ -30,20 +30,15 @@ _Tcf = dict[str, CorrelationFunction]
 _Tcd = dict[str, CorrelationData]
 
 
-class Runner:
+class Engine:
 
     def __init__(
         self,
-        project: ProjectDirectory,
-        progress: bool = False,
-        threads: int | None = None
+        project: ProjectDirectory
     ) -> None:
         self.project = project
-        self.progress = progress
-        if threads is not None:
-            self.config = project.config.modify(thread_num=threads)
-        else:
-            self.config = project.config
+        self.set_run_context()
+        # warning state flags
         self._warned_patches = False
         self._warned_linkage = False
         # create place holder attributes
@@ -58,6 +53,20 @@ class Runner:
         self.w_sp_data: _Tcd | None = None
         self.w_ss_data: _Tcd | None = None
         self.w_pp_data: _Tcd | None = None
+
+    def set_run_context(
+        self,
+        progress: bool = False,
+        threads: int | None = None
+    ) -> None:
+        self.progress = progress
+        if threads is None:
+            self.config = self.project.config
+        else:
+            self.config = self.project.config.modify(thread_num=threads)
+
+    def reset_run_context(self) -> None:
+        self.set_run_context()
 
     @property
     def state(self) -> ProjectState:
@@ -335,24 +344,24 @@ class Runner:
         if not plotted:
             logger.warn("there was no data to plot")
 
-    def main(
+    def run(
         self,
-        cross_kwargs: dict[str, Any] | None = None,
-        auto_ref_kwargs: dict[str, Any] | None = None,
-        auto_unk_kwargs: dict[str, Any] | None = None,
-        zcc_kwargs: dict[str, Any] | None = None,
-        ztrue_kwargs: dict[str, Any] | None = None,
-        drop_cache: bool = False,
-        plot: bool = False
+        cross: tasks.TaskCrosscorr | None = None,
+        auto_ref: tasks.TaskAutocorrReference | None = None,
+        auto_unk: tasks.TaskAutocorrUnknown | None = None,
+        zcc: tasks.TaskEstimateCorr | None = None,
+        ztrue: tasks.TaskTrueRedshifts | None = None,
+        drop_cache: tasks.TaskDropCache | None = None,
+        plot: tasks.TaskPlot | None = None,
     ) -> None:
-        do_w_sp = cross_kwargs is not None
-        do_w_ss = auto_ref_kwargs is not None
-        do_w_pp = auto_unk_kwargs is not None
-        do_zcc = zcc_kwargs is not None
-        do_true = ztrue_kwargs is not None
-        zcc_processed = False
+        do_w_sp = cross is not None
+        do_w_ss = auto_ref is not None
+        do_w_pp = auto_unk is not None
+        do_zcc = zcc is not None
+        do_true = ztrue is not None
 
         # some state parameters
+        zcc_processed = False
         state = self.state
         has_w_ss = state.has_w_ss
         has_w_sp = state.has_w_sp
@@ -365,15 +374,13 @@ class Runner:
             self.write_nz_ref()
 
         if do_w_ss:
-            compute_rr = (not auto_ref_kwargs.get("no_rr", False))
             self.compute_linkage()
-            self.run_auto_ref(compute_rr=compute_rr)
+            self.run_auto_ref(compute_rr=(not auto_ref.no_rr))
         elif do_zcc and has_w_ss:
             self.load_auto_ref()
         if do_zcc and self.w_ss is not None:
             self.sample_corrfunc(
-                "w_ss", config=zcc_kwargs["config"],
-                estimator=zcc_kwargs.get("est_auto"))
+                "w_ss", config=zcc.config, estimator=zcc.est_auto)
             self.write_auto_ref()
             zcc_processed = True
 
@@ -392,28 +399,24 @@ class Runner:
 
                 if do_w_sp:
                     self.compute_linkage()
-                    compute_rr = (not cross_kwargs.get("no_rr", True))
-                    self.run_cross(idx, compute_rr=compute_rr)
+                    self.run_cross(idx, compute_rr=cross.rr)
                     self.write_total_unk(idx)
                 elif do_zcc and has_w_sp:
                     self.load_cross(idx)
                 if do_zcc and self.w_sp is not None:
                     self.sample_corrfunc(
-                        "w_sp", config=zcc_kwargs["config"],
-                        estimator=zcc_kwargs.get("est_cross"))
+                        "w_sp", config=zcc.config, estimator=zcc.est_cross)
                     zcc_processed = True
 
                 if do_w_pp:
                     self.compute_linkage()
-                    compute_rr = (not auto_unk_kwargs.get("no_rr", False))
-                    self.run_auto_unk(idx, compute_rr=compute_rr)
+                    self.run_auto_unk(idx, compute_rr=(not auto_unk.no_rr))
                     self.write_total_unk(idx)
                 elif do_zcc and has_w_pp:
                     self.load_auto_unk(idx)
                 if do_zcc and self.w_pp is not None:
                     self.sample_corrfunc(
-                        "w_pp", config=zcc_kwargs["config"],
-                        estimator=zcc_kwargs.get("est_auto"))
+                        "w_pp", config=zcc.config, estimator=zcc.est_auto)
                     self.write_auto_unk(idx)
                     zcc_processed = True
 
