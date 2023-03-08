@@ -10,8 +10,6 @@ import astropy.cosmology
 import numpy as np
 import yaml
 
-from yaw import __version__
-
 from yaw import default as DEFAULT
 from yaw.default import NotSet
 from yaw.cosmology import (
@@ -50,22 +48,6 @@ def parse_section_error(
     elif isinstance(exception, KeyError):
         raise reraise(f"missing section '{section}'") from exception
     raise
-
-
-def _check_version(version: str) -> None:
-    msg = "configuration has be generated on a new version than installed: "
-    msg += f"{version} > {__version__}"
-    this = [int(s) for s in __version__.split(".")]
-    other = [int(s) for s in version.split(".")]
-    for t, o in zip(this, other):
-        if t > o:
-            break
-        elif t < o:
-            raise ConfigurationError(msg)
-    else:
-        # check if this is a subversion
-        if len(other) > len(this):
-            raise ConfigurationError(msg)
 
 
 def cosmology_to_yaml(cosmology: TypeCosmology) -> str:
@@ -476,7 +458,6 @@ class Configuration(DictRepresentation):
         **kwargs
     ) -> Configuration:
         config = {k: v for k, v in the_dict.items()}
-        _check_version(config.pop("version", "0.0"))
         cosmology = parse_cosmology(config.pop(
             "cosmology", DEFAULT.Configuration.cosmology))
         # parse the required subgroups
@@ -509,7 +490,7 @@ class Configuration(DictRepresentation):
             backend=backend, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
-        values = dict(version=__version__)
+        values = dict()
         for attr in asdict(self):
             value = getattr(self, attr)  # avoid asdict() recursion
             if attr == "cosmology":

@@ -4,11 +4,13 @@ import logging
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import zip_longest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from yaw import __version__
 from yaw import default as DEFAULT
 from yaw.config import Configuration, parse_section_error
 from yaw.utils import DictRepresentation, TypePathStr
@@ -32,11 +34,24 @@ class SetupError(Exception):
     pass
 
 
+def check_version(version: str) -> None:
+    msg = "configuration was generated on code version different from installed:"
+    msg += f" {version} != {__version__}"
+    # compare first two digits, which may introduce breaking changes
+    this = [int(s) for s in __version__.split(".")][:2]
+    other = [int(s) for s in version.split(".")][:2]
+    for t, o in zip_longest(this, other, fillvalue=0):
+        if t != o:
+            raise SetupError(msg)
+
+
 def write_setup_file(
     path: TypePathStr,
     setup_dict: dict[str, Any]
 ) -> None:
     logger.debug("writing setup file")
+    setup_dict = {k: v for k, v in setup_dict.items()}
+    setup_dict["_version"] = __version__
     lines = yaml.dump(setup_dict).split("\n")
     # some postprocessing for better readibility
     indent = " " * 4
@@ -179,6 +194,7 @@ class ProjectDirectory(DictRepresentation):
     def setup_reload(self) -> None:
         with open(self.setup_file) as f:
             setup = yaml.safe_load(f.read())
+        check_version(setup.pop("_version", __version__))
         # configuration is straight forward
         self._config = parse_config_from_setup(setup)
         # set up the data management
