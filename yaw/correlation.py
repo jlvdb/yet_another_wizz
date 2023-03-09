@@ -33,6 +33,36 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class SampledValue:
+
+    value: np.ScalarType
+    samples: NDArray[np.ScalarType]
+    method: str
+    error: np.ScalarType = field(init=False)
+
+    def __post_init__(self) -> None:
+        if self.method not in ResamplingConfig.implemented_methods:
+            raise ValueError(f"unknown sampling method '{self.method}'")
+        if self.method == "bootstrap":
+            error = np.std(self.samples, ddof=1, axis=0)
+        else:  # jackknife
+            error = np.std(self.samples, ddof=0, axis=0) / (self.n_samples - 1)
+        object.__setattr__(self, "error", error)
+
+    def __repr__(self) -> str:
+        string = self.__class__.__name__
+        value = self.value
+        error = self.error
+        n_samples = self.n_samples
+        method = self.method
+        return f"{string}({value=:.3g}, {error=:.3g}, {n_samples=}, {method=})"
+
+    @property
+    def n_samples(self) -> int:
+        return len(self.samples)
+
+
 @dataclass(frozen=True, repr=False)
 class CorrelationData(SampledData):
 
@@ -610,9 +640,7 @@ class RedshiftData(CorrelationData):
 
     def normalised(self, to: CorrelationData | None = None) -> RedshiftData:
         if to is None:
-            # normalise by integration
-            mask = np.isfinite(self.data)
-            norm = np.trapz(self.data[mask], x=self.mids[mask])
+            norm = np.nansum(self.dz * self.data)
         else:
             y_from = self.data
             y_to = to.data
@@ -626,3 +654,10 @@ class RedshiftData(CorrelationData):
             data=self.data / norm,
             samples=self.samples / norm,
             method=self.method)
+
+    def mean(self):
+        norm = np.nansum(self.data)
+        mean = np.nansum(self.data * self.mids) / norm
+        samples = np.nansum(self.samples * self.mids, axis=1) / norm
+        return SampledValue(
+            value=mean, samples=samples, method=self.method)
