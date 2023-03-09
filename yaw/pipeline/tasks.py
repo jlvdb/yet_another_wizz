@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, Any
 
 from yaw import default as DEFAULT
 from yaw.config import ResamplingConfig
-from yaw.utils import DictRepresentation
+from yaw.estimators import CorrelationEstimator
+from yaw.utils import DictRepresentation, Parameter
 
 if TYPE_CHECKING:  # pragma: no cover
     from argparse import Namespace
@@ -18,6 +19,9 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
+
+ESTIMATORS = [est.short for est in CorrelationEstimator.variants]
+METHOD_OPTIONS = ResamplingConfig.implemented_methods
 
 
 class TaskError(Exception):
@@ -54,8 +58,9 @@ class Task(DictRepresentation):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         name = cls.get_name()
-        cls._tasks[name] = cls
-        cls._order[name] = len(cls._order)
+        if name != "task":  # skip any meta tasks
+            cls._tasks[name] = cls
+            cls._order[name] = len(cls._order)
 
     def __post_init__(self) -> None:
         for par in fields(self):
@@ -125,7 +130,9 @@ def run_task(name: str, project: ProjectDirectory, **task_kwargs):
 @dataclass(frozen=True)
 class TaskCrosscorr(Task):
 
-    rr: bool = field(default=False)
+    rr: bool = field(default=False, metadata=Parameter(
+        type=bool,
+        help="compute random-random pair counts, even if both randoms are available"))
 
     @classmethod
     def get_name(cls) -> str:
@@ -137,9 +144,15 @@ class TaskCrosscorr(Task):
 
 
 @dataclass(frozen=True)
-class TaskAutocorrReference(Task):
+class TaskAutocorr(Task):
 
-    no_rr: bool = field(default=False)
+    rr: bool = field(default=True, metadata=Parameter(
+        type=bool,
+        help="do not compute random-random pair counts"))
+
+
+@dataclass(frozen=True)
+class TaskAutocorrReference(TaskAutocorr):
 
     @classmethod
     def get_name(cls) -> str:
@@ -151,9 +164,7 @@ class TaskAutocorrReference(Task):
 
 
 @dataclass(frozen=True)
-class TaskAutocorrUnknown(Task):
-
-    no_rr: bool = field(default=False)
+class TaskAutocorrUnknown(TaskAutocorr):
 
     @classmethod
     def get_name(cls) -> str:
@@ -167,13 +178,35 @@ class TaskAutocorrUnknown(Task):
 @dataclass(frozen=True)
 class TaskEstimateCorr(Task):
 
-    est_cross: str | None = field(default=None)
-    est_auto: str | None = field(default=None)
-    method: str = field(default=DEFAULT.Resampling.method)
-    no_crosspatch: bool = field(default=(not DEFAULT.Resampling.crosspatch))
-    n_boot: int = field(default=DEFAULT.Resampling.n_boot)
-    global_norm: bool = field(default=DEFAULT.Resampling.global_norm)
-    seed: int = field(default=DEFAULT.Resampling.seed)
+    est_cross: str | None = field(default=None, metadata=Parameter(
+        type=str, choices=ESTIMATORS,
+        help="correlation estimator for crosscorrelations (default: LS or DP)",
+        parser_id="estimators"))
+    est_auto: str | None = field(default=None, metadata=Parameter(
+        type=str, choices=ESTIMATORS,
+        help="correlation estimator for autocorrelations (default: LS or DP)",
+        parser_id="estimators"))
+
+    method: str = field(default=DEFAULT.Resampling.method, metadata=Parameter(
+        type=str, choices=METHOD_OPTIONS,
+        help="resampling method for covariance estimates (default: %(default)s)",
+        parser_id="sampling"))
+    crosspatch: bool = field(default=DEFAULT.Resampling.crosspatch, metadata=Parameter(
+        type=bool,
+        help="whether to include cross-patch pair counts when resampling",
+        parser_id="sampling"))
+    n_boot: int = field(default=DEFAULT.Resampling.n_boot, metadata=Parameter(
+        type=int,
+        help="number of bootstrap samples (default: %(default)s)",
+        parser_id="sampling"))
+    global_norm: bool = field(default=DEFAULT.Resampling.global_norm, metadata=Parameter(
+        type=bool,
+        help="normalise pair counts globally instead of patch-wise",
+        parser_id="sampling"))
+    seed: int = field(default=DEFAULT.Resampling.seed, metadata=Parameter(
+        type=int,
+        help="random seed for bootstrap sample generation (default: %(default)s)",
+        parser_id="sampling"))
 
     @classmethod
     def get_name(cls) -> str:
@@ -183,7 +216,7 @@ class TaskEstimateCorr(Task):
     def config(self) -> ResamplingConfig:
         return ResamplingConfig(
             method=self.method,
-            crosspatch=(not self.no_crosspatch),
+            crosspatch=self.crosspatch,
             n_boot=self.n_boot,
             global_norm=self.global_norm,
             seed=self.seed)

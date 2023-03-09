@@ -9,7 +9,7 @@ from dataclasses import asdict
 from yaw import __version__, default as DEFAULT
 from yaw.config import Configuration
 from yaw.cosmology import get_default_cosmology
-from yaw.estimators import CorrelationEstimator
+from yaw.utils import populate_parser
 
 from yaw.pipeline import tasks
 from yaw.pipeline.project import (
@@ -208,9 +208,7 @@ class CommandCrosscorr(SubCommand):
             description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.",
             progress=True,
             threads=True)
-        parser.add_argument(
-            "--rr", action="store_true",
-            help="compute random-random pair counts, even if both randoms are available")
+        populate_parser(tasks.TaskCrosscorr, parser)
 
         Commandline.add_input_parser(parser, "unknown (data)", prefix="unk", required=True, binned=True)
 
@@ -251,11 +249,9 @@ class CommandAutocorr(SubCommand):
             progress=True,
             threads=True)
         parser.add_argument(
-            "--no-rr", action="store_true",
-            help="do not compute random-random pair counts")
-        parser.add_argument(
             "--which", choices=("ref", "unk"), default="ref",
             help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
+        populate_parser(tasks.TaskAutocorr, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
@@ -281,35 +277,16 @@ class CommandEstimateCorr(SubCommand):
             help="compute clustering redshift estimates for the unknown data",
             description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.")
 
-        _estimators = [est.short for est in CorrelationEstimator.variants]
         group_est = parser.add_argument_group(
             title="correlation estimators",
             description="configure estimators for the different types of correlation functions")
-        group_est.add_argument(
-            "--est-cross", choices=_estimators, default=None,
-            help="correlation estimator for crosscorrelations (default: LS or DP)")
-        group_est.add_argument(
-            "--est-auto", choices=_estimators, default=None,
-            help="correlation estimator for autocorrelations (default: LS or DP)")
 
         group_samp = parser.add_argument_group(
             title="resampling",
             description="configure the resampling used for covariance estimates")
-        group_samp.add_argument(
-            "--method", choices=utils.METHOD_OPTIONS, default=DEFAULT.Resampling.method,
-            help="resampling method for covariance estimates (default: %(default)s)")
-        group_samp.add_argument(
-            "--no-crosspatch", action="store_true",  # check with DEFAULT.Resampling.crosspatch
-            help="whether to include cross-patch pair counts when resampling")
-        group_samp.add_argument(
-            "--n-boot", type=int, metavar="<int>", default=DEFAULT.Resampling.n_boot,
-            help="number of bootstrap samples (default: %(default)s)")
-        group_samp.add_argument(
-            "--global-norm", action="store_true",  # check with DEFAULT.Resampling.global_norm
-            help="normalise pair counts globally instead of patch-wise")
-        group_samp.add_argument(
-            "--seed", type=int, metavar="<int>", default=DEFAULT.Resampling.seed,
-            help="random seed for bootstrap sample generation (default: %(default)s)")
+
+        populate_parser(tasks.TaskEstimateCorr, parser, extra_parsers=dict(
+            estimators=group_est, sampling=group_samp))
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
@@ -326,11 +303,12 @@ class CommandTrueRedshifts(SubCommand):
 
     @classmethod
     def add_parser(cls) -> None:
-        Commandline.create_subparser(
+        parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="compute true redshift distributions for unknown data",
             description="Compute the redshift distributions of the unknown data sample(s), which requires providing point-estimate redshifts for the catalog.",
             threads=True)
+        populate_parser(tasks.TaskTrueRedshifts, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
@@ -391,12 +369,13 @@ class CommandPlot(SubCommand):
 
     @classmethod
     def add_parser(cls) -> None:
-        Commandline.create_subparser(
+        parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="generate automatic check plots",
             description="Plot the autocorrelations and redshift estimates into the 'estimate' directory.",
             progress=False,
             threads=False)
+        populate_parser(tasks.TaskPlot, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:

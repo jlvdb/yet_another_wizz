@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 import warnings
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
-from collections.abc import Iterable
-from dataclasses import asdict
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import Field, asdict, dataclass, field, fields
 from datetime import timedelta
 from pathlib import Path
 from timeit import default_timer
@@ -15,6 +15,7 @@ import numpy as np
 import tqdm
 
 if TYPE_CHECKING:  # pragma: no cover
+    from argparse import ArgumentParser
     from numpy.typing import ArrayLike, NDArray
     from pandas import IntervalIndex
 
@@ -260,3 +261,89 @@ class TimedLog:
         delta = default_timer() - self.t
         time = str(timedelta(seconds=round(delta)))
         self.callback(f"{self.msg} - done {time}")
+
+
+@dataclass(frozen=True)
+class Parameter(Mapping):
+    """NOTE: data attributes are exposed with key prefix 'yaw_'."""
+
+    help: str
+    type: type | None = field(default=None)
+    nargs: str | int | None = field(default=None)
+    choices: Sequence | None = field(default=None)
+    parser_id: str = field(default="default")
+    metavar: str | None = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        if self.type not in (str, None) and not self.is_flag():
+            try:
+                _, rep, _ = str(self.type).split("'")
+                metavar = f"<{rep}>"
+            except ValueError:
+                metavar = None
+            object.__setattr__(self, "metavar", metavar)
+
+    def __len__(self) -> int:
+        return 5
+
+    def __iter__(self) -> Iterator[str]:
+        for field in fields(self):
+            if field.init:
+                yield f"yaw_{field.name}"
+
+    def __getitem__(self, key: str) -> Any:
+        return asdict(self)[key[4:]]
+
+    @classmethod
+    def from_field(cls, field: Field) -> Parameter:
+        kwargs = {}
+        for key, value in field.metadata.items():
+            if key.startswith("yaw_"):
+                kwargs[key[4:]] = value
+        if len(kwargs) == 0:
+            raise TypeError(
+                f"cannot convert field with name '{field.name}' to Parameter")
+        return cls(**kwargs)
+
+    def is_flag(self) -> bool:
+        return self.type is bool
+
+    def get_kwargs(self) -> dict[str, Any]:
+        kwargs = asdict(self)
+        kwargs.pop("parser_id")
+        return kwargs
+
+
+def generate_metavar(type) -> str | None: pass
+
+
+def populate_parser(
+    dclass: object,
+    default_parser: ArgumentParser,
+    extra_parsers: Mapping[str, ArgumentParser] | None = None
+) -> None:
+    for field in fields(dclass):
+        try:
+            parameter = Parameter.from_field(field)
+        except TypeError:
+            continue
+        name = field.name.replace("_", "-")
+
+        if parameter.parser_id == "default":
+            parser = default_parser
+        else:
+            parser = extra_parsers[parameter.parser_id]
+        
+        if parameter.is_flag():
+            if field.default == True:
+                parser.add_argument(
+                    f"--no-{name}", dest=field.name,
+                    action="store_false", help=parameter.help)
+            else:
+                parser.add_argument(
+                    f"--{name}", action="store_true", help=parameter.help)
+
+        else:
+            parser.add_argument(
+                f"--{name}", default=field.default,
+                **parameter.get_kwargs())

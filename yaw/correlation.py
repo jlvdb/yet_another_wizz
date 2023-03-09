@@ -678,5 +678,4 @@ class RedshiftData(CorrelationData):
         norm = np.nansum(self.data)
         mean = np.nansum(self.data * self.mids) / norm
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
-        return SampledValue(
-            value=mean, samples=samples, method=self.method)
+        return SampledValue(value=mean, samples=samples, method=self.method)

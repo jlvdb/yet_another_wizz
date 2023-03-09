@@ -375,7 +375,7 @@ class Engine:
 
         if do_w_ss:
             self.compute_linkage()
-            self.run_auto_ref(compute_rr=(not auto_ref.no_rr))
+            self.run_auto_ref(compute_rr=auto_ref.rr)
         elif do_zcc and has_w_ss:
             self.load_auto_ref()
         if do_zcc and self.w_ss is not None:
@@ -410,7 +410,7 @@ class Engine:
 
                 if do_w_pp:
                     self.compute_linkage()
-                    self.run_auto_unk(idx, compute_rr=(not auto_unk.no_rr))
+                    self.run_auto_unk(idx, compute_rr=auto_unk.rr)
                     self.write_total_unk(idx)
                 elif do_zcc and has_w_pp:
                     self.load_auto_unk(idx)
