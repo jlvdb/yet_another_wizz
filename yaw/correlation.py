@@ -232,8 +232,27 @@ class CorrelationData(SampledData):
             ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
         return ax
 
-    def plot_corr(self) -> Axis:  # pragma: no cover
-        raise NotImplementedError
+    def plot_corr(
+        self,
+        *,
+        redshift: bool = False,
+        cmap: str = "RdBu_r",
+        ax: Axis | None = None
+    ) -> Axis:
+        from matplotlib import pyplot as plt
+
+        if ax is None:
+            ax = plt.gca()
+        corr = self.get_correlation()
+        cmap_kwargs = dict(cmap=cmap, vmin=-1.0, vmax=1.0)
+        if redshift:
+            ticks = self.mids
+            ax.pcolormesh(ticks, ticks, np.flipud(corr), **cmap_kwargs)
+            ax.xaxis.tick_top()
+            ax.set_aspect("equal")
+        else:
+            ax.matshow(corr, **cmap_kwargs)
+        return ax
 
 
 @dataclass(frozen=True)
