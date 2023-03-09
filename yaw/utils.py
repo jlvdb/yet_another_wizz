@@ -272,6 +272,7 @@ class Parameter(Mapping):
     nargs: str | int | None = field(default=None)
     choices: Sequence | None = field(default=None)
     parser_id: str = field(default="default")
+    default_text: str | None = field(default=None)
     metavar: str | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
@@ -311,6 +312,9 @@ class Parameter(Mapping):
     def get_kwargs(self) -> dict[str, Any]:
         kwargs = asdict(self)
         kwargs.pop("parser_id")
+        default = kwargs.pop("default_text")
+        if default is not None:
+            kwargs["help"] += " " + default
         return kwargs
 
 
