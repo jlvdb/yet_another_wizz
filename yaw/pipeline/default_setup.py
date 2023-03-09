@@ -22,7 +22,7 @@ configuration:
 
     binning:                # specify the redshift binning for the clustering redshifts
         method: linear          # <s> (opt) binning method ({binning_options:})
-        zbin_num: 30            # <i> number of bins
+        zbin_num: 30            # <i> (opt) number of bins
         zmin: 0.01              # <f> lower redshift limit
         zmax: 2.0               # <f> upper redshift limit
         zbins: null             # <[f]> custom redshift bin edges, if provided,

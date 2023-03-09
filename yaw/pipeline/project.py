@@ -45,6 +45,25 @@ def check_version(version: str) -> None:
             raise SetupError(msg)
 
 
+def compress_config(
+    config: dict[str, Any],
+    default: dict[str, Any]
+) -> dict[str, Any]:
+    compressed = dict(**config)
+    for key, value in config.items():
+        if key in default:
+            refval = default[key]
+            if isinstance(value, dict) and hasattr(refval, "__dict__"):
+                new = compress_config(value, refval.__dict__)
+                if len(new) == 0:
+                    compressed.pop(key)
+                else:
+                    compressed[key] = new
+            elif value == refval:
+                compressed.pop(key)
+    return compressed
+
+
 def write_setup_file(
     path: TypePathStr,
     setup_dict: dict[str, Any]
@@ -214,8 +233,11 @@ class ProjectDirectory(DictRepresentation):
         self._tasks = TaskManager.from_list(task_list)
 
     def to_dict(self) -> dict[str, Any]:
+        # strip default values from config
+        configuration = compress_config(
+            self._config.to_dict(), DEFAULT.Configuration.__dict__)
         setup = dict(
-            configuration=self._config.to_dict(),
+            configuration=configuration,
             data=self._inputs.to_dict(),
             tasks=self._tasks.to_list())
         # cache: if default location set to None. Reason: if cloning setup,
