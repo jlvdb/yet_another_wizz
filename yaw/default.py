@@ -1,3 +1,6 @@
+import os
+
+
 class _NotSet_meta(type):
 
     def __repr__(self) -> str:
@@ -22,8 +25,8 @@ class AutoBinning:
 
 
 class Backend:
-    thread_num = None
-    crosspatch = True  # check with 'init' parser
+    thread_num = os.cpu_count()
+    crosspatch = True
     rbin_slop = 0.01
 
 
@@ -31,14 +34,14 @@ class Configuration:
     scales = Scales
     binning = AutoBinning
     backend = Backend
-    cosmology = None
+    cosmology = "Planck15"
 
 
 class Resampling:
     method = "jackknife"
     crosspatch = True
     n_boot = 500
-    global_norm = False  # check with 'nz' parser
+    global_norm = False
     seed = 12345
 
 
