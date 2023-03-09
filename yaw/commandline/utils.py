@@ -28,11 +28,7 @@ class DumpConfigAction(Action):
 
     def __call__(self, parser, namespace, values, option_string):
         from yaw.pipeline.default_setup import setup_default
-        print(setup_default.format(
-            backend_options=", ".join(BACKEND_OPTIONS),
-            binning_options=", ".join(BINNING_OPTIONS),
-            cosmology_options=", ".join(COSMOLOGY_OPTIONS),
-            method_options=", ".join(METHOD_OPTIONS)))
+        print(setup_default)
         parser.exit()
 
 

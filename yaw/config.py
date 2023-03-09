@@ -579,3 +579,6 @@ class ResamplingConfig(DictRepresentation):
             return dict(method=self.method, crosspatch=self.crosspatch)
         else:
             return super().to_dict()
+
+
+METHOD_OPTIONS = ResamplingConfig.implemented_methods

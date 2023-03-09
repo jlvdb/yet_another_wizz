@@ -4,3 +4,5 @@ from yaw.catalogs.linkage import PatchLinkage
 
 # make backends available and make sure they are registered
 from . import scipy, treecorr
+
+BACKEND_OPTIONS = tuple(sorted(BaseCatalog.backends.keys()))
