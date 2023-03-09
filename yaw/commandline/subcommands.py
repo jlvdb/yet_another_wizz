@@ -274,7 +274,7 @@ class CommandEstimateCorr(SubCommand):
     def add_parser(cls) -> None:
         parser = Commandline.create_subparser(
             name=cls.get_name(),
-            help="compute clustering redshift estimates for the unknown data",
+            help=tasks.TaskEstimateCorr.get_help(),
             description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.")
 
         group_est = parser.add_argument_group(
@@ -305,7 +305,7 @@ class CommandTrueRedshifts(SubCommand):
     def add_parser(cls) -> None:
         parser = Commandline.create_subparser(
             name=cls.get_name(),
-            help="compute true redshift distributions for unknown data",
+            help=tasks.TaskTrueRedshifts.get_help(),
             description="Compute the redshift distributions of the unknown data sample(s), which requires providing point-estimate redshifts for the catalog.",
             threads=True)
         populate_parser(tasks.TaskTrueRedshifts, parser)
@@ -371,7 +371,7 @@ class CommandPlot(SubCommand):
     def add_parser(cls) -> None:
         parser = Commandline.create_subparser(
             name=cls.get_name(),
-            help="generate automatic check plots",
+            help=tasks.TaskPlot.get_help(),
             description="Plot the autocorrelations and redshift estimates into the 'estimate' directory.",
             progress=False,
             threads=False)

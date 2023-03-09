@@ -8,6 +8,8 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields, asdict, MISSING
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 from yaw import default as DEFAULT
 from yaw.config import ResamplingConfig
 from yaw.estimators import CorrelationEstimator
@@ -62,6 +64,10 @@ class Task(DictRepresentation):
             cls._tasks[name] = cls
             cls._order[name] = len(cls._order)
 
+    @classmethod
+    def all_tasks(cls) -> tuple[Task]:
+        return tuple(cls._tasks.values())
+
     def __post_init__(self) -> None:
         for par in fields(self):
             if par.default is MISSING:
@@ -106,6 +112,10 @@ class Task(DictRepresentation):
     def get_name(cls) -> str:
         return "task"
 
+    @abstractclassmethod
+    def get_help(cls) -> str:
+        return "task"
+
     @abstractmethod
     def __call__(self, project: ProjectDirectory) -> Any:
         project.add_task(self)
@@ -114,6 +124,20 @@ class Task(DictRepresentation):
         if len(args) == 0:
             args = "---"
         logger.debug(f"arguments: {args}")
+
+    @classmethod
+    def get_doc_data(cls) -> list[tuple[str, str | None]]:
+        lines = [(cls.get_name(), cls.get_help())]
+        argfields = fields(cls)
+        if len(argfields) > 0:
+            for field in argfields:
+                value = yaml.dump({field.name: field.default}).strip()
+                try:
+                    comment = Parameter.from_field(field).help
+                except TypeError:
+                    comment = None
+                lines.append((value, comment))
+        return lines
 
 
 def get_task(name: str) -> Task:
@@ -138,6 +162,10 @@ class TaskCrosscorr(Task):
     def get_name(cls) -> str:
         return "cross"
 
+    @classmethod
+    def get_help(cls) -> str:
+        return "compute the crosscorrelation"
+
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
         project.engine.run(cross=self)
@@ -158,6 +186,10 @@ class TaskAutocorrReference(TaskAutocorr):
     def get_name(cls) -> str:
         return "auto_ref"
 
+    @classmethod
+    def get_help(cls) -> str:
+        return "compute the reference sample autocorrelation for bias mitigation"
+
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
         project.engine.run(auto_ref=self)
@@ -170,6 +202,10 @@ class TaskAutocorrUnknown(TaskAutocorr):
     def get_name(cls) -> str:
         return "auto_unk"
 
+    @classmethod
+    def get_help(cls) -> str:
+        return "compute the unknown sample autocorrelation for bias mitigation"
+
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
         project.engine.run(auto_unk=self)
@@ -180,16 +216,19 @@ class TaskEstimateCorr(Task):
 
     est_cross: str | None = field(default=None, metadata=Parameter(
         type=str, choices=ESTIMATORS,
-        help="correlation estimator for crosscorrelations (default: LS or DP)",
+        help="correlation estimator for crosscorrelations",
+        default_text="(default: LS or DP)",
         parser_id="estimators"))
     est_auto: str | None = field(default=None, metadata=Parameter(
         type=str, choices=ESTIMATORS,
-        help="correlation estimator for autocorrelations (default: LS or DP)",
+        help="correlation estimator for autocorrelations",
+        default_text="(default: LS or DP)",
         parser_id="estimators"))
 
     method: str = field(default=DEFAULT.Resampling.method, metadata=Parameter(
         type=str, choices=METHOD_OPTIONS,
-        help="resampling method for covariance estimates (default: %(default)s)",
+        help="resampling method for covariance estimates",
+        default_text="(default: %(default)s)",
         parser_id="sampling"))
     crosspatch: bool = field(default=DEFAULT.Resampling.crosspatch, metadata=Parameter(
         type=bool,
@@ -197,7 +236,8 @@ class TaskEstimateCorr(Task):
         parser_id="sampling"))
     n_boot: int = field(default=DEFAULT.Resampling.n_boot, metadata=Parameter(
         type=int,
-        help="number of bootstrap samples (default: %(default)s)",
+        help="number of bootstrap samples",
+        default_text="(default: %(default)s)",
         parser_id="sampling"))
     global_norm: bool = field(default=DEFAULT.Resampling.global_norm, metadata=Parameter(
         type=bool,
@@ -205,12 +245,17 @@ class TaskEstimateCorr(Task):
         parser_id="sampling"))
     seed: int = field(default=DEFAULT.Resampling.seed, metadata=Parameter(
         type=int,
-        help="random seed for bootstrap sample generation (default: %(default)s)",
+        help="random seed for bootstrap sample generation",
+        default_text="(default: %(default)s)",
         parser_id="sampling"))
 
     @classmethod
     def get_name(cls) -> str:
         return "zcc"
+
+    @classmethod
+    def get_help(cls) -> str:
+        return "compute clustering redshift estimates for the unknown data"
 
     @property
     def config(self) -> ResamplingConfig:
@@ -233,6 +278,10 @@ class TaskTrueRedshifts(Task):
     def get_name(cls) -> str:
         return "ztrue"
 
+    @classmethod
+    def get_help(cls) -> str:
+        return "compute true redshift distributions for unknown data (requires point estimate)"
+
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
         project.engine.run(ztrue=self)
@@ -245,6 +294,10 @@ class TaskDropCache(Task):
     def get_name(cls) -> str:
         return "drop_cache"
 
+    @classmethod
+    def get_help(cls) -> str:
+        return "delete temporary data in cache directory, has no arguments"
+
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
         project.engine.run(drop_cache=self)
@@ -256,6 +309,10 @@ class TaskPlot(Task):
     @classmethod
     def get_name(cls) -> str:
         return "plot"
+
+    @classmethod
+    def get_help(cls) -> str:
+        return "generate automatic check plots"
 
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)

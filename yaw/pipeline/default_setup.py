@@ -1,19 +1,28 @@
 from __future__ import annotations
 
+import textwrap
+
 from yaw import default as DEFAULT
 
+from yaw.pipeline import tasks
 
-setup_default = """# yet_another_wizz setup configuration
 
-# This section configures the correlation measurements and
-# redshift binning of the clustering redshift estimates.
-# NOTES: (opt) indicates entries that may be omitted to use
-#        default value, characters in braces <> indicate
-#        argument types (<i>: int, <f>: float, <b>: bool,
-#        <s>: string, <[x]>; iterable of type <x>,
-#        <d>: directory, <p>: (file)path).
+WIDTH = 100
+TAB = "    "
+DASH = "  - "
+COMM_PAD = 24
+COMM_SEP = "# "
 
-configuration:
+def wrap_comment(text, indents=0, initial="", subsequent=""):
+    indent = (TAB * indents) + COMM_SEP
+    return "\n".join(textwrap.wrap(
+        text, width=int(0.7*WIDTH),
+        initial_indent=indent+initial, subsequent_indent=indent+subsequent))
+
+
+setup_default = "# yet_another_wizz setup configuration\n\n"
+setup_default += wrap_comment("This section configures the correlation measurements and redshift binning of the clustering redshift estimates.\n")
+setup_default += """configuration:
 
     backend:                # (opt) backend specific parameters
         crosspatch: true        # <b> (opt) scipy: measure counts across patch boundaries
@@ -39,9 +48,10 @@ configuration:
         rbin_num: 50            # <i> (opt) number of log bins used to compute separation weights
                                 # (ignored if 'rweight' is null or omitted)
 
-# This section defines the input data products and their meta
-# data. These can be FITS, PARQUET, CSV or FEATHER files.
-data:               # define input files, can be FITS, PARQUET, CSV or FEATHER files
+"""
+
+setup_default += wrap_comment("This section defines the input data products and their meta data. These can be FITS, PARQUET, CSV or FEATHER files.\n")
+setup_default += """data:
 
     backend: scipy      # <s> (opt) name of the data catalog backend ({backend_options:})
     cachepath: null     # <d> (opt) cache directory path, e.g. on fast storage device
@@ -78,30 +88,25 @@ data:               # define input files, can be FITS, PARQUET, CSV or FEATHER f
         rand: null          # random catalog for data sample, omit or repeat arguments from 'data'
                             # above ('filepath' format must must match 'data' above)
 
-# The section below is entirely optional and used to specify tasks
-# to execute when using the 'yaw run' command. The list is generated
-# and updated automatically when running 'yaw' subcommands.
-# Tasks can be provided as single list entry, e.g.
-#   - cross
-#   - zcc
-# to get a basic cluster redshift estimate or with the optional
-# parameters listed below (all values optional, defaults listed).
-tasks:
-  - cross:                  # compute the crosscorrelation
-        rr: false               # <b> compute the random-random pair counts if both random
-                                # catalogs are provided
-  - auto_ref:               # compute the reference sample autocorrelation for bias mitigation
-        no_rr: false            # <b> do not compute random-random pair counts
-  - auto_unk:               # compute the unknown sample autocorrelation for bias mitigation
-        no_rr: false            # <b> do not compute random-random pair counts
-  - ztrue                   # compute true redshift distributions
-  - drop_cache              # delete temporary data in cache directory, has no arguments
-  - zcc:                    # estimate clustering redshifts
-        method: jackknife       # <s> resampling method used to estimate the data covariance
-                                # ({method_options:})
-        crosspatch: true        # <b> whether to include cross-patch pair counts when resampling
-        global_norm: false      # <b> normalise the pair counts globally instead of patch-wise
-        n_boot: 500             # <i> number of bootstrap samples to generate
-        seed: 12345             # <i> random seed used to generate the bootstrap samples
-  - plot                    # automatically add check plots into the estimate directory
 """
+
+setup_default += wrap_comment("The section below is entirely optional and used to specify tasks to execute when using the 'yaw run' command. The list is generated and updated automatically when running 'yaw' subcommands. Tasks can be provided as single list entry, e.g.")
+setup_default += f"\n{COMM_SEP}  - cross\n{COMM_SEP}  - zcc\n"
+setup_default += wrap_comment("to get a basic cluster redshift estimate or with the optional parameters listed below (all values optional, defaults listed).\n")
+setup_default += "\ntasks:"
+for task in tasks.Task.all_tasks():
+    for i, (value, comment) in enumerate(task.get_doc_data()):
+        if i == 0:
+            string = DASH
+        else:
+            string = TAB + TAB
+        string += f"{value:{COMM_PAD}s}"
+        if comment is not None:
+            lines = textwrap.wrap(
+                comment, width=WIDTH,
+                initial_indent=string+COMM_SEP,
+                subsequent_indent=" "*len(string)+COMM_SEP)
+            string = "\n" + "\n".join(lines)
+        else:
+            string = "\n" + string
+        setup_default += string
