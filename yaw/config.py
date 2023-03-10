@@ -13,8 +13,9 @@ import yaml
 from yaw import default as DEFAULT
 from yaw.default import NotSet
 from yaw.cosmology import (
-    BinFactory, TypeCosmology, get_default_cosmology, r_kpc_to_angle)
-from yaw.utils import DictRepresentation, array_equal, scales_to_keys
+    BINNING_OPTIONS, COSMOLOGY_OPTIONS, BinFactory, TypeCosmology,
+    get_default_cosmology, r_kpc_to_angle)
+from yaw.utils import DictRepresentation, Parameter, array_equal, scales_to_keys
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
@@ -82,10 +83,27 @@ def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
 @dataclass(frozen=True)
 class ScalesConfig(DictRepresentation):
 
-    rmin: Sequence[float] | float
-    rmax: Sequence[float] | float
-    rweight: float | None = field(default=DEFAULT.Scales.rweight)
-    rbin_num: int = field(default=DEFAULT.Scales.rbin_num)
+    rmin: Sequence[float] | float = field(
+        metadata=Parameter(
+            type=float, nargs="*", required=True,
+            help="(list of) lower scale limit in kpc (pyhsical)"))
+    rmax: Sequence[float] | float = field(
+        metadata=Parameter(
+            type=float, nargs="*", required=True,
+            help="(list of) upper scale limit in kpc (pyhsical)"))
+    rweight: float | None = field(
+        default=DEFAULT.Scales.rweight,
+        metadata=Parameter(
+            type=float,
+            help="weight galaxy pairs by their separation to power 'rweight'",
+            default_text="(default: no weighting applied)"))
+    rbin_num: int = field(
+        default=DEFAULT.Scales.rbin_num,
+        metadata=Parameter(
+            type=int,
+            help="number of bins in log r used (i.e. resolution) to compute "
+                 "distance weights",
+            default_text="(default: %(default)s)"))
 
     def __post_init__(self) -> None:
         msg_scale_error = f"scales violates 'rmin' < 'rmax'"
@@ -152,23 +170,15 @@ class BaseBinningConfig(DictRepresentation):
         method = self.method
         return f"{name}({zbin_num=}, {z=}, {method=})"
 
-    @property
-    def zmin(self) -> float:
-        return float(self.zbins[0])
-
-    @property
-    def zmax(self) -> float:
-        return float(self.zbins[-1])
-
-    @property
-    def zbin_num(self) -> int:
-        return len(self.zbins) - 1
-
 
 @dataclass(frozen=True, repr=False)
 class ManualBinningConfig(BaseBinningConfig):
 
-    zbins: NDArray[np.float_]
+    zbins: NDArray[np.float_] = field(
+        metadata=Parameter(
+            type=float, nargs="*",
+            help="list of custom redshift bin edges, if provided, other "
+                 "binning parameters are omitted, method is set to 'manual'"))
 
     def __post_init__(self) -> None:
         if len(self.zbins) < 2:
@@ -184,6 +194,18 @@ class ManualBinningConfig(BaseBinningConfig):
     @property
     def method(self) -> str:
         return "manual"
+
+    @property
+    def zmin(self) -> float:
+        return float(self.zbins[0])
+
+    @property
+    def zmax(self) -> float:
+        return float(self.zbins[-1])
+
+    @property
+    def zbin_num(self) -> int:
+        return len(self.zbins) - 1
 
     @classmethod
     def from_dict(
@@ -201,7 +223,39 @@ class ManualBinningConfig(BaseBinningConfig):
 class AutoBinningConfig(BaseBinningConfig):
 
     zbins: NDArray[np.float_]
-    method: str
+    method: str = field(
+        default=DEFAULT.Configuration.binning.method,
+        metadata=Parameter(
+            choices=BINNING_OPTIONS,
+            help="redshift binning method, 'logspace' means equal size in "
+                 "log(1+z)",
+            default_text="(default: %(default)s)"))
+    zmin: float = field(
+        default=DEFAULT.Configuration.binning.zmin,
+        init=False,
+        metadata=Parameter(
+            type=float,
+            help="lower redshift limit",
+            default_text="(default: %(default)s)"))
+    zmax: float = field(
+        default=DEFAULT.Configuration.binning.zmax,
+        init=False,
+        metadata=Parameter(
+            type=float,
+            help="upper redshift limit",
+            default_text="(default: %(default)s)"))
+    zbin_num: int = field(
+        default=DEFAULT.AutoBinning.zbin_num,
+        init=False,
+        metadata=Parameter(
+            type=int,
+            help="number of redshift bins",
+            default_text="(default: %(default)s)"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "zmin", float(np.min(self.zbins)))
+        object.__setattr__(self, "zmax", float(np.max(self.zbins)))
+        object.__setattr__(self, "zbin_num", len(self.zbins))
 
     @classmethod
     def generate(
@@ -274,11 +328,27 @@ def make_binning_config(
 class BackendConfig(DictRepresentation):
 
     # general
-    thread_num: int | None = field(default=DEFAULT.Backend.thread_num)
+    thread_num: int | None = field(
+        default=DEFAULT.Backend.thread_num,
+        metadata=Parameter(
+            type=int,
+            help="threads for pair counting",
+            default_text="(default: all)"))
     # scipy
-    crosspatch: bool = field(default=DEFAULT.Backend.crosspatch)
+    crosspatch: bool = field(
+        default=DEFAULT.Backend.crosspatch,
+        metadata=Parameter(
+            type=bool,
+            help="whether to count pairs across patch boundaries (scipy "
+                 "backend only)"))
     # treecorr
-    rbin_slop: float = field(default=DEFAULT.Backend.rbin_slop)
+    rbin_slop: float = field(
+        default=DEFAULT.Backend.rbin_slop,
+        metadata=Parameter(
+            type=float,
+            help="treecorr 'rbin_slop' parameter",
+            default_text="(default: %(default)s), without 'rweight' this just "
+                         "a single radial bin, otherwise 'rbin_num'"))
 
     def __post_init__(self) -> None:
         if self.thread_num is None:
@@ -309,7 +379,12 @@ class Configuration(DictRepresentation):
     scales: ScalesConfig
     binning: AutoBinningConfig | ManualBinningConfig
     backend: BackendConfig = field(default_factory=BackendConfig)
-    cosmology: TypeCosmology | str | None = DEFAULT.Configuration.cosmology
+    cosmology: TypeCosmology | str | None = field(
+        default=DEFAULT.Configuration.cosmology,
+        metadata=Parameter(
+            type=str, choices=COSMOLOGY_OPTIONS,
+            help="cosmological model used for distance calculations",
+            default_text="(see astropy.cosmology, default: %(default)s)"))
 
     def __post_init__(self) -> None:
         # parse cosmology
