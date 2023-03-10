@@ -58,6 +58,8 @@ class Task(DictRepresentation):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         name = cls.get_name()
+        if name in cls._tasks:
+            raise TaskError(f"task with name '{name}' already registered")
         if name != "task":  # skip any meta tasks
             cls._tasks[name] = cls
             cls._order[name] = len(cls._order)
@@ -124,6 +126,19 @@ class Task(DictRepresentation):
         logger.debug(f"arguments: {args}")
 
 
+class RepeatableTask(Task):
+
+    @abstractmethod
+    def get_identifier(self) -> Any:
+        raise NotImplementedError
+
+    def __eq__(self, other: Task) -> bool:
+        if super().__eq__(other) and hasattr(other, "get_identifier"):
+            # additionally compare on the argument level
+            return self.get_identifier() == other.get_identifier()
+        return False
+
+
 def get_task(name: str) -> Task:
     try:
         return Task._tasks[name]
@@ -139,7 +154,8 @@ def run_task(name: str, project: ProjectDirectory, **task_kwargs):
 class TaskCrosscorr(Task):
 
     rr: bool = field(
-        default=False, metadata=Parameter(
+        default=False,
+        metadata=Parameter(
             type=bool,
             help="compute random-random pair counts, even if both randoms are "
                 "available"))
@@ -161,7 +177,8 @@ class TaskCrosscorr(Task):
 class TaskAutocorr(Task):
 
     rr: bool = field(
-        default=True, metadata=Parameter(
+        default=True,
+        metadata=Parameter(
             type=bool,
             help="do not compute random-random pair counts"))
 
@@ -200,45 +217,59 @@ class TaskAutocorrUnknown(TaskAutocorr):
 
 
 @dataclass(frozen=True)
-class TaskEstimateCorr(Task):
+class TaskEstimateCorr(RepeatableTask):
+
+    tag: str = field(
+        default="fid",
+        metadata=Parameter(
+            type=str,
+            help="unique identifier for different configurations",
+            default_text="(default: %(default)s)"))
 
     est_cross: str | None = field(
-        default=None, metadata=Parameter(
+        default=None,
+        metadata=Parameter(
             type=str, choices=ESTIMATORS,
             help="correlation estimator for crosscorrelations",
             default_text="(default: LS or DP)",
             parser_id="estimators"))
     est_auto: str | None = field(
-        default=None, metadata=Parameter(
+        default=None,
+        metadata=Parameter(
             type=str, choices=ESTIMATORS,
             help="correlation estimator for autocorrelations",
             default_text="(default: LS or DP)",
             parser_id="estimators"))
 
     method: str = field(
-        default=DEFAULT.Resampling.method, metadata=Parameter(
+        default=DEFAULT.Resampling.method,
+        metadata=Parameter(
             type=str, choices=METHOD_OPTIONS,
             help="resampling method for covariance estimates",
             default_text="(default: %(default)s)",
             parser_id="sampling"))
     crosspatch: bool = field(
-        default=DEFAULT.Resampling.crosspatch, metadata=Parameter(
+        default=DEFAULT.Resampling.crosspatch,
+        metadata=Parameter(
             type=bool,
             help="whether to include cross-patch pair counts when resampling",
             parser_id="sampling"))
     n_boot: int = field(
-        default=DEFAULT.Resampling.n_boot, metadata=Parameter(
+        default=DEFAULT.Resampling.n_boot,
+        metadata=Parameter(
             type=int,
             help="number of bootstrap samples",
             default_text="(default: %(default)s)",
             parser_id="sampling"))
     global_norm: bool = field(
-        default=DEFAULT.Resampling.global_norm, metadata=Parameter(
+        default=DEFAULT.Resampling.global_norm,
+        metadata=Parameter(
             type=bool,
             help="normalise pair counts globally instead of patch-wise",
             parser_id="sampling"))
     seed: int = field(
-        default=DEFAULT.Resampling.seed, metadata=Parameter(
+        default=DEFAULT.Resampling.seed,
+        metadata=Parameter(
             type=int,
             help="random seed for bootstrap sample generation",
             default_text="(default: %(default)s)",
@@ -250,7 +281,12 @@ class TaskEstimateCorr(Task):
 
     @classmethod
     def get_help(cls) -> str:
-        return "compute clustering redshift estimates for the unknown data"
+        return (
+            "compute clustering redshift estimates for the unknown data, task "
+            "can be added repeatedly if different a 'tag' is used")
+
+    def get_identifier(self) -> str:
+        return self.tag
 
     @property
     def config(self) -> ResamplingConfig:
@@ -334,7 +370,13 @@ class TaskManager(Sequence):
         return self._tasklist.__len__()
 
     def __str__(self) -> str:
-        return " > ".join(task.get_name() for task in self._tasklist)
+        tasks = []
+        for task in self._tasklist:
+            if isinstance(task, RepeatableTask):
+                tasks.append(f"{task.get_name()}@{task.get_identifier()}")
+            else:
+                tasks.append(task.get_name())
+        return " > ".join(tasks)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.__str__()})"
