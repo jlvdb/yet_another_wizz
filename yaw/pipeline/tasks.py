@@ -217,6 +217,40 @@ class TaskAutocorrUnknown(TaskAutocorr):
 
 
 @dataclass(frozen=True)
+class TaskTrueRedshifts(Task):
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "ztrue"
+
+    @classmethod
+    def get_help(cls) -> str:
+        return (
+            "compute true redshift distributions for unknown data (requires "
+            "point estimate)")
+
+    def __call__(self, project: ProjectDirectory) -> Any:
+        super().__call__(project)
+        project.engine.run(ztrue=self)
+
+
+@dataclass(frozen=True)
+class TaskDropCache(Task):
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "drop_cache"
+
+    @classmethod
+    def get_help(cls) -> str:
+        return "delete temporary data in cache directory, has no arguments"
+
+    def __call__(self, project: ProjectDirectory) -> Any:
+        super().__call__(project)
+        project.engine.run(drop_cache=self)
+
+
+@dataclass(frozen=True)
 class TaskEstimateCorr(RepeatableTask):
 
     tag: str = field(
@@ -300,40 +334,6 @@ class TaskEstimateCorr(RepeatableTask):
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
         project.engine.run(zcc=self)
-
-
-@dataclass(frozen=True)
-class TaskTrueRedshifts(Task):
-
-    @classmethod
-    def get_name(cls) -> str:
-        return "ztrue"
-
-    @classmethod
-    def get_help(cls) -> str:
-        return (
-            "compute true redshift distributions for unknown data (requires "
-            "point estimate)")
-
-    def __call__(self, project: ProjectDirectory) -> Any:
-        super().__call__(project)
-        project.engine.run(ztrue=self)
-
-
-@dataclass(frozen=True)
-class TaskDropCache(Task):
-
-    @classmethod
-    def get_name(cls) -> str:
-        return "drop_cache"
-
-    @classmethod
-    def get_help(cls) -> str:
-        return "delete temporary data in cache directory, has no arguments"
-
-    def __call__(self, project: ProjectDirectory) -> Any:
-        super().__call__(project)
-        project.engine.run(drop_cache=self)
 
 
 @dataclass(frozen=True)
