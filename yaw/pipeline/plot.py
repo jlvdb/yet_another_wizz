@@ -89,9 +89,10 @@ class Plotter:
             return
 
         fig, ax = self.mkfig(1)
-        for scale, est_dir in self.project.iter_estimate():
+        for (scale, tag), est_dir in self.project.iter_estimate():
             cf = CorrelationData.from_files(est_dir.get_auto_reference())
-            cf.plot(zero_line=True, label=scale_key_to_math(scale), ax=ax)
+            label = f"{scale_key_to_math(scale)} / {tag=}"
+            cf.plot(zero_line=True, label=label, ax=ax)
 
             ax.set_ylabel(r"$w_{\sf ss}$", fontsize=self.label_fontsize)
             ax.legend()
@@ -109,10 +110,11 @@ class Plotter:
 
         fig, axes = self.mkfig(self.project.n_bins)
         axes = np.atleast_2d(axes)
-        for scale, est_dir in self.project.iter_estimate():
+        for (scale, tag), est_dir in self.project.iter_estimate():
             for ax, (index, path) in zip(axes.flatten(), est_dir.iter_auto()):
                 cf = CorrelationData.from_files(path)
-                cf.plot(zero_line=True, label=scale_key_to_math(scale), ax=ax)
+                label = f"{scale_key_to_math(scale)} / {tag=}"
+                cf.plot(zero_line=True, label=label, ax=ax)
                 ax.legend(title=f"{index=}")
 
             self._decorate_subplots(axes, r"$w_{\sf pp}$")
@@ -129,18 +131,24 @@ class Plotter:
         fig, axes = self.mkfig(self.project.n_bins)
         axes = np.atleast_2d(axes)
         true_dir = self.project.get_true_dir()
-        for scale, est_dir in self.project.iter_estimate():
+        nz_ts = dict()
+        for (scale, tag), est_dir in self.project.iter_estimate():
             for ax, (index, path) in zip(axes.flatten(), est_dir.iter_cross()):
                 # plot optional true redshift distribution
-                true_path = true_dir.get_unknown(index)
-                if true_path.with_suffix(".dat").exists():
-                    nz_true = RedshiftData.from_files(true_path).normalised()
-                    nz_true.plot(error_bars=False, color="k", ax=ax)
+                if index in nz_ts:
+                    nzt = nz_ts[index]
                 else:
-                    nz_true = None
+                    true_path = true_dir.get_unknown(index)
+                    if true_path.with_suffix(".dat").exists():
+                        nzt = RedshiftData.from_files(true_path).normalised()
+                        nzt.plot(error_bars=False, color="k", ax=ax)
+                    else:
+                        nzt = None
+                    nz_ts[index] = nzt
                 # plot optional 
-                nz = RedshiftData.from_files(path).normalised(to=nz_true)
-                nz.plot(zero_line=True, label=scale_key_to_math(scale), ax=ax)
+                nz = RedshiftData.from_files(path).normalised(to=nzt)
+                label = f"{scale_key_to_math(scale)} / {tag=}"
+                nz.plot(zero_line=True, label=label, ax=ax)
                 ax.legend(title=f"{index=}")
 
             self._decorate_subplots(axes, r"$n_{\sf cc}$")

@@ -455,5 +455,4 @@ class Engine:
         
         if plot:
             print_yaw_message("plotting data")
-            print(list(self.project.iter_tags()))
             self.plot()
