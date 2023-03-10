@@ -253,9 +253,9 @@ class AutoBinningConfig(BaseBinningConfig):
             default_text="(default: %(default)s)"))
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "zmin", float(np.min(self.zbins)))
-        object.__setattr__(self, "zmax", float(np.max(self.zbins)))
-        object.__setattr__(self, "zbin_num", len(self.zbins))
+        object.__setattr__(self, "zmin", float(self.zbins[0]))
+        object.__setattr__(self, "zmax", float(self.zbins[-1]))
+        object.__setattr__(self, "zbin_num", len(self.zbins)-1)
 
     @classmethod
     def generate(

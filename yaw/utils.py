@@ -173,6 +173,8 @@ class BinnedQuantity(ABC):
             raise TypeError(
                 f"object of type {type(other)} is not compatible with "
                 f"{self.__class__}")
+        if self.n_bins != other.n_bins:
+            return False
         if np.any(self.get_binning() != other.get_binning()):
             return False
         return True
