@@ -7,7 +7,8 @@ from abc import ABC, abstractclassmethod
 from dataclasses import asdict
 
 from yaw import __version__, default as DEFAULT
-from yaw import config
+from yaw import config as yaw_config
+from yaw.config import Configuration
 from yaw.cosmology import get_default_cosmology
 from yaw.utils import populate_parser
 
@@ -92,7 +93,7 @@ class CommandInit(SubCommand):
         group_other.add_argument(
             "--n-patches", type=int, metavar="<int>",
             help="split all input data into this number of spatial patches for covariance estimation (default: patch index for catalogs)")
-        populate_parser(config.Configuration, group_other)
+        populate_parser(yaw_config.Configuration, group_other)
 
         Commandline.add_input_parser(parser, "reference (data)", prefix="ref", required=True, require_z=True)
 
@@ -101,18 +102,18 @@ class CommandInit(SubCommand):
         group_scales = parser.add_argument_group(
             title="measurement scales",
             description="sets the physical scales for the correlation measurements")
-        populate_parser(config.ScalesConfig, group_scales)
+        populate_parser(yaw_config.ScalesConfig, group_scales)
 
         group_bins = parser.add_argument_group(
             title="redshift binning",
             description="sets the redshift binning for the clustering redshifts")
-        populate_parser(config.AutoBinningConfig, group_bins)
-        populate_parser(config.ManualBinningConfig, group_bins)
+        populate_parser(yaw_config.AutoBinningConfig, group_bins)
+        populate_parser(yaw_config.ManualBinningConfig, group_bins)
 
         group_backend = parser.add_argument_group(
             title="backend specific",
             description="parameters that are specific to pair counting backends")
-        populate_parser(config.BackendConfig, group_backend)
+        populate_parser(yaw_config.BackendConfig, group_backend)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
@@ -123,8 +124,8 @@ class CommandInit(SubCommand):
             rweight=args.rweight, rbin_num=args.rbin_num,
             zmin=args.zmin, zmax=args.zmax,
             zbin_num=args.zbin_num, method=args.method,
-            thread_num=args.threads,
-            crosspatch=(not args.no_crosspatch),
+            thread_num=args.thread_num,
+            crosspatch=args.crosspatch,
             rbin_slop=args.rbin_slop)
         renames = dict(threads="thread_num", no_crosspatch="crosspatch")
 
@@ -148,7 +149,7 @@ class CommandInit(SubCommand):
 
         # parse the configuration as given
         else:
-            config = config.Configuration.create(**config_args)
+            config = Configuration.create(**config_args)
 
         # create the project directory
         with ProjectDirectory.create(
