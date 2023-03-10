@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from yaw.catalogs import PatchLinkage
@@ -223,39 +224,50 @@ class Engine:
         self,
         cfs_kind: str,
         *,
+        tag: str,
         config: ResamplingConfig,
         estimator: str | None
     ) -> dict[str, CorrelationData]:
         cfs: _Tcf = getattr(self, cfs_kind)
-        data = {}
+        data = getattr(self, f"{cfs_kind}_data")
+        if data is None:
+            data = {}
         for scale, cf in cfs.items():
-            data[scale] = cf.get(config, estimator=estimator)
+            logger.debug(f"processing pair counts for {tag=} / {scale=}")
+            data[(scale, tag)] = cf.get(config, estimator=estimator)
         setattr(self, f"{cfs_kind}_data", data)
 
-    def write_auto_ref(self) -> None:
-        for scale, est_dir in self.project.iter_estimate(create=True):
+    def write_auto_ref(self, tag: str) -> None:
+        for scale_tag, est_dir in self.project.iter_estimate(
+            create=True, tag=tag
+        ):
             path = est_dir.get_auto_reference()
-            self.w_ss_data[scale].to_files(path)
+            self.w_ss_data[scale_tag].to_files(path)
 
-    def write_auto_unk(self, idx: int) -> None:
-        for scale, est_dir in self.project.iter_estimate(create=True):
+    def write_auto_unk(self, idx: int, tag: str) -> None:
+        for scale_tag, est_dir in self.project.iter_estimate(
+            create=True, tag=tag
+        ):
             path = est_dir.get_auto(idx)
-            self.w_pp_data[scale].to_files(path)
+            self.w_pp_data[scale_tag].to_files(path)
 
-    def write_nz_cc(self, idx: int) -> None:
+    def write_nz_cc(self, idx: int, tag: str) -> None:
         cross_data = self.w_sp_data
         if self.w_ss_data is None:
-            ref_data = {scale: None for scale in cross_data}
+            ref_data = {scale_tag: None for scale_tag in cross_data}
         else:
             ref_data = self.w_ss_data
         if self.w_pp_data is None:
-            unk_data = {scale: None for scale in cross_data}
+            unk_data = {scale_tag: None for scale_tag in cross_data}
         else:
             unk_data = self.w_pp_data
-        for scale, est_dir in self.project.iter_estimate(create=True):
+
+        for scale in self.project.iter_scales():
+            key = (scale, tag)
+            est_dir = self.project.get_estimate_dir(scale, tag, create=True)
             path = est_dir.get_cross(idx)
             nz_data = yaw.RedshiftData.from_correlation_data(
-                cross_data[scale], ref_data[scale], unk_data[scale])
+                cross_data[key], ref_data[key], unk_data[key])
             nz_data.to_files(path)
 
     def write_nz_ref(self) -> None:
@@ -349,7 +361,7 @@ class Engine:
         cross: tasks.TaskCrosscorr | None = None,
         auto_ref: tasks.TaskAutocorrReference | None = None,
         auto_unk: tasks.TaskAutocorrUnknown | None = None,
-        zcc: tasks.TaskEstimateCorr | None = None,
+        zcc: Sequence[tasks.TaskEstimateCorr] | tasks.TaskEstimateCorr | None = None,
         ztrue: tasks.TaskTrueRedshifts | None = None,
         drop_cache: tasks.TaskDropCache | None = None,
         plot: tasks.TaskPlot | None = None,
@@ -359,6 +371,8 @@ class Engine:
         do_w_pp = auto_unk is not None
         do_zcc = zcc is not None
         do_true = ztrue is not None
+        if not isinstance(zcc, Sequence):
+            zcc = (zcc,)
 
         # some state parameters
         zcc_processed = False
@@ -379,10 +393,12 @@ class Engine:
         elif do_zcc and has_w_ss:
             self.load_auto_ref()
         if do_zcc and self.w_ss is not None:
-            self.sample_corrfunc(
-                "w_ss", config=zcc.config, estimator=zcc.est_auto)
-            self.write_auto_ref()
-            zcc_processed = True
+            for zcc_task in zcc:
+                self.sample_corrfunc(
+                    "w_ss", tag=zcc_task.tag, config=zcc_task.config,
+                    estimator=zcc_task.est_auto)
+                self.write_auto_ref(zcc_task.tag)
+                zcc_processed = True
 
         if do_w_sp or do_w_pp or (do_zcc and (has_w_sp or has_w_pp)) or do_true:
             for i, idx in enumerate(self.project.get_bin_indices(), 1):
@@ -403,10 +419,6 @@ class Engine:
                     self.write_total_unk(idx)
                 elif do_zcc and has_w_sp:
                     self.load_cross(idx)
-                if do_zcc and self.w_sp is not None:
-                    self.sample_corrfunc(
-                        "w_sp", config=zcc.config, estimator=zcc.est_cross)
-                    zcc_processed = True
 
                 if do_w_pp:
                     self.compute_linkage()
@@ -414,14 +426,24 @@ class Engine:
                     self.write_total_unk(idx)
                 elif do_zcc and has_w_pp:
                     self.load_auto_unk(idx)
-                if do_zcc and self.w_pp is not None:
-                    self.sample_corrfunc(
-                        "w_pp", config=zcc.config, estimator=zcc.est_auto)
-                    self.write_auto_unk(idx)
-                    zcc_processed = True
 
-                if do_zcc and self.w_sp is not None:
-                    self.write_nz_cc(idx)
+                if do_zcc:
+                    for zcc_task in zcc:
+                        if self.w_pp is not None:
+                            self.sample_corrfunc(
+                                "w_pp", tag=zcc_task.tag,
+                                config=zcc_task.config,
+                                estimator=zcc_task.est_auto)
+                            self.write_auto_unk(idx, tag=zcc_task.tag)
+                            zcc_processed = True
+                        if self.w_sp is not None:
+                            self.sample_corrfunc(
+                                "w_sp", tag=zcc_task.tag,
+                                config=zcc_task.config,
+                                estimator=zcc_task.est_cross)
+                            self.write_nz_cc(idx, tag=zcc_task.tag)
+                            zcc_processed = True
+
                 if do_true:
                     self.write_nz_true(idx)
 
@@ -433,4 +455,5 @@ class Engine:
         
         if plot:
             print_yaw_message("plotting data")
+            print(list(self.project.iter_tags()))
             self.plot()
