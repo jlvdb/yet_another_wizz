@@ -258,18 +258,34 @@ class ProjectDirectory(DictRepresentation):
             self.setup_write()
 
     def get_state(self) -> ProjectState:
-        _, counts_dir = next(self.iter_counts())
-        _, est_dir = next(self.iter_estimate())
+        try:
+            _, counts_dir = next(self.iter_counts())
+            has_w_ss = counts_dir.has_auto_reference
+            has_w_sp = counts_dir.has_cross
+            has_w_pp = counts_dir.has_auto
+        except StopIteration:
+            has_w_ss = False
+            has_w_sp = False
+            has_w_pp = False
+        try:
+            _, est_dir = next(self.iter_estimate())
+            has_w_ss_cf = est_dir.has_auto_reference
+            has_w_pp_cf = est_dir.has_auto
+            has_nz_cc = est_dir.has_cross
+        except StopIteration:
+            has_w_ss_cf = False
+            has_w_pp_cf = False
+            has_nz_cc = False
         true_dir = self.get_true_dir()
         return ProjectState(
             has_reference=self.inputs.has_reference,
             has_unknown=self.inputs.has_unknown,
-            has_w_ss=counts_dir.has_auto_reference,
-            has_w_sp=counts_dir.has_cross,
-            has_w_pp=counts_dir.has_auto,
-            has_w_ss_cf=est_dir.has_auto_reference,
-            has_w_pp_cf=est_dir.has_auto,
-            has_nz_cc=est_dir.has_cross,
+            has_w_ss=has_w_ss,
+            has_w_sp=has_w_sp,
+            has_w_pp=has_w_pp,
+            has_w_ss_cf=has_w_ss_cf,
+            has_w_pp_cf=has_w_pp_cf,
+            has_nz_cc=has_nz_cc,
             has_nz_ref=true_dir.has_reference,
             has_nz_true=true_dir.has_unknown)
 
@@ -392,20 +408,38 @@ class ProjectDirectory(DictRepresentation):
     def get_estimate_dir(
         self,
         scale_key: str,
+        tag: str = "fid",
         create: bool = False
     ) -> EstimateDirectory:
-        path = self.estimate_path.joinpath(scale_key)
+        path = self.estimate_path.joinpath(scale_key, tag)
         if create:
-            path.mkdir(exist_ok=True)
+            path.mkdir(exist_ok=True, parents=True)
         return EstimateDirectory(path)
+
+    def iter_tags(self) -> Iterator[str]:
+        tags = set()
+        for scale in self.iter_scales():
+            path = self.estimate_path.joinpath(scale)
+            if path.exists():
+                for tag_path in path.iterdir():
+                    if tag_path.is_dir():
+                        tags.add(tag_path.name)
+        for tag in sorted(tags):
+            yield tag
 
     def iter_estimate(
         self,
-        create: bool = False
-    ) -> Iterator[tuple[str, EstimateDirectory]]:
-        for scale in self.iter_scales():
-            counts = self.get_estimate_dir(scale, create=create)
-            yield scale, counts
+        create: bool = False,
+        tag: str = DEFAULT.NotSet
+    ) -> Iterator[tuple[tuple[str, str], EstimateDirectory]]:
+        if tag is DEFAULT.NotSet:
+            tag_iter = self.iter_tags()
+        else:
+            tag_iter = (tag,)
+        for tag in tag_iter:
+            for scale in self.iter_scales():
+                est = self.get_estimate_dir(scale, tag, create=create)
+                yield (scale, tag), est
 
     def get_true_dir(
         self,

@@ -12,7 +12,7 @@ from yaw.config import Configuration
 from yaw.cosmology import get_default_cosmology
 from yaw.utils import populate_parser
 
-from yaw.pipeline import tasks
+from yaw.pipeline import tasks as yaw_tasks
 from yaw.pipeline.project import (
     ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 
@@ -178,7 +178,7 @@ class CommandCrosscorr(SubCommand):
             description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.",
             progress=True,
             threads=True)
-        populate_parser(tasks.TaskCrosscorr, parser)
+        populate_parser(yaw_tasks.TaskCrosscorr, parser)
 
         Commandline.add_input_parser(parser, "unknown (data)", prefix="unk", required=True, binned=True)
 
@@ -199,7 +199,7 @@ class CommandCrosscorr(SubCommand):
                 project.add_unknown(
                     idx, data=input_unk.get(idx), rand=input_rand.get(idx))
 
-            task = tasks.TaskCrosscorr.from_argparse(args)
+            task = yaw_tasks.TaskCrosscorr.from_argparse(args)
             with RunContext(project, args.progress, args.threads):
                 task(project)
 
@@ -221,15 +221,15 @@ class CommandAutocorr(SubCommand):
         parser.add_argument(
             "--which", choices=("ref", "unk"), default="ref",
             help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
-        populate_parser(tasks.TaskAutocorr, parser)
+        populate_parser(yaw_tasks.TaskAutocorr, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
         with ProjectDirectory(args.wdir) as project:
             if args.which == "ref":
-                task = tasks.TaskAutocorrReference.from_argparse(args)
+                task = yaw_tasks.TaskAutocorrReference.from_argparse(args)
             else:
-                task = tasks.TaskAutocorrUnknown.from_argparse(args)
+                task = yaw_tasks.TaskAutocorrUnknown.from_argparse(args)
             with RunContext(project, args.progress, args.threads):
                 task(project)
 
@@ -244,7 +244,7 @@ class CommandEstimateCorr(SubCommand):
     def add_parser(cls) -> None:
         parser = Commandline.create_subparser(
             name=cls.get_name(),
-            help=tasks.TaskEstimateCorr.get_help(),
+            help=yaw_tasks.TaskEstimateCorr.get_help(),
             description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.")
 
         group_est = parser.add_argument_group(
@@ -255,13 +255,13 @@ class CommandEstimateCorr(SubCommand):
             title="resampling",
             description="configure the resampling used for covariance estimates")
 
-        populate_parser(tasks.TaskEstimateCorr, parser, extra_parsers=dict(
+        populate_parser(yaw_tasks.TaskEstimateCorr, parser, extra_parsers=dict(
             estimators=group_est, sampling=group_samp))
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
         with ProjectDirectory(args.wdir) as project:
-            task = tasks.TaskEstimateCorr.from_argparse(args)
+            task = yaw_tasks.TaskEstimateCorr.from_argparse(args)
             task(project)
 
 
@@ -275,15 +275,15 @@ class CommandTrueRedshifts(SubCommand):
     def add_parser(cls) -> None:
         parser = Commandline.create_subparser(
             name=cls.get_name(),
-            help=tasks.TaskTrueRedshifts.get_help(),
+            help=yaw_tasks.TaskTrueRedshifts.get_help(),
             description="Compute the redshift distributions of the unknown data sample(s), which requires providing point-estimate redshifts for the catalog.",
             threads=True)
-        populate_parser(tasks.TaskTrueRedshifts, parser)
+        populate_parser(yaw_tasks.TaskTrueRedshifts, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
         with ProjectDirectory(args.wdir) as project:
-            task = tasks.TaskTrueRedshifts.from_argparse(args)
+            task = yaw_tasks.TaskTrueRedshifts.from_argparse(args)
             with RunContext(project, threads=args.threads):
                 task(project)
 
@@ -309,7 +309,7 @@ class CommandCache(SubCommand):
     def run(cls, args: argparse.Namespace) -> None:
         with ProjectDirectory(args.wdir) as project:
             if args.drop:
-                task = tasks.TaskDropCache.from_argparse(args)
+                task = yaw_tasks.TaskDropCache.from_argparse(args)
                 task(project)
             else:
                 cachedir = project.inputs.get_cache()
@@ -341,16 +341,16 @@ class CommandPlot(SubCommand):
     def add_parser(cls) -> None:
         parser = Commandline.create_subparser(
             name=cls.get_name(),
-            help=tasks.TaskPlot.get_help(),
+            help=yaw_tasks.TaskPlot.get_help(),
             description="Plot the autocorrelations and redshift estimates into the 'estimate' directory.",
             progress=False,
             threads=False)
-        populate_parser(tasks.TaskPlot, parser)
+        populate_parser(yaw_tasks.TaskPlot, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
         with ProjectDirectory(args.wdir) as project:
-            task = tasks.TaskPlot.from_argparse(args)
+            task = yaw_tasks.TaskPlot.from_argparse(args)
             task(project)
 
 
@@ -405,7 +405,14 @@ class CommandRun(SubCommand):
             logger.info(f"scheduling tasks: {project.view_tasks()}")
             for task in project.get_tasks():
                 name = task.get_name()
-                tasks[name] = task
+                # handle repeatable task
+                if name in tasks:
+                    if isinstance(tasks[name], yaw_tasks.RepeatableTask):
+                        tasks[name] = [tasks[name]]
+                    tasks[name].append(task)
+                else:
+                    tasks[name] = task
+                # report task to logger
                 t_args = ", ".join(
                     f"{k}={repr(v)}" for k, v in asdict(task).items())
                 if len(t_args) == 0:
