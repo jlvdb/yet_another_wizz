@@ -7,7 +7,7 @@ from abc import ABC, abstractclassmethod
 from dataclasses import asdict
 
 from yaw import __version__, default as DEFAULT
-from yaw.config import Configuration
+from yaw import config
 from yaw.cosmology import get_default_cosmology
 from yaw.utils import populate_parser
 
@@ -87,14 +87,12 @@ class CommandInit(SubCommand):
             "--backend", choices=utils.BACKEND_OPTIONS, default=DEFAULT.backend,
             help="backend used for pair counting (default: %(default)s)")
         group_other.add_argument(
-            "--cosmology", choices=utils.COSMOLOGY_OPTIONS, default=get_default_cosmology().name,
-            help="cosmological model used for distance calculations (see astropy.cosmology, default: %(default)s)")
-        group_other.add_argument(
             "--cache-path", metavar="<path>", type=utils.Path_absolute,
             help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
         group_other.add_argument(
             "--n-patches", type=int, metavar="<int>",
             help="split all input data into this number of spatial patches for covariance estimation (default: patch index for catalogs)")
+        populate_parser(config.Configuration, group_other)
 
         Commandline.add_input_parser(parser, "reference (data)", prefix="ref", required=True, require_z=True)
 
@@ -103,47 +101,18 @@ class CommandInit(SubCommand):
         group_scales = parser.add_argument_group(
             title="measurement scales",
             description="sets the physical scales for the correlation measurements")
-        group_scales.add_argument(
-            "--rmin", type=float, nargs="*", metavar="<float>", required=True,
-            help="(list of) lower scale cut in kpc (pyhsical)")
-        group_scales.add_argument(
-            "--rmax", type=float, nargs="*", metavar="<float>", required=True,
-            help="(list of) upper scale cut in kpc (pyhsical)")
-        group_scales.add_argument(
-            "--rweight", type=float, metavar="<float>", default=DEFAULT.Scales.rweight,
-            help="weight galaxy pairs by separation [separation]**[--rweight] (default: no weight)")
-        group_scales.add_argument(
-            "--rbin-num", type=int, metavar="<int>", default=DEFAULT.Scales.rbin_num,
-            help="radial resolution (number of log bins) to compute separation weights for galaxy pairs (default: %(default)s)")
+        populate_parser(config.ScalesConfig, group_scales)
 
         group_bins = parser.add_argument_group(
             title="redshift binning",
             description="sets the redshift binning for the clustering redshifts")
-        group_bins.add_argument(
-            "--zmin", default=0.01, type=float, metavar="<float>",
-            help="lower redshift limit (default: %(default)s)")
-        group_bins.add_argument(
-            "--zmax", default=3.0, type=float, metavar="<float>",
-            help="upper redshift limit (default: %(default)s)")
-        group_bins.add_argument(
-            "--zbin-num", default=DEFAULT.AutoBinning.zbin_num, type=int, metavar="<int>",
-            help="number of redshift bins (default: %(default)s)")
-        group_bins.add_argument(
-            "--method", choices=utils.BINNING_OPTIONS, default=DEFAULT.AutoBinning.method,
-            help="number of redshift bins (default: %(default)s), 'logspace' means equal size in log(1+z)")
+        populate_parser(config.AutoBinningConfig, group_bins)
+        populate_parser(config.ManualBinningConfig, group_bins)
 
         group_backend = parser.add_argument_group(
             title="backend specific",
             description="parameters that are specific to pair counting backends")
-        group_backend.add_argument(
-            "--rbin-slop", type=float, metavar="<float>", default=DEFAULT.Backend.rbin_slop,
-            help="treecorr 'rbin_slop' parameter (treecorr backend only, default: %(default)s), note that there is only a single radial bin if [--rweight] is not specified, otherwise [--rbin-num] bins")
-        group_backend.add_argument(
-            "--no-crosspatch", action="store_true",  # check with DEFAULT.Backend.crosspatch
-            help="disable counting pairs across patch boundaries (scipy backend only)")
-        group_backend.add_argument(
-            "--threads", type=int, metavar="<int>", default=DEFAULT.Backend.thread_num,
-            help="default number of threads to use if not specified (default: all)")
+        populate_parser(config.BackendConfig, group_backend)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
@@ -179,7 +148,7 @@ class CommandInit(SubCommand):
 
         # parse the configuration as given
         else:
-            config = Configuration.create(**config_args)
+            config = config.Configuration.create(**config_args)
 
         # create the project directory
         with ProjectDirectory.create(

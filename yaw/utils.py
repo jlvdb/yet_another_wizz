@@ -4,7 +4,7 @@ import logging
 import warnings
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import Field, asdict, dataclass, field, fields
+from dataclasses import MISSING, Field, asdict, dataclass, field, fields
 from datetime import timedelta
 from pathlib import Path
 from timeit import default_timer
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, NamedTuple, TypeVar
 import h5py
 import numpy as np
 import tqdm
+import yaml
 
 if TYPE_CHECKING:  # pragma: no cover
     from argparse import ArgumentParser
@@ -271,6 +272,7 @@ class Parameter(Mapping):
     type: type | None = field(default=None)
     nargs: str | int | None = field(default=None)
     choices: Sequence | None = field(default=None)
+    required: bool = field(default=False)
     parser_id: str = field(default="default")
     default_text: str | None = field(default=None)
     metavar: str | None = field(default=None, init=False)
@@ -318,11 +320,38 @@ class Parameter(Mapping):
         return kwargs
 
 
-def generate_metavar(type) -> str | None: pass
+def get_doc_args(
+    dclass: object | type,
+    indicate_opt: bool = True
+) -> list[tuple[str, str | None]]:
+    lines = []
+    argfields = fields(dclass)
+    if len(argfields) > 0:
+        for field in argfields:
+            try:  # omit parameter if not shipped with parameter information
+                param = Parameter.from_field(field)
+                # format the value as 'key: value'
+                if field.default is not MISSING:
+                    default = field.default
+                    optional = True
+                else:
+                    default = None
+                    optional = False
+                value = yaml.dump({field.name.strip("_"): default}).strip()
+                # format the optional comment
+                comment = param.help
+                if indicate_opt and optional:
+                    comment = "(opt) " + comment
+                if param.choices is not None:
+                    comment += f" ({', '.join(param.choices)})"
+                lines.append((value, comment))
+            except TypeError:
+                pass
+    return lines
 
 
 def populate_parser(
-    dclass: object,
+    dclass: object | type,
     default_parser: ArgumentParser,
     extra_parsers: Mapping[str, ArgumentParser] | None = None
 ) -> None:
@@ -331,7 +360,7 @@ def populate_parser(
             parameter = Parameter.from_field(field)
         except TypeError:
             continue
-        name = field.name.replace("_", "-")
+        name = field.name.strip("_").replace("_", "-")
 
         if parameter.parser_id == "default":
             parser = default_parser
@@ -348,6 +377,7 @@ def populate_parser(
                     f"--{name}", action="store_true", help=parameter.help)
 
         else:
-            parser.add_argument(
-                f"--{name}", default=field.default,
-                **parameter.get_kwargs())
+            kwargs = parameter.get_kwargs()
+            if field.default is not MISSING:
+                kwargs["default"] = field.default
+            parser.add_argument(f"--{name}", **kwargs)

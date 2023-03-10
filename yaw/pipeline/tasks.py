@@ -8,8 +8,6 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields, asdict, MISSING
 from typing import TYPE_CHECKING, Any
 
-import yaml
-
 from yaw import default as DEFAULT
 from yaw.config import ResamplingConfig
 from yaw.estimators import CorrelationEstimator
@@ -125,20 +123,6 @@ class Task(DictRepresentation):
             args = "---"
         logger.debug(f"arguments: {args}")
 
-    @classmethod
-    def get_doc_data(cls) -> list[tuple[str, str | None]]:
-        lines = [(cls.get_name(), cls.get_help())]
-        argfields = fields(cls)
-        if len(argfields) > 0:
-            for field in argfields:
-                value = yaml.dump({field.name: field.default}).strip()
-                try:
-                    comment = Parameter.from_field(field).help
-                except TypeError:
-                    comment = None
-                lines.append((value, comment))
-        return lines
-
 
 def get_task(name: str) -> Task:
     try:
@@ -154,9 +138,11 @@ def run_task(name: str, project: ProjectDirectory, **task_kwargs):
 @dataclass(frozen=True)
 class TaskCrosscorr(Task):
 
-    rr: bool = field(default=False, metadata=Parameter(
-        type=bool,
-        help="compute random-random pair counts, even if both randoms are available"))
+    rr: bool = field(
+        default=False, metadata=Parameter(
+            type=bool,
+            help="compute random-random pair counts, even if both randoms are "
+                "available"))
 
     @classmethod
     def get_name(cls) -> str:
@@ -174,9 +160,10 @@ class TaskCrosscorr(Task):
 @dataclass(frozen=True)
 class TaskAutocorr(Task):
 
-    rr: bool = field(default=True, metadata=Parameter(
-        type=bool,
-        help="do not compute random-random pair counts"))
+    rr: bool = field(
+        default=True, metadata=Parameter(
+            type=bool,
+            help="do not compute random-random pair counts"))
 
 
 @dataclass(frozen=True)
@@ -188,7 +175,8 @@ class TaskAutocorrReference(TaskAutocorr):
 
     @classmethod
     def get_help(cls) -> str:
-        return "compute the reference sample autocorrelation for bias mitigation"
+        return (
+            "compute the reference sample autocorrelation for bias mitigation")
 
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
@@ -214,40 +202,47 @@ class TaskAutocorrUnknown(TaskAutocorr):
 @dataclass(frozen=True)
 class TaskEstimateCorr(Task):
 
-    est_cross: str | None = field(default=None, metadata=Parameter(
-        type=str, choices=ESTIMATORS,
-        help="correlation estimator for crosscorrelations",
-        default_text="(default: LS or DP)",
-        parser_id="estimators"))
-    est_auto: str | None = field(default=None, metadata=Parameter(
-        type=str, choices=ESTIMATORS,
-        help="correlation estimator for autocorrelations",
-        default_text="(default: LS or DP)",
-        parser_id="estimators"))
+    est_cross: str | None = field(
+        default=None, metadata=Parameter(
+            type=str, choices=ESTIMATORS,
+            help="correlation estimator for crosscorrelations",
+            default_text="(default: LS or DP)",
+            parser_id="estimators"))
+    est_auto: str | None = field(
+        default=None, metadata=Parameter(
+            type=str, choices=ESTIMATORS,
+            help="correlation estimator for autocorrelations",
+            default_text="(default: LS or DP)",
+            parser_id="estimators"))
 
-    method: str = field(default=DEFAULT.Resampling.method, metadata=Parameter(
-        type=str, choices=METHOD_OPTIONS,
-        help="resampling method for covariance estimates",
-        default_text="(default: %(default)s)",
-        parser_id="sampling"))
-    crosspatch: bool = field(default=DEFAULT.Resampling.crosspatch, metadata=Parameter(
-        type=bool,
-        help="whether to include cross-patch pair counts when resampling",
-        parser_id="sampling"))
-    n_boot: int = field(default=DEFAULT.Resampling.n_boot, metadata=Parameter(
-        type=int,
-        help="number of bootstrap samples",
-        default_text="(default: %(default)s)",
-        parser_id="sampling"))
-    global_norm: bool = field(default=DEFAULT.Resampling.global_norm, metadata=Parameter(
-        type=bool,
-        help="normalise pair counts globally instead of patch-wise",
-        parser_id="sampling"))
-    seed: int = field(default=DEFAULT.Resampling.seed, metadata=Parameter(
-        type=int,
-        help="random seed for bootstrap sample generation",
-        default_text="(default: %(default)s)",
-        parser_id="sampling"))
+    method: str = field(
+        default=DEFAULT.Resampling.method, metadata=Parameter(
+            type=str, choices=METHOD_OPTIONS,
+            help="resampling method for covariance estimates",
+            default_text="(default: %(default)s)",
+            parser_id="sampling"))
+    crosspatch: bool = field(
+        default=DEFAULT.Resampling.crosspatch, metadata=Parameter(
+            type=bool,
+            help="whether to include cross-patch pair counts when resampling",
+            parser_id="sampling"))
+    n_boot: int = field(
+        default=DEFAULT.Resampling.n_boot, metadata=Parameter(
+            type=int,
+            help="number of bootstrap samples",
+            default_text="(default: %(default)s)",
+            parser_id="sampling"))
+    global_norm: bool = field(
+        default=DEFAULT.Resampling.global_norm, metadata=Parameter(
+            type=bool,
+            help="normalise pair counts globally instead of patch-wise",
+            parser_id="sampling"))
+    seed: int = field(
+        default=DEFAULT.Resampling.seed, metadata=Parameter(
+            type=int,
+            help="random seed for bootstrap sample generation",
+            default_text="(default: %(default)s)",
+            parser_id="sampling"))
 
     @classmethod
     def get_name(cls) -> str:
@@ -280,7 +275,9 @@ class TaskTrueRedshifts(Task):
 
     @classmethod
     def get_help(cls) -> str:
-        return "compute true redshift distributions for unknown data (requires point estimate)"
+        return (
+            "compute true redshift distributions for unknown data (requires "
+            "point estimate)")
 
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)

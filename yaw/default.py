@@ -1,6 +1,3 @@
-import os
-
-
 class _NotSet_meta(type):
 
     def __repr__(self) -> str:
@@ -25,7 +22,7 @@ class AutoBinning:
 
 
 class Backend:
-    thread_num = os.cpu_count()
+    thread_num = None
     crosspatch = True
     rbin_slop = 0.01
 
