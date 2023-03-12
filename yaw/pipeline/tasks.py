@@ -259,6 +259,18 @@ class TaskEstimateCorr(RepeatableTask):
             type=str,
             help="unique identifier for different configurations",
             default_text="(default: %(default)s)"))
+    bias_ref: bool = field(
+        default=True,
+        metadata=Parameter(
+            type=bool,
+            help="whether to mitigate the reference sample bias using its "
+                 "autocorrelation function (if available)"))
+    bias_unk: bool = field(
+        default=True,
+        metadata=Parameter(
+            type=bool,
+            help="whether to mitigate the unknown sample bias using its "
+                 "autocorrelation functions (if available)"))
 
     est_cross: str | None = field(
         default=None,

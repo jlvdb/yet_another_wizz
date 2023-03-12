@@ -66,6 +66,7 @@ class SampledValue:
 @dataclass(frozen=True, repr=False)
 class CorrelationData(SampledData):
 
+    info: str | None = None
     covariance: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
@@ -94,8 +95,12 @@ class CorrelationData(SampledData):
         ext = "smp"
         samples = np.loadtxt(f"{path_prefix}.{ext}")
         # load header
+        info = None
         with open(f"{path_prefix}.{ext}") as f:
             for line in f.readlines():
+                if "extra info" in line:
+                    _, info = line.split(":", maxsplit=1)
+                    info = info.strip()
                 if "z_low" in line:
                     line = line[2:].strip("\n")  # remove leading '# '
                     header = [col for col in line.split(" ") if len(col) > 0]
@@ -114,7 +119,8 @@ class CorrelationData(SampledData):
             binning=binning,
             data=data_error[:, 2],  # take data column
             samples=samples.T[2:],  # remove redshift bin columns
-            method=method)
+            method=method,
+            info=info)
 
     def get_error(self) -> Series:
         return pd.Series(np.sqrt(np.diag(self.covariance)), index=self.binning)
@@ -134,7 +140,9 @@ class CorrelationData(SampledData):
 
     @property
     def _dat_desc(self) -> str:
-        return "# correlation function estimate with symmetric 68% percentile confidence"
+        return (
+            "# correlation function estimate with symmetric 68% percentile "
+            "confidence")
 
     @property
     def _smp_desc(self) -> str:
@@ -142,13 +150,20 @@ class CorrelationData(SampledData):
 
     @property
     def _cov_desc(self) -> str:
-        return f"# correlation function estimate covariance matrix ({self.n_bins}x{self.n_bins})"
+        return (
+            f"# correlation function estimate covariance matrix "
+            f"({self.n_bins}x{self.n_bins})")
 
     def to_files(self, path_prefix: TypePathStr) -> None:
         name = self.__class__.__name__.lower()[:-4]
         logger.info(f"writing {name} data to '{path_prefix}.*'")
         PREC = 10
         DELIM = " "
+
+        def comment(string: str) -> str:
+            if self.info is not None:
+                string = f"{string}\n# extra info: {self.info}"
+            return string
 
         def write_head(f, description, header, delim=DELIM):
             f.write(f"{description}\n")
@@ -159,7 +174,7 @@ class CorrelationData(SampledData):
         ext = "dat"
         header = ["z_low", "z_high", "nz", "nz_err"]
         with open(f"{path_prefix}.{ext}", "w") as f:
-            write_head(f, self._dat_desc, header, delim=DELIM)
+            write_head(f, comment(self._dat_desc), header, delim=DELIM)
             for zlow, zhigh, nz, nz_err in zip(
                 self.edges[:-1], self.edges[1:],
                 self.data, self.get_error().to_numpy()
@@ -174,7 +189,7 @@ class CorrelationData(SampledData):
         header.extend(
             f"{self.method[:4]}_{i}" for i in range(self.n_samples))
         with open(f"{path_prefix}.{ext}", "w") as f:
-            write_head(f, self._smp_desc, header, delim=DELIM)
+            write_head(f, comment(self._smp_desc), header, delim=DELIM)
             for zlow, zhigh, samples in zip(
                 self.edges[:-1], self.edges[1:], self.samples.T
             ):
@@ -186,7 +201,7 @@ class CorrelationData(SampledData):
         ext = "cov"
         fmt_str = DELIM.join("{: .{prec}e}" for _ in range(self.n_bins)) + "\n"
         with open(f"{path_prefix}.{ext}", "w") as f:
-            f.write(f"{self._cov_desc}\n")
+            f.write(f"{comment(self._cov_desc)}\n")
             for values in self.covariance:
                 f.write(fmt_str.format(*values, prec=PREC-3))
 
@@ -360,7 +375,8 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         self,
         config: ResamplingConfig | None = None,
         *,
-        estimator: str | None = None
+        estimator: str | None = None,
+        info: str | None = None
     ) -> CorrelationData:
         if config is None:
             config = ResamplingConfig()
@@ -395,7 +411,8 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             binning=self.get_binning(),
             data=data,
             samples=samples,
-            method=config.method)
+            method=config.method,
+            info=info)
 
     @classmethod
     def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrelationFunction:
@@ -557,12 +574,14 @@ class RedshiftData(CorrelationData):
         cls,
         cross_data: CorrelationData,
         ref_data: CorrelationData | None = None,
-        unk_data: CorrelationData | None = None
+        unk_data: CorrelationData | None = None,
+        info: str | None = None
     ) -> RedshiftData:
         logger.debug(
             "computing clustering redshifts from correlation function samples")
         w_sp_data = cross_data.data
         w_sp_samp = cross_data.samples
+        mitigate = []
 
         if ref_data is None:
             w_ss_data = np.float64(1.0)
@@ -574,6 +593,7 @@ class RedshiftData(CorrelationData):
                     "'cross_data'")
             w_ss_data = ref_data.data
             w_ss_samp = ref_data.samples
+            mitigate.append("reference")
 
         if unk_data is None:
             w_pp_data = np.float64(1.0)
@@ -585,7 +605,10 @@ class RedshiftData(CorrelationData):
                     "'cross_data'")
             w_pp_data = unk_data.data
             w_pp_samp = unk_data.samples
+            mitigate.append("unknown")
 
+        if len(mitigate) > 0:
+            logger.debug(f"mitigating {' and '.join(mitigate)} sample bias")
         N = cross_data.n_samples
         dzsq_data = cross_data.dz**2
         dzsq_samp = np.tile(dzsq_data, N).reshape((N, -1))
@@ -600,7 +623,8 @@ class RedshiftData(CorrelationData):
             binning=cross_data.binning,
             data=nz_data,
             samples=nz_samp,
-            method=cross_data.method)
+            method=cross_data.method,
+            info=info)
 
     @classmethod
     def from_correlation_functions(
@@ -612,38 +636,33 @@ class RedshiftData(CorrelationData):
         cross_est: str | None = None,
         ref_est: str | None = None,
         unk_est: str | None = None,
-        method: str = DEFAULT.Resampling.method,
-        n_boot: int = DEFAULT.Resampling.n_boot,
-        patch_idx: NDArray[np.int_] | None = None,
-        global_norm: bool = DEFAULT.Resampling.global_norm,
-        seed: int = DEFAULT.Resampling.seed
+        config: ResamplingConfig | None = None,
+        info: str | None = None
     ) -> RedshiftData:
         with TimedLog(
             logger.debug,
-            f"estimating clustering redshifts with method '{method}'"
+            f"estimating clustering redshifts with method '{config.method}'"
         ):
-            kwargs = dict(
-                method=method, n_boot=n_boot, patch_idx=patch_idx,
-                global_norm=global_norm, seed=seed)
             # check compatibilty before sampling anything
             if ref_corr is not None:
                 ref_corr.is_compatible(cross_corr)
             if unk_corr is not None:
                 unk_corr.is_compatible(cross_corr)
             # sample pair counts and evaluate estimator
-            cross_data = cross_corr.get(estimator=cross_est, **kwargs)
+            cross_data = cross_corr.get(config, estimator=cross_est)
             if ref_corr is not None:
-                ref_data = ref_corr.get(estimator=ref_est, **kwargs)
+                ref_data = ref_corr.get(config, estimator=ref_est)
             else:
                 ref_data = None
             if unk_corr is not None:
-                unk_data = unk_corr.get(estimator=unk_est, **kwargs)
+                unk_data = unk_corr.get(config, estimator=unk_est)
             else:
                 unk_data = None
             return cls.from_correlation_data(
                 cross_data=cross_data,
                 ref_data=ref_data,
-                unk_data=unk_data)
+                unk_data=unk_data,
+                info=info)
 
     @property
     def _dat_desc(self) -> str:
@@ -672,7 +691,8 @@ class RedshiftData(CorrelationData):
             binning=self.get_binning(),
             data=self.data / norm,
             samples=self.samples / norm,
-            method=self.method)
+            method=self.method,
+            info=self.info)
 
     def mean(self):
         norm = np.nansum(self.data)

@@ -234,7 +234,8 @@ class Engine:
             data = {}
         for scale, cf in cfs.items():
             logger.debug(f"processing pair counts for {tag=} / {scale=}")
-            data[(scale, tag)] = cf.get(config, estimator=estimator)
+            data[(scale, tag)] = cf.get(
+                config, estimator=estimator, info=cfs_kind)
         setattr(self, f"{cfs_kind}_data", data)
 
     def write_auto_ref(self, tag: str) -> None:
@@ -251,23 +252,40 @@ class Engine:
             path = est_dir.get_auto(idx)
             self.w_pp_data[scale_tag].to_files(path)
 
-    def write_nz_cc(self, idx: int, tag: str) -> None:
+    def write_nz_cc(
+        self,
+        idx: int,
+        tag: str,
+        *,
+        bias_ref: bool = True,
+        bias_unk: bool = True
+    ) -> None:
+        def get_info(w_ii_data: dict[str, CorrelationData | None]) -> str:
+            if len(w_ii_data) == 0:
+                return None
+            cd = next(iter(w_ii_data.values()))
+            return cd.info
+
         cross_data = self.w_sp_data
-        if self.w_ss_data is None:
+        denom_info = ["dz^2"]
+        if self.w_ss_data is None or not bias_ref:
             ref_data = {scale_tag: None for scale_tag in cross_data}
         else:
             ref_data = self.w_ss_data
-        if self.w_pp_data is None:
+            denom_info.append(get_info(ref_data))
+        if self.w_pp_data is None or not bias_unk:
             unk_data = {scale_tag: None for scale_tag in cross_data}
         else:
             unk_data = self.w_pp_data
+            denom_info.append(get_info(unk_data))
 
+        info = f"{get_info(cross_data)} / sqrt({' '.join(denom_info)})"
         for scale in self.project.iter_scales():
             key = (scale, tag)
             est_dir = self.project.get_estimate_dir(scale, tag, create=True)
             path = est_dir.get_cross(idx)
             nz_data = yaw.RedshiftData.from_correlation_data(
-                cross_data[key], ref_data[key], unk_data[key])
+                cross_data[key], ref_data[key], unk_data[key], info=info)
             nz_data.to_files(path)
 
     def write_nz_ref(self) -> None:
@@ -441,7 +459,10 @@ class Engine:
                                 "w_sp", tag=zcc_task.tag,
                                 config=zcc_task.config,
                                 estimator=zcc_task.est_cross)
-                            self.write_nz_cc(idx, tag=zcc_task.tag)
+                            self.write_nz_cc(
+                                idx, tag=zcc_task.tag,
+                                bias_ref=zcc_task.bias_ref,
+                                bias_unk=zcc_task.bias_unk)
                             zcc_processed = True
 
                 if do_true:
