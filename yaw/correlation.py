@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
@@ -10,12 +11,11 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 
-from yaw import default as DEFAULT
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
 from yaw.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
-from yaw.paircounts import PairCountResult, SampledData
+from yaw.paircounts import PairCountResult, SampledData, merge_paircount_results
 from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
 from yaw.utils import (
@@ -699,3 +699,25 @@ class RedshiftData(CorrelationData):
         mean = np.nansum(self.data * self.mids) / norm
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=self.method)
+
+
+def _merge_optional_paircounts(
+    paircounts: Sequence[PairCountResult | None]
+) ->PairCountResult | None:
+    is_none = [pc is None for pc in paircounts]
+    if all(is_none):
+        return None
+    elif any(is_none):
+        raise ValueError("cannot merge 'PairCountResult' and 'None'")
+    else:
+        return merge_paircount_results(*paircounts)
+
+
+def merge_correlation_functions(
+    *cfs: CorrelationFunction
+) -> CorrelationFunction:
+    dd = _merge_optional_paircounts(*[cf.dd for cf in cfs])
+    dr = _merge_optional_paircounts(*[cf.dr for cf in cfs])
+    rd = _merge_optional_paircounts(*[cf.rd for cf in cfs])
+    rr = _merge_optional_paircounts(*[cf.rr for cf in cfs])
+    return CorrelationFunction(dd=dd, dr=dr, rd=rd, rr=rr)

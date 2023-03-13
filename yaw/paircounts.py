@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod, abstractproperty
-from collections.abc import Iterable
 from dataclasses import dataclass
+from itertools import accumulate
+try:  # pragma: no cover
+    from itertools import pairwise
+except ImportError:  # pragma: no cover
+    from more_itertools import pairwise
 from typing import TYPE_CHECKING, Union
 try:  # pragma: no cover
     from typing import TypeAlias
@@ -20,7 +24,7 @@ from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, PatchIDs, outer_triu_sum)
 
 if TYPE_CHECKING:  # pragma: no cover
-    from scipy.sparse import spmatrix
+    from scipy.sparse import dok_matrix
     from numpy.typing import ArrayLike, NDArray, DTypeLike
     from pandas import DataFrame, IntervalIndex, Series
 
@@ -304,7 +308,7 @@ class PatchedCount(PatchedArray):
         self._binning = binning
         self._keys = set()
         self._n_patches = n_patches
-        self._bins: list[spmatrix] = [
+        self._bins: list[dok_matrix] = [
             scipy.sparse.dok_matrix((n_patches, n_patches), dtype=dtype)
             for i in range(self.n_bins)]
         self.auto = auto
@@ -401,13 +405,13 @@ class PatchedCount(PatchedArray):
 
     # methods implementing the signal
 
-    def _bin_sum_diag(self, bin: spmatrix) -> np.number:
+    def _bin_sum_diag(self, bin: dok_matrix) -> np.number:
         return bin.diagonal().sum()
 
-    def _bin_sum_cross(self, bin: spmatrix) -> np.number:
+    def _bin_sum_cross(self, bin: dok_matrix) -> np.number:
         return bin.sum()
 
-    def _bin_sum_auto(self, bin: spmatrix) -> np.number:
+    def _bin_sum_auto(self, bin: dok_matrix) -> np.number:
         return scipy.sparse.triu(bin).sum()
 
     def _sum(self, config: ResamplingConfig) -> NDArray:
@@ -426,14 +430,14 @@ class PatchedCount(PatchedArray):
 
     def _bin_jackknife_diag(
         self,
-        bin: spmatrix,
+        bin: dok_matrix,
         signal: NDArray
     ) -> NDArray:
         return signal - bin.diagonal()  # broadcast to (n_patches,)
 
     def _bin_jackknife_cross(
         self,
-        bin: spmatrix,
+        bin: dok_matrix,
         signal: NDArray
     ) -> NDArray:
         diag = bin.diagonal()
@@ -443,7 +447,7 @@ class PatchedCount(PatchedArray):
 
     def _bin_jackknife_auto(
         self,
-        bin: spmatrix,
+        bin: dok_matrix,
         signal: NDArray
     ) -> NDArray:
         diag = bin.diagonal()
@@ -542,3 +546,55 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         self.count.to_hdf(group)
         group = dest.create_group("total")
         self.total.to_hdf(group)
+
+
+def patch_idx_offset(*patched: PatchedArray) -> NDArray[np.int_]:
+    idx_offset = np.fromiter(
+        accumulate((p.n_patches for p in patched), initial=0),
+        dtype=np.int_, count=len(patched))
+    return idx_offset
+
+
+def merge_patched_totals(*totals: PatchedTotal) -> PatchedTotal:
+    if len(totals) == 0:
+        raise IndexError("at least one argument is required")
+    elif len(totals) == 1:
+        return totals[0]
+    for total1, total2 in pairwise(totals):
+        total1.is_compatible(total2)
+        if total1.auto != total2.auto:
+            raise ValueError("cannot merge mixed cross- and autocorrelations")
+    return PatchedTotal(
+        binning=total1.get_binning(),
+        totals1=np.concatenate([t.totals1 for t in totals], axis=0),
+        totals2=np.concatenate([t.totals2 for t in totals], axis=0),
+        auto=total1.auto)
+
+
+def merge_patched_counts(*counts: PatchedCount) -> PatchedCount:
+    if len(counts) == 0:
+        raise IndexError("at least one argument is required")
+    elif len(counts) == 1:
+        return counts[0]
+    for count1, count2 in pairwise(counts):
+        count1.is_compatible(count2)
+        if count1.auto != count2.auto:
+            raise ValueError("cannot merge mixed cross- and autocorrelations")
+    merged = PatchedCount(
+        binning=count1.get_binning(),
+        n_patches=sum(c.n_patches for c in counts),
+        auto=count1.auto)
+    offsets = patch_idx_offset(counts)
+    for count, offset in zip(counts, offsets):
+        for bin_idx in range(merged.n_bins):
+            for (i, j), c in count._bins[bin_idx].items():
+                merged._bins[(i+offset, j+offset)] = c
+    return merged
+
+
+def merge_paircount_results(*paircounts: PairCountResult) -> PairCountResult:
+    counts = [pc.count for pc in paircounts]
+    totals = [pc.total for pc in paircounts]
+    return PairCountResult(
+        count=merge_patched_counts(*counts),
+        total=merge_patched_totals(*totals))
