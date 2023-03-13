@@ -15,7 +15,7 @@ from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
 from yaw.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
-from yaw.paircounts import PairCountResult, SampledData, merge_paircount_results
+from yaw.paircounts import PairCountResult, SampledData
 from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
 from yaw.utils import (
@@ -270,6 +270,16 @@ class CorrelationData(SampledData):
         return ax
 
 
+def check_mergable(cfs: Sequence[CorrelationFunction | None]) -> None:
+    reference = cfs[0]
+    for kind in ("dd", "dr", "rd", "rr"):
+        ref_pcounts = getattr(reference, kind)
+        for cf in cfs[1:]:
+            pcounts = getattr(cf, kind)
+            if type(ref_pcounts) != type(pcounts):
+                raise ValueError(f"cannot merge, '{kind}' incompatible")
+
+
 @dataclass(frozen=True)
 class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
@@ -450,6 +460,32 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         logger.info(f"writing pair counts to '{path}'")
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
+
+    def concatenate_patches(
+        self,
+        *cfs: CorrelationFunction
+    ) -> CorrelationFunction:
+        check_mergable([self, *cfs])
+        merged = {}
+        for kind in ("dd", "dr", "rd", "rr"):
+            self_pcounts = getattr(self, kind)
+            if self_pcounts is not None:
+                other_pcounts = [getattr(cf, kind) for cf in cfs]
+                merged[kind] = self_pcounts.concatenate_patches(*other_pcounts)
+        return self.__class__(**merged)
+
+    def concatenate_bins(
+        self,
+        *cfs: CorrelationFunction
+    ) -> CorrelationFunction:
+        check_mergable([self, *cfs])
+        merged = {}
+        for kind in ("dd", "dr", "rd", "rr"):
+            self_pcounts = getattr(self, kind)
+            if self_pcounts is not None:
+                other_pcounts = [getattr(cf, kind) for cf in cfs]
+                merged[kind] = self_pcounts.concatenate_bins(*other_pcounts)
+        return self.__class__(**merged)
 
 
 def _create_dummy_counts(
@@ -699,25 +735,3 @@ class RedshiftData(CorrelationData):
         mean = np.nansum(self.data * self.mids) / norm
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=self.method)
-
-
-def _merge_optional_paircounts(
-    paircounts: Sequence[PairCountResult | None]
-) ->PairCountResult | None:
-    is_none = [pc is None for pc in paircounts]
-    if all(is_none):
-        return None
-    elif any(is_none):
-        raise ValueError("cannot merge 'PairCountResult' and 'None'")
-    else:
-        return merge_paircount_results(*paircounts)
-
-
-def merge_correlation_functions(
-    *cfs: CorrelationFunction
-) -> CorrelationFunction:
-    dd = _merge_optional_paircounts(*[cf.dd for cf in cfs])
-    dr = _merge_optional_paircounts(*[cf.dr for cf in cfs])
-    rd = _merge_optional_paircounts(*[cf.rd for cf in cfs])
-    rr = _merge_optional_paircounts(*[cf.rr for cf in cfs])
-    return CorrelationFunction(dd=dd, dr=dr, rd=rd, rr=rr)

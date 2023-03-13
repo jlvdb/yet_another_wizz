@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod, abstractproperty
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import accumulate
-try:  # pragma: no cover
-    from itertools import pairwise
-except ImportError:  # pragma: no cover
-    from more_itertools import pairwise
 from typing import TYPE_CHECKING, Union
 try:  # pragma: no cover
     from typing import TypeAlias
@@ -84,7 +81,18 @@ class SampledData(BinnedQuantity):
         return True
 
 
+def check_mergable(patched_arrays: Sequence[PatchedArray]) -> None:
+    reference = patched_arrays[0]
+    for patched in patched_arrays[1:]:
+        if reference.auto != patched.auto:
+            raise ValueError("cannot merge mixed cross- and autocorrelations")
+        if not reference.is_compatible(patched):
+            raise ValueError("cannot merge, binning does not match")
+
+
 class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
+
+    auto = False
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -180,6 +188,29 @@ def binning_to_hdf(binning: IntervalIndex, dest: h5py.Group) -> None:
     edges = np.column_stack([binning.left, binning.right])
     dset = dest.create_dataset("binning", data=edges, **_compression)
     dset.attrs["closed"] = binning.closed
+
+
+def concatenate_bin_edges(*patched: PatchedArray) -> IntervalIndex:
+    reference = patched[0]
+    edges = reference.edges
+    for other in patched[1:]:
+        if reference.auto != other.auto:
+            raise ValueError(
+                "cannot merge mixed cross- and autocorrelations")
+        if reference.n_patches != other.n_patches:
+            raise ValueError("cannot merge, patch numbers do not match")
+        if edges[-1] == other.edges[0]:
+            edges = np.concatenate([edges, other.edges[1:]])
+        else:
+            raise ValueError("cannot merge, bins are not contiguous")
+    return IntervalIndex.from_breaks(edges, closed=reference.closed)
+
+
+def patch_idx_offset(*patched: PatchedArray) -> NDArray[np.int_]:
+    idx_offset = np.fromiter(
+        accumulate((p.n_patches for p in patched), initial=0),
+        dtype=np.int_, count=len(patched))
+    return idx_offset
 
 
 class PatchedTotal(PatchedArray):
@@ -293,6 +324,24 @@ class PatchedTotal(PatchedArray):
         dest.create_dataset("totals1", data=self.totals1, **_compression)
         dest.create_dataset("totals2", data=self.totals2, **_compression)
         dest.create_dataset("auto", data=self.auto)
+
+    def concatenate_patches(self, *totals: PatchedTotal) -> PatchedTotal:
+        check_mergable([self, *totals])
+        all_totals: list[PatchedTotal] = [self, *totals]
+        return self.__class__(
+            binning=self.get_binning().copy(),
+            totals1=np.concatenate([t.totals1 for t in all_totals], axis=0),
+            totals2=np.concatenate([t.totals2 for t in all_totals], axis=0),
+            auto=self.auto)
+
+    def concatenate_bins(self, *totals: PatchedTotal) -> PatchedTotal:
+        binning = concatenate_bin_edges(self, *totals)
+        all_totals: list[PatchedTotal] = [self, *totals]
+        return self.__class__(
+            binning=binning,
+            totals1=np.concatenate([t.totals1 for t in all_totals], axis=1),
+            totals2=np.concatenate([t.totals2 for t in all_totals], axis=1),
+            auto=self.auto)
 
 
 class PatchedCount(PatchedArray):
@@ -499,6 +548,30 @@ class PatchedCount(PatchedArray):
         dest.create_dataset("n_patches", data=self.n_patches)
         dest.create_dataset("auto", data=self.auto)
 
+    def concatenate_patches(self, *counts: PatchedCount) -> PatchedCount:
+        check_mergable([self, *counts])
+        all_counts: list[PatchedCount] = [self, *counts]
+        merged = self.__class__(
+            binning=self.get_binning(),
+            n_patches=sum(count.n_patches for count in all_counts),
+            auto=self.auto)
+        offsets = patch_idx_offset(all_counts)
+        for count, offset in zip(all_counts, offsets):
+            for idx, bin in enumerate(merged._bins):
+                for (i, j), c in bin.items():
+                    merged._bins[idx][(i+offset, j+offset)] = c
+        return merged
+
+    def concatenate_bins(self, *counts: PatchedCount) -> PatchedCount:
+        binning = concatenate_bin_edges(self, *counts)
+        merged = self.__class__(
+            binning=binning, n_patches=self.n_patches, auto=self.auto)
+        all_counts: list[PatchedCount] = [self, *counts]
+        for count in all_counts:
+            for bin in count._bins:
+                merged._bins.append(bin.copy())
+        return merged
+
 
 @dataclass(frozen=True)
 class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
@@ -547,54 +620,16 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         group = dest.create_group("total")
         self.total.to_hdf(group)
 
+    def concatenate_patches(self, *pcounts: PairCountResult) -> PairCountResult:
+        counts = [pc.count for pc in pcounts]
+        totals = [pc.total for pc in pcounts]
+        return self.__class__(
+            count=self.count.concatenate_patches(*counts),
+            total=self.total.concatenate_patches(*totals))
 
-def patch_idx_offset(*patched: PatchedArray) -> NDArray[np.int_]:
-    idx_offset = np.fromiter(
-        accumulate((p.n_patches for p in patched), initial=0),
-        dtype=np.int_, count=len(patched))
-    return idx_offset
-
-
-def merge_patched_totals(*totals: PatchedTotal) -> PatchedTotal:
-    if len(totals) == 0:
-        raise IndexError("at least one argument is required")
-    elif len(totals) == 1:
-        return totals[0]
-    for total1, total2 in pairwise(totals):
-        total1.is_compatible(total2)
-        if total1.auto != total2.auto:
-            raise ValueError("cannot merge mixed cross- and autocorrelations")
-    return PatchedTotal(
-        binning=total1.get_binning(),
-        totals1=np.concatenate([t.totals1 for t in totals], axis=0),
-        totals2=np.concatenate([t.totals2 for t in totals], axis=0),
-        auto=total1.auto)
-
-
-def merge_patched_counts(*counts: PatchedCount) -> PatchedCount:
-    if len(counts) == 0:
-        raise IndexError("at least one argument is required")
-    elif len(counts) == 1:
-        return counts[0]
-    for count1, count2 in pairwise(counts):
-        count1.is_compatible(count2)
-        if count1.auto != count2.auto:
-            raise ValueError("cannot merge mixed cross- and autocorrelations")
-    merged = PatchedCount(
-        binning=count1.get_binning(),
-        n_patches=sum(c.n_patches for c in counts),
-        auto=count1.auto)
-    offsets = patch_idx_offset(counts)
-    for count, offset in zip(counts, offsets):
-        for bin_idx in range(merged.n_bins):
-            for (i, j), c in count._bins[bin_idx].items():
-                merged._bins[(i+offset, j+offset)] = c
-    return merged
-
-
-def merge_paircount_results(*paircounts: PairCountResult) -> PairCountResult:
-    counts = [pc.count for pc in paircounts]
-    totals = [pc.total for pc in paircounts]
-    return PairCountResult(
-        count=merge_patched_counts(*counts),
-        total=merge_patched_totals(*totals))
+    def concatenate_bins(self, *pcounts: PairCountResult) -> PairCountResult:
+        counts = [pc.count for pc in pcounts]
+        totals = [pc.total for pc in pcounts]
+        return self.__class__(
+            count=self.count.concatenate_bins(*counts),
+            total=self.total.concatenate_bins(*totals))
