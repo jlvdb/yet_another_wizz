@@ -168,6 +168,10 @@ class BinnedQuantity(ABC):
     def dz(self) -> NDArray[np.float_]:
         return np.diff(self.edges)
 
+    @property
+    def closed(self) -> str:
+        return self.get_binning().closed
+
     def is_compatible(self, other) -> bool:
         if not isinstance(other, self.__class__):
             raise TypeError(
