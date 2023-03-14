@@ -20,7 +20,6 @@ from yaw.pipeline import merge
 from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
-from yaw.pipeline.engine import Engine
 from yaw.pipeline.logger import get_logger
 from yaw.pipeline.tasks import Task, TaskManager
 
@@ -154,8 +153,6 @@ class YawDirectory(DictRepresentation):
         self.counts_path.mkdir(exist_ok=True)
         self.estimate_path.mkdir(exist_ok=True)
         self.get_true_dir().mkdir(exist_ok=True)
-        # create an engine instance for the lifetime of the project
-        self._engine = Engine(self)
 
     def _add_log_file_handle(self):
         # create the file logger
@@ -188,7 +185,7 @@ class YawDirectory(DictRepresentation):
         self._config = parse_config_from_setup(setup)
         # set up task management
         task_list = setup.get("tasks", [])
-        self._tasks = TaskManager.from_list(task_list)
+        self._tasks = TaskManager.from_history_list(task_list, project=self)
 
     @classmethod
     def from_dict(
@@ -332,17 +329,8 @@ class YawDirectory(DictRepresentation):
         return TrueDirectory(path)
 
     @property
-    def engine(self) -> Engine:
-        return self._engine
-
-    def add_task(self, task: Task) -> None:
-        self._tasks.add(task)
-
-    def get_tasks(self) -> tuple[Task]:
-        return self._tasks.get_tasks()
-
-    def view_tasks(self) -> str:
-        return str(self._tasks)
+    def tasks(self) -> TaskManager:
+        return self._tasks
 
     @abstractmethod
     def get_bin_indices(self) -> set[int]: pass
@@ -383,7 +371,7 @@ class MergedDirectory(YawDirectory):
     def to_dict(self) -> dict[str, Any]:
         setup = dict(
             sources=[str(fpath) for fpath in self._sources],
-            tasks=self._tasks.to_list())
+            tasks=self._tasks.history_to_list())
         return setup
 
 
@@ -409,7 +397,7 @@ class ProjectDirectory(YawDirectory):
         setup_dict = dict(
             configuration=config.to_dict(),
             data=data,
-            tasks=TaskManager().to_list())
+            tasks=[])
         return cls.from_dict(setup_dict, path=path)
 
     @classmethod
@@ -447,7 +435,7 @@ class ProjectDirectory(YawDirectory):
         setup = dict(
             configuration=configuration,
             data=self._inputs.to_dict(),
-            tasks=self._tasks.to_list())
+            tasks=self._tasks.history_to_list())
         # cache: if default location set to None. Reason: if cloning setup,
         # original cache would be used (unless manually overridden)
         if setup["data"]["cachepath"] == str(self.default_cache_path):

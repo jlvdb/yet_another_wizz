@@ -29,24 +29,6 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
-class RunContext:
-
-    def __init__(
-        self,
-        project: YawDirectory,
-        progress: bool = False,
-        threads: int | None = None
-    ) -> None:
-        self.engine = project.engine
-        self.engine.set_run_context(progress=progress, threads=threads)
-
-    def __enter__(self) -> RunContext:
-        return self
-
-    def __exit__(self, *args, **kwargs) -> None:
-        self.engine.reset_run_context()
-
-
 class SubCommand(ABC):
 
     def __init_subclass__(cls, **kwargs) -> None:
@@ -225,8 +207,8 @@ class CommandCrosscorr(SubCommand):
                     idx, data=input_unk.get(idx), rand=input_rand.get(idx))
 
             task = yaw_tasks.TaskCrosscorr.from_argparse(args)
-            with RunContext(project, args.progress, args.threads):
-                task(project)
+            project.tasks.run(
+                task, progress=args.progress, threads=args.threads)
 
 
 class CommandAutocorr(SubCommand):
@@ -260,8 +242,8 @@ class CommandAutocorr(SubCommand):
                 task = yaw_tasks.TaskAutocorrReference.from_argparse(args)
             else:
                 task = yaw_tasks.TaskAutocorrUnknown.from_argparse(args)
-            with RunContext(project, args.progress, args.threads):
-                task(project)
+            project.tasks.run(
+                task, progress=args.progress, threads=args.threads)
 
 
 class CommandTrueRedshifts(SubCommand):
@@ -278,6 +260,7 @@ class CommandTrueRedshifts(SubCommand):
             description="Compute the redshift distributions of the unknown "
                         "data sample(s), which requires providing point-"
                         "estimate redshifts for the catalog.",
+            progress=True,
             threads=True)
         populate_parser(yaw_tasks.TaskTrueRedshifts, parser)
 
@@ -285,8 +268,8 @@ class CommandTrueRedshifts(SubCommand):
     def run(cls, args: argparse.Namespace) -> None:
         with ProjectDirectory(args.wdir) as project:
             task = yaw_tasks.TaskTrueRedshifts.from_argparse(args)
-            with RunContext(project, threads=args.threads):
-                task(project)
+            project.tasks.run(
+                task, progress=args.progress, threads=args.threads)
 
 
 class CommandCache(SubCommand):
@@ -301,8 +284,7 @@ class CommandCache(SubCommand):
             name=cls.get_name(),
             help="mange or clean up cache directories",
             description="Get a summary of the project's cache directory "
-                        "(location, size, etc.) or remove entries with --drop.",
-            progress=False)
+                        "(location, size, etc.) or remove entries with --drop.")
         parser.add_argument(
             "--drop", action="store_true",
             help="drop all cache entries")
@@ -312,7 +294,7 @@ class CommandCache(SubCommand):
         with ProjectDirectory(args.wdir) as project:
             if args.drop:
                 task = yaw_tasks.TaskDropCache.from_argparse(args)
-                task(project)
+                project.tasks.run(task)
             else:
                 cachedir = project.inputs.get_cache()
                 cachedir.print_contents()
@@ -335,9 +317,7 @@ class CommandMerge(SubCommand):
                         "reference samples, concatenating patches with the "
                         "same binning, and concatenating redshift bins with "
                         "same patches (not verified).",
-            wdir=False,
-            threads=False,
-            progress=False)
+            wdir=False)
         parser.add_argument(  # manual since special help text
             "wdir", metavar="<path>", type=utils.Path_absolute,
             help="directory where data is merged, must not exist")
@@ -385,9 +365,9 @@ class CommandEstimateCorr(SubCommand):
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        with ProjectDirectory|MergedDirectory(args.wdir) as project:
+        with ProjectDirectory(args.wdir) as project:
             task = yaw_tasks.TaskEstimateCorr.from_argparse(args)
-            task(project)
+            project.tasks.run(task)
 
 
 class CommandPlot(SubCommand):
@@ -402,16 +382,14 @@ class CommandPlot(SubCommand):
             name=cls.get_name(),
             help=yaw_tasks.TaskPlot.get_help(),
             description="Plot the autocorrelations and redshift estimates into "
-                        "the 'estimate' directory.",
-            progress=False,
-            threads=False)
+                        "the 'estimate' directory.")
         populate_parser(yaw_tasks.TaskPlot, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        with ProjectDirectory|MergedDirectory(args.wdir) as project:
+        with ProjectDirectory(args.wdir) as project:
             task = yaw_tasks.TaskPlot.from_argparse(args)
-            task(project)
+            project.tasks.run(task)
 
 
 class CommandRun(SubCommand):
@@ -466,22 +444,6 @@ class CommandRun(SubCommand):
 
         # run the tasks in the job list
         with project:
-            tasks = {}
-            logger.info(f"scheduling tasks: {project.view_tasks()}")
-            for task in project.get_tasks():
-                name = task.get_name()
-                # handle repeatable task
-                if name in tasks:
-                    if isinstance(tasks[name], yaw_tasks.RepeatableTask):
-                        tasks[name] = [tasks[name]]
-                    tasks[name].append(task)
-                else:
-                    tasks[name] = task
-                # report task to logger
-                t_args = ", ".join(
-                    f"{k}={repr(v)}" for k, v in asdict(task).items())
-                if len(t_args) == 0:
-                    t_args = "---"
-                logger.debug(f"'{name}' arguments: {t_args}")
-            with RunContext(project, args.progress, args.threads):
-                project.engine.run(**tasks)
+            logger.info(f"scheduling tasks: {project.tasks.view_history()}")
+            project.tasks.reschedule_history()
+            project.tasks.process(progress=args.progress, threads=args.threads)

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
-from yaw.catalogs import PatchLinkage
+from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.config import ResamplingConfig
 from yaw.correlation import CorrelationData, CorrelationFunction
 from yaw.utils import format_float_fixed_width as fmt_num
@@ -12,11 +12,9 @@ from yaw.utils import format_float_fixed_width as fmt_num
 import yaw
 
 from yaw.pipeline.data import MissingCatalogError
-from yaw.pipeline.logger import print_yaw_message
 
 if TYPE_CHECKING: ## pragma: no cover
-    from yaw.catalogs import BaseCatalog
-    from yaw.pipeline import tasks
+    from yaw.config import Configuration
     from yaw.pipeline.project import ProjectDirectory, ProjectState
 
 
@@ -27,8 +25,18 @@ class NoCountsError(Exception):
     pass
 
 
+_Tbc = tuple[BaseCatalog, BaseCatalog | None]
 _Tcf = dict[str, CorrelationFunction]
 _Tcd = dict[str, CorrelationData]
+
+
+def _cf_as_dict(
+    config: Configuration,
+    cfs: CorrelationFunction | _Tcf
+) -> _Tcf:
+    if not isinstance(cfs, dict):
+        cfs = {config.scales.dict_keys()[0]: cfs}
+    return cfs
 
 
 class Engine:
@@ -39,21 +47,22 @@ class Engine:
     ) -> None:
         self.project = project
         self.set_run_context()
+        self._bin_idx = None
         # warning state flags
         self._warned_patches = False
         self._warned_linkage = False
         # create place holder attributes
-        self.ref_data: BaseCatalog | None = None
-        self.ref_rand: BaseCatalog | None = None
-        self.unk_data: BaseCatalog | None = None
-        self.unk_rand: BaseCatalog | None = None
-        self.linkage: PatchLinkage | None = None
-        self.w_sp: _Tcf | None = None
-        self.w_ss: _Tcf | None = None
-        self.w_pp: _Tcf | None = None
-        self.w_sp_data: _Tcd | None = None
-        self.w_ss_data: _Tcd | None = None
-        self.w_pp_data: _Tcd | None = None
+        self._ref_data: BaseCatalog | None = None
+        self._ref_rand: BaseCatalog | None = None
+        self._unk_data: BaseCatalog | None = None
+        self._unk_rand: BaseCatalog | None = None
+        self._linkage: PatchLinkage | None = None
+        self._w_sp: _Tcf | None = None
+        self._w_ss: _Tcf | None = None
+        self._w_pp: _Tcf | None = None
+        self._w_sp_data: _Tcd | None = None
+        self._w_ss_data: _Tcd | None = None
+        self._w_pp_data: _Tcd | None = None
 
     def set_run_context(
         self,
@@ -81,153 +90,169 @@ class Engine:
                 logger.warn(msg)
                 self._warned_patches = True
 
-    def load_reference(self):
+    def set_bin_idx(self, idx: int) -> None:
+        if idx not in self.project.get_bin_indices():
+            raise IndexError(f"bin with index {idx} not configured in setup")
+        self._bin_idx = idx
+        # reset internally referenced correlation functions
+        self._unk_data: BaseCatalog | None = None
+        self._unk_rand: BaseCatalog | None = None
+        self._w_sp: _Tcf | None = None
+        self._w_pp: _Tcf | None = None
+        self._w_sp_data: _Tcd | None = None
+        self._w_pp_data: _Tcd | None = None
+
+    def get_bin_idx(self) -> int:
+        if self._bin_idx is None:
+            raise ValueError("no active bin selected")
+        return self._bin_idx
+
+    def iter_bins(self) -> Iterator[int]:
+        for idx in sorted(self.project.get_bin_indices()):
+            self.set_bin_idx(idx)
+            yield idx
+
+    def load_reference(self, skip_rand: bool = False) -> _Tbc:
         # load randoms first since preferrable for optional patch creation
         try:
-            self.ref_rand = self.project.load_reference(
-                "rand", progress=self.progress)
+            if skip_rand:
+                logger.debug("skipping reference randoms")
+                self._ref_rand = None
+            else:
+                self._ref_rand = self.project.load_reference(
+                    "rand", progress=self.progress)
         except MissingCatalogError as e:
             logger.debug(e.args[0])
-            self.ref_rand = None
-        self.ref_data = self.project.load_reference(
+            self._ref_rand = None
+        self._ref_data = self.project.load_reference(
             "data", progress=self.progress)
         self._warn_patches()
+        return self._ref_data, self._ref_rand
 
-    def load_unknown(self, idx: int, skip_rand: bool = False):
+    def load_unknown(self, skip_rand: bool = False) -> _Tbc:
+        idx = self.get_bin_idx()
         # load randoms first since preferrable for optional patch creation
         try:
             if skip_rand:
                 logger.debug("skipping unknown randoms")
-                self.unk_rand = None
+                self._unk_rand = None
             else:
-                self.unk_rand = self.project.load_unknown(
+                self._unk_rand = self.project.load_unknown(
                     "rand", idx, progress=self.progress)
         except MissingCatalogError as e:
             logger.debug(e.args[0])
-            self.unk_rand = None
-        self.unk_data = self.project.load_unknown(
+            self._unk_rand = None
+        self._unk_data = self.project.load_unknown(
             "data", idx, progress=self.progress)
         self._warn_patches()
+        return self._unk_data, self._unk_rand
 
-    def compute_linkage(self):
-        if self.linkage is None:
-            cats = (self.unk_rand, self.unk_data, self.ref_rand, self.ref_data)
+    def compute_linkage(self) -> None:
+        if self._linkage is None:
+            cats = (self._unk_rand, self._unk_data,
+                    self._ref_rand, self._ref_data)
             for cat in cats:
                 if cat is not None:
                     break
             else:
                 raise MissingCatalogError("no catalogs loaded")
-            self.linkage = PatchLinkage.from_setup(self.config, cat)
-            if self.linkage.density > 0.3 and not self._warned_linkage:
+            self._linkage = PatchLinkage.from_setup(self.config, cat)
+            if self._linkage.density > 0.3 and not self._warned_linkage:
                 logger.warn(
                     "linkage density > 0.3, either patches overlap "
                     "significantly or are small compared to scales")
                 self._warned_linkage = True
 
-    def cf_as_dict(
-        self,
-        cfs: CorrelationFunction | dict[str, CorrelationFunction]
-    ) -> dict[str, CorrelationFunction]:
-        if not isinstance(cfs, dict):
-            cfs = {self.config.scales.dict_keys()[0]: cfs}
-        return cfs
-
-    def run_auto_ref(
-        self,
-        *,
-        compute_rr: bool
-    ) -> dict[str, CorrelationFunction]:
-        if self.ref_rand is None:
+    def run_auto_ref(self, *, compute_rr: bool) -> _Tcf:
+        if self._ref_rand is None:
             raise MissingCatalogError(
                 "reference autocorrelation requires reference randoms")
         cfs = yaw.autocorrelate(
-            self.config, self.ref_data, self.ref_rand,
-            linkage=self.linkage, compute_rr=compute_rr,
+            self.config, self._ref_data, self._ref_rand,
+            linkage=self._linkage, compute_rr=compute_rr,
             progress=self.progress)
-        cfs = self.cf_as_dict(cfs)
+        cfs = _cf_as_dict(self.config, cfs)
         for scale, counts_dir in self.project.iter_counts(create=True):
             cfs[scale].to_file(counts_dir.get_auto_reference())
-        self.w_ss = cfs
+        self._w_ss = cfs
+        return cfs
 
-    def run_auto_unk(
-        self,
-        idx: int,
-        *,
-        compute_rr: bool
-    ) -> dict[str, CorrelationFunction]:
-        if self.unk_rand is None:
+    def run_auto_unk(self, *, compute_rr: bool) -> _Tcf:
+        idx = self.get_bin_idx()
+        if self._unk_rand is None:
             raise MissingCatalogError(
                 "unknown autocorrelation requires unknown randoms")
         cfs = yaw.autocorrelate(
-            self.config, self.unk_data, self.unk_rand,
-            linkage=self.linkage, compute_rr=compute_rr,
+            self.config, self._unk_data, self._unk_rand,
+            linkage=self._linkage, compute_rr=compute_rr,
             progress=self.progress)
-        cfs = self.cf_as_dict(cfs)
+        cfs = _cf_as_dict(self.config, cfs)
         for scale, counts_dir in self.project.iter_counts(create=True):
             cfs[scale].to_file(counts_dir.get_auto(idx))
-        self.w_pp = cfs
+        self._w_pp = cfs
+        return cfs
 
-    def run_cross(
-        self,
-        idx: int,
-        *,
-        compute_rr: bool
-    ) -> dict[str, CorrelationFunction]:
+    def run_cross(self, *, compute_rr: bool) -> _Tcf:
+        idx = self.get_bin_idx()
         if compute_rr:
-            if self.ref_rand is None:
+            if self._ref_rand is None:
                 raise MissingCatalogError(
                     "crosscorrelation with RR requires reference randoms")
-            if self.unk_rand is None:
+            if self._unk_rand is None:
                 raise MissingCatalogError(
                     "crosscorrelation with RR requires unknown randoms")
-            randoms = dict(ref_rand=self.ref_rand, unk_rand=self.unk_rand)
+            randoms = dict(ref_rand=self._ref_rand, unk_rand=self._unk_rand)
         else:
             # prefer using DR over RD if both are possible
-            if self.unk_rand is not None:
-                randoms = dict(unk_rand=self.unk_rand)
-            elif self.ref_rand is not None:
-                randoms = dict(ref_rand=self.ref_rand)
+            if self._unk_rand is not None:
+                randoms = dict(unk_rand=self._unk_rand)
+            elif self._ref_rand is not None:
+                randoms = dict(ref_rand=self._ref_rand)
             else:
                 raise MissingCatalogError(
                     "crosscorrelation requires either reference or "
                     "unknown randoms")
         cfs = yaw.crosscorrelate(
-            self.config, self.ref_data, self.unk_data,
-            **randoms, linkage=self.linkage, progress=self.progress)
-        cfs = self.cf_as_dict(cfs)
+            self.config, self._ref_data, self._unk_data,
+            **randoms, linkage=self._linkage, progress=self.progress)
+        cfs = _cf_as_dict(self.config, cfs)
         for scale, counts_dir in self.project.iter_counts(create=True):
             cfs[scale].to_file(counts_dir.get_cross(idx))
-        self.w_sp = cfs
+        self._w_sp = cfs
+        return cfs
 
-    def load_auto_ref(self) -> None:
+    def load_auto_ref(self) -> _Tcf:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
             path = counts_dir.get_auto_reference()
             cfs[scale] = yaw.CorrelationFunction.from_file(path)
-        self.w_ss = cfs
+        self._w_ss = cfs
+        return cfs
 
-    def load_auto_unk(self, idx: int) -> None:
+    def load_auto_unk(self) -> _Tcf:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
-            path = counts_dir.get_auto(idx)
+            path = counts_dir.get_auto(self.get_bin_idx())
             cfs[scale] = yaw.CorrelationFunction.from_file(path)
-        self.w_pp = cfs
+        self._w_pp = cfs
+        return cfs
 
-    def load_cross(self, idx: int) -> None:
+    def load_cross(self) -> _Tcf:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
-            path = counts_dir.get_cross(idx)
+            path = counts_dir.get_cross(self.get_bin_idx())
             cfs[scale] = yaw.CorrelationFunction.from_file(path)
-        self.w_sp = cfs
+        self._w_sp = cfs
+        return cfs
 
-    def sample_corrfunc(
+    def _sample_corrfunc(
         self,
         cfs_kind: str,
         *,
         tag: str,
         config: ResamplingConfig,
-        estimator: str | None
-    ) -> dict[str, CorrelationData]:
+        estimator: str | None = None
+    ) -> _Tcd:
         cfs: _Tcf = getattr(self, cfs_kind)
         data = getattr(self, f"{cfs_kind}_data")
         if data is None:
@@ -237,24 +262,54 @@ class Engine:
             data[(scale, tag)] = cf.get(
                 config, estimator=estimator, info=cfs_kind)
         setattr(self, f"{cfs_kind}_data", data)
+        return data
+
+    def sample_auto_ref(
+        self,
+        *,
+        tag: str,
+        config: ResamplingConfig,
+        estimator: str | None = None
+    ) -> _Tcd:
+        return self._sample_corrfunc(
+            "w_ss", tag=tag, config=config, estimator=estimator)
+
+    def sample_auto_unk(
+        self,
+        *,
+        tag: str,
+        config: ResamplingConfig,
+        estimator: str | None = None
+    ) -> _Tcd:
+        return self._sample_corrfunc(
+            "w_pp", tag=tag, config=config, estimator=estimator)
+
+    def sample_cross(
+        self,
+        *,
+        tag: str,
+        config: ResamplingConfig,
+        estimator: str | None = None
+    ) -> _Tcd:
+        return self._sample_corrfunc(
+            "w_sp", tag=tag, config=config, estimator=estimator)
 
     def write_auto_ref(self, tag: str) -> None:
         for scale_tag, est_dir in self.project.iter_estimate(
             create=True, tag=tag
         ):
             path = est_dir.get_auto_reference()
-            self.w_ss_data[scale_tag].to_files(path)
+            self._w_ss_data[scale_tag].to_files(path)
 
-    def write_auto_unk(self, idx: int, tag: str) -> None:
+    def write_auto_unk(self, tag: str) -> None:
         for scale_tag, est_dir in self.project.iter_estimate(
             create=True, tag=tag
         ):
-            path = est_dir.get_auto(idx)
-            self.w_pp_data[scale_tag].to_files(path)
+            path = est_dir.get_auto(self.get_bin_idx())
+            self._w_pp_data[scale_tag].to_files(path)
 
     def write_nz_cc(
         self,
-        idx: int,
         tag: str,
         *,
         bias_ref: bool = True,
@@ -266,24 +321,24 @@ class Engine:
             cd = next(iter(w_ii_data.values()))
             return cd.info
 
-        cross_data = self.w_sp_data
+        cross_data = self._w_sp_data
         denom_info = ["dz^2"]
-        if self.w_ss_data is None or not bias_ref:
+        if self._w_ss_data is None or not bias_ref:
             ref_data = {scale_tag: None for scale_tag in cross_data}
         else:
-            ref_data = self.w_ss_data
+            ref_data = self._w_ss_data
             denom_info.append(get_info(ref_data))
-        if self.w_pp_data is None or not bias_unk:
+        if self._w_pp_data is None or not bias_unk:
             unk_data = {scale_tag: None for scale_tag in cross_data}
         else:
-            unk_data = self.w_pp_data
+            unk_data = self._w_pp_data
             denom_info.append(get_info(unk_data))
 
         info = f"{get_info(cross_data)} / sqrt({' '.join(denom_info)})"
         for scale in self.project.iter_scales():
             key = (scale, tag)
             est_dir = self.project.get_estimate_dir(scale, tag, create=True)
-            path = est_dir.get_cross(idx)
+            path = est_dir.get_cross(self.get_bin_idx())
             nz_data = yaw.RedshiftData.from_correlation_data(
                 cross_data[key], ref_data[key], unk_data[key], info=info)
             nz_data.to_files(path)
@@ -292,21 +347,22 @@ class Engine:
         path = self.project.get_true_dir(create=True).get_reference()
         # this data should always be produced unless it already exists
         if not path.with_suffix(".dat").exists():
-            nz_data = self.ref_data.true_redshifts(self.config)
+            nz_data = self._ref_data.true_redshifts(self.config)
             nz_data.to_files(path)
 
-    def write_nz_true(self, idx: int) -> None:
-        nz_data = self.unk_data.true_redshifts(self.config)
-        path = self.project.get_true_dir(create=True).get_unknown(idx)
+    def write_nz_true(self) -> None:
+        nz_data = self._unk_data.true_redshifts(self.config)
+        true_dir = self.project.get_true_dir(create=True)
+        path = true_dir.get_unknown(self.get_bin_idx())
         nz_data.to_files(path)
 
-    def write_total_unk(self, idx: int) -> None:
+    def write_total_unk(self) -> None:
         # important: exclude data outside the redshift binning range
         any_scale = self.config.scales.dict_keys()[0]
-        if self.w_sp is not None:
-            total = self.w_sp[any_scale].dd.total.totals2.sum()
-        elif self.w_pp is not None:
-            total = self.w_pp[any_scale].dd.total.totals2.sum()
+        if self._w_sp is not None:
+            total = self._w_sp[any_scale].dd.total.totals2.sum()
+        elif self._w_pp is not None:
+            total = self._w_pp[any_scale].dd.total.totals2.sum()
         else:
             raise ValueError("no correlation data available")
 
@@ -323,7 +379,7 @@ class Engine:
                     # add or update entry
                     table[int(bin_idx)] = float(sum_weight)
 
-        table[idx] = total  # add current bin
+        table[self.get_bin_idx()] = total  # add current bin
 
         # write table
         PREC = 12
@@ -373,107 +429,3 @@ class Engine:
             name="nz_estimate.png")
         if not plotted:
             logger.warn("there was no data to plot")
-
-    def run(
-        self,
-        cross: tasks.TaskCrosscorr | None = None,
-        auto_ref: tasks.TaskAutocorrReference | None = None,
-        auto_unk: tasks.TaskAutocorrUnknown | None = None,
-        zcc: Sequence[tasks.TaskEstimateCorr] | tasks.TaskEstimateCorr | None = None,
-        ztrue: tasks.TaskTrueRedshifts | None = None,
-        drop_cache: tasks.TaskDropCache | None = None,
-        plot: tasks.TaskPlot | None = None,
-    ) -> None:
-        do_w_sp = cross is not None
-        do_w_ss = auto_ref is not None
-        do_w_pp = auto_unk is not None
-        do_zcc = zcc is not None
-        do_true = ztrue is not None
-        if not isinstance(zcc, Sequence):
-            zcc = (zcc,)
-
-        # some state parameters
-        zcc_processed = False
-        state = self.state
-        has_w_ss = state.has_w_ss
-        has_w_sp = state.has_w_sp
-        has_w_pp = state.has_w_pp
-
-        if do_w_sp or do_w_ss or (do_zcc and has_w_ss):
-            print_yaw_message("processing reference sample")
-        if do_w_sp or do_w_ss:
-            self.load_reference()
-            self.write_nz_ref()
-
-        if do_w_ss:
-            self.compute_linkage()
-            self.run_auto_ref(compute_rr=auto_ref.rr)
-        elif do_zcc and has_w_ss:
-            self.load_auto_ref()
-        if do_zcc and self.w_ss is not None:
-            for zcc_task in zcc:
-                self.sample_corrfunc(
-                    "w_ss", tag=zcc_task.tag, config=zcc_task.config,
-                    estimator=zcc_task.est_auto)
-                self.write_auto_ref(zcc_task.tag)
-                zcc_processed = True
-
-        if do_w_sp or do_w_pp or (do_zcc and (has_w_sp or has_w_pp)) or do_true:
-            for i, idx in enumerate(self.project.get_bin_indices(), 1):
-                message = "processing unknown "
-                if self.project.n_bins == 1:
-                    message += "sample"
-                else:
-                    message += f"bin {i} / {self.project.n_bins}"
-                print_yaw_message(message)
-
-                if do_w_sp or do_w_pp or do_true:
-                    skip_rand = do_true and not (do_w_sp or do_w_pp)
-                    self.load_unknown(idx, skip_rand=skip_rand)
-
-                if do_w_sp:
-                    self.compute_linkage()
-                    self.run_cross(idx, compute_rr=cross.rr)
-                    self.write_total_unk(idx)
-                elif do_zcc and has_w_sp:
-                    self.load_cross(idx)
-
-                if do_w_pp:
-                    self.compute_linkage()
-                    self.run_auto_unk(idx, compute_rr=auto_unk.rr)
-                    self.write_total_unk(idx)
-                elif do_zcc and has_w_pp:
-                    self.load_auto_unk(idx)
-
-                if do_zcc:
-                    for zcc_task in zcc:
-                        if self.w_pp is not None:
-                            self.sample_corrfunc(
-                                "w_pp", tag=zcc_task.tag,
-                                config=zcc_task.config,
-                                estimator=zcc_task.est_auto)
-                            self.write_auto_unk(idx, tag=zcc_task.tag)
-                            zcc_processed = True
-                        if self.w_sp is not None:
-                            self.sample_corrfunc(
-                                "w_sp", tag=zcc_task.tag,
-                                config=zcc_task.config,
-                                estimator=zcc_task.est_cross)
-                            self.write_nz_cc(
-                                idx, tag=zcc_task.tag,
-                                bias_ref=zcc_task.bias_ref,
-                                bias_unk=zcc_task.bias_unk)
-                            zcc_processed = True
-
-                if do_true:
-                    self.write_nz_true(idx)
-
-        if do_zcc and not zcc_processed:
-            logger.warn("task 'zcc': there were no pair counts to process")
-
-        if drop_cache:
-            self.drop_cache()
-        
-        if plot:
-            print_yaw_message("plotting data")
-            self.plot()
