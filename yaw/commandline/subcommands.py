@@ -13,7 +13,8 @@ from yaw.utils import populate_parser
 from yaw.pipeline import tasks as yaw_tasks
 from yaw.pipeline.merge import MERGE_OPTIONS
 from yaw.pipeline.project import (
-    ProjectDirectory, load_config_from_setup, load_setup_as_dict)
+    MergedDirectory, ProjectDirectory,
+    load_config_from_setup, load_setup_as_dict)
 
 from yaw.commandline import utils
 from yaw.commandline.main import Commandline
@@ -320,12 +321,12 @@ class CommandMerge(SubCommand):
                  "extending spatially from patches, or by concatenating along "
                  "the redshift axis")
         parser.add_argument(
-            "-p", "--projects", nargs="+",
+            "-p", "--projects", nargs="+", required=True,
             help="list of project directory paths to merge")
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        raise NotImplementedError
+        MergedDirectory.from_projects(args.wdir, args.projects, mode=args.mode)
 
 
 class CommandEstimateCorr(SubCommand):

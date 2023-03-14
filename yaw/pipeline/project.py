@@ -472,12 +472,14 @@ class MergedDirectory(YawDirectory):
     @classmethod
     def from_projects(
         cls,
-        paths: Sequence[TypePathStr],
+        path: TypePathStr,
+        inputs: Sequence[TypePathStr],
         mode: str
     ) -> MergedDirectory:
         projects = []
-        for path in paths:
-            projects.append(ProjectDirectory(path))
+        for project in inputs:
+            projects.append(ProjectDirectory(project))
+        ## TODO: create output
         if mode not in merge.MERGE_OPTIONS:
             raise ValueError(f"invalid merge mode '{mode}'")
         elif mode == "bins":

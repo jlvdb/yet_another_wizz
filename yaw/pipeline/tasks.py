@@ -600,8 +600,19 @@ class TaskManager(Sequence):
 
 class MergedManager(TaskManager):
 
-    def _insert_task(self, task: Task, task_list: list[Task]) -> None:
+    def _insert_task(self, task: MergedTask, task_list: list[Task]) -> None:
         if not isinstance(task, MergedTask):
             raise TaskError(
                 f"task '{task.get_name()}' cannot be executed after merging")
         return super()._insert_task(task, task_list)
+
+    def schedule(self, task: MergedTask) -> None:
+        return super().schedule(task)
+
+    def run(
+        self,
+        task: MergedTask,
+        progress: bool = False,
+        threads: int | None = None
+    ) -> None:
+        return super().run(task, progress, threads)
