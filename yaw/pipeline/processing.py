@@ -39,7 +39,7 @@ def _cf_as_dict(
     return cfs
 
 
-class Engine:
+class DataProcessor:
 
     def __init__(
         self,
@@ -113,23 +113,37 @@ class Engine:
             yield idx
 
     def load_reference(self, skip_rand: bool = False) -> _Tbc:
+        def load(kind):
+            cat = self.project.inputs.load_reference(
+                kind=kind, progress=self.progress)
+            patch_file = self.project.patch_file
+            if not patch_file.exists():
+                self.project.inputs.centers_to_file(patch_file)
+            return cat
+
         # load randoms first since preferrable for optional patch creation
         try:
             if skip_rand:
                 logger.debug("skipping reference randoms")
                 self._ref_rand = None
             else:
-                self._ref_rand = self.project.load_reference(
-                    "rand", progress=self.progress)
+                self._ref_rand = load("rand")
         except MissingCatalogError as e:
             logger.debug(e.args[0])
             self._ref_rand = None
-        self._ref_data = self.project.load_reference(
-            "data", progress=self.progress)
+        self._ref_data = load("data")
         self._warn_patches()
         return self._ref_data, self._ref_rand
 
     def load_unknown(self, skip_rand: bool = False) -> _Tbc:
+        def load(kind, idx):
+            cat = self.project.inputs.load_unknown(
+                kind=kind, bin_idx=idx, progress=self.progress)
+            patch_file = self.project.patch_file
+            if not patch_file.exists():
+                self.project.inputs.centers_to_file(patch_file)
+            return cat
+
         idx = self.get_bin_idx()
         # load randoms first since preferrable for optional patch creation
         try:
@@ -137,13 +151,11 @@ class Engine:
                 logger.debug("skipping unknown randoms")
                 self._unk_rand = None
             else:
-                self._unk_rand = self.project.load_unknown(
-                    "rand", idx, progress=self.progress)
+                self._unk_rand = load("rand", idx)
         except MissingCatalogError as e:
             logger.debug(e.args[0])
             self._unk_rand = None
-        self._unk_data = self.project.load_unknown(
-            "data", idx, progress=self.progress)
+        self._unk_data = load("data", idx)
         self._warn_patches()
         return self._unk_data, self._unk_rand
 

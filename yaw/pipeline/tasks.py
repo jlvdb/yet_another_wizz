@@ -14,7 +14,7 @@ from yaw.config import ResamplingConfig
 from yaw.estimators import CorrelationEstimator
 from yaw.utils import DictRepresentation, Parameter
 
-from yaw.pipeline.engine import Engine
+from yaw.pipeline.processing import DataProcessor
 from yaw.pipeline.logger import print_yaw_message
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -334,7 +334,7 @@ class TaskPlot(Task):
 class TaskManager(Sequence):
 
     def __init__(self, project: ProjectDirectory) -> None:
-        self._engine = Engine(project)
+        self._engine = DataProcessor(project)
         self._history: list[Task] = []
         self._queue: deque[Task] = deque([])
 

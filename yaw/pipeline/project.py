@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import shutil
 from abc import abstractmethod, abstractproperty
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
@@ -16,15 +16,14 @@ from yaw import default as DEFAULT
 from yaw.config import Configuration, parse_section_error
 from yaw.utils import DictRepresentation, TypePathStr
 
-from yaw.pipeline import merge
 from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
 from yaw.pipeline.logger import get_logger
-from yaw.pipeline.tasks import Task, TaskManager
+from yaw.pipeline.processing import DataProcessor
+from yaw.pipeline.tasks import TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.catalogs import BaseCatalog
     from yaw.pipeline.data import Input
 
 
@@ -242,6 +241,10 @@ class YawDirectory(DictRepresentation):
             has_nz_true=true_dir.has_unknown)
 
     @property
+    def processor(self) -> DataProcessor:
+        return self._tasks._engine
+
+    @property
     def path(self) -> Path:
         return self._path
 
@@ -450,28 +453,6 @@ class ProjectDirectory(YawDirectory):
                 f"registering unknown bin {bin_idx} random catalog "
                 f"'{rand.filepath}'")
         self._inputs.add_unknown(bin_idx, data, rand)
-
-    def load_reference(
-            self,
-        kind: str,
-        progress: bool = False
-    ) -> BaseCatalog:
-        cat = self._inputs.load_reference(kind=kind, progress=progress)
-        if not self.patch_file.exists():
-            self._inputs.centers_to_file(self.patch_file)
-        return cat
-
-    def load_unknown(
-        self,
-        kind: str,
-        bin_idx: int,
-        progress: bool = False
-    ) -> BaseCatalog:
-        cat = self._inputs.load_unknown(
-            kind=kind, bin_idx=bin_idx, progress=progress)
-        if not self.patch_file.exists():
-            self._inputs.centers_to_file(self.patch_file)
-        return cat
 
     def get_bin_indices(self) -> set[int]:
         return self._inputs.get_bin_indices()

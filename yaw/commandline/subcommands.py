@@ -4,26 +4,19 @@ import argparse
 import logging
 import sys
 from abc import ABC, abstractclassmethod
-from dataclasses import asdict
-from typing import TYPE_CHECKING
 
 from yaw import __version__, default as DEFAULT
 from yaw import config as yaw_config
 from yaw.config import Configuration
-from yaw.cosmology import get_default_cosmology
 from yaw.utils import populate_parser
 
 from yaw.pipeline import tasks as yaw_tasks
 from yaw.pipeline.merge import MERGE_OPTIONS
 from yaw.pipeline.project import (
-    MergedDirectory, ProjectDirectory,
-    load_config_from_setup, load_setup_as_dict)
+    ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 
 from yaw.commandline import utils
 from yaw.commandline.main import Commandline
-
-if TYPE_CHECKING:  # pragma: no cover
-    from yaw.pipeline.project import YawDirectory
 
 
 logger = logging.getLogger(__name__)
