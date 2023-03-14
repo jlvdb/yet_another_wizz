@@ -121,6 +121,10 @@ class Task(DictRepresentation):
         return "task"
 
 
+class MergedTask(Task):
+    pass
+
+
 class RepeatableTask(Task):
 
     @abstractmethod
@@ -226,7 +230,7 @@ class TaskDropCache(Task):
 
 
 @dataclass(frozen=True)
-class TaskEstimateCorr(RepeatableTask):
+class TaskEstimateCorr(MergedTask, RepeatableTask):
 
     tag: str = field(
         default="fid",
@@ -320,7 +324,7 @@ class TaskEstimateCorr(RepeatableTask):
 
 
 @dataclass(frozen=True)
-class TaskPlot(Task):
+class TaskPlot(MergedTask, Task):
 
     @classmethod
     def get_name(cls) -> str:
@@ -592,3 +596,12 @@ class TaskManager(Sequence):
         if plot:
             print_yaw_message("plotting data")
             engine.plot()
+
+
+class MergedManager(TaskManager):
+
+    def _insert_task(self, task: Task, task_list: list[Task]) -> None:
+        if not isinstance(task, MergedTask):
+            raise TaskError(
+                f"task '{task.get_name()}' cannot be executed after merging")
+        return super()._insert_task(task, task_list)

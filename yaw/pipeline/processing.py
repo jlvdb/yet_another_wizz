@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from yaw.catalogs import BaseCatalog, PatchLinkage
@@ -39,7 +39,8 @@ def _cf_as_dict(
     return cfs
 
 
-class DataProcessor:
+
+class PostProcessor:
 
     def __init__(
         self,
@@ -52,11 +53,6 @@ class DataProcessor:
         self._warned_patches = False
         self._warned_linkage = False
         # create place holder attributes
-        self._ref_data: BaseCatalog | None = None
-        self._ref_rand: BaseCatalog | None = None
-        self._unk_data: BaseCatalog | None = None
-        self._unk_rand: BaseCatalog | None = None
-        self._linkage: PatchLinkage | None = None
         self._w_sp: _Tcf | None = None
         self._w_ss: _Tcf | None = None
         self._w_pp: _Tcf | None = None
@@ -111,127 +107,6 @@ class DataProcessor:
         for idx in sorted(self.project.get_bin_indices()):
             self.set_bin_idx(idx)
             yield idx
-
-    def load_reference(self, skip_rand: bool = False) -> _Tbc:
-        def load(kind):
-            cat = self.project.inputs.load_reference(
-                kind=kind, progress=self.progress)
-            patch_file = self.project.patch_file
-            if not patch_file.exists():
-                self.project.inputs.centers_to_file(patch_file)
-            return cat
-
-        # load randoms first since preferrable for optional patch creation
-        try:
-            if skip_rand:
-                logger.debug("skipping reference randoms")
-                self._ref_rand = None
-            else:
-                self._ref_rand = load("rand")
-        except MissingCatalogError as e:
-            logger.debug(e.args[0])
-            self._ref_rand = None
-        self._ref_data = load("data")
-        self._warn_patches()
-        return self._ref_data, self._ref_rand
-
-    def load_unknown(self, skip_rand: bool = False) -> _Tbc:
-        def load(kind, idx):
-            cat = self.project.inputs.load_unknown(
-                kind=kind, bin_idx=idx, progress=self.progress)
-            patch_file = self.project.patch_file
-            if not patch_file.exists():
-                self.project.inputs.centers_to_file(patch_file)
-            return cat
-
-        idx = self.get_bin_idx()
-        # load randoms first since preferrable for optional patch creation
-        try:
-            if skip_rand:
-                logger.debug("skipping unknown randoms")
-                self._unk_rand = None
-            else:
-                self._unk_rand = load("rand", idx)
-        except MissingCatalogError as e:
-            logger.debug(e.args[0])
-            self._unk_rand = None
-        self._unk_data = load("data", idx)
-        self._warn_patches()
-        return self._unk_data, self._unk_rand
-
-    def compute_linkage(self) -> None:
-        if self._linkage is None:
-            cats = (self._unk_rand, self._unk_data,
-                    self._ref_rand, self._ref_data)
-            for cat in cats:
-                if cat is not None:
-                    break
-            else:
-                raise MissingCatalogError("no catalogs loaded")
-            self._linkage = PatchLinkage.from_setup(self.config, cat)
-            if self._linkage.density > 0.3 and not self._warned_linkage:
-                logger.warn(
-                    "linkage density > 0.3, either patches overlap "
-                    "significantly or are small compared to scales")
-                self._warned_linkage = True
-
-    def run_auto_ref(self, *, compute_rr: bool) -> _Tcf:
-        if self._ref_rand is None:
-            raise MissingCatalogError(
-                "reference autocorrelation requires reference randoms")
-        cfs = yaw.autocorrelate(
-            self.config, self._ref_data, self._ref_rand,
-            linkage=self._linkage, compute_rr=compute_rr,
-            progress=self.progress)
-        cfs = _cf_as_dict(self.config, cfs)
-        for scale, counts_dir in self.project.iter_counts(create=True):
-            cfs[scale].to_file(counts_dir.get_auto_reference())
-        self._w_ss = cfs
-        return cfs
-
-    def run_auto_unk(self, *, compute_rr: bool) -> _Tcf:
-        idx = self.get_bin_idx()
-        if self._unk_rand is None:
-            raise MissingCatalogError(
-                "unknown autocorrelation requires unknown randoms")
-        cfs = yaw.autocorrelate(
-            self.config, self._unk_data, self._unk_rand,
-            linkage=self._linkage, compute_rr=compute_rr,
-            progress=self.progress)
-        cfs = _cf_as_dict(self.config, cfs)
-        for scale, counts_dir in self.project.iter_counts(create=True):
-            cfs[scale].to_file(counts_dir.get_auto(idx))
-        self._w_pp = cfs
-        return cfs
-
-    def run_cross(self, *, compute_rr: bool) -> _Tcf:
-        idx = self.get_bin_idx()
-        if compute_rr:
-            if self._ref_rand is None:
-                raise MissingCatalogError(
-                    "crosscorrelation with RR requires reference randoms")
-            if self._unk_rand is None:
-                raise MissingCatalogError(
-                    "crosscorrelation with RR requires unknown randoms")
-            randoms = dict(ref_rand=self._ref_rand, unk_rand=self._unk_rand)
-        else:
-            # prefer using DR over RD if both are possible
-            if self._unk_rand is not None:
-                randoms = dict(unk_rand=self._unk_rand)
-            elif self._ref_rand is not None:
-                randoms = dict(ref_rand=self._ref_rand)
-            else:
-                raise MissingCatalogError(
-                    "crosscorrelation requires either reference or "
-                    "unknown randoms")
-        cfs = yaw.crosscorrelate(
-            self.config, self._ref_data, self._unk_data,
-            **randoms, linkage=self._linkage, progress=self.progress)
-        cfs = _cf_as_dict(self.config, cfs)
-        for scale, counts_dir in self.project.iter_counts(create=True):
-            cfs[scale].to_file(counts_dir.get_cross(idx))
-        self._w_sp = cfs
-        return cfs
 
     def load_auto_ref(self) -> _Tcf:
         cfs = {}
@@ -355,6 +230,182 @@ class DataProcessor:
                 cross_data[key], ref_data[key], unk_data[key], info=info)
             nz_data.to_files(path)
 
+    def plot(self):
+        plot_dir = self.project.estimate_path
+        try:
+            import matplotlib.pyplot as plt
+            from yaw.pipeline.plot import Plotter
+            logger.info(
+                f"creating check-plots in '{plot_dir}'")
+        except ImportError:
+            logger.error("could not import matplotlib, plotting disabled")
+            return
+
+        def plot_wrapper(method, title, name):
+            fig = method(title)
+            if fig is not None:
+                fig.tight_layout()
+                logger.info(f"plotting to '{name}'")
+                fig.savefig(plot_dir.joinpath(name))
+                plt.close(fig)
+                return True
+            return False
+
+        plotter = Plotter(self.project)
+        plotted = False
+        plotted |= plot_wrapper(
+            method=plotter.auto_reference,
+            title="Reference autocorrelation",
+            name="auto_reference.png")
+        plotted |= plot_wrapper(
+            method=plotter.auto_unknown,
+            title="Unknown autocorrelation",
+            name="auto_unknown.png")
+        plotted |= plot_wrapper(
+            method=plotter.nz,
+            title="Redshift estimate",
+            name="nz_estimate.png")
+        if not plotted:
+            logger.warn("there was no data to plot")
+
+class DataProcessor(PostProcessor):
+
+    def __init__(
+        self,
+        project: ProjectDirectory
+    ) -> None:
+        super().__init__(project)
+        # warning state flags
+        self._warned_patches = False
+        self._warned_linkage = False
+        # create place holder attributes
+        self._ref_data: BaseCatalog | None = None
+        self._ref_rand: BaseCatalog | None = None
+        self._unk_data: BaseCatalog | None = None
+        self._unk_rand: BaseCatalog | None = None
+        self._linkage: PatchLinkage | None = None
+
+    def load_reference(self, skip_rand: bool = False) -> _Tbc:
+        def load(kind):
+            cat = self.project.inputs.load_reference(
+                kind=kind, progress=self.progress)
+            patch_file = self.project.patch_file
+            if not patch_file.exists():
+                self.project.inputs.centers_to_file(patch_file)
+            return cat
+
+        # load randoms first since preferrable for optional patch creation
+        try:
+            if skip_rand:
+                logger.debug("skipping reference randoms")
+                self._ref_rand = None
+            else:
+                self._ref_rand = load("rand")
+        except MissingCatalogError as e:
+            logger.debug(e.args[0])
+            self._ref_rand = None
+        self._ref_data = load("data")
+        self._warn_patches()
+        return self._ref_data, self._ref_rand
+
+    def load_unknown(self, skip_rand: bool = False) -> _Tbc:
+        def load(kind, idx):
+            cat = self.project.inputs.load_unknown(
+                kind=kind, bin_idx=idx, progress=self.progress)
+            patch_file = self.project.patch_file
+            if not patch_file.exists():
+                self.project.inputs.centers_to_file(patch_file)
+            return cat
+
+        idx = self.get_bin_idx()
+        # load randoms first since preferrable for optional patch creation
+        try:
+            if skip_rand:
+                logger.debug("skipping unknown randoms")
+                self._unk_rand = None
+            else:
+                self._unk_rand = load("rand", idx)
+        except MissingCatalogError as e:
+            logger.debug(e.args[0])
+            self._unk_rand = None
+        self._unk_data = load("data", idx)
+        self._warn_patches()
+        return self._unk_data, self._unk_rand
+
+    def compute_linkage(self) -> None:
+        if self._linkage is None:
+            cats = (self._unk_rand, self._unk_data,
+                    self._ref_rand, self._ref_data)
+            for cat in cats:
+                if cat is not None:
+                    break
+            else:
+                raise MissingCatalogError("no catalogs loaded")
+            self._linkage = PatchLinkage.from_setup(self.config, cat)
+            if self._linkage.density > 0.3 and not self._warned_linkage:
+                logger.warn(
+                    "linkage density > 0.3, either patches overlap "
+                    "significantly or are small compared to scales")
+                self._warned_linkage = True
+
+    def run_auto_ref(self, *, compute_rr: bool) -> _Tcf:
+        if self._ref_rand is None:
+            raise MissingCatalogError(
+                "reference autocorrelation requires reference randoms")
+        cfs = yaw.autocorrelate(
+            self.config, self._ref_data, self._ref_rand,
+            linkage=self._linkage, compute_rr=compute_rr,
+            progress=self.progress)
+        cfs = _cf_as_dict(self.config, cfs)
+        for scale, counts_dir in self.project.iter_counts(create=True):
+            cfs[scale].to_file(counts_dir.get_auto_reference())
+        self._w_ss = cfs
+        return cfs
+
+    def run_auto_unk(self, *, compute_rr: bool) -> _Tcf:
+        idx = self.get_bin_idx()
+        if self._unk_rand is None:
+            raise MissingCatalogError(
+                "unknown autocorrelation requires unknown randoms")
+        cfs = yaw.autocorrelate(
+            self.config, self._unk_data, self._unk_rand,
+            linkage=self._linkage, compute_rr=compute_rr,
+            progress=self.progress)
+        cfs = _cf_as_dict(self.config, cfs)
+        for scale, counts_dir in self.project.iter_counts(create=True):
+            cfs[scale].to_file(counts_dir.get_auto(idx))
+        self._w_pp = cfs
+        return cfs
+
+    def run_cross(self, *, compute_rr: bool) -> _Tcf:
+        idx = self.get_bin_idx()
+        if compute_rr:
+            if self._ref_rand is None:
+                raise MissingCatalogError(
+                    "crosscorrelation with RR requires reference randoms")
+            if self._unk_rand is None:
+                raise MissingCatalogError(
+                    "crosscorrelation with RR requires unknown randoms")
+            randoms = dict(ref_rand=self._ref_rand, unk_rand=self._unk_rand)
+        else:
+            # prefer using DR over RD if both are possible
+            if self._unk_rand is not None:
+                randoms = dict(unk_rand=self._unk_rand)
+            elif self._ref_rand is not None:
+                randoms = dict(ref_rand=self._ref_rand)
+            else:
+                raise MissingCatalogError(
+                    "crosscorrelation requires either reference or "
+                    "unknown randoms")
+        cfs = yaw.crosscorrelate(
+            self.config, self._ref_data, self._unk_data,
+            **randoms, linkage=self._linkage, progress=self.progress)
+        cfs = _cf_as_dict(self.config, cfs)
+        for scale, counts_dir in self.project.iter_counts(create=True):
+            cfs[scale].to_file(counts_dir.get_cross(idx))
+        self._w_sp = cfs
+        return cfs
+
     def write_nz_ref(self) -> None:
         path = self.project.get_true_dir(create=True).get_reference()
         # this data should always be produced unless it already exists
@@ -403,41 +454,3 @@ class DataProcessor:
 
     def drop_cache(self) -> None:
         self.project.get_cache_dir().drop_all()
-
-    def plot(self):
-        plot_dir = self.project.estimate_path
-        try:
-            import matplotlib.pyplot as plt
-            from yaw.pipeline.plot import Plotter
-            logger.info(
-                f"creating check-plots in '{plot_dir}'")
-        except ImportError:
-            logger.error("could not import matplotlib, plotting disabled")
-            return
-
-        def plot_wrapper(method, title, name):
-            fig = method(title)
-            if fig is not None:
-                fig.tight_layout()
-                logger.info(f"plotting to '{name}'")
-                fig.savefig(plot_dir.joinpath(name))
-                plt.close(fig)
-                return True
-            return False
-
-        plotter = Plotter(self.project)
-        plotted = False
-        plotted |= plot_wrapper(
-            method=plotter.auto_reference,
-            title="Reference autocorrelation",
-            name="auto_reference.png")
-        plotted |= plot_wrapper(
-            method=plotter.auto_unknown,
-            title="Unknown autocorrelation",
-            name="auto_unknown.png")
-        plotted |= plot_wrapper(
-            method=plotter.nz,
-            title="Redshift estimate",
-            name="nz_estimate.png")
-        if not plotted:
-            logger.warn("there was no data to plot")

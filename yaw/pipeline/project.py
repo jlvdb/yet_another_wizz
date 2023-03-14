@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import shutil
 from abc import abstractmethod, abstractproperty
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
@@ -16,12 +16,13 @@ from yaw import default as DEFAULT
 from yaw.config import Configuration, parse_section_error
 from yaw.utils import DictRepresentation, TypePathStr
 
+from yaw.pipeline import merge
 from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
 from yaw.pipeline.logger import get_logger
-from yaw.pipeline.processing import DataProcessor
-from yaw.pipeline.tasks import TaskManager
+from yaw.pipeline.processing import DataProcessor, PostProcessor
+from yaw.pipeline.tasks import MergedManager, TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
     from yaw.pipeline.data import Input
@@ -137,7 +138,7 @@ class YawDirectory(DictRepresentation):
         if not self.path.exists():
             raise FileNotFoundError(
                 f"project directory '{self.path}' does not exist")
-        if not self.setup_file.exists:
+        if not self.setup_file.exists():
             raise FileNotFoundError(
                 f"setup file '{self.setup_file}' does not exist")
         if not self.log_file.exists():
@@ -246,7 +247,7 @@ class YawDirectory(DictRepresentation):
             has_nz_true=true_dir.has_unknown)
 
     @property
-    def processor(self) -> DataProcessor:
+    def processor(self) -> PostProcessor:
         return self._tasks._engine
 
     @property
@@ -385,6 +386,10 @@ class ProjectDirectory(YawDirectory):
         shutil.copy(str(setup_file), str(new.setup_file))
         return cls(path)
 
+    @property
+    def setup_file(self) -> Path:
+        return self._path.joinpath("setup.yaml")
+
     def setup_reload(self, setup: dict) -> None:
         super().setup_reload(setup)
         # set up task management
@@ -418,12 +423,12 @@ class ProjectDirectory(YawDirectory):
         return setup
 
     @property
-    def setup_file(self) -> Path:
-        return self._path.joinpath("setup.yaml")
-
-    @property
     def inputs(self) -> InputManager:
         return self._inputs
+
+    @property
+    def processor(self) -> DataProcessor:
+        return self._tasks._engine
 
     @property
     def default_cache_path(self) -> Path:
@@ -460,3 +465,58 @@ class ProjectDirectory(YawDirectory):
     @property
     def n_bins(self) -> int:
         return self._inputs.n_bins
+
+
+class MergedDirectory(YawDirectory):
+
+    @classmethod
+    def from_projects(
+        cls,
+        paths: Sequence[TypePathStr],
+        mode: str
+    ) -> MergedDirectory:
+        projects = []
+        for path in paths:
+            projects.append(ProjectDirectory(path))
+        if mode not in merge.MERGE_OPTIONS:
+            raise ValueError(f"invalid merge mode '{mode}'")
+        elif mode == "bins":
+            merge.along_bins(projects)
+        elif mode == "redshift":
+            merge.along_redshifts(projects)
+        else:
+            merge.along_patches(projects)
+
+    @property
+    def setup_file(self) -> Path:
+        return self._path.joinpath("merged.yaml")
+
+    def setup_reload(self, setup: dict) -> None:
+        super().setup_reload(setup)
+        self._sources = tuple(Path(fpath) for fpath in setup.pop("sources", []))
+        # set up task management
+        task_list = setup.get("tasks", [])
+        self._tasks = MergedManager.from_history_list(task_list, project=self)
+
+    @property
+    def sources(self) -> tuple[Path]:
+        return self._sources
+
+    def to_dict(self) -> dict[str, Any]:
+        # strip default values from config
+        configuration = compress_config(
+            self._config.to_dict(), DEFAULT.Configuration.__dict__)
+        setup = dict(
+            configuration=configuration,
+            sources=[str(fpath) for fpath in self._sources],
+            tasks=self._tasks.history_to_list())
+        return setup
+
+    def get_bin_indices(self) -> set[int]:
+        for scale in self.iter_scales():
+            counts = self.get_counts_dir(scale)
+            return counts.get_cross_indices() | counts.get_auto_indices()
+
+    @property
+    def n_bins(self) -> int:
+        return len(self.get_bin_indices())
