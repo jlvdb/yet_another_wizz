@@ -339,42 +339,6 @@ class YawDirectory(DictRepresentation):
     def n_bins(self) -> int: pass
 
 
-class MergedDirectory(YawDirectory):
-
-    @classmethod
-    def from_projects(
-        cls,
-        paths: Sequence[TypePathStr],
-        mode: str
-    ) -> MergedDirectory:
-        if mode not in merge.MERGE_OPTIONS:
-            raise ValueError(f"invalid merge mode '{mode}'")
-        elif mode == "bins":
-            merge.along_bins(paths)
-        elif mode == "redshift":
-            merge.along_redshifts(paths)
-        else:
-            merge.along_patches(paths)
-
-    @property
-    def setup_file(self) -> Path:
-        return self._path.joinpath("merged.yaml")
-
-    def setup_reload(self, setup: dict) -> None:
-        super().setup_reload(setup)
-        self._sources = tuple(Path(fpath) for fpath in setup.pop("sources", []))
-
-    @property
-    def sources(self) -> tuple[Path]:
-        return self._sources
-
-    def to_dict(self) -> dict[str, Any]:
-        setup = dict(
-            sources=[str(fpath) for fpath in self._sources],
-            tasks=self._tasks.history_to_list())
-        return setup
-
-
 class ProjectDirectory(YawDirectory):
 
     @classmethod

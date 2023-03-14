@@ -465,7 +465,8 @@ class TaskManager(Sequence):
         # use a temporary single item queue
         queue = self._queue
         try:
-            self._queue = deque([task])
+            self._queue = deque([])
+            self._insert_task(task, self._queue)
             self.process(progress=progress, threads=threads)
         finally:
             self._queue = queue
