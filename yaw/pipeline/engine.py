@@ -253,15 +253,15 @@ class Engine:
         config: ResamplingConfig,
         estimator: str | None = None
     ) -> _Tcd:
-        cfs: _Tcf = getattr(self, cfs_kind)
-        data = getattr(self, f"{cfs_kind}_data")
+        cfs: _Tcf = getattr(self, f"_{cfs_kind}")
+        data = getattr(self, f"_{cfs_kind}_data")
         if data is None:
             data = {}
         for scale, cf in cfs.items():
             logger.debug(f"processing pair counts for {tag=} / {scale=}")
             data[(scale, tag)] = cf.get(
                 config, estimator=estimator, info=cfs_kind)
-        setattr(self, f"{cfs_kind}_data", data)
+        setattr(self, f"_{cfs_kind}_data", data)
         return data
 
     def sample_auto_ref(
