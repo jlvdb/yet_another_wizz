@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from collections.abc import Sequence
 
 from yaw.utils import TypePathStr
 
+from yaw.pipeline.processing import DataProcessor
 from yaw.pipeline.project import YawDirectory
 from yaw.pipeline.tasks import Task, TaskEstimateCorr, TaskManager, TaskPlot
 
@@ -27,7 +28,43 @@ def merge_along_redshifts(paths: Sequence[TypePathStr]) -> None:
     raise NotADirectoryError
 
 
-class MergedTaskManager(TaskManager):
+_not_impl_msg = "operation not implemented on merged data"
+
+
+class MergedProcessor(DataProcessor):
+
+    def load_reference(self, skip_rand: bool = False) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def load_unknown(self, skip_rand: bool = False) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def compute_linkage(self) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def run_auto_ref(self, *, compute_rr: bool) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def run_auto_unk(self, *, compute_rr: bool) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def run_cross(self, *, compute_rr: bool) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def write_nz_ref(self) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def write_nz_true(self) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def write_total_unk(self) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+    def drop_cache(self) -> NoReturn:
+        raise NotImplementedError(_not_impl_msg)
+
+
+class MergedManager(TaskManager):
 
     def _insert_task(self, task: Task, task_list: list[Task]) -> None:
         if not isinstance(task, (TaskEstimateCorr, TaskPlot)):
@@ -60,6 +97,9 @@ class MergedDirectory(YawDirectory):
     def setup_reload(self, setup: dict) -> None:
         super().setup_reload(setup)
         self._sources = tuple(Path(fpath) for fpath in setup.pop("sources", []))
+        # set up task management
+        task_list = setup.get("tasks", [])
+        self._tasks = MergedManager.from_history_list(task_list, project=self)
 
     @property
     def sources(self) -> tuple[Path]:
@@ -70,3 +110,12 @@ class MergedDirectory(YawDirectory):
             sources=[str(fpath) for fpath in self._sources],
             tasks=self._tasks.history_to_list())
         return setup
+
+    def get_bin_indices(self) -> set[int]:
+        for scale in self.iter_scales():
+            counts = self.get_counts_dir(scale)
+            return counts.get_cross_indices() | counts.get_auto_indices()
+
+    @property
+    def n_bins(self) -> int:
+        return len(self.get_bin_indices())

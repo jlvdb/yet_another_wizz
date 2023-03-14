@@ -182,9 +182,6 @@ class YawDirectory(DictRepresentation):
         check_version(setup.pop("_version", __version__))
         # configuration is straight forward
         self._config = parse_config_from_setup(setup)
-        # set up task management
-        task_list = setup.get("tasks", [])
-        self._tasks = TaskManager.from_history_list(task_list, project=self)
 
     @classmethod
     def from_dict(
@@ -198,6 +195,14 @@ class YawDirectory(DictRepresentation):
         # create the setup file
         write_setup_file(new.setup_file, the_dict)
         return cls(path)
+
+    @property
+    def config(self) -> Configuration:
+        return self._config
+
+    def iter_scales(self) -> Iterator[str]:
+        for scale in self.config.scales.dict_keys():
+            yield scale
 
     def get_state(self) -> ProjectState:
         # input data
@@ -382,6 +387,9 @@ class ProjectDirectory(YawDirectory):
 
     def setup_reload(self, setup: dict) -> None:
         super().setup_reload(setup)
+        # set up task management
+        task_list = setup.get("tasks", [])
+        self._tasks = TaskManager.from_history_list(task_list, project=self)
         # set up the data management
         try:
             data = setup["data"]
@@ -412,14 +420,6 @@ class ProjectDirectory(YawDirectory):
     @property
     def setup_file(self) -> Path:
         return self._path.joinpath("setup.yaml")
-
-    @property
-    def config(self) -> Configuration:
-        return self._config
-
-    def iter_scales(self) -> Iterator[str]:
-        for scale in self.config.scales.dict_keys():
-            yield scale
 
     @property
     def inputs(self) -> InputManager:

@@ -401,7 +401,7 @@ class DataProcessor:
                 sum_weight = fmt_num(table[bin_idx], PREC)
                 f.write(f"{bin_idx:5d} {sum_weight}\n")
 
-    def drop_cache(self):
+    def drop_cache(self) -> None:
         self.project.get_cache_dir().drop_all()
 
     def plot(self):

@@ -304,12 +304,12 @@ class CommandMerge(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="merge correlation measurements from different sources",
-            description="Combine data from different project directories with "
-                        "identical configuration. Supported cases are: "
-                        "tomographic bins that were calibrated with diferent "
-                        "reference samples, concatenating patches with the "
-                        "same binning, and concatenating redshift bins with "
-                        "same patches (not verified).",
+            description="Combine pair count data from different project "
+                        "directories with identical configuration. Supported "
+                        "cases are: tomographic bins that were calibrated with "
+                        "diferent reference samples, concatenating patches "
+                        "with the same binning, and concatenating redshift "
+                        "bins with same patches (not verified).",
             wdir=False)
         parser.add_argument(  # manual since special help text
             "wdir", metavar="<path>", type=utils.Path_absolute,
