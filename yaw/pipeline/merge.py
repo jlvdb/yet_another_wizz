@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from yaw.utils import TypePathStr
 
 from yaw.pipeline.processing import DataProcessor
-from yaw.pipeline.project import YawDirectory
+from yaw.pipeline.project import ProjectDirectory, YawDirectory
 from yaw.pipeline.tasks import Task, TaskEstimateCorr, TaskManager, TaskPlot
 
 
@@ -16,16 +16,50 @@ from yaw.pipeline.tasks import Task, TaskEstimateCorr, TaskManager, TaskPlot
 MERGE_OPTIONS = ("bins", "patches", "redshift")
 
 
-def merge_along_bins(paths: Sequence[TypePathStr]) -> None:
-    raise NotADirectoryError
+
+def _determine_scales(
+    projects: Sequence[ProjectDirectory]
+) -> tuple[set[str], set[str]]:
+    scale_sets = []
+    for project in projects:
+        scale_sets.append(set(scale for scale, _ in project.iter_counts()))
+    common = set()
+    extra = set()
+    for scales in scale_sets:
+        common &= scales
+        extra |= scales
+    extra = extra - common
+    return common, extra
 
 
-def merge_along_patches(paths: Sequence[TypePathStr]) -> None:
-    raise NotADirectoryError
+def _determine_bins(
+    projects: Sequence[ProjectDirectory]
+) -> tuple[set[int], set[int]]:
+    bin_sets = []
+    for project in projects:
+        bin_sets.append(project.get_bin_indices())
+    common = set()
+    extra = set()
+    for bins in bin_sets:
+        common &= bins
+        extra |= bins
+    extra = extra - common
+    return common, extra
 
 
-def merge_along_redshifts(paths: Sequence[TypePathStr]) -> None:
-    raise NotADirectoryError
+def merge_along_bins(projects: Sequence[ProjectDirectory]) -> None:
+    # check binning, cosmo, backend
+    raise NotImplementedError
+
+
+def merge_along_patches(projects: Sequence[ProjectDirectory]) -> None:
+    # check binning, cosmo, backend, rweight
+    raise NotImplementedError
+
+
+def merge_along_redshifts(projects: Sequence[ProjectDirectory]) -> None:
+    # check binning, cosmo, backend, rweight
+    raise NotImplementedError
 
 
 _not_impl_msg = "operation not implemented on merged data"
@@ -81,14 +115,17 @@ class MergedDirectory(YawDirectory):
         paths: Sequence[TypePathStr],
         mode: str
     ) -> MergedDirectory:
+        projects = []
+        for path in paths:
+            projects.append(ProjectDirectory(path))
         if mode not in MERGE_OPTIONS:
             raise ValueError(f"invalid merge mode '{mode}'")
         elif mode == "bins":
-            merge_along_bins(paths)
+            merge_along_bins(projects)
         elif mode == "redshift":
-            merge_along_redshifts(paths)
+            merge_along_redshifts(projects)
         else:
-            merge_along_patches(paths)
+            merge_along_patches(projects)
 
     @property
     def setup_file(self) -> Path:
