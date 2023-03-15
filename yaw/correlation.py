@@ -451,7 +451,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         dest.create_dataset("n_patches", data=self.n_patches)
 
     @classmethod
-    def from_file(cls, path: TypePathStr) -> HDFSerializable:
+    def from_file(cls, path: TypePathStr) -> CorrelationFunction:
         logger.info(f"reading pair counts from '{path}'")
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)

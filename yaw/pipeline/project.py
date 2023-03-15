@@ -189,7 +189,7 @@ class YawDirectory(DictRepresentation):
         cls,
         the_dict: dict[str, Any],
         path: TypePathStr,
-    ) -> ProjectDirectory:
+    ) -> YawDirectory:
         new = cls.__new__(cls)  # access to path attributes
         new._path = Path(path).expanduser()
         new._path.mkdir(parents=True, exist_ok=False)

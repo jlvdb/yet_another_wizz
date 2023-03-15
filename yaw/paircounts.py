@@ -524,7 +524,7 @@ class PatchedCount(PatchedArray):
         raise NotImplementedError
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> PatchedTotal:
+    def from_hdf(cls, source: h5py.Group) -> PatchedCount:
         # reconstruct the binning
         binning = binning_from_hdf(source)
         # load the data
