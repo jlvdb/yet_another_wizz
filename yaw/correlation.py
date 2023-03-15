@@ -675,6 +675,8 @@ class RedshiftData(CorrelationData):
         config: ResamplingConfig | None = None,
         info: str | None = None
     ) -> RedshiftData:
+        if config is None:
+            config = ResamplingConfig()
         with TimedLog(
             logger.debug,
             f"estimating clustering redshifts with method '{config.method}'"
