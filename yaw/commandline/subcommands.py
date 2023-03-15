@@ -406,38 +406,38 @@ class CommandRun(SubCommand):
         parser.add_argument(  # manual since special help text
             "wdir", metavar="<path>", type=utils.Path_absolute,
             help="project directory, must not exist")
-        parser.add_argument(
+
+        group_setup = parser.add_argument_group(
+            title="setup configuration",
+            description="select a setup file to run with optional modifcations")
+        group_setup.add_argument(
+            "-d", "--dump", action=utils.DumpConfigAction,
+            const="default", nargs=0,
+            help="dump an empty setup file with default values to the terminal")
+        group_setup.add_argument(
             "-s", "--setup", required=True,
             type=utils.Path_exists, metavar="<file>",
             help="setup YAML file with configuration, input files and "
                  "task list")
-        parser.add_argument(
+        group_setup.add_argument(
             "--config-from", type=utils.Path_exists, metavar="<file>",
             help="load the 'configuration' section from this setup file")
-
-        group_dump = parser.add_argument_group(
-            title="setup file generation",
-            description="support for generating and working with setup files")
-        group_dump.add_argument(
-            "-d", "--dump", action=utils.DumpConfigAction,
-            const="default", nargs=0,
-            help="dump an empty setup file with default values to the terminal")
+        group_setup.add_argument(
+            "--cache-path", metavar="<path>", type=utils.Path_absolute,
+            help="replace the 'data.cachepath' value in the setup file")
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
         # get the configuration from an external file
+        setup = load_setup_as_dict(args.setup)
         if args.config_from is not None:
-            setup = load_setup_as_dict(args.setup)
             config = load_config_from_setup(args.config_from)
             setup["configuration"] = config.to_dict()  # replace original config
-            # create temporary setup file that can be read by ProjectDirectrory
-            project = ProjectDirectory.from_dict(setup, path=args.wdir)
-        # just use the setup file itself
-        else:
-            project = ProjectDirectory.from_setup(args.wdir, args.setup)
+        if args.cache_path is not None:
+            setup["data"]["cachepath"] = str(args.cache_path)
 
         # run the tasks in the job list
-        with project:
+        with ProjectDirectory.from_dict(setup, path=args.wdir) as project:
             logger.info(f"scheduling tasks: {project.tasks.view_history()}")
             project.tasks.reschedule_history()
             project.tasks.process(progress=args.progress, threads=args.threads)

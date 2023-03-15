@@ -403,6 +403,8 @@ class ProjectDirectory(YawDirectory):
         # cache needs extra care: if None, set to default location
         if "cachepath" not in data or data["cachepath"] is None:
             data["cachepath"] = str(self.default_cache_path)
+        else:
+            logger.info(f"using cache location '{data['cachepath']}'")
         self._inputs = InputManager.from_dict(data)
         # try loading existsing patch centers
         if self.patch_file.exists():
