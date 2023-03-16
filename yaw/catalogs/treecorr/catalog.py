@@ -13,6 +13,7 @@ from treecorr import Catalog, NNCorrelation
 from yaw.catalogs import BaseCatalog
 from yaw.config import Configuration
 from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.correlation import HistgramData
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult
 from yaw.utils import TimedLog
@@ -21,7 +22,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval
     from yaw.catalogs import PatchLinkage
     from yaw.config import ResamplingConfig
-    from yaw.correlation import RedshiftData
 
 
 def _iter_bin_masks(
@@ -278,7 +278,7 @@ class TreecorrCatalog(BaseCatalog):
         config: Configuration,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
-    ) -> RedshiftData:
+    ) -> HistgramData:
         super().true_redshifts(config)
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
@@ -294,7 +294,7 @@ class TreecorrCatalog(BaseCatalog):
         patch_idx = sampling_config.get_samples(self.n_patches)
         nz_data = hist_counts.sum(axis=0)
         nz_samp = np.sum(hist_counts[patch_idx], axis=1)
-        return RedshiftData(
+        return HistgramData(
             binning=binning,
             data=nz_data,
             samples=nz_samp,

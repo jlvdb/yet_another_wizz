@@ -205,26 +205,20 @@ class CorrelationData(SampledData):
             for values in self.covariance:
                 f.write(fmt_str.format(*values, prec=PREC-3))
 
-    def plot(
+    def _make_plot(
         self,
+        x: NDArray[np.float_],
+        y: NDArray[np.float_],
+        yerr: NDArray[np.float_],
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
         error_bars: bool = True,
         ax: Axis | None = None,
-        xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
-        scale_by_dz: bool = False
-    ) -> Axis:  # pragma: no cover
+    ) -> Axis:
         from matplotlib import pyplot as plt
-
-        x = self.mids + xoffset
-        y = self.data
-        yerr = self.get_error().to_numpy()
-        if scale_by_dz:
-            y *= self.dz
-            yerr *= self.dz
         # configure plot
         if ax is None:
             ax = plt.gca()
@@ -246,6 +240,29 @@ class CorrelationData(SampledData):
             color = ax.plot(x, y, **plot_kwargs)[0].get_color()
             ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
         return ax
+
+    def plot(
+        self,
+        *,
+        color: str | NDArray | None = None,
+        label: str | None = None,
+        error_bars: bool = True,
+        ax: Axis | None = None,
+        xoffset: float = 0.0,
+        plot_kwargs: dict[str, Any] | None = None,
+        zero_line: bool = False,
+        scale_by_dz: bool = False
+    ) -> Axis:  # pragma: no cover
+        x = self.mids + xoffset
+        y = self.data
+        yerr = self.get_error().to_numpy()
+        if scale_by_dz:
+            y *= self.dz
+            yerr *= self.dz
+        return self._make_plot(
+            x, y, yerr,
+            color=color, label=label, error_bars=error_bars, ax=ax,
+            plot_kwargs=plot_kwargs, zero_line=zero_line)
 
     def plot_corr(
         self,
@@ -599,6 +616,7 @@ def crosscorrelate(
     return result
 
 
+@dataclass(frozen=True)
 class RedshiftData(CorrelationData):
 
     @classmethod
@@ -737,3 +755,32 @@ class RedshiftData(CorrelationData):
         mean = np.nansum(self.data * self.mids) / norm
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=self.method)
+
+
+@dataclass(frozen=True)
+class HistgramData(RedshiftData):
+
+    density: bool = field(default=False)
+
+    def normalised(self, *args, **kwargs) -> RedshiftData:
+        if self.density:  # guard from repeatedly altering the data
+            return self
+        zmin, zmax = self.edges[[0, -1]]
+        width_correction = (zmax - zmin) / (self.n_bins * self.dz)
+        data = self.data * width_correction
+        samples = self.samples * width_correction
+        norm = np.nansum(self.dz * data)
+        return self.__class__(
+            binning=self.get_binning(),
+            data=data / norm,
+            samples=samples / norm,
+            method=self.method,
+            info=self.info,
+            density=True)
+
+    def mean(self):
+        normed = self.normalised()
+        norm = np.nansum(normed.data)
+        mean = np.nansum(normed.data * normed.mids) / norm
+        samples = np.nansum(normed.samples * normed.mids, axis=1) / norm
+        return SampledValue(value=mean, samples=samples, method=normed.method)
