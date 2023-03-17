@@ -11,10 +11,10 @@ from yaw.config import Configuration
 from yaw.utils import populate_parser
 
 from yaw.pipeline import tasks as yaw_tasks
-from yaw.pipeline.merge import MERGE_OPTIONS
+from yaw.pipeline.merge import (
+    MERGE_OPTIONS, MergedDirectory, open_yaw_directory)
 from yaw.pipeline.project import (
-    MergedDirectory, ProjectDirectory,
-    load_config_from_setup, load_setup_as_dict)
+    ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 
 from yaw.commandline import utils
 from yaw.commandline.main import Commandline
@@ -359,7 +359,7 @@ class CommandEstimateCorr(SubCommand):
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        with ProjectDirectory(args.wdir) as project:
+        with open_yaw_directory(args.wdir) as project:
             task = yaw_tasks.TaskEstimateCorr.from_argparse(args)
             project.tasks.run(task)
 
@@ -381,7 +381,7 @@ class CommandPlot(SubCommand):
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        with ProjectDirectory(args.wdir) as project:
+        with open_yaw_directory(args.wdir) as project:
             task = yaw_tasks.TaskPlot.from_argparse(args)
             project.tasks.run(task)
 

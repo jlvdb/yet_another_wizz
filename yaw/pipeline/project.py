@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import shutil
 from abc import abstractmethod, abstractproperty
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
@@ -16,13 +16,12 @@ from yaw import default as DEFAULT
 from yaw.config import Configuration, parse_section_error
 from yaw.utils import DictRepresentation, TypePathStr
 
-from yaw.pipeline import merge
 from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
 from yaw.pipeline.logger import get_logger
 from yaw.pipeline.processing import DataProcessor, PostProcessor
-from yaw.pipeline.tasks import MergedManager, TaskManager
+from yaw.pipeline.tasks import TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
     from yaw.pipeline.data import Input
@@ -117,16 +116,16 @@ def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
 
 @dataclass(frozen=True)
 class ProjectState:
-    has_reference: bool
-    has_unknown: bool
-    has_w_ss: bool
-    has_w_sp: bool
-    has_w_pp: bool
-    has_w_ss_cf: bool
-    has_w_pp_cf: bool
-    has_nz_cc: bool
-    has_nz_ref: bool
-    has_nz_true: bool
+    has_reference: bool = False
+    has_unknown: bool = False
+    has_w_ss: bool = False
+    has_w_sp: bool = False
+    has_w_pp: bool = False
+    has_w_ss_cf: bool = False
+    has_w_pp_cf: bool = False
+    has_nz_cc: bool = False
+    has_nz_ref: bool = False
+    has_nz_true: bool = False
 
 
 class YawDirectory(DictRepresentation):
@@ -140,7 +139,8 @@ class YawDirectory(DictRepresentation):
                 f"project directory '{self.path}' does not exist")
         if not self.setup_file.exists():
             raise FileNotFoundError(
-                f"setup file '{self.setup_file}' does not exist")
+                f"not a {self.__class__.__name__}, setup file "
+                f"'{self.setup_file}' does not exist")
         if not self.log_file.exists():
             logger.info(f"setting up log file '{self.log_file}'")
         else:
@@ -467,60 +467,3 @@ class ProjectDirectory(YawDirectory):
     @property
     def n_bins(self) -> int:
         return self._inputs.n_bins
-
-
-class MergedDirectory(YawDirectory):
-
-    @classmethod
-    def from_projects(
-        cls,
-        path: TypePathStr,
-        inputs: Sequence[TypePathStr],
-        mode: str
-    ) -> MergedDirectory:
-        projects = []
-        for project in inputs:
-            projects.append(ProjectDirectory(project))
-        ## TODO: create output
-        if mode not in merge.MERGE_OPTIONS:
-            raise ValueError(f"invalid merge mode '{mode}'")
-        elif mode == "bins":
-            merge.along_bins(projects)
-        elif mode == "redshift":
-            merge.along_redshifts(projects)
-        else:
-            merge.along_patches(projects)
-
-    @property
-    def setup_file(self) -> Path:
-        return self._path.joinpath("merged.yaml")
-
-    def setup_reload(self, setup: dict) -> None:
-        super().setup_reload(setup)
-        self._sources = tuple(Path(fpath) for fpath in setup.pop("sources", []))
-        # set up task management
-        task_list = setup.get("tasks", [])
-        self._tasks = MergedManager.from_history_list(task_list, project=self)
-
-    @property
-    def sources(self) -> tuple[Path]:
-        return self._sources
-
-    def to_dict(self) -> dict[str, Any]:
-        # strip default values from config
-        configuration = compress_config(
-            self._config.to_dict(), DEFAULT.Configuration.__dict__)
-        setup = dict(
-            configuration=configuration,
-            sources=[str(fpath) for fpath in self._sources],
-            tasks=self._tasks.history_to_list())
-        return setup
-
-    def get_bin_indices(self) -> set[int]:
-        for scale in self.iter_scales():
-            counts = self.get_counts_dir(scale)
-            return counts.get_cross_indices() | counts.get_auto_indices()
-
-    @property
-    def n_bins(self) -> int:
-        return len(self.get_bin_indices())
