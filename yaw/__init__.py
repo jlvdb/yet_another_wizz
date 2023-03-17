@@ -8,6 +8,6 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 from yaw.catalogs import NewCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.correlation import (
-    CorrelationData, CorrelationFunction, HistgramData, RedshiftData,
+    CorrelationData, CorrelationFunction, HistogramData, RedshiftData,
     autocorrelate, crosscorrelate)
 from yaw.randoms import UniformRandoms

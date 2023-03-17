@@ -268,6 +268,7 @@ class PostProcessor:
         if not plotted:
             logger.warn("there was no data to plot")
 
+
 class DataProcessor(PostProcessor):
 
     def __init__(

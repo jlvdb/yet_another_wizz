@@ -758,7 +758,7 @@ class RedshiftData(CorrelationData):
 
 
 @dataclass(frozen=True)
-class HistgramData(RedshiftData):
+class HistogramData(RedshiftData):
 
     density: bool = field(default=False)
 

@@ -14,7 +14,7 @@ from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.config import Configuration, ResamplingConfig
 from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.correlation import HistgramData
+from yaw.correlation import HistogramData
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.parallel import ParallelHelper
@@ -432,7 +432,7 @@ class ScipyCatalog(BaseCatalog):
         config: Configuration,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
-    ) -> HistgramData:
+    ) -> HistogramData:
         super().true_redshifts(config)
         if sampling_config is None:
             sampling_config = ResamplingConfig()  # default values
@@ -458,7 +458,7 @@ class ScipyCatalog(BaseCatalog):
         patch_idx = sampling_config.get_samples(self.n_patches)
         nz_data = hist_counts.sum(axis=0)
         nz_samp = np.sum(hist_counts[patch_idx], axis=1)
-        return HistgramData(
+        return HistogramData(
             binning=binning,
             data=nz_data,
             samples=nz_samp,
