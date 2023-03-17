@@ -203,7 +203,7 @@ def concatenate_bin_edges(*patched: PatchedArray) -> IntervalIndex:
             edges = np.concatenate([edges, other.edges[1:]])
         else:
             raise ValueError("cannot merge, bins are not contiguous")
-    return IntervalIndex.from_breaks(edges, closed=reference.closed)
+    return pd.IntervalIndex.from_breaks(edges, closed=reference.closed)
 
 
 def patch_idx_offset(*patched: PatchedArray) -> NDArray[np.int_]:
@@ -383,8 +383,14 @@ class PatchedCount(PatchedArray):
         for i in range(n_bins):
             spmat = scipy.sparse.dok_matrix(matrix[:, :, i])
             new._bins.append(spmat)
-            new._keys.update(set(spmat.keys()))
+        new._rebuild_keys()
         return new
+
+    def _rebuild_keys(self) -> None:
+        keys = set()
+        for bin in self._bins:
+            keys.update(set(bin.keys()))
+        self._keys = keys
 
     def __getitem__(self, key) -> ArrayLike:
         i, j, k = self._parse_key(key)
@@ -560,6 +566,7 @@ class PatchedCount(PatchedArray):
             for idx, bin in enumerate(merged._bins):
                 for (i, j), c in bin.items():
                     merged._bins[idx][(i+offset, j+offset)] = c
+        merged._rebuild_keys()
         return merged
 
     def concatenate_bins(self, *counts: PatchedCount) -> PatchedCount:
@@ -567,9 +574,11 @@ class PatchedCount(PatchedArray):
         merged = self.__class__(
             binning=binning, n_patches=self.n_patches, auto=self.auto)
         all_counts: list[PatchedCount] = [self, *counts]
+        merged._bins = []
         for count in all_counts:
             for bin in count._bins:
                 merged._bins.append(bin.copy())
+        merged._rebuild_keys()
         return merged
 
 
