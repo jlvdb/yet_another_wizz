@@ -18,7 +18,7 @@ from yaw.utils import TypePathStr
 
 from yaw.pipeline.project import (
     ProjectDirectory, ProjectState, YawDirectory, compress_config)
-from yaw.pipeline.tasks import MergedManager
+from yaw.pipeline.tasks import MergedTask, Task, TaskError, TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -178,23 +178,52 @@ def merge_hists(
     else:
         raise MergeError(
             "cannot merge histograms with different resampling methods")
+
+    densities = [hist.density for hist in hists]
+    if any(densities):
+        raise MergeError("cannot merge normalised histograms with")
+
     hists_ordered = sorted(hists, key=lambda hist: hist.edges[0])
     if mode == "redshift":
         return HistogramData(
             binning=pd.IntervalIndex.from_breaks(bin_edges),
-            data=np.concatenate([hist.data for hist in hists]),
-            samples=np.concatenate([hist.samples for hist in hists], axis=1),
+            data=np.concatenate([hist.data for hist in hists_ordered]),
+            samples=np.concatenate([
+                hist.samples for hist in hists_ordered], axis=1),
             method=method)
     else:
-        return hists_ordered[0].concatenate_patches(*hists_ordered[1:])
+        return HistogramData(
+            binning=pd.IntervalIndex.from_breaks(bin_edges),
+            data=np.sum([hist.data for hist in hists], axis=0),
+            samples=np.sum([hist.samples for hist in hists], axis=1),
+            method=method)
 
 
 def open_yaw_directory(path: TypePathStr) -> ProjectDirectory | MergedDirectory:
     if Path(path).joinpath("merged.yaml").exists():
-
         return MergedDirectory(path)
     else:
         return ProjectDirectory(path)
+
+
+class MergedManager(TaskManager):
+
+    def _insert_task(self, task: MergedTask, task_list: list[Task]) -> None:
+        if not isinstance(task, MergedTask):
+            raise TaskError(
+                f"task '{task.get_name()}' cannot be executed after merging")
+        return super()._insert_task(task, task_list)
+
+    def schedule(self, task: MergedTask) -> None:
+        return super().schedule(task)
+
+    def run(
+        self,
+        task: MergedTask,
+        progress: bool = False,
+        threads: int | None = None
+    ) -> None:
+        return super().run(task, progress, threads)
 
 
 class MergedDirectory(YawDirectory):
