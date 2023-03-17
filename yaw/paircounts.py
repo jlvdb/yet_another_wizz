@@ -206,7 +206,7 @@ def concatenate_bin_edges(*patched: PatchedArray) -> IntervalIndex:
     return pd.IntervalIndex.from_breaks(edges, closed=reference.closed)
 
 
-def patch_idx_offset(*patched: PatchedArray) -> NDArray[np.int_]:
+def patch_idx_offset(patched: PatchedArray) -> NDArray[np.int_]:
     idx_offset = np.fromiter(
         accumulate((p.n_patches for p in patched), initial=0),
         dtype=np.int_, count=len(patched))
@@ -563,9 +563,10 @@ class PatchedCount(PatchedArray):
             auto=self.auto)
         offsets = patch_idx_offset(all_counts)
         for count, offset in zip(all_counts, offsets):
-            for idx, bin in enumerate(merged._bins):
+            for idx, bin in enumerate(count._bins):
+                merged_bin = merged._bins[idx]
                 for (i, j), c in bin.items():
-                    merged._bins[idx][(i+offset, j+offset)] = c
+                    merged_bin[(i+offset, j+offset)] = c
         merged._rebuild_keys()
         return merged
 
@@ -574,10 +575,9 @@ class PatchedCount(PatchedArray):
         merged = self.__class__(
             binning=binning, n_patches=self.n_patches, auto=self.auto)
         all_counts: list[PatchedCount] = [self, *counts]
-        merged._bins = []
         for count in all_counts:
-            for bin in count._bins:
-                merged._bins.append(bin.copy())
+            for idx, bin in enumerate(count._bins):
+                merged._bins[idx] = bin.copy()
         merged._rebuild_keys()
         return merged
 

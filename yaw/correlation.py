@@ -782,7 +782,7 @@ class HistogramData(RedshiftData):
     @classmethod
     def from_files(cls, path_prefix: TypePathStr) -> HistogramData:
         new = super().from_files(path_prefix)
-        with open(path_prefix + ".dat") as f:
+        with open(f"{path_prefix}.dat") as f:
             line = f.readline()
             density = "normalised" in line
         return cls(
