@@ -306,10 +306,9 @@ class CommandMerge(SubCommand):
             name=cls.get_name(),
             help="merge correlation measurements from different sources",
             description="Combine pair count data from different project "
-                        "directories with identical configuration. Supported "
-                        "cases are: tomographic bins that were calibrated with "
-                        "diferent reference samples, concatenating patches "
-                        "with the same binning, and concatenating redshift "
+                        "directories with compatible configuration. Supported "
+                        "cases are: concatenating patches with the same "
+                        "redshift binning and concatenating redshift "
                         "bins with same patches (not verified).",
             wdir=False)
         parser.add_argument(  # manual since special help text
