@@ -616,7 +616,7 @@ def crosscorrelate(
     return result
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class RedshiftData(CorrelationData):
 
     @classmethod
@@ -757,10 +757,40 @@ class RedshiftData(CorrelationData):
         return SampledValue(value=mean, samples=samples, method=self.method)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class HistogramData(RedshiftData):
 
     density: bool = field(default=False)
+
+    @property
+    def _dat_desc(self) -> str:
+        n = "normalised " if self.density else " "
+        return f"# n(z) {n}histogram with symmetric 68% percentile confidence"
+
+    @property
+    def _smp_desc(self) -> str:
+        n = "normalised " if self.density else " "
+        return f"# {self.n_samples} {self.method} n(z) {n}histogram samples"
+
+    @property
+    def _cov_desc(self) -> str:
+        n = "normalised " if self.density else " "
+        return (
+            f"# n(z) {n}histogram covariance matrix "
+            f"({self.n_bins}x{self.n_bins})")
+
+    @classmethod
+    def from_files(cls, path_prefix: TypePathStr) -> HistogramData:
+        new = super().from_files(path_prefix)
+        with open(path_prefix + ".dat") as f:
+            line = f.readline()
+            density = "normalised" in line
+        return cls(
+            binning=new.get_binning(),
+            data=new.data,
+            samples=new.samples,
+            method=new.method,
+            density=density)
 
     def normalised(self, *args, **kwargs) -> RedshiftData:
         if self.density:  # guard from repeatedly altering the data
