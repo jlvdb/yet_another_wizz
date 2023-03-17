@@ -137,12 +137,22 @@ class PatchIDs(NamedTuple):
 class PatchedQuantity(ABC):
 
     @abstractproperty
-    def n_patches(self) -> int: pass
+    def n_patches(self) -> int:
+        """int: Get the number of spatial patches, see also
+        :obj:`~yaw.catalogs.BaseCatalog`.
+        """
+        pass
 
 
 class BinnedQuantity(ABC):
 
-    def get_binning(self) -> IntervalIndex: raise NotImplementedError
+    def get_binning(self) -> IntervalIndex:
+        """Get the redshift binning of the correlation function.
+
+        Returns:
+            :obj:`pandas.IntervalIndex`
+        """
+        raise NotImplementedError
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -153,26 +163,42 @@ class BinnedQuantity(ABC):
 
     @property
     def n_bins(self) -> int:
+        """Get the number of redshift bins."""
         return len(self.get_binning())
 
     @property
     def mids(self) -> NDArray[np.float_]:
+        """Get a the centers of the redshift bins."""
         return np.array([z.mid for z in self.get_binning()])
 
     @property
     def edges(self) -> NDArray[np.float_]:
+        """Get the centers of the redshift bins."""
         binning = self.get_binning()
         return np.append(binning.left, binning.right[-1])
 
     @property
     def dz(self) -> NDArray[np.float_]:
+        """Get the width of the redshift bins"""
         return np.diff(self.edges)
 
     @property
     def closed(self) -> str:
+        """On which side the redshift bins are closed intervals, can be: left,
+        right, both, neither."""
         return self.get_binning().closed
 
-    def is_compatible(self, other) -> bool:
+    def is_compatible(self, other: BinnedQuantity) -> bool:
+        """Check whether this instance is compatible with another instance by
+        ensuring that the redshift binning is identical.
+        
+        Args:
+            other (:obj:`BinnedQuantity`):
+                Object instance to compare to.
+        
+        Returns:
+            bool
+        """
         if not isinstance(other, self.__class__):
             raise TypeError(
                 f"object of type {type(other)} is not compatible with "

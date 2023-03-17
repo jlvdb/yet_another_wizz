@@ -1,5 +1,8 @@
 .vscode
 
+# dynamic files generated for docs
+doc/source/default_setup.yaml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

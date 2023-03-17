@@ -10,7 +10,7 @@ from yaw.utils import get_doc_args
 from yaw.pipeline import tasks
 
 
-WIDTH = 100
+WIDTH = 90
 TAB = "    "
 DASH = "  - "
 COMM_PAD = 24

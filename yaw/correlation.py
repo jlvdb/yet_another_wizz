@@ -65,6 +65,30 @@ class SampledValue:
 
 @dataclass(frozen=True, repr=False)
 class CorrelationData(SampledData):
+    """Container for correlation function data.
+
+    Contains the redshift binning, correlation function amplitudes, and
+    resampled values (e.g. jackknife or bootstrap). The resampled values are
+    used to compute error estimates and covariance/correlation matrices.
+
+    Args:
+        binning (:obj:`pandas.IntervalIndex`):
+            The redshift bin edges used for this correlation function.
+        data (:obj:`NDArray`):
+            The correlation function values.
+        samples (:obj:`NDArray`):
+            The resampled correlation function values.
+        method (str):
+            The resampling method used, see :class:`~yaw.ResamplingConfig` for
+            available options.
+        info (str, optional):
+            Descriptive text included in the headers of output files produced
+            by :func:`CorrelationData.to_files`.
+
+    Attributes:
+        covariance (:obj:`NDArray`):
+            Covariance matrix automatically computed from the resampled values.
+    """
 
     info: str | None = None
     covariance: NDArray = field(init=False)
@@ -123,13 +147,31 @@ class CorrelationData(SampledData):
             info=info)
 
     def get_error(self) -> Series:
+        """Get value error estimate (diagonal of covariance matrix) as series
+        with its corresponding redshift bin intervals as index.
+        
+        Returns:
+            :obj:`pandas.Series`
+        """
         return pd.Series(np.sqrt(np.diag(self.covariance)), index=self.binning)
 
     def get_covariance(self) -> DataFrame:
+        """Get value covariance matrix as data frame with its corresponding
+        redshift bin intervals as index and column labels.
+        
+        Returns:
+            :obj:`pandas.DataFrame`
+        """
         return pd.DataFrame(
             data=self.covariance, index=self.binning, columns=self.binning)
 
     def get_correlation(self) -> DataFrame:
+        """Get value correlation matrix as data frame with its corresponding
+        redshift bin intervals as index and column labels.
+        
+        Returns:
+            :obj:`pandas.DataFrame`
+        """
         stdev = np.sqrt(np.diag(self.covariance))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -299,6 +341,30 @@ def check_mergable(cfs: Sequence[CorrelationFunction | None]) -> None:
 
 @dataclass(frozen=True)
 class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
+    """Container object for measured correlation pair counts.
+
+    Container returned by correlation by functions that compute correlations
+    between data catalogs. There are four kinds of pair counts, data-data (DD),
+    data-random (DR), random-data (RD), and random-random (RR).
+
+    Provides methods to read and write data to disk and compute the actual
+    correlation function values using spatial resampling (see
+    :class:`~yaw.ResamplingConfig` and :class:`~yaw.CorrelationData`).
+
+    Args:
+        dd (:obj:`~yaw.paircounts.PairCountResult`):
+            Pair counts for a data-data correlation measurement.
+        dr (:obj:`~yaw.paircounts.PairCountResult`, optional):
+            Pair counts for a data-random correlation measurement.
+        rd (:obj:`~yaw.paircounts.PairCountResult`, optional):
+            Pair counts for a random-data correlation measurement.
+        rr (:obj:`~yaw.paircounts.PairCountResult`, optional):
+            Pair counts for a random-random correlation measurement.
+
+    Note:
+        DD is always required, but DR, RD, and RR are optional as long as at
+        least one is provided.
+    """
 
     dd: PairCountResult
     dr: PairCountResult | None = field(default=None)
@@ -333,10 +399,29 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return self.dd.n_patches
 
     def is_compatible(self, other: CorrelationFunction) -> bool:
-        return self.dd.is_compatible(other.dd)
+        """Check whether this instance is compatible with another instance by
+        ensuring that the redshift binning and the number of patches are
+        identical.
+        
+        Args:
+            other (:obj:`BinnedQuantity`):
+                Object instance to compare to.
+        
+        Returns:
+            bool
+        """
+        patches_ok = self.dd.n_patches == other.dd.n_patches
+        return patches_ok and self.dd.is_compatible(other.dd)
 
     @property
     def estimators(self) -> dict[str, CorrelationEstimator]:
+        """Get a listing of correlation estimators implemented, depending on
+        which pair counts are available.
+        
+        Returns:
+            dict: Mapping from correlation estimator name abbreviation to
+            correlation function class, see :ref:`estimators`.
+        """
         # figure out which of dd, dr, ... are not None
         available = set()
         # iterate all dataclass attributes that are in __init__
@@ -405,6 +490,27 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         estimator: str | None = None,
         info: str | None = None
     ) -> CorrelationData:
+        """Compute the correlation function from the stored pair counts,
+        including an error estimate from spatial resampling of patches.
+
+        Args:
+            config (:obj:`~yaw.ResamplingConfig`):
+                Specify the resampling method and its configuration.
+        
+        Keyword Args:
+            estimator (str, optional):
+                The name abbreviation for the correlation estimator to use, see
+                :ref:`estimators`. Defaults to Landy-Szalay if RR is available,
+                otherwise to Davis-Peebles.
+            info (str, optional):
+                Descriptive text passed on to the output :obj:`CorrelationData`
+                object.
+
+        Returns:
+            :obj:`CorrelationData`:
+                Correlation function data, including redshift binning, function
+                values and samples.
+        """
         if config is None:
             config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
@@ -524,9 +630,35 @@ def autocorrelate(
     compute_rr: bool = True,
     progress: bool = False
 ) -> CorrelationFunction | dict[str, CorrelationFunction]:
-    """
+    """Compute autocorrelation function.
+
     Compute the angular autocorrelation amplitude in bins of redshift. Requires
-    object redshifts.
+    object redshifts configured.
+
+    Args:
+        config (:obj:`~yaw.Configuration`):
+            Provides all major run parameters.
+        data (:obj:`~yaw.catalogs.BaseCatalog`):
+            The data sample.
+        random (:obj:`~yaw.catalogs.BaseCatalog`):
+            Random catalog for the data sample, must have redshifts configured.
+
+    Keyword Args:
+        linkage (:obj:`~yaw.catalogs.PatchLinkage`, optional):
+            Provide a linkage object that determines which spatial patches must
+            be correlated given the measurement scales. Ensures consistency
+            when measuring multiple correlations, otherwise generated
+            automatically.
+        compute_rr (bool):
+            Whether the random-random (RR) pair counts are computed.
+        progress (bool):
+            Display a progress bar.
+
+    Returns:
+        Container that holds the measured pair counts.
+
+        - :obj:`CorrelationFunction`: If running a single correlation scale.
+        - :obj:`dict`: Otherwise a dictionary of correlation functions.
     """
     scales = config.scales.as_array()
     logger.info(
@@ -565,10 +697,45 @@ def crosscorrelate(
     linkage: PatchLinkage | None = None,
     progress: bool = False
 ) -> CorrelationFunction | dict[str, CorrelationFunction]:
-    """
-    Compute the angular cross-correlation amplitude in bins of redshift with
-    another catalogue instance. Requires object redshifts in this catalogue
-    instance.
+    """Compute crosscorrelation function.
+
+    Compute the angular crosscorrelation amplitude in bins of redshift between
+    two data catalogue. Requires object redshifts configured in the first
+    (reference) catalogue.
+
+    Args:
+        config (:obj:`~yaw.Configuration`):
+            Provides all major run parameters.
+        reference (:obj:`yaw.catalogs.BaseCatalog`):
+            The reference sample.
+        unknown (:obj:`yaw.catalogs.BaseCatalog`):
+            The sample with unknown redshift distribution.
+
+    Keyword Args:
+        ref_rand (:obj:`yaw.catalogs.BaseCatalog`, optional):
+            Optional random catalog for the reference sample, requires
+            redshifts configured.
+        unk_rand (:obj:`yaw.catalogs.BaseCatalog`, optional):
+            Optional random catalog for the unknown sample.
+        linkage (:obj:`yaw.catalogs.PatchLinkage`, optional):
+            Provide a linkage object that determines which spatial patches must
+            be correlated given the measurement scales. Ensures consistency
+            when measuring multiple correlations, otherwise generated
+            automatically.
+        progress (bool):
+            Display a progress bar.
+
+    Returns:
+        Container that holds the measured pair counts.
+
+        - :obj:`CorrelationFunction`: If running a single correlation scale.
+        - :obj:`dict`: Otherwise a dictionary of correlation functions.
+
+    Note:
+        Both random catalogs are optional, but one is required. This determines
+        which crosscorrelation pairs are counted. If both randoms are provided,
+        data-data (DD), data-random (DR), random-data (RD) and random-random
+        (RR) pairs are counted.
     """
     compute_dr = unk_rand is not None
     compute_rd = ref_rand is not None
