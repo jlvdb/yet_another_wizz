@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
@@ -10,7 +11,6 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 
-from yaw import default as DEFAULT
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
 from yaw.estimators import (
@@ -205,26 +205,20 @@ class CorrelationData(SampledData):
             for values in self.covariance:
                 f.write(fmt_str.format(*values, prec=PREC-3))
 
-    def plot(
+    def _make_plot(
         self,
+        x: NDArray[np.float_],
+        y: NDArray[np.float_],
+        yerr: NDArray[np.float_],
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
         error_bars: bool = True,
         ax: Axis | None = None,
-        xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
-        scale_by_dz: bool = False
-    ) -> Axis:  # pragma: no cover
+    ) -> Axis:
         from matplotlib import pyplot as plt
-
-        x = self.mids + xoffset
-        y = self.data
-        yerr = self.get_error().to_numpy()
-        if scale_by_dz:
-            y *= self.dz
-            yerr *= self.dz
         # configure plot
         if ax is None:
             ax = plt.gca()
@@ -247,6 +241,29 @@ class CorrelationData(SampledData):
             ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
         return ax
 
+    def plot(
+        self,
+        *,
+        color: str | NDArray | None = None,
+        label: str | None = None,
+        error_bars: bool = True,
+        ax: Axis | None = None,
+        xoffset: float = 0.0,
+        plot_kwargs: dict[str, Any] | None = None,
+        zero_line: bool = False,
+        scale_by_dz: bool = False
+    ) -> Axis:  # pragma: no cover
+        x = self.mids + xoffset
+        y = self.data
+        yerr = self.get_error().to_numpy()
+        if scale_by_dz:
+            y *= self.dz
+            yerr *= self.dz
+        return self._make_plot(
+            x, y, yerr,
+            color=color, label=label, error_bars=error_bars, ax=ax,
+            plot_kwargs=plot_kwargs, zero_line=zero_line)
+
     def plot_corr(
         self,
         *,
@@ -268,6 +285,16 @@ class CorrelationData(SampledData):
         else:
             ax.matshow(corr, **cmap_kwargs)
         return ax
+
+
+def check_mergable(cfs: Sequence[CorrelationFunction | None]) -> None:
+    reference = cfs[0]
+    for kind in ("dd", "dr", "rd", "rr"):
+        ref_pcounts = getattr(reference, kind)
+        for cf in cfs[1:]:
+            pcounts = getattr(cf, kind)
+            if type(ref_pcounts) != type(pcounts):
+                raise ValueError(f"cannot merge, '{kind}' incompatible")
 
 
 @dataclass(frozen=True)
@@ -441,8 +468,8 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         dest.create_dataset("n_patches", data=self.n_patches)
 
     @classmethod
-    def from_file(cls, path: TypePathStr) -> HDFSerializable:
-        logger.info(f"reading pair counts from '{path}'")
+    def from_file(cls, path: TypePathStr) -> CorrelationFunction:
+        logger.debug(f"reading pair counts from '{path}'")
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
@@ -450,6 +477,32 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         logger.info(f"writing pair counts to '{path}'")
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
+
+    def concatenate_patches(
+        self,
+        *cfs: CorrelationFunction
+    ) -> CorrelationFunction:
+        check_mergable([self, *cfs])
+        merged = {}
+        for kind in ("dd", "dr", "rd", "rr"):
+            self_pcounts = getattr(self, kind)
+            if self_pcounts is not None:
+                other_pcounts = [getattr(cf, kind) for cf in cfs]
+                merged[kind] = self_pcounts.concatenate_patches(*other_pcounts)
+        return self.__class__(**merged)
+
+    def concatenate_bins(
+        self,
+        *cfs: CorrelationFunction
+    ) -> CorrelationFunction:
+        check_mergable([self, *cfs])
+        merged = {}
+        for kind in ("dd", "dr", "rd", "rr"):
+            self_pcounts = getattr(self, kind)
+            if self_pcounts is not None:
+                other_pcounts = [getattr(cf, kind) for cf in cfs]
+                merged[kind] = self_pcounts.concatenate_bins(*other_pcounts)
+        return self.__class__(**merged)
 
 
 def _create_dummy_counts(
@@ -563,6 +616,7 @@ def crosscorrelate(
     return result
 
 
+@dataclass(frozen=True, repr=False)
 class RedshiftData(CorrelationData):
 
     @classmethod
@@ -639,6 +693,8 @@ class RedshiftData(CorrelationData):
         config: ResamplingConfig | None = None,
         info: str | None = None
     ) -> RedshiftData:
+        if config is None:
+            config = ResamplingConfig()
         with TimedLog(
             logger.debug,
             f"estimating clustering redshifts with method '{config.method}'"
@@ -699,3 +755,62 @@ class RedshiftData(CorrelationData):
         mean = np.nansum(self.data * self.mids) / norm
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=self.method)
+
+
+@dataclass(frozen=True, repr=False)
+class HistogramData(RedshiftData):
+
+    density: bool = field(default=False)
+
+    @property
+    def _dat_desc(self) -> str:
+        n = "normalised " if self.density else " "
+        return f"# n(z) {n}histogram with symmetric 68% percentile confidence"
+
+    @property
+    def _smp_desc(self) -> str:
+        n = "normalised " if self.density else " "
+        return f"# {self.n_samples} {self.method} n(z) {n}histogram samples"
+
+    @property
+    def _cov_desc(self) -> str:
+        n = "normalised " if self.density else " "
+        return (
+            f"# n(z) {n}histogram covariance matrix "
+            f"({self.n_bins}x{self.n_bins})")
+
+    @classmethod
+    def from_files(cls, path_prefix: TypePathStr) -> HistogramData:
+        new = super().from_files(path_prefix)
+        with open(f"{path_prefix}.dat") as f:
+            line = f.readline()
+            density = "normalised" in line
+        return cls(
+            binning=new.get_binning(),
+            data=new.data,
+            samples=new.samples,
+            method=new.method,
+            density=density)
+
+    def normalised(self, *args, **kwargs) -> RedshiftData:
+        if self.density:  # guard from repeatedly altering the data
+            return self
+        zmin, zmax = self.edges[[0, -1]]
+        width_correction = (zmax - zmin) / (self.n_bins * self.dz)
+        data = self.data * width_correction
+        samples = self.samples * width_correction
+        norm = np.nansum(self.dz * data)
+        return self.__class__(
+            binning=self.get_binning(),
+            data=data / norm,
+            samples=samples / norm,
+            method=self.method,
+            info=self.info,
+            density=True)
+
+    def mean(self):
+        normed = self.normalised()
+        norm = np.nansum(normed.data)
+        mean = np.nansum(normed.data * normed.mids) / norm
+        samples = np.nansum(normed.samples * normed.mids, axis=1) / norm
+        return SampledValue(value=mean, samples=samples, method=normed.method)

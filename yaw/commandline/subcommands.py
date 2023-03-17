@@ -4,15 +4,15 @@ import argparse
 import logging
 import sys
 from abc import ABC, abstractclassmethod
-from dataclasses import asdict
 
 from yaw import __version__, default as DEFAULT
 from yaw import config as yaw_config
 from yaw.config import Configuration
-from yaw.cosmology import get_default_cosmology
 from yaw.utils import populate_parser
 
 from yaw.pipeline import tasks as yaw_tasks
+from yaw.pipeline.merge import (
+    MERGE_OPTIONS, MergedDirectory, open_yaw_directory)
 from yaw.pipeline.project import (
     ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 
@@ -21,24 +21,6 @@ from yaw.commandline.main import Commandline
 
 
 logger = logging.getLogger(__name__)
-
-
-class RunContext:
-
-    def __init__(
-        self,
-        project: ProjectDirectory,
-        progress: bool = False,
-        threads: int | None = None
-    ) -> None:
-        self.engine = project.engine
-        self.engine.set_run_context(progress=progress, threads=threads)
-
-    def __enter__(self) -> RunContext:
-        return self
-
-    def __exit__(self, *args, **kwargs) -> None:
-        self.engine.reset_run_context()
 
 
 class SubCommand(ABC):
@@ -71,7 +53,9 @@ class CommandInit(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="initialise and configure a new a project directory",
-            description="Initialise and create a project directory with a configuration. Specify the reference sample data and optionally randoms.",
+            description="Initialise and create a project directory with a "
+                        "configuration. Specify the reference sample data and "
+                        "optionally randoms.",
             wdir=False,
             threads=False,
             progress=False)
@@ -80,7 +64,8 @@ class CommandInit(SubCommand):
             help="project directory, must not exist")
         parser.add_argument(
             "-s", "--setup", type=utils.Path_exists, metavar="<file>",
-            help="optionl setup YAML file (e.g. from 'yaw run -d') with base configuration that is overwritten by arguments below")
+            help="optionl setup YAML file (e.g. from 'yaw run -d') with base "
+                 "configuration that is overwritten by arguments below")
 
         group_other = parser.add_argument_group(
             title="additional arguments")
@@ -89,30 +74,39 @@ class CommandInit(SubCommand):
             help="backend used for pair counting (default: %(default)s)")
         group_other.add_argument(
             "--cache-path", metavar="<path>", type=utils.Path_absolute,
-            help="non-standard location for the cache directory (e.g. on faster storage, default: [project directory]/cache)")
+            help="non-standard location for the cache directory (e.g. on "
+                 "faster storage, default: [project directory]/cache)")
         group_other.add_argument(
             "--n-patches", type=int, metavar="<int>",
-            help="split all input data into this number of spatial patches for covariance estimation (default: patch index for catalogs)")
+            help="split all input data into this number of spatial patches for "
+                 "covariance estimation (default: patch index for catalogs)")
         populate_parser(yaw_config.Configuration, group_other)
 
-        Commandline.add_input_parser(parser, "reference (data)", prefix="ref", required=True, require_z=True)
+        Commandline.add_input_parser(
+            parser, "reference (data)", prefix="ref",
+            required=True, require_z=True)
 
-        Commandline.add_input_parser(parser, "reference (random)", prefix="rand", required=False, require_z=True)
+        Commandline.add_input_parser(
+            parser, "reference (random)", prefix="rand",
+            required=False, require_z=True)
 
         group_scales = parser.add_argument_group(
             title="measurement scales",
-            description="sets the physical scales for the correlation measurements")
+            description="sets the physical scales for the correlation "
+                        "measurements")
         populate_parser(yaw_config.ScalesConfig, group_scales)
 
         group_bins = parser.add_argument_group(
             title="redshift binning",
-            description="sets the redshift binning for the clustering redshifts")
+            description="sets the redshift binning for the clustering "
+                        "redshifts")
         populate_parser(yaw_config.AutoBinningConfig, group_bins)
         populate_parser(yaw_config.ManualBinningConfig, group_bins)
 
         group_backend = parser.add_argument_group(
             title="backend specific",
-            description="parameters that are specific to pair counting backends")
+            description="parameters that are specific to pair counting "
+                        "backends")
         populate_parser(yaw_config.BackendConfig, group_backend)
 
     @classmethod
@@ -175,14 +169,21 @@ class CommandCrosscorr(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="measure angular cross-correlation functions",
-            description="Specify the unknown data sample(s) and optionally randoms. Measure the angular cross-correlation function amplitude with the reference sample in bins of redshift.",
+            description="Specify the unknown data sample(s) and optionally "
+                        "randoms. Measure the angular cross-correlation "
+                        "function amplitude with the reference sample in bins "
+                        "of redshift.",
             progress=True,
             threads=True)
         populate_parser(yaw_tasks.TaskCrosscorr, parser)
 
-        Commandline.add_input_parser(parser, "unknown (data)", prefix="unk", required=True, binned=True)
+        Commandline.add_input_parser(
+            parser, "unknown (data)", prefix="unk",
+            required=True, binned=True)
 
-        Commandline.add_input_parser(parser, "unknown (random)", prefix="rand", required=False, binned=True)
+        Commandline.add_input_parser(
+            parser, "unknown (random)", prefix="rand",
+            required=False, binned=True)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
@@ -200,8 +201,8 @@ class CommandCrosscorr(SubCommand):
                     idx, data=input_unk.get(idx), rand=input_rand.get(idx))
 
             task = yaw_tasks.TaskCrosscorr.from_argparse(args)
-            with RunContext(project, args.progress, args.threads):
-                task(project)
+            project.tasks.run(
+                task, progress=args.progress, threads=args.threads)
 
 
 class CommandAutocorr(SubCommand):
@@ -215,12 +216,17 @@ class CommandAutocorr(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="measure angular autocorrelation functions",
-            description="Measure the angular autocorrelation function amplitude of the reference sample. Can be applied to the unknown sample if redshift point-estimates are available.",
+            description="Measure the angular autocorrelation function "
+                        "amplitude of the reference sample. Can be applied to "
+                        "the unknown sample if redshift point-estimates are "
+                        "available.",
             progress=True,
             threads=True)
         parser.add_argument(
             "--which", choices=("ref", "unk"), default="ref",
-            help="for which sample the autocorrelation should be computed (default: %(default)s, requires redshifts [--*-z] for data and random sample)")
+            help="for which sample the autocorrelation should be computed "
+                 "(default: %(default)s, requires redshifts [--*-z] for data "
+                 "and random sample)")
         populate_parser(yaw_tasks.TaskAutocorr, parser)
 
     @classmethod
@@ -230,39 +236,8 @@ class CommandAutocorr(SubCommand):
                 task = yaw_tasks.TaskAutocorrReference.from_argparse(args)
             else:
                 task = yaw_tasks.TaskAutocorrUnknown.from_argparse(args)
-            with RunContext(project, args.progress, args.threads):
-                task(project)
-
-
-class CommandEstimateCorr(SubCommand):
-
-    @classmethod
-    def get_name(cls) -> str:
-        return "zcc"
-
-    @classmethod
-    def add_parser(cls) -> None:
-        parser = Commandline.create_subparser(
-            name=cls.get_name(),
-            help=yaw_tasks.TaskEstimateCorr.get_help(),
-            description="Compute clustering redshift estimates for the unknown data sample(s), optionally mitigating galaxy bias estimated from any measured autocorrelation function.")
-
-        group_est = parser.add_argument_group(
-            title="correlation estimators",
-            description="configure estimators for the different types of correlation functions")
-
-        group_samp = parser.add_argument_group(
-            title="resampling",
-            description="configure the resampling used for covariance estimates")
-
-        populate_parser(yaw_tasks.TaskEstimateCorr, parser, extra_parsers=dict(
-            estimators=group_est, sampling=group_samp))
-
-    @classmethod
-    def run(cls, args: argparse.Namespace) -> None:
-        with ProjectDirectory(args.wdir) as project:
-            task = yaw_tasks.TaskEstimateCorr.from_argparse(args)
-            task(project)
+            project.tasks.run(
+                task, progress=args.progress, threads=args.threads)
 
 
 class CommandTrueRedshifts(SubCommand):
@@ -276,7 +251,10 @@ class CommandTrueRedshifts(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help=yaw_tasks.TaskTrueRedshifts.get_help(),
-            description="Compute the redshift distributions of the unknown data sample(s), which requires providing point-estimate redshifts for the catalog.",
+            description="Compute the redshift distributions of the unknown "
+                        "data sample(s), which requires providing point-"
+                        "estimate redshifts for the catalog.",
+            progress=True,
             threads=True)
         populate_parser(yaw_tasks.TaskTrueRedshifts, parser)
 
@@ -284,8 +262,8 @@ class CommandTrueRedshifts(SubCommand):
     def run(cls, args: argparse.Namespace) -> None:
         with ProjectDirectory(args.wdir) as project:
             task = yaw_tasks.TaskTrueRedshifts.from_argparse(args)
-            with RunContext(project, threads=args.threads):
-                task(project)
+            project.tasks.run(
+                task, progress=args.progress, threads=args.threads)
 
 
 class CommandCache(SubCommand):
@@ -299,8 +277,8 @@ class CommandCache(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="mange or clean up cache directories",
-            description="Get a summary of the project's cache directory (location, size, etc.) or remove entries with --drop.",
-            progress=False)
+            description="Get a summary of the project's cache directory "
+                        "(location, size, etc.) or remove entries with --drop.")
         parser.add_argument(
             "--drop", action="store_true",
             help="drop all cache entries")
@@ -310,7 +288,7 @@ class CommandCache(SubCommand):
         with ProjectDirectory(args.wdir) as project:
             if args.drop:
                 task = yaw_tasks.TaskDropCache.from_argparse(args)
-                task(project)
+                project.tasks.run(task)
             else:
                 cachedir = project.inputs.get_cache()
                 cachedir.print_contents()
@@ -324,11 +302,65 @@ class CommandMerge(SubCommand):
 
     @classmethod
     def add_parser(cls) -> None:
-        pass
+        parser = Commandline.create_subparser(
+            name=cls.get_name(),
+            help="merge correlation measurements from different sources",
+            description="Combine pair count data from different project "
+                        "directories with compatible configuration. Supported "
+                        "cases are: concatenating patches with the same "
+                        "redshift binning and concatenating redshift "
+                        "bins with same patches (not verified).",
+            wdir=False)
+        parser.add_argument(  # manual since special help text
+            "wdir", metavar="<path>", type=utils.Path_absolute,
+            help="directory where data is merged, must not exist")
+        parser.add_argument(
+            "--mode", choices=MERGE_OPTIONS, required=True,
+            help="specify whether merging is performed on tomographic bins, "
+                 "extending spatially from patches, or by concatenating along "
+                 "the redshift axis")
+        parser.add_argument(
+            "-p", "--projects", nargs="+", required=True,
+            help="list of project directory paths to merge")
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        raise NotImplementedError
+        MergedDirectory.from_projects(args.wdir, args.projects, mode=args.mode)
+
+
+class CommandEstimateCorr(SubCommand):
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "zcc"
+
+    @classmethod
+    def add_parser(cls) -> None:
+        parser = Commandline.create_subparser(
+            name=cls.get_name(),
+            help=yaw_tasks.TaskEstimateCorr.get_help(),
+            description="Compute clustering redshift estimates for the unknown "
+                        "data sample(s), optionally mitigating galaxy bias "
+                        "estimated from any measured autocorrelation function.")
+
+        group_est = parser.add_argument_group(
+            title="correlation estimators",
+            description="configure estimators for the different types of "
+                        "correlation functions")
+
+        group_samp = parser.add_argument_group(
+            title="resampling",
+            description="configure the resampling used for covariance "
+                        "estimates")
+
+        populate_parser(yaw_tasks.TaskEstimateCorr, parser, extra_parsers=dict(
+            estimators=group_est, sampling=group_samp))
+
+    @classmethod
+    def run(cls, args: argparse.Namespace) -> None:
+        with open_yaw_directory(args.wdir) as project:
+            task = yaw_tasks.TaskEstimateCorr.from_argparse(args)
+            project.tasks.run(task)
 
 
 class CommandPlot(SubCommand):
@@ -342,16 +374,15 @@ class CommandPlot(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help=yaw_tasks.TaskPlot.get_help(),
-            description="Plot the autocorrelations and redshift estimates into the 'estimate' directory.",
-            progress=False,
-            threads=False)
+            description="Plot the autocorrelations and redshift estimates into "
+                        "the 'estimate' directory.")
         populate_parser(yaw_tasks.TaskPlot, parser)
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        with ProjectDirectory(args.wdir) as project:
+        with open_yaw_directory(args.wdir) as project:
             task = yaw_tasks.TaskPlot.from_argparse(args)
-            task(project)
+            project.tasks.run(task)
 
 
 class CommandRun(SubCommand):
@@ -365,58 +396,47 @@ class CommandRun(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="perform tasks specified in a setup file",
-            description="Read a task list and configuration from a setup file (e.g. as generated by 'init'). Apply the tasks to the specified data samples.",
+            description="Read a task list and configuration from a setup file "
+                        "(e.g. as generated by 'init'). Apply the tasks to the "
+                        "specified data samples.",
             wdir=False,
             threads=True,
             progress=True)
         parser.add_argument(  # manual since special help text
             "wdir", metavar="<path>", type=utils.Path_absolute,
             help="project directory, must not exist")
-        parser.add_argument(
-            "-s", "--setup", required=True, type=utils.Path_exists, metavar="<file>",
-            help="setup YAML file with configuration, input files and task list")
-        parser.add_argument(
+
+        group_setup = parser.add_argument_group(
+            title="setup configuration",
+            description="select a setup file to run with optional modifcations")
+        group_setup.add_argument(
+            "-d", "--dump", action=utils.DumpConfigAction,
+            const="default", nargs=0,
+            help="dump an empty setup file with default values to the terminal")
+        group_setup.add_argument(
+            "-s", "--setup", required=True,
+            type=utils.Path_exists, metavar="<file>",
+            help="setup YAML file with configuration, input files and "
+                 "task list")
+        group_setup.add_argument(
             "--config-from", type=utils.Path_exists, metavar="<file>",
             help="load the 'configuration' section from this setup file")
-
-        group_dump = parser.add_argument_group(
-            title="setup file generation",
-            description="support for generating and working with setup files")
-        group_dump.add_argument(
-            "-d", "--dump", action=utils.DumpConfigAction, const="default", nargs=0,
-            help="dump an empty setup file with default values to the terminal")
+        group_setup.add_argument(
+            "--cache-path", metavar="<path>", type=utils.Path_absolute,
+            help="replace the 'data.cachepath' value in the setup file")
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
         # get the configuration from an external file
+        setup = load_setup_as_dict(args.setup)
         if args.config_from is not None:
-            setup = load_setup_as_dict(args.setup)
             config = load_config_from_setup(args.config_from)
             setup["configuration"] = config.to_dict()  # replace original config
-            # create temporary setup file that can be read by ProjectDirectrory
-            project = ProjectDirectory.from_dict(setup, path=args.wdir)
-        # just use the setup file itself
-        else:
-            project = ProjectDirectory.from_setup(args.wdir, args.setup)
+        if args.cache_path is not None:
+            setup["data"]["cachepath"] = str(args.cache_path)
 
         # run the tasks in the job list
-        with project:
-            tasks = {}
-            logger.info(f"scheduling tasks: {project.view_tasks()}")
-            for task in project.get_tasks():
-                name = task.get_name()
-                # handle repeatable task
-                if name in tasks:
-                    if isinstance(tasks[name], yaw_tasks.RepeatableTask):
-                        tasks[name] = [tasks[name]]
-                    tasks[name].append(task)
-                else:
-                    tasks[name] = task
-                # report task to logger
-                t_args = ", ".join(
-                    f"{k}={repr(v)}" for k, v in asdict(task).items())
-                if len(t_args) == 0:
-                    t_args = "---"
-                logger.debug(f"'{name}' arguments: {t_args}")
-            with RunContext(project, args.progress, args.threads):
-                project.engine.run(**tasks)
+        with ProjectDirectory.from_dict(setup, path=args.wdir) as project:
+            logger.info(f"scheduling tasks: {project.tasks.view_history()}")
+            project.tasks.reschedule_history()
+            project.tasks.process(progress=args.progress, threads=args.threads)

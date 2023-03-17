@@ -16,7 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.catalogs import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
-    from yaw.correlation import RedshiftData
+    from yaw.correlation import HistogramData
     from yaw.paircounts import PairCountResult
 
 
@@ -209,7 +209,7 @@ class BaseCatalog(Sequence, PatchedQuantity):
         config: Configuration,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
-    ) -> RedshiftData:
+    ) -> HistogramData:
         """
         Compute the a redshift distribution histogram.
         """

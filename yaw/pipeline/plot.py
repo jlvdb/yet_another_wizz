@@ -72,7 +72,6 @@ class Plotter:
         return "larger"
 
     def _decorate_xaxis(self, ax: Axis) -> None:
-        ax.set_xlim(left=0.0)
         ax.set_xlabel("Redshift", fontsize=self.label_fontsize)
 
     def _decorate_subplots(self, axes, ylabel: str) -> None:
