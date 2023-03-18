@@ -1,4 +1,5 @@
 .vscode
+.DS_store
 
 # dynamic files generated for docs
 doc/source/default_setup.yaml

@@ -35,7 +35,23 @@ exclude_patterns = []
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
-
+html_css_files = ['custom.css']
+html_logo = 'logo.svg'
+html_favicon = 'icon.ico'
+html_theme_options = {
+    'logo_only': True,
+    'display_version': False,
+    'prev_next_buttons_location': 'bottom',
+    'style_external_links': False,
+    #'vcs_pageview_mode': '',
+    'style_nav_header_background': 'black',
+    # Toc options
+    'collapse_navigation': False,
+    'sticky_navigation': True,
+    'navigation_depth': 4,
+    'includehidden': True,
+    'titles_only': False
+}
 
 # -- Build custom files ------------------------------------------------------
 from yaw.pipeline.default_setup import setup_default
