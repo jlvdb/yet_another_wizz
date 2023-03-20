@@ -110,11 +110,11 @@ class Plotter:
         fig, axes = self.mkfig(self.project.n_bins)
         axes = np.atleast_2d(axes)
         for (scale, tag), est_dir in self.project.iter_estimate():
-            for ax, (index, path) in zip(axes.flatten(), est_dir.iter_auto()):
+            for ax, (bin, path) in zip(axes.flatten(), est_dir.iter_auto()):
                 cf = CorrelationData.from_files(path)
                 label = f"{scale_key_to_math(scale)} / {tag=}"
                 cf.plot(zero_line=True, label=label, ax=ax)
-                ax.legend(title=f"{index=}")
+                ax.legend(title=f"{bin=}")
 
             self._decorate_subplots(axes, r"$w_{\sf pp}$")
             if title is not None:
@@ -132,23 +132,23 @@ class Plotter:
         true_dir = self.project.get_true_dir()
         nz_ts = dict()
         for (scale, tag), est_dir in self.project.iter_estimate():
-            for ax, (index, path) in zip(axes.flatten(), est_dir.iter_cross()):
+            for ax, (bin, path) in zip(axes.flatten(), est_dir.iter_cross()):
                 # plot optional true redshift distribution
-                if index in nz_ts:
-                    nzt = nz_ts[index]
+                if bin in nz_ts:
+                    nzt = nz_ts[bin]
                 else:
-                    true_path = true_dir.get_unknown(index)
+                    true_path = true_dir.get_unknown(bin)
                     if true_path.with_suffix(".dat").exists():
                         nzt = RedshiftData.from_files(true_path).normalised()
                         nzt.plot(error_bars=False, color="k", ax=ax)
                     else:
                         nzt = None
-                    nz_ts[index] = nzt
+                    nz_ts[bin] = nzt
                 # plot optional 
                 nz = RedshiftData.from_files(path).normalised(to=nzt)
                 label = f"{scale_key_to_math(scale)} / {tag=}"
                 nz.plot(zero_line=True, label=label, ax=ax)
-                ax.legend(title=f"{index=}")
+                ax.legend(title=f"{bin=}")
 
             self._decorate_subplots(axes, r"$n_{\sf cc}$")
             if title is not None:
