@@ -8,11 +8,11 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath(".."))
 import yaw
 
-project = 'yet_another_wizz'
-copyright = '2023, Jan Luca van den Busch'
+project = "yet_another_wizz"
+copyright = "2023, Jan Luca van den Busch"
 # The full version, including alpha/beta/rc tags.
 release = yaw.__version__
 # The short X.Y version.
@@ -22,35 +22,37 @@ version = ".".join(release.split(".")[:2])
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon'
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon"
 ]
 
-templates_path = ['_templates']
+templates_path = ["_templates"]
 exclude_patterns = []
 
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
-html_css_files = ['custom.css']
-html_logo = 'logo.svg'
-html_favicon = 'icon.ico'
+html_theme = "pydata_sphinx_theme"
+html_static_path = ["_static"]
+html_css_files = ["_static/custom.css"]
+html_favicon = "_static/icon.ico"
 html_theme_options = {
-    'logo_only': True,
-    'display_version': False,
-    'prev_next_buttons_location': 'bottom',
-    'style_external_links': False,
-    #'vcs_pageview_mode': '',
-    'style_nav_header_background': 'black',
-    # Toc options
-    'collapse_navigation': False,
-    'sticky_navigation': True,
-    'navigation_depth': 4,
-    'includehidden': True,
-    'titles_only': False
+    "github_url": "https://github.com/jlvdb/yet_another_wizz",
+    "collapse_navigation": False,
+    "navigation_depth": 2,
+    "show_nav_level": 2,
+    "secondary_sidebar_items": ["page-toc", "edit-this-page"],
+    "logo": {
+        "image_light": "_static/logo-light-padded.svg",
+        "image_dark": "_static/logo-dark-padded.svg",
+   }
+}
+html_sidebars = {
+    "**": ["search-field.html", "sidebar-nav-bs.html", "indices.html"]
+}
+html_context = {
+    "default_mode": "auto",
 }
 
 # -- Build custom files ------------------------------------------------------
