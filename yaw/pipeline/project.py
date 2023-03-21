@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from abc import abstractmethod, abstractproperty
 from collections.abc import Iterator
@@ -92,6 +93,15 @@ def write_setup_file(
         f.write(string)
 
 
+def substitute_env_var(setup_dict: dict) -> dict:
+    for key, value in setup_dict.items():
+        if isinstance(value, str) and value.startswith("$"):
+            setup_dict[key] = os.environ[value]
+        elif isinstance(value, dict):
+            setup_dict[key] = substitute_env_var(value)
+    return setup_dict
+
+
 def load_setup_as_dict(setup_file: TypePathStr) -> dict[str, Any]:
     with open(setup_file) as f:
         try:
@@ -112,7 +122,6 @@ def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
         return Configuration.from_dict(setup_dict["configuration"])
     except KeyError as e:
         parse_section_error(e, "configuration", SetupError)
-
 
 @dataclass(frozen=True)
 class ProjectState:
@@ -148,6 +157,7 @@ class YawDirectory(DictRepresentation):
         self._add_log_file_handle()
         with open(self.setup_file) as f:
             setup = yaml.safe_load(f.read())
+        setup = substitute_env_var(setup)
         self.setup_reload(setup)
         # create any missing directories
         self.counts_path.mkdir(exist_ok=True)
