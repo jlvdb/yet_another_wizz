@@ -10,7 +10,7 @@ from yaw.utils import get_doc_args
 from yaw.pipeline import tasks
 
 
-WIDTH = 90
+WIDTH = 100
 TAB = "    "
 DASH = "  - "
 COMM_PAD = 24
@@ -86,29 +86,37 @@ setup_default += format_line("backend: scipy", f"(opt) name of the data catalog 
 setup_default += format_line("cachepath: null", "(opt) cache directory path, e.g. on fast storage device (recommended for 'backend=scipy', default is within project directory)", indents=1)
 setup_default += format_line("n_patches: null", "(opt) number of automatic spatial patches to use for input catalogs below, provide only if no 'data/rand.patches' provided", indents=1)
 
-setup_default += format_line("reference:", "(opt) reference data sample with know redshifts", indents=1)
-setup_default += format_line("data:" , "data catalog file and column names", indents=2)
-setup_default += format_line("filepath: ...", "input file path", indents=2)
-setup_default += format_line("ra: ra", "right ascension in degrees", indents=2)
-setup_default += format_line("dec: dec", "declination in degrees", indents=2)
-setup_default += format_line("redshift: z", "redshift of objects (required)", indents=2)
-setup_default += format_line("patches: patch", "(opt) integer index for patch assignment, couting from 0...N-1", indents=2)
-setup_default += format_line("weight: weight", "(opt) object weight", indents=2)
-setup_default += format_line("cache: true", "(opt) whether to cache the file in the cache directory", indents=2)
-setup_default += format_line("rand: null", "random catalog for data sample, omit or repeat arguments from 'data' above", indents=2)
+level = 1
+setup_default += format_line("reference:", "(opt) reference data sample with know redshifts", indents=level)
+level += 1
+setup_default += format_line("data:" , "data catalog file and column names", indents=level)
+level += 1
+setup_default += format_line("filepath: ...", "input file path", indents=level)
+setup_default += format_line("ra: ra", "right ascension in degrees", indents=level)
+setup_default += format_line("dec: dec", "declination in degrees", indents=level)
+setup_default += format_line("redshift: z", "redshift of objects (required)", indents=level)
+setup_default += format_line("patches: patch", "(opt) integer index for patch assignment, couting from 0...N-1", indents=level)
+setup_default += format_line("weight: weight", "(opt) object weight", indents=level)
+setup_default += format_line("cache: true", "(opt) whether to cache the file in the cache directory", indents=level)
+level -= 1
+setup_default += format_line("rand: null", "random catalog for data sample, omit or repeat arguments from 'data' above", indents=level)
 
-setup_default += format_line("unknown:", "(opt) unknown data sample for which clustering redshifts are estimated, typically in tomographic redshift bins, see below", indents=1)
-setup_default += format_line("data:", "data catalog file and column names", indents=2)
+level = 1
+setup_default += format_line("unknown:", "(opt) unknown data sample for which clustering redshifts are estimated, typically in tomographic redshift bins, see below", indents=level)
+level += 1
+setup_default += format_line("data:", "data catalog file and column names", indents=level)
+level += 1
 setup_default += format_line("filepath:", "either a single file path (no tomographic bins) or a mapping of integer bin index to file path (as shown below)", indents=2)
-setup_default += format_line("1: ...", "bin 1", indents=3)
-setup_default += format_line("2: ...", "bin 2", indents=3)
-setup_default += format_line("ra: ra", "right ascension in degrees", indents=2)
-setup_default += format_line("dec: dec", "declination in degrees", indents=2)
-setup_default += format_line("redshift: z", "(opt) redshift of objects, if provided, enables computing the autocorrelation of the unknown sample", indents=2)
-setup_default += format_line("patches: patch", "(opt) integer index for patch assignment, couting from 0...N-1", indents=2)
-setup_default += format_line("weight: weight", "(opt) object weight", indents=2)
-setup_default += format_line("cache: true", "(opt) whether to cache the file in the cache directory", indents=2)
-setup_default += format_line("rand: null", "random catalog for data sample, omit or repeat arguments from 'data' above ('filepath' format must must match 'data' above)", indents=2)
+setup_default += format_line("1: ...", "bin 1", indents=level+1)
+setup_default += format_line("2: ...", "bin 2", indents=level+1)
+setup_default += format_line("ra: ra", "right ascension in degrees", indents=level)
+setup_default += format_line("dec: dec", "declination in degrees", indents=level)
+setup_default += format_line("redshift: z", "(opt) redshift of objects, if provided, enables computing the autocorrelation of the unknown sample", indents=level)
+setup_default += format_line("patches: patch", "(opt) integer index for patch assignment, couting from 0...N-1", indents=level)
+setup_default += format_line("weight: weight", "(opt) object weight", indents=level)
+setup_default += format_line("cache: true", "(opt) whether to cache the file in the cache directory", indents=level)
+level -= 1
+setup_default += format_line("rand: null", "random catalog for data sample, omit or repeat arguments from 'data' above ('filepath' format must must match 'data' above)", indents=level)
 
 # tasks
 setup_default += "\n"
