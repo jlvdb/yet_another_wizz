@@ -184,6 +184,9 @@ class _Commandline:
 
     def main(self) -> Any:
         args = self.parse_args()
+        if args.task is None:
+            self.print_usage()
+            return
         # create a logger and execute the task
         levels = {0: "warn", 1: "info", 2: "debug"}
         logger = init_logger(levels[args.verbose], plain=True)
