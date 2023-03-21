@@ -655,3 +655,5 @@ class ResamplingConfig(DictRepresentation):
 
 
 METHOD_OPTIONS = ResamplingConfig.implemented_methods
+"""Names of implemented resampling methods.
+"""

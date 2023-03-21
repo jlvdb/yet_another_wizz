@@ -1,4 +1,17 @@
-.. _estimators:
+yaw.estimators
+==============
 
-Correlation estimators
-======================
+.. currentmodule:: yaw.estimators
+
+
+.. rubric:: Classes
+
+.. autosummary::
+    :toctree: estimators
+    :template: custom-class-template.rst
+
+    CorrelationEstimator
+    PeeblesHauser
+    DavisPeebles
+    Hamilton
+    LandySzalay

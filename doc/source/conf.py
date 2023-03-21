@@ -25,11 +25,15 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
     "sphinx.ext.mathjax"
 ]
 
 templates_path = ["_templates"]
 exclude_patterns = []
+
+autodoc_inherit_docstrings = True
+autosummary_generate = True
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -41,17 +45,19 @@ html_css_files = ["_static/custom.css"]
 html_favicon = "_static/icon.ico"
 html_theme_options = {
     "github_url": "https://github.com/jlvdb/yet_another_wizz",
-    "collapse_navigation": False,
+    "collapse_navigation": True,
     "navigation_depth": 2,
     "show_nav_level": 2,
+    "show_toc_level": 2,
     "secondary_sidebar_items": ["page-toc", "edit-this-page"],
+    "primary_sidebar_end": ["indices.html"],
     "logo": {
         "image_light": "_static/logo-light-padded.svg",
         "image_dark": "_static/logo-dark-padded.svg",
    }
 }
 html_sidebars = {
-    "**": ["search-field.html", "sidebar-nav-bs.html", "indices.html"]
+    "**": ["search-field.html", "sidebar-nav-bs.html"]
 }
 html_context = {
     "default_mode": "auto",

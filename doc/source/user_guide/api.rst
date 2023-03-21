@@ -1,6 +1,5 @@
-
-Python API
-^^^^^^^^^^
+Python API tutorial
+===================
 
 First import the python package
 

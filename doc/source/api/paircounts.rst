@@ -1,11 +1,16 @@
-Inspecting pair counts 
-======================
+yaw.paircounts
+==============
 
-.. autoclass:: yaw.paircounts.PatchedTotal
-    :members:
+.. currentmodule:: yaw.paircounts
 
-.. autoclass:: yaw.paircounts.PatchedCount
-    :members:
 
-.. autoclass:: yaw.paircounts.PairCountResult
-    :members:
+.. rubric:: Classes
+
+.. autosummary::
+    :toctree: paircounts
+    :template: custom-class-template.rst
+
+    SampledData
+    PatchedTotal
+    PatchedCount
+    PairCountResult

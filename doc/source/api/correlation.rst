@@ -1,22 +1,26 @@
-Correlation measurements
-========================
+yaw.correlation
+===============
 
-.. autofunction:: yaw.crosscorrelate
+.. currentmodule:: yaw.correlation
 
-.. autofunction:: yaw.autocorrelate
 
-.. autoclass:: yaw.CorrelationFunction
-    :members:
-    :inherited-members:
+.. rubric:: Functions
 
-.. autoclass:: yaw.CorrelationData
-    :members:
-    :inherited-members:
+.. autosummary::
+    :toctree: correlation
 
-.. autoclass:: yaw.RedshiftData
-    :members:
-    :inherited-members:
+    crosscorrelate
+    autocorrelate
 
-.. autoclass:: yaw.HistogramData
-    :members:
-    :inherited-members:
+
+.. rubric:: Classes
+
+.. autosummary::
+    :toctree: correlation
+    :template: custom-class-template.rst
+
+    CorrelationFunction
+    CorrelationData
+    RedshiftData
+    HistogramData
+    SampledValue
