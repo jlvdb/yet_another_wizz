@@ -82,6 +82,28 @@ class Plotter:
         for ax in axes[:, 0]:
             ax.set_ylabel(ylabel, fontsize=self.label_fontsize)
 
+    def _track_lim(
+        self,
+        lims: tuple[float, float],
+        data: NDArray
+    ) -> tuple[float, float]:
+        y_min = np.nanmin(data)
+        y_max = np.nanmax(data)
+        return min(lims[0], y_min), max(lims[1], y_max)
+
+    def _ylim_with_lim(
+        self,
+        ax: Axis,
+        lims: tuple[float, float] | None,
+        margin: float = 0.15
+    ) -> None:
+        if lims is not None:
+            axlims = ax.get_ylim()
+            ymin = max(axlims[0], lims[0])
+            ymax = min(axlims[1], lims[1])
+            dy = ymax - ymin
+            ax.set_ylim(ymin - margin*dy, ymax + margin*dy)
+
     def auto_reference(self, title: str | None = None) -> Figure | None:
         if not self.project.get_state().has_w_ss_cf:
             logger.debug("skipping reference autocorrelation")
@@ -131,6 +153,7 @@ class Plotter:
         axes = np.atleast_2d(axes)
         true_dir = self.project.get_true_dir()
         nz_ts = dict()
+        ylims = None
         for (scale, tag), est_dir in self.project.iter_estimate():
             for ax, (bin, path) in zip(axes.flatten(), est_dir.iter_cross()):
                 # plot optional true redshift distribution
@@ -139,7 +162,10 @@ class Plotter:
                 else:
                     true_path = true_dir.get_unknown(bin)
                     if true_path.with_suffix(".dat").exists():
+                        if ylims is None:
+                            ylims = np.inf, -np.inf
                         nzt = RedshiftData.from_files(true_path).normalised()
+                        ylims = self._track_lim(ylims, nzt.data)
                         nzt.plot(error_bars=False, color="k", ax=ax)
                     else:
                         nzt = None
@@ -154,4 +180,6 @@ class Plotter:
             if title is not None:
                 fig.suptitle(title)
 
+        for ax in axes.flatten():
+            self._ylim_with_lim(ax, ylims)
         return fig
