@@ -1,14 +1,9 @@
-Welcome to yet_another_wizz's documentation!
-============================================
+Documentation of yet_another_wizz
+=================================
 
 .. toctree::
     :maxdepth: 2
     :caption: Contents:
 
-    getting_started
-    python_interface
-    commandline_interface
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+    user_guide
+    api

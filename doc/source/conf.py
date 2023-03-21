@@ -23,7 +23,9 @@ version = ".".join(release.split(".")[:2])
 
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.napoleon"
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.mathjax"
 ]
 
 templates_path = ["_templates"]
@@ -58,5 +60,5 @@ html_context = {
 # -- Build custom files ------------------------------------------------------
 from yaw.pipeline.default_setup import setup_default
 
-with open("default_setup.yaml", "w") as f:
+with open("user_guide/default_setup.yaml", "w") as f:
     f.write(setup_default)

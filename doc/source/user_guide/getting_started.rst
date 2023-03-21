@@ -1,4 +1,4 @@
 Getting started
 ===============
 
-pass
+.. include:: ../../../README.rst
