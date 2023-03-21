@@ -116,7 +116,7 @@ class Plotter:
             cf.plot(zero_line=True, label=label, ax=ax)
 
             ax.set_ylabel(r"$w_{\sf ss}$", fontsize=self.label_fontsize)
-            ax.legend()
+            ax.legend(prop=dict(size=8))
             self._decorate_xaxis(ax)
             despine(ax)
             if title is not None:
@@ -136,7 +136,7 @@ class Plotter:
                 cf = CorrelationData.from_files(path)
                 label = f"{scale_key_to_math(scale)} / {tag=}"
                 cf.plot(zero_line=True, label=label, ax=ax)
-                ax.legend(title=f"{bin=}")
+                ax.legend(title=f"{bin=}", prop=dict(size=8))
 
             self._decorate_subplots(axes, r"$w_{\sf pp}$")
             if title is not None:
@@ -174,7 +174,7 @@ class Plotter:
                 nz = RedshiftData.from_files(path).normalised(to=nzt)
                 label = f"{scale_key_to_math(scale)} / {tag=}"
                 nz.plot(zero_line=True, label=label, ax=ax)
-                ax.legend(title=f"{bin=}")
+                ax.legend(title=f"{bin=}", prop=dict(size=8))
 
             self._decorate_subplots(axes, r"$n_{\sf cc}$")
             if title is not None:
@@ -182,4 +182,5 @@ class Plotter:
 
         for ax in axes.flatten():
             self._ylim_with_lim(ax, ylims)
+            print(ax.get_ylim())
         return fig
