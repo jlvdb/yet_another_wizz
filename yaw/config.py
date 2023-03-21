@@ -231,14 +231,12 @@ class AutoBinningConfig(BaseBinningConfig):
                  "log(1+z)",
             default_text="(default: %(default)s)"))
     zmin: float = field(
-        default=DEFAULT.Configuration.binning.zmin,
         init=False,
         metadata=Parameter(
             type=float,
             help="lower redshift limit",
             default_text="(default: %(default)s)"))
     zmax: float = field(
-        default=DEFAULT.Configuration.binning.zmax,
         init=False,
         metadata=Parameter(
             type=float,

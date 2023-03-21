@@ -18,8 +18,6 @@ class Scales:
 
 class AutoBinning:
     method = "linear"
-    zmin = 0.01
-    zmax = 3.0
     zbin_num = 30
 
 
