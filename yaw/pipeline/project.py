@@ -96,7 +96,7 @@ def write_setup_file(
 def substitute_env_var(setup_dict: dict) -> dict:
     for key, value in setup_dict.items():
         if isinstance(value, str) and value.startswith("$"):
-            setup_dict[key] = os.environ[value]
+            setup_dict[key] = os.environ[value[1:]]
         elif isinstance(value, dict):
             setup_dict[key] = substitute_env_var(value)
     return setup_dict
