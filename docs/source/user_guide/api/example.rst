@@ -51,13 +51,12 @@ redshfit distribution and correct for the reference sample galaxy bias:
 
 >>> w_sp = yaw.crosscorrelate(config, reference, unknown, ref_rand=randoms)
 >>> w_ss = yaw.autocorrelate(config, reference, randoms, compute_rr=True)
+>>> w_ss
+CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=True, n_patches=32)
 
 By inspecting the result we can see that this produced a correlation function
 with the requestend binning and pair counts data-data, data-random and
 random-random:
-
->>> w_ss
-CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=False, rd=True, rr=False, n_patches=32)
 
 
 Getting the clustering redshifts
