@@ -12,3 +12,4 @@ Documentation of yet_another_wizz
 
     user_guide
     api
+    changes
