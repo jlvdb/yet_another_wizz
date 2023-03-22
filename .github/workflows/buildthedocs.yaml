@@ -1,4 +1,4 @@
-name: Docs
+name: build-the-docs
 on: [push, pull_request, workflow_dispatch]
 permissions:
     contents: write
@@ -20,5 +20,5 @@ jobs:
         with:
           publish_branch: master
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: _build/
+          publish_dir: docs/
           force_orphan: true
