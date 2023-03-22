@@ -32,3 +32,8 @@ Measure the cross-correlation redshfit estimate
 >>> w_sp = yaw.crosscorrelate(config, reference, unknown, unk_rand=randoms)
 >>> n_cc = yaw.RedshiftData.from_correlation_functions(w_sp, w_ss)
 
+
+.. _caching:
+
+Caching
+-------

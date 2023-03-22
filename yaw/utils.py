@@ -138,9 +138,7 @@ class PatchedQuantity(ABC):
 
     @abstractproperty
     def n_patches(self) -> int:
-        """int: Get the number of spatial patches, see also
-        :obj:`~yaw.catalogs.BaseCatalog`.
-        """
+        """Get the number of spatial patches."""
         pass
 
 

@@ -34,6 +34,7 @@ exclude_patterns = []
 
 autodoc_inherit_docstrings = True
 autosummary_generate = True
+autoclass_content = "both"
 
 
 # -- Options for HTML output -------------------------------------------------

@@ -713,10 +713,10 @@ def crosscorrelate(
 
     Keyword Args:
         ref_rand (:obj:`yaw.catalogs.BaseCatalog`, optional):
-            Optional random catalog for the reference sample, requires
-            redshifts configured.
+            Random catalog for the reference sample, requires redshifts
+            configured.
         unk_rand (:obj:`yaw.catalogs.BaseCatalog`, optional):
-            Optional random catalog for the unknown sample.
+            Random catalog for the unknown sample.
         linkage (:obj:`yaw.catalogs.PatchLinkage`, optional):
             Provide a linkage object that determines which spatial patches must
             be correlated given the measurement scales. Ensures consistency
