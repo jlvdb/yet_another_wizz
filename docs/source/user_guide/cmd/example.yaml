@@ -1,0 +1,52 @@
+# yet_another_wizz setup configuration
+
+# This section configures the correlation measurements and redshift
+# binning of the clustering redshift estimates.
+configuration:
+    binning:                # specify the redshift binning for the clustering redshifts
+        zmin: 0.07              # lower redshift limit
+        zmax: 1.42              # upper redshift limit
+    scales:                 # specify the correlation measurement scales
+        rmin: 100               # (list of) lower scale limit in kpc (pyhsical)
+        rmax: 1000              # (list of) upper scale limit in kpc (pyhsical)
+
+# This section defines the input data products and their meta data.
+# These can be FITS, PARQUET, CSV or FEATHER files.
+data:
+    backend: scipy          # (opt) name of the data catalog backend (scipy, treecorr)
+    n_patches: 32           # (opt) number of automatic spatial patches to use for input catalogs
+                            # below, provide only if no 'data/rand.patches' provided
+    reference:              # (opt) reference data sample with know redshifts
+        data:                   # data catalog file and column names
+            filepath: reference.fits # input file path
+            ra: ra                  # right ascension in degrees
+            dec: dec                # declination in degrees
+            redshift: z             # redshift of objects (required)
+        rand: null              # random catalog for data sample, omit or repeat arguments from
+                                # 'data' above
+            filepath: randoms.fits  # input file path
+            ra: ra                  # right ascension in degrees
+            dec: dec                # declination in degrees
+            redshift: z             # redshift of objects (required)
+
+    unknown:                # (opt) unknown data sample for which clustering redshifts are
+                            # estimated, typically in tomographic redshift bins, see below
+        data:                   # data catalog file and column names
+        filepath: unknown.fits  # either a single file path (no tomographic bins) or a mapping of
+                                # integer bin index to file path (as shown below)
+            ra: ra                  # right ascension in degrees
+            dec: dec                # declination in degrees
+
+# The section below is entirely optional and used to specify tasks to
+# execute when using the 'yaw run' command. The list is generated and
+# updated automatically when running 'yaw' subcommands. Tasks can be
+# provided as single list entry, e.g.
+#   - cross
+#   - zcc
+# to get a basic cluster redshift estimate or with the optional
+# parameters listed below (all values optional, defaults listed).
+tasks:
+  - cross                   # compute the crosscorrelation
+  - auto_ref                # compute the reference sample autocorrelation for bias mitigation
+  - zcc                     # compute clustering redshift estimates for the unknown data, task can
+  - plot                    # generate automatic check plots

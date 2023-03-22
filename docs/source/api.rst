@@ -11,13 +11,13 @@ This is a documentation of the most important parts of the yet_another_wizz
 .. toctree::
     :caption: Contents:
 
-    api/catalogs.rst
-    api/catalogs.scipy.rst
-    api/config.rst
-    api/coordinates.rst
-    api/correlation.rst
-    api/cosmology.rst
-    api/estimators.rst
-    api/paircounts.rst
-    api/randoms.rst
-    api/utils.rst
+    api/catalogs
+    api/catalogs.scipy
+    api/config
+    api/coordinates
+    api/correlation
+    api/cosmology
+    api/estimators
+    api/paircounts
+    api/randoms
+    api/utils

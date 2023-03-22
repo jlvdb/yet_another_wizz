@@ -8,7 +8,9 @@ command line interface and the underlying ``yaw`` :ref:`python package<api>`.
 
 .. toctree::
     :caption: Contents:
+    :includehidden:
 
     user_guide/getting_started
+    user_guide/features
     user_guide/cmd
     user_guide/api
