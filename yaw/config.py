@@ -330,7 +330,7 @@ class BackendConfig(DictRepresentation):
         default=DEFAULT.Backend.thread_num,
         metadata=Parameter(
             type=int,
-            help="threads for pair counting",
+            help="default number of threads to use",
             default_text="(default: all)"))
     # scipy
     crosspatch: bool = field(
@@ -344,7 +344,7 @@ class BackendConfig(DictRepresentation):
         default=DEFAULT.Backend.rbin_slop,
         metadata=Parameter(
             type=float,
-            help="treecorr 'rbin_slop' parameter",
+            help="TreeCorr 'rbin_slop' parameter",
             default_text="(default: %(default)s), without 'rweight' this just "
                          "a single radial bin, otherwise 'rbin_num'"))
 
@@ -373,6 +373,10 @@ class BackendConfig(DictRepresentation):
 
 @dataclass(frozen=True)
 class Configuration(DictRepresentation):
+    """The central configration for correlation measurements.
+
+    Construct with .create() method.
+    """
 
     scales: ScalesConfig
     binning: AutoBinningConfig | ManualBinningConfig
@@ -410,8 +414,8 @@ class Configuration(DictRepresentation):
         rweight: float | None = DEFAULT.Configuration.scales.rweight,
         rbin_num: int = DEFAULT.Configuration.scales.rbin_num,
         # AutoBinningConfig /  ManualBinningConfig
-        zmin: float | None = None,
-        zmax: float | None = None,
+        zmin: ArrayLike,
+        zmax: ArrayLike,
         zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
         method: str = DEFAULT.Configuration.binning.method,
         zbins: NDArray[np.float_] | None = None,
@@ -420,6 +424,48 @@ class Configuration(DictRepresentation):
         crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
         rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop
     ) -> Configuration:
+        """Create a new configuration object.
+
+        Keyword Args:
+            cosmology (optional):
+                Named astropy cosmology used to compute distances. For options
+                see :obj:`~yaw.cosmology.COSMOLOGY_OPTIONS`.
+            rmin (:obj:`ArrayLike`):
+                (List of) lower scale limit in kpc (pyhsical).
+            rmax (:obj:`ArrayLike`):
+                (List of) upper scale limit in kpc (pyhsical).
+            rweight (float, optional):
+                Weight galaxy pairs by their separation to power 'rweight'.
+            rbin_num (int, optional):
+                Number of bins in log r used (i.e. resolution) to compute
+                distance weights.
+            zmin (float):
+                Lower redshift limit.
+            zmax (float):
+                Upper redshift limit.
+            zbin_num (int, optional):
+                Number of redshift bins
+            method (str, optional):
+                Redshift binning method, 'logspace' means equal size in
+                log(1+z).
+            zbins (:obj:`NDArray`, optional):
+                Manually define redshift bin edges.
+            thread_num (int, optional):
+                Default number of threads to use.
+            crosspatch (bool, optional):
+                whether to count pairs across patch boundaries (scipy backend
+                only)
+            rbin_slop (float, optional):
+                TreeCorr 'rbin_slop' parameter
+    
+        Returns:
+            :obj:`Configuration`
+        
+        .. Note::
+            If provided, ``zbins`` takes precedence over ``zmin``, ``zmax``,
+            and ``zbin_num``; ``method`` is automatically set to
+            ``"manual"``.
+        """
         cosmology = parse_cosmology(cosmology)
         scales = ScalesConfig(
             rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)

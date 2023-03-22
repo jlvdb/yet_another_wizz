@@ -6,3 +6,4 @@ from yaw.catalogs.linkage import PatchLinkage
 from . import scipy, treecorr
 
 BACKEND_OPTIONS = tuple(sorted(BaseCatalog.backends.keys()))
+"""Names of implemented backends."""

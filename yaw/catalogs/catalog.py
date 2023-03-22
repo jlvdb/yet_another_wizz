@@ -60,7 +60,8 @@ class BaseCatalog(Sequence, PatchedQuantity):
         cache_directory: str | None = None,
         progress: bool = False
     ) -> None:
-        """
+        """Construct a catalog from a data frame.
+
         Args:
             data (:obj:`pandas.Dataframe`):
                 Holds the catalog data.
@@ -160,7 +161,7 @@ class BaseCatalog(Sequence, PatchedQuantity):
                 Display a progress bar while creating patches.
 
         Returns:
-            BaseCatalog
+            :obj:`BaseCatalog`
 
         .. Note::
             Currently, the following file extensions are recognised
@@ -219,7 +220,7 @@ class BaseCatalog(Sequence, PatchedQuantity):
                 Display a progress bar while restoring patches.
 
         Returns:
-            BaseCatalog
+            :obj:`BaseCatalog`
         """
         cls.logger.info(f"restoring from cache directory '{cache_directory}'")
 

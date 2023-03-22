@@ -361,7 +361,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         rr (:obj:`~yaw.paircounts.PairCountResult`, optional):
             Pair counts for a random-random correlation measurement.
 
-    Note:
+    .. Note::
         DD is always required, but DR, RD, and RR are optional as long as at
         least one is provided.
     """
@@ -731,7 +731,7 @@ def crosscorrelate(
         - :obj:`CorrelationFunction`: If running a single correlation scale.
         - :obj:`dict`: Otherwise a dictionary of correlation functions.
 
-    Note:
+    .. Note::
         Both random catalogs are optional, but one is required. This determines
         which crosscorrelation pairs are counted. If both randoms are provided,
         data-data (DD), data-random (DR), random-data (RD) and random-random
@@ -785,6 +785,8 @@ def crosscorrelate(
 
 @dataclass(frozen=True, repr=False)
 class RedshiftData(CorrelationData):
+    """Container object for redshift estimates.
+    """
 
     @classmethod
     def from_files(cls, path_prefix: TypePathStr) -> RedshiftData:
@@ -798,6 +800,18 @@ class RedshiftData(CorrelationData):
         unk_data: CorrelationData | None = None,
         info: str | None = None
     ) -> RedshiftData:
+        """Compute redshift estimate from readily sampled function data.
+
+        Args:
+            cross_corr (:obj:`CorrelationData`):
+                Data from the sampled cross-correlation function.
+            ref_corr (:obj:`CorrelationData`, optional):
+                Data from the sampled reference sample autocorrelation function.
+                Used to mitigate reference bias evolution.
+            unk_corr (:obj:`CorrelationData`, optional):
+                Data from the sampled unknown sample autocorrelation function.
+                Used to mitigate unknown bias evolution.
+        """
         logger.debug(
             "computing clustering redshifts from correlation function samples")
         w_sp_data = cross_data.data
@@ -860,6 +874,18 @@ class RedshiftData(CorrelationData):
         config: ResamplingConfig | None = None,
         info: str | None = None
     ) -> RedshiftData:
+        """Sample correlation functions to compute redshift estimate.
+
+        Args:
+            cross_corr (:obj:`CorrelationFunction`):
+                The measured cross-correlation function.
+            ref_corr (:obj:`CorrelationFunction`, optional):
+                The measured reference sample autocorrelation function. Used to
+                mitigate reference bias evolution.
+            unk_corr (:obj:`CorrelationFunction`, optional):
+                The measured unknown sample autocorrelation function. Used to
+                mitigate unknown bias evolution.
+        """
         if config is None:
             config = ResamplingConfig()
         with TimedLog(
