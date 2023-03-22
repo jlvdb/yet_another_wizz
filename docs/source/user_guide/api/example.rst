@@ -87,7 +87,7 @@ Finally we can save those outputs to disk and reload them as needed, e.g.:
 
 >>> w_ss.to_file("w_ss.hdf5")
 >>> w_ss.from_file("w_sp.hdf5")
-CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=False, rd=True, rr=False, n_patches=32)
+CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=True, n_patches=32)
 
 >>> n_cc.to_files("n_cc")
 >>> n_cc.from_files("n_cc")
