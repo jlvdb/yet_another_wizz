@@ -21,6 +21,7 @@ version = ".".join(release.split(".")[:2])
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
+master_doc = "index"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
