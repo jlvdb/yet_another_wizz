@@ -51,11 +51,12 @@ html_theme_options = {
     "navigation_depth": 2,
     "show_nav_level": 2,
     "show_toc_level": 2,
+    "navbar_align": "content",
     "secondary_sidebar_items": ["page-toc", "edit-this-page"],
     "primary_sidebar_end": ["indices.html"],
     "logo": {
-        "image_light": "_static/logo-light-padded.svg",
-        "image_dark": "_static/logo-dark-padded.svg",
+        "image_light": "_static/logo-light.svg",
+        "image_dark": "_static/logo-dark.svg",
    }
 }
 html_sidebars = {

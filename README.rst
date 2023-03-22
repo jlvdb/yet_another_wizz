@@ -16,6 +16,10 @@ measurement of the correlation amplitude, introduced by Schmidt et al. (2013,
     (`arXiv:2007.01846 <https://arxiv.org/abs/2007.01846>`_)
 
 
+.. Warning::
+    This is still a beta release. Future version may include breaking changes.
+
+
 Features
 --------
 
