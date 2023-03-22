@@ -1,7 +1,0 @@
-numpy
-pyarrow
-pandas
-scipy
-astropy
-matplotlib
-Nz_Fitting @ git+https://github.com/KiDS-WL/Nz_Fitting.git
