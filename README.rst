@@ -25,10 +25,10 @@ Installation
 
 The yet_another_wizz package can be installed directly with pip::
 
-    pip install yet_another_wizz
+    pip install "yet_another_wizz @ git+https://github.com/jlvdb/yet_another_wizz.git"
 
 This will install the python package ``yaw``, as well as the ``yaw`` executable
-command line tool.
+command line tool. A PyPI verion will follow soon.
 
 
 Usage
