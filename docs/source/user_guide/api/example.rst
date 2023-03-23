@@ -5,7 +5,7 @@ Quick start
 
 We start by providing a *minimal working example* using the python API. This
 example follows exactly the same schema as the one given for the
-:ref:`command line tools<quickcmd>`
+:ref:`command line tools<quickcmd>`.
 
 
 Loading the data

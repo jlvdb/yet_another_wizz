@@ -18,4 +18,3 @@ explaining some of most import concepts in greater detail.
     :hidden:
 
     api/example
-    api/concepts

@@ -97,7 +97,7 @@ setup_default += format_line("dec: dec", "declination in degrees", indents=level
 setup_default += format_line("redshift: z", "redshift of objects (required)", indents=level)
 setup_default += format_line("patches: patch", "(opt) integer index for patch assignment, couting from 0...N-1", indents=level)
 setup_default += format_line("weight: weight", "(opt) object weight", indents=level)
-setup_default += format_line("cache: true", "(opt) whether to cache the file in the cache directory", indents=level)
+setup_default += format_line("cache: false", "(opt) whether to cache the file in the cache directory", indents=level)
 level -= 1
 setup_default += format_line("rand: null", "random catalog for data sample, omit or repeat arguments from 'data' above", indents=level)
 
@@ -114,7 +114,7 @@ setup_default += format_line("dec: dec", "declination in degrees", indents=level
 setup_default += format_line("redshift: z", "(opt) redshift of objects, if provided, enables computing the autocorrelation of the unknown sample", indents=level)
 setup_default += format_line("patches: patch", "(opt) integer index for patch assignment, couting from 0...N-1", indents=level)
 setup_default += format_line("weight: weight", "(opt) object weight", indents=level)
-setup_default += format_line("cache: true", "(opt) whether to cache the file in the cache directory", indents=level)
+setup_default += format_line("cache: false", "(opt) whether to cache the file in the cache directory", indents=level)
 level -= 1
 setup_default += format_line("rand: null", "random catalog for data sample, omit or repeat arguments from 'data' above ('filepath' format must must match 'data' above)", indents=level)
 
