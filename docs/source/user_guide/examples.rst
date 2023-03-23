@@ -1,3 +1,5 @@
+.. _theexample:
+
 Usage example
 =============
 

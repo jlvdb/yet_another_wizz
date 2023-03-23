@@ -1,8 +1,8 @@
 Python API tutorial
 ===================
 
-The most flexible way to use yet_another_wizz is to make use of its python API.
-The python package can be imported with:
+The most flexible way to use `yet_another_wizz` is to make use of its python
+API. The python package can be imported with:
 
 >>> import yaw
 

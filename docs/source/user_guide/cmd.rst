@@ -1,9 +1,9 @@
 Command line tools
 ==================
 
-The yet_another_wizz package can be used from a single command line tool called
-``yaw``. This tool provides subcommands for every major task. A first overview
-of its features can be obtained from the built-in help tool:
+The `yet_another_wizz` package can be used from a single command line tool
+called ``yaw``. This tool provides subcommands for every major task. A first
+overview of its features can be obtained from the built-in help tool:
 
 .. code-block:: console
 

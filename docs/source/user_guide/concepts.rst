@@ -1,7 +1,7 @@
 Concepts
 ========
 
-The two most important design concepts of yet_another_wizz are:
+The two most important design concepts of `yet_another_wizz` are:
 
 - spatial regions, called **patches** and
 - disk **caching**.
