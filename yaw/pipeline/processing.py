@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.config import ResamplingConfig
@@ -25,7 +25,7 @@ class NoCountsError(Exception):
     pass
 
 
-_Tbc = tuple[BaseCatalog, BaseCatalog | None]
+_Tbc = tuple[BaseCatalog, Union[BaseCatalog, None]]
 _Tcf = dict[str, CorrelationFunction]
 _Tcd = dict[str, CorrelationData]
 
