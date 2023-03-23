@@ -16,5 +16,3 @@ explaining some of most import concepts in greater detail.
 
 .. toctree::
     :hidden:
-
-    api/example

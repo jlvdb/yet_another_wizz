@@ -1,3 +1,5 @@
+.. _yaw_merge:
+
 Merging project directories
 ---------------------------
 

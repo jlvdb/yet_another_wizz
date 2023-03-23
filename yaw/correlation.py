@@ -420,7 +420,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         
         Returns:
             dict: Mapping from correlation estimator name abbreviation to
-            correlation function class, see :ref:`estimators`.
+            correlation function class.
         """
         # figure out which of dd, dr, ... are not None
         available = set()
@@ -499,9 +499,9 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         
         Keyword Args:
             estimator (str, optional):
-                The name abbreviation for the correlation estimator to use, see
-                :ref:`estimators`. Defaults to Landy-Szalay if RR is available,
-                otherwise to Davis-Peebles.
+                The name abbreviation for the correlation estimator to use.
+                Defaults to Landy-Szalay if RR is available, otherwise to
+                Davis-Peebles.
             info (str, optional):
                 Descriptive text passed on to the output :obj:`CorrelationData`
                 object.

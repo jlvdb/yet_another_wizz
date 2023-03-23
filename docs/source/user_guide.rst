@@ -3,8 +3,9 @@
 User guide
 ==========
 
-This guide provides an overview about the main concepts and features of the
-command line interface and the underlying ``yaw`` :ref:`python package<api>`.
+This guide provides an overview about the project. It explains the installation,
+features and main concepts, and gives an introduction to using the command line
+interface and the underlying ``yaw`` :ref:`python package<api>` with examples.
 
 .. toctree::
     :caption: Contents:
@@ -12,6 +13,7 @@ command line interface and the underlying ``yaw`` :ref:`python package<api>`.
 
     user_guide/getting_started
     user_guide/features
+    user_guide/examples
     user_guide/cmd
     user_guide/api
     user_guide/concepts

@@ -1,3 +1,5 @@
+.. _yaw_init:
+
 Starting a new project
 ----------------------
 

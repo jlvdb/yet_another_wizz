@@ -1,25 +1,29 @@
 .. _quickapi:
 
-Quick start
------------
+Using the API
+-------------
 
-We start by providing a *minimal working example* using the python API. This
-example follows exactly the same schema as the one given for the
-:ref:`command line tools<quickcmd>`.
+The third and most flexible way to use yet_another_wizz is through its python
+API. Here we follow exactly the :ref:`previous example<quickcmd>` and produce
+the same clustering redshift estimate.
+
+The first step is to import the python package:
+
+>>> import yaw
 
 
 Loading the data
 ^^^^^^^^^^^^^^^^
 
 All input data must be loaded as data catalogs, which can be done through the
-:obj:`yaw.NewCatalog` factory class:
+:class:`~yaw.catalogs.NewCatalog` factory class:
 
->>> factory = yaw.NewCatalog(backend="scipy")
+>>> factory = yaw.NewCatalog()
 
-Next we load the reference sample. We want to split the data ``32`` spatial
-patches that allow us later to get uncertainties for our clustering redshift
-measurements. We can create these patches automatically with a k-means
-clustering algorithm:
+Next we load the reference sample. We want to split the data 32
+:ref:`spatial patches<patches>` that allow us later to get uncertainties for our
+clustering redshift measurements. By default these are generated automatically
+with a k-means clustering algorithm when passing an integer to ``patches``:
 
 >>> reference = factory.from_file(
 ...     "reference.fits", ra="ra", dec="dec", redshift="z", patches=32)
@@ -39,31 +43,35 @@ catalog using the ``patches`` parameter:
 Measuring correlations
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Next we construct a central configuration object that sets the minimal required
-parameters, the physical scales (in kpc)and the redshift binning that we want to
-use for the correlation measurements:
+Next we construct a central :class:`~yaw.config.Configuration` object that sets
+the minimal required parameters, the physical scales (in kpc)and the redshift
+binning that we want to use for the correlation measurements:
 
 >>> config = yaw.Configuration.create(
 ...     rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
 
-Then we measure the cross- and autocorrelation functions to estimate the unknown
-redshfit distribution and correct for the reference sample galaxy bias:
+Then we measure the correlation amplitudes using the
+:func:`~yaw.correlation.crosscorrelate` and
+:func:`~yaw.correlation.autocorrelate` functions. The latter allows to correct
+for the reference sample galaxy bias:
 
 >>> w_sp = yaw.crosscorrelate(config, reference, unknown, ref_rand=randoms)
 >>> w_ss = yaw.autocorrelate(config, reference, randoms, compute_rr=True)
 >>> w_ss
-CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=True, n_patches=32)
+CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False,
+rr=True, n_patches=32)
 
-By inspecting the result we can see that this produced a correlation function
-with the requestend binning and pair counts data-data, data-random and
-random-random:
+By inspecting the result we can see that this produced a
+:class:`~yaw.correlation.CorrelationFunction` object with the desired binning
+and pair counts data-data, data-random and random-random:
 
 
 Getting the clustering redshifts
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Finally we can obtain our reference-sample-bias corrected clustering redshfit
-estimate with a single line using the :obj:`yaw.RedshiftData` container:
+estimate with a single line using the :class:`~yaw.correlation.RedshiftData`
+container:
 
 >>> n_cc = yaw.RedshiftData.from_correlation_functions(w_sp, w_ss)
 >>> n_cc

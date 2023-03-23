@@ -22,7 +22,6 @@ All these subcommands have in common that they operate
 .. toctree::
     :hidden:
 
-    cmd/example
     cmd/init
     cmd/scripts
     cmd/merging

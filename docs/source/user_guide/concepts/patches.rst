@@ -1,3 +1,5 @@
+.. _patches:
+
 Patches
 ^^^^^^^
 

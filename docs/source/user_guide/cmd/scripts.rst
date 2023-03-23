@@ -1,6 +1,8 @@
 Classical scripting
 -------------------
 
+.. _yaw_cross:
+
 yaw cross
 ^^^^^^^^^
 
@@ -11,6 +13,8 @@ yaw cross
 .. literalinclude:: yaw_cross_help.txt
     :language: none
 
+
+.. _yaw_auto:
 
 yaw auto
 ^^^^^^^^
@@ -23,6 +27,8 @@ yaw auto
     :language: none
 
 
+.. _yaw_ztrue:
+
 yaw ztrue
 ^^^^^^^^^
 
@@ -33,6 +39,8 @@ yaw ztrue
 .. literalinclude:: yaw_ztrue_help.txt
     :language: none
 
+
+.. _yaw_cache:
 
 yaw cache
 ^^^^^^^^^
@@ -45,6 +53,8 @@ yaw cache
     :language: none
 
 
+.. _yaw_zcc:
+
 yaw zcc
 ^^^^^^^
 
@@ -54,6 +64,9 @@ yaw zcc
 
 .. literalinclude:: yaw_zcc_help.txt
     :language: none
+
+
+.. _yaw_plot:
 
 yaw plot
 ^^^^^^^^

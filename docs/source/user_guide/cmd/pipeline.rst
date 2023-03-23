@@ -1,3 +1,5 @@
+.. _yaw_run:
+
 Batch processing
 ----------------
 
