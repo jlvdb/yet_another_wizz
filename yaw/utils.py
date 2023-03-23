@@ -8,7 +8,7 @@ from dataclasses import MISSING, Field, asdict, dataclass, field, fields
 from datetime import timedelta
 from pathlib import Path
 from timeit import default_timer
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, TypeVar, Union
 
 import h5py
 import numpy as np
@@ -21,7 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import IntervalIndex
 
 
-TypePathStr = Path | str
+TypePathStr = Union[Path, str]
 
 
 def array_equal(arr1: NDArray, arr2: NDArray) -> bool:
