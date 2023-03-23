@@ -182,5 +182,4 @@ class Plotter:
 
         for ax in axes.flatten():
             self._ylim_with_lim(ax, ylims)
-            print(ax.get_ylim())
         return fig
