@@ -1,7 +1,7 @@
 Documentation of `yet_another_wizz`
 ===================================
 
-.. Warning::
+.. Danger::
     This is still a beta release. Future versions may include breaking changes.
 
 `yet_another_wizz` is an open source python package to efficiently compute
