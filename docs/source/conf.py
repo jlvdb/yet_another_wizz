@@ -54,15 +54,15 @@ html_theme_options = {
     "show_nav_level": 2,
     "show_toc_level": 2,
     "navbar_align": "content",
-    "secondary_sidebar_items": ["page-toc", "edit-this-page"],
-    "primary_sidebar_end": ["indices.html"],
+    "secondary_sidebar_items": ["page-toc"],
     "logo": {
         "image_light": "_static/logo-light.svg",
         "image_dark": "_static/logo-dark.svg",
    }
 }
 html_sidebars = {
-    "**": ["search-field.html", "sidebar-nav-bs.html"]
+    "**": [
+        "search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
 }
 html_context = {
     "default_mode": "auto",
