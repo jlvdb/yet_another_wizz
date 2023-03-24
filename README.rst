@@ -51,3 +51,18 @@ Reporting bugs and requesting features
 For bug reports or requesting new features, please use the github issue page:
 
 https://github.com/jlvdb/yet_another_wizz/issues
+
+    
+**Maintainers:**
+
+- Jan Luca van den Busch
+  (*author*, Ruhr-Universität Bochum, Astronomisches Institut)
+
+
+Acknowledgements
+----------------
+
+Jan Luca van den Busch acknowledges support from the European Research Council
+under grant numbers 770935. The authors also thank Hendrik Hildebrandt,
+Benjamin Joachimi, Angus H. Wright, and Chris Blake for vital feedback and
+support throughout the development of this software.

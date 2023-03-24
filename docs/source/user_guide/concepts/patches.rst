@@ -1,7 +1,7 @@
 .. _patches:
 
-Patches
-^^^^^^^
+Spatial patches
+^^^^^^^^^^^^^^^
 
 Spatial patches are used to get uncertainty estimates using jackknife or
 bootstrap resampling. Furthermore, they allow to parallelise the correlation
