@@ -9,7 +9,7 @@ overview of its features can be obtained from the built-in help tool:
 
     yaw --help
 
-.. literalinclude:: yaw_help.txt
+.. literalinclude:: cmd/yaw_help_.txt
     :language: none
 
 

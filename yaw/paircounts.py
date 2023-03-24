@@ -37,6 +37,27 @@ TypeSlice: TypeAlias = Union[slice, int, None]
 
 @dataclass(frozen=True, repr=False)
 class SampledData(BinnedQuantity):
+    """Container for data and resampled data with redshift binning.
+
+    Contains the redshift binning, data vector, and resampled data vector (e.g.
+    jackknife or bootstrap samples). The resampled values are used to compute
+    error estimates and covariance/correlation matrices.
+
+    Args:
+        binning (:obj:`pandas.IntervalIndex`):
+            The redshift bin edges used for this correlation function.
+        data (:obj:`NDArray`):
+            The correlation function values.
+        samples (:obj:`NDArray`):
+            The resampled correlation function values.
+        method (str):
+            The resampling method used, see :class:`~yaw.ResamplingConfig` for
+            available options.
+
+    Attributes:
+        covariance (:obj:`NDArray`):
+            Covariance matrix automatically computed from the resampled values.
+    """
 
     binning: IntervalIndex
     data: NDArray

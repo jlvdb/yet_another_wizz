@@ -7,5 +7,5 @@ Starting a new project
 
     yaw init --help
 
-.. literalinclude:: yaw_init_help.txt
+.. literalinclude:: yaw_help_init.txt
     :language: none

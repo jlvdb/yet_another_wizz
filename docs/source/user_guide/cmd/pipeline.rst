@@ -8,5 +8,5 @@ Batch processing
 
     yaw run --help
 
-.. literalinclude:: yaw_run_help.txt
+.. literalinclude:: yaw_help_run.txt
     :language: none

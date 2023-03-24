@@ -48,7 +48,8 @@ and :meth:`NewCatalog.from_dataframe<yaw.catalogs.NewCatalog.from_dataframe>`.
     :meth:`load()<yaw.catalogs.BaseCatalog.load>` method is called.
 
 Catalogs can also be restored from a cache directory using the
-:meth:`NewCatalog.from_cache<yaw.catalogs.NewCatalog.from_cache>` method.
+:meth:`NewCatalog.from_cache<yaw.catalogs.NewCatalog.from_cache>` method, since
+the cache directory is persistent if not deleted.
 
 .. Warning::
 

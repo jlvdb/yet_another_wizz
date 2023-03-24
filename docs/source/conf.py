@@ -8,7 +8,7 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath(".."))
+sys.path.insert(0, os.path.abspath("../.."))
 import yaw
 
 project = "yet_another_wizz"
@@ -69,13 +69,19 @@ html_context = {
 }
 
 # -- Build custom files ------------------------------------------------------
-from yaw.pipeline.default_setup import setup_default
 
-with open("user_guide/cmd/default_setup.yaml", "w") as f:
-    f.write(setup_default)
+path = "user_guide/cmd/default_setup.yaml"
+if not os.path.exists(path):
+    print(f"generating '{path}'")
+    from yaw.pipeline.default_setup import setup_default
 
-os.system("yaw --help > user_guide/yaw_help.txt")
+    with open(path, "w") as f:
+        f.write(setup_default)
+
 for sub in (
-    "init", "cross", "auto", "ztrue", "cache", "merge", "zcc", "plot", "run"
+    "", "init", "cross", "auto", "ztrue", "cache", "merge", "zcc", "plot", "run"
 ):
-    os.system(f"yaw {sub} --help > user_guide/cmd/yaw_{sub}_help.txt")
+    path = f"user_guide/cmd/yaw_help_{sub}.txt"
+    if not os.path.exists(path):
+        print(f"generating '{path}'")
+        os.system(f"yaw {sub} --help > {path}")

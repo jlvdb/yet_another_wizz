@@ -10,7 +10,7 @@ yaw cross
 
     yaw cross --help
 
-.. literalinclude:: yaw_cross_help.txt
+.. literalinclude:: yaw_help_cross.txt
     :language: none
 
 
@@ -23,7 +23,7 @@ yaw auto
 
     yaw auto --help
 
-.. literalinclude:: yaw_auto_help.txt
+.. literalinclude:: yaw_help_auto.txt
     :language: none
 
 
@@ -36,7 +36,7 @@ yaw ztrue
 
     yaw ztrue --help
 
-.. literalinclude:: yaw_ztrue_help.txt
+.. literalinclude:: yaw_help_ztrue.txt
     :language: none
 
 
@@ -49,7 +49,7 @@ yaw cache
 
     yaw cache --help
 
-.. literalinclude:: yaw_cache_help.txt
+.. literalinclude:: yaw_help_cache.txt
     :language: none
 
 
@@ -62,7 +62,7 @@ yaw zcc
 
     yaw zcc --help
 
-.. literalinclude:: yaw_zcc_help.txt
+.. literalinclude:: yaw_help_zcc.txt
     :language: none
 
 
@@ -75,5 +75,5 @@ yaw plot
 
     yaw plot --help
 
-.. literalinclude:: yaw_plot_help.txt
+.. literalinclude:: yaw_help_plot.txt
     :language: none

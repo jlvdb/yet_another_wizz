@@ -7,5 +7,5 @@ Merging project directories
 
     yaw merge --help
 
-.. literalinclude:: yaw_merge_help.txt
+.. literalinclude:: yaw_help_merge.txt
     :language: none
