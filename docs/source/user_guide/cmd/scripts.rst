@@ -1,16 +1,18 @@
 Classical scripting
 -------------------
 
+
+.. Note::
+
+    This is a stub, more content coming soon.
+
 .. _yaw_cross:
 
 yaw cross
 ^^^^^^^^^
 
-.. code-block:: console
-
-    yaw cross --help
-
 .. literalinclude:: yaw_help_cross.txt
+    :caption: ``$ yaw cross --help``
     :language: none
 
 
@@ -19,11 +21,8 @@ yaw cross
 yaw auto
 ^^^^^^^^
 
-.. code-block:: console
-
-    yaw auto --help
-
 .. literalinclude:: yaw_help_auto.txt
+    :caption: ``$ yaw auto --help``
     :language: none
 
 
@@ -32,11 +31,8 @@ yaw auto
 yaw ztrue
 ^^^^^^^^^
 
-.. code-block:: console
-
-    yaw ztrue --help
-
 .. literalinclude:: yaw_help_ztrue.txt
+    :caption: ``$ yaw ztrue --help``
     :language: none
 
 
@@ -45,11 +41,8 @@ yaw ztrue
 yaw cache
 ^^^^^^^^^
 
-.. code-block:: console
-
-    yaw cache --help
-
 .. literalinclude:: yaw_help_cache.txt
+    :caption: ``$ yaw cache --help``
     :language: none
 
 
@@ -58,11 +51,8 @@ yaw cache
 yaw zcc
 ^^^^^^^
 
-.. code-block:: console
-
-    yaw zcc --help
-
 .. literalinclude:: yaw_help_zcc.txt
+    :caption: ``$ yaw zcc --help``
     :language: none
 
 
@@ -71,9 +61,6 @@ yaw zcc
 yaw plot
 ^^^^^^^^
 
-.. code-block:: console
-
-    yaw plot --help
-
 .. literalinclude:: yaw_help_plot.txt
+    :caption: ``$ yaw plot --help``
     :language: none

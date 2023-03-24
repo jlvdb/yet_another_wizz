@@ -16,3 +16,11 @@ explaining some of most import concepts in greater detail.
 
 .. toctree::
     :hidden:
+
+    api/catalogs
+    api/coordinates
+    api/conifg
+    api/cosmology
+    api/correlation
+    api/estimators
+    api/redshifts

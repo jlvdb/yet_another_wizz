@@ -4,9 +4,10 @@ Batch processing
 ----------------
 
 
-.. code-block:: console
+.. Note::
 
-    yaw run --help
+    This is a stub, more content coming soon.
 
 .. literalinclude:: yaw_help_run.txt
+    :caption: ``$ yaw run --help``
     :language: none

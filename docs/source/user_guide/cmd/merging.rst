@@ -3,9 +3,11 @@
 Merging project directories
 ---------------------------
 
-.. code-block:: console
 
-    yaw merge --help
+.. Note::
+
+    This is a stub, more content coming soon.
 
 .. literalinclude:: yaw_help_merge.txt
+    :caption: ``$ yaw merge --help``
     :language: none

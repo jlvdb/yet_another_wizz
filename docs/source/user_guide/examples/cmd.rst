@@ -3,8 +3,9 @@
 Using the command tools
 -----------------------
 
-The command line tools operate on a single, unified output directory, in which
-configuration, input and output data are organised automatically.
+The command line tools operate on a single, unified
+:ref:`output directory<projdir>`, in which configuration, input and output data
+are organised automatically.
 
 
 Creating a new project
@@ -90,14 +91,14 @@ most important ones are:
 
     output/
     ├─ estimate/
-    |  ├─ auto_reference.png
-    |  ├─ kpc100t1000/
-    |  |  ├─ fid/
-    |  |     ├─ auto_reference.dat
-    |  |     ├─ nz_cc_0.dat
-    |  ├─ nz_estimate.png
-    ├─ setup.yaml
+    │  ├─ kpc100t1000/
+    │  │  └─ fid/
+    │  │     ├─ auto_reference.dat
+    │  │     └─ nz_cc_0.dat
+    │  ├─ auto_reference.png
+    │  └─ nz_estimate.png
     ├─ setup.log
+    └─ setup.yaml
 
 The first file is a YAML configuration file which records all configuration,
 inputs and tasks applied, which :ref:`makes this run reproducable<yaw_run>`.

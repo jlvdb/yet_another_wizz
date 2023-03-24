@@ -3,9 +3,11 @@
 Starting a new project
 ----------------------
 
-.. code-block:: console
 
-    yaw init --help
+.. Note::
+
+    This is a stub, more content coming soon.
 
 .. literalinclude:: yaw_help_init.txt
+    :caption: ``$ yaw init --help``
     :language: none
