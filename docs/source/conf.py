@@ -58,7 +58,9 @@ html_theme_options = {
     "logo": {
         "image_light": "_static/logo-light.svg",
         "image_dark": "_static/logo-dark.svg",
-   }
+    },
+    "pygment_light_style": "xcode",
+    "pygment_dark_style": "github-dark"
 }
 html_sidebars = {
     "**": [
