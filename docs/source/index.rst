@@ -19,14 +19,20 @@ cross-correlation redshifts, also know as clustering redshifts.
     .. grid-item-card:: The new one
         :link: starting
         :link-type: ref
+        :text-align: center
 
-        :octicon:`milestone;3em` Getting started
+        :octicon:`milestone;3em`
+        
+        Getting started
 
     .. grid-item-card:: The impatient
         :link: theexample
         :link-type: ref
+        :text-align: center
 
-        :octicon:`rocket;3em` Usage examples
+        :octicon:`rocket;3em`
+        
+        Usage examples
 
 
 .. grid::
@@ -34,14 +40,20 @@ cross-correlation redshifts, also know as clustering redshifts.
     .. grid-item-card:: The thorough
         :link: guide
         :link-type: ref
+        :text-align: center
 
-        :octicon:`book;3em`   User guide
+        :octicon:`book;3em`
+        
+        User guide
 
     .. grid-item-card:: The detail oriented
         :link: api
         :link-type: ref
+        :text-align: center
 
-        :octicon:`codescan;3em` API reference
+        :octicon:`codescan;3em`
+        
+        API reference
 
 
 .. toctree::
