@@ -3,7 +3,7 @@
 API reference
 =============
 
-This is a documentation of the most important parts of the `yet_another_wizz`
+This is a documentation of the most important parts of the *yet_another_wizz*
 (``yaw``) python API. For a more general introduction with examples refer to the
 :ref:`user guide<guide>`.
 

@@ -1,10 +1,10 @@
-Documentation of `yet_another_wizz`
+Documentation of *yet_another_wizz*
 ===================================
 
 .. Danger::
     This is still a beta release. Future versions may include breaking changes.
 
-`yet_another_wizz` is an open source python package to efficiently compute
+*yet_another_wizz* is an open source python package to efficiently compute
 cross-correlation redshifts, also know as clustering redshifts.
 
 

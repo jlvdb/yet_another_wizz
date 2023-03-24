@@ -1,4 +1,8 @@
-yet_another_wizz is a python package to efficiently compute cross-correlation
+yet_another_wizz
+================
+
+
+*yet_another_wizz* is a python package to efficiently compute cross-correlation
 redshifts, also know as clustering redshifts and is hosted on github:
 
 - code: https://github.com/jlvdb/yet_another_wizz.git

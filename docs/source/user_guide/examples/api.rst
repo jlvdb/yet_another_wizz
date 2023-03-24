@@ -3,7 +3,7 @@
 Using the API
 -------------
 
-The third and most flexible way to use `yet_another_wizz` is through its python
+The third and most flexible way to use *yet_another_wizz* is through its python
 API. Here we follow exactly the :ref:`previous example<quickcmd>` and produce
 the same clustering redshift estimate.
 

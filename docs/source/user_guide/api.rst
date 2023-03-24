@@ -1,7 +1,7 @@
 Python API tutorial
 ===================
 
-The most flexible way to use `yet_another_wizz` is to make use of its python
+The most flexible way to use *yet_another_wizz* is to make use of its python
 API. The python package can be imported with:
 
 >>> import yaw
@@ -19,7 +19,7 @@ explaining some of most import concepts in greater detail.
 
     api/catalogs
     api/coordinates
-    api/conifg
+    api/config
     api/cosmology
     api/correlation
     api/estimators
