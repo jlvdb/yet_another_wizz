@@ -9,6 +9,7 @@ interface and the underlying ``yaw`` :ref:`python package<api>` with examples.
 
 .. toctree::
     :caption: Contents:
+    :maxdepth: 2
     :includehidden:
 
     user_guide/getting_started

@@ -24,6 +24,7 @@ version = ".".join(release.split(".")[:2])
 master_doc = "index"
 extensions = [
     "sphinx_design",
+    "sphinx_copybutton",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",

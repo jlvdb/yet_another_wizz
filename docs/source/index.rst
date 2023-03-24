@@ -12,9 +12,11 @@ cross-correlation redshifts, also know as clustering redshifts.
 
     .. grid-item-card:: Choose where to start
         :text-align: center
+        :class-card: h4
 
 
 .. grid::
+    :gutter: 1 3 4 4
 
     .. grid-item-card:: The new one
         :link: starting
@@ -36,6 +38,7 @@ cross-correlation redshifts, also know as clustering redshifts.
 
 
 .. grid::
+    :gutter: 1 3 4 4
 
     .. grid-item-card:: The thorough
         :link: guide

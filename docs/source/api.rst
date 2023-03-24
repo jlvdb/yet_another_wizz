@@ -10,6 +10,7 @@ This is a documentation of the most important parts of the `yet_another_wizz`
 
 .. toctree::
     :caption: Contents:
+    :maxdepth: 2
 
     api/catalogs
     api/catalogs.scipy
