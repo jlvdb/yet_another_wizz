@@ -13,6 +13,12 @@ For these reasons it is beneficial to choose a cache location on a fast device,
 such as an SSD, RAID device or even a RAM file system, if the catalogs are
 small enough (e.g. ``/dev/shm`` on many UNIX systems).
 
+.. Note::
+
+    The cache directory is not created automatically and an ``OSError`` will be
+    raised if it does not exist.
+
+
 Using command line tools
 """"""""""""""""""""""""
 
@@ -29,4 +35,21 @@ command line flag ``--*-cache``, where ``*`` is either of ``ref``, ``unk``, or
 Using the python API
 """"""""""""""""""""
 
-When ...
+When working from within python, caching can be enabled by passing the a path
+to the ``cache_directory`` argument of catalog constructors
+:meth:`NewCatalog.from_file<yaw.catalogs.NewCatalog.from_file>`
+and :meth:`NewCatalog.from_dataframe<yaw.catalogs.NewCatalog.from_dataframe>`.
+
+.. Note::
+    
+    Currently using a cache directory has the side effect that the data is not
+    held in memory after the cache data has been written. The catalog
+    instance will be in the *unloaded* state, until the
+    :meth:`load()<yaw.catalogs.BaseCatalog.load>` method is called.
+
+Catalogs can also be restored from a cache directory using the
+:meth:`NewCatalog.from_cache<yaw.catalogs.NewCatalog.from_cache>` method.
+
+.. Warning::
+
+    Caching is currently not fully implemented for the ``treecorr`` backend.

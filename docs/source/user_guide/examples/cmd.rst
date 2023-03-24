@@ -4,10 +4,15 @@ Using the command tools
 -----------------------
 
 The command line tools operate on a single, unified output directory, in which
-configuration, input and output data are organised automatically. We start by
-creatint a new project called ``output`` with the ``yaw init``
+configuration, input and output data are organised automatically.
+
+
+Creating a new project
+^^^^^^^^^^^^^^^^^^^^^^
+
+We start by creating a new project called ``output`` with the ``yaw init``
 :ref:`command<yaw_init>` and set the minimum required configuration parameters.
-We also define the input reference sample and random catalog by listing the
+We also define the input reference sample and random catalog and list the
 required column names.
 
 Finally we want to split the data catalogs into ``32``
