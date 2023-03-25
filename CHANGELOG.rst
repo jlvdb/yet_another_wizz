@@ -31,12 +31,6 @@ Version 2.2.2
   unknown+reference randoms, opposed to the previous only unknown randoms).
 
 
-Version 2.2.2
--------------
-
-Development version, never released.
-
-
 Version 2.2.1
 -------------
 
