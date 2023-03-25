@@ -45,7 +45,7 @@ autoclass_content = "both"
 
 html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
-html_css_files = ["_static/custom.css"]
+html_css_files = ["css/custom.css"]
 html_favicon = "_static/icon.ico"
 html_theme_options = {
     "github_url": "https://github.com/jlvdb/yet_another_wizz",
