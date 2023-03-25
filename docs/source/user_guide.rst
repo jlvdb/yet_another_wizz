@@ -7,14 +7,20 @@ This guide provides an overview about the project. It explains the installation,
 features and main concepts, and gives an introduction to using the command line
 interface and the underlying ``yaw`` :ref:`python package<api>` with examples.
 
-.. toctree::
-    :caption: Contents:
-    :maxdepth: 2
-    :includehidden:
 
-    user_guide/getting_started
-    user_guide/features
-    user_guide/examples
-    user_guide/cmd
-    user_guide/api
-    user_guide/concepts
+.. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
+    :open:
+    :margin: 0
+    :color: muted
+    :class-title: h5
+
+    .. toctree::
+        :maxdepth: 2
+        :includehidden:
+
+        user_guide/getting_started
+        user_guide/features
+        user_guide/examples
+        user_guide/cmd
+        user_guide/api
+        user_guide/concepts

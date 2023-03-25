@@ -72,6 +72,30 @@ html_context = {
 
 # -- Build custom files ------------------------------------------------------
 
+# generate a changelog file with dropdown sections
+ver_strs = []
+ver_texts = []
+with open("../../CHANGELOG.rst") as f:
+    for line in f.readlines():
+        if line.startswith("Version"):
+            if len(ver_strs) > 0:
+                ver_texts.append(ver_text)
+            ver_strs.append(line.strip().split()[1])
+            ver_text = []
+        elif len(ver_strs) > 0 and not line.startswith("---"):
+            ver_text.append(line)
+    else:
+        ver_texts.append(ver_text)
+with open("changes.rst", "w") as f:
+    f.write("Change log\n==========\n\n")
+    for i, (ver_str, ver_text) in enumerate(zip(ver_strs, ver_texts)):
+        f.write(f".. dropdown:: Version {ver_str}\n")
+        f.write(f"    :class-title: h5\n")
+        if i == 0:
+            f.write(f"    :open:\n")
+        for line in ver_text:
+            f.write(f"    {line}")
+
 path = "user_guide/README.rst"
 if not os.path.exists(path):
     print(f"generating '{path}'")

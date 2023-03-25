@@ -1,11 +1,13 @@
-From version 1.0 to 2.2.2
--------------------------
+Change log
+==========
+
+Version 2.2.2
+-------------
 
 .. Note::
     This list is still not complete.
 
-Bug fixes
-^^^^^^^^^
+.. rubric:: Bug fixes
 
 - The data/random pair counts are normalised globally, i.e. by checking the
   global catalog size. This increases the variance of the measurements.
@@ -16,8 +18,7 @@ Bug fixes
 - The latter is not an issues, since changing the normalisation to local
   (``D_R_ratio="local"`` in ``PairMaker.countPairs``) is ignored by the code.
 
-New features
-^^^^^^^^^^^^
+.. rubric:: New features
 
 - Enhanced performance.
 - Measuring pair counts from the full area, i.e. across the boundaries of
@@ -28,3 +29,39 @@ New features
 - Wider support for correlation estimators (e.g. Landy-Szalay)
 - Wider support for random catalogs (now accepting only reference randoms,
   unknown+reference randoms, opposed to the previous only unknown randoms).
+
+
+Version 2.2.2
+-------------
+
+Development version, never released.
+
+
+Version 2.2.1
+-------------
+
+Development version, never released.
+
+
+Version 2.2
+-----------
+
+Development version, never released.
+
+
+Version 2.1
+-----------
+
+Development version, never released.
+
+
+Version 2.0
+-----------
+
+Development version, never released.
+
+
+Version 1.0
+-----------
+
+Initial release.
