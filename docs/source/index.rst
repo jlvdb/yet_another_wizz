@@ -9,8 +9,9 @@ cross-correlation redshifts, also know as clustering redshifts.
 
 
 .. grid::
-    :gutter: 1 3 4 4
-    :margin: 5 auto auto auto
+    :gutter: 2 3 4 4
+    :margin: 4 auto auto auto
+    :padding: 0
 
     .. grid-item::
         :columns: 12
