@@ -21,9 +21,9 @@ Finally we want to split the data catalogs into ``32``
 clustering redshift measurements. By default these are created automatically
 using a k-means clustering algorithm.
 
-.. code-block:: console
+.. code-block:: bash
 
-    yaw init output \
+    $ yaw init output \
         --rmin 100 --rmax 1000 \
         --zmin 0.07 --zmax 1.42 \
         --ref-path reference.fits \

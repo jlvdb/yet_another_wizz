@@ -11,7 +11,7 @@ project. This is the purpose of the batch processing :ref:`command<yaw_run>`
 All we need to do is run this command on the YAML configuration file (see
 contents below) found in the previously created project ``output``:
 
-.. code-block:: console
+.. code-block:: bash
 
     yaw run reproduced -s output/setup.yaml
 
