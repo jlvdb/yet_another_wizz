@@ -10,17 +10,16 @@ The top level of the package exposes the most commonly used objects, the data
 catalogs, correlation functions, and data containers used to wrap the main data
 products, such as clustering redshift estimates.
 
-This introduction starts off with an easy example on how to use package before
-explaining some of most import concepts in greater detail.
+This introduction starts off with a few easy examples on how to use these
+objects and explaining some of most import concepts in greater detail.
 
 
 .. toctree::
     :hidden:
 
-    api/catalogs
     api/coordinates
     api/config
-    api/cosmology
+    api/catalogs
     api/correlation
     api/estimators
     api/redshifts

@@ -1,3 +1,5 @@
+.. _api_corr:
+
 Correlation function measurements
 =================================
 
