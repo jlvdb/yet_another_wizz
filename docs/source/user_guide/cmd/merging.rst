@@ -8,6 +8,8 @@ Merging project directories
 
     This is a stub, more content coming soon.
 
-.. literalinclude:: yaw_help_merge.txt
-    :caption: ``$ yaw merge --help``
-    :language: none
+
+.. dropdown:: ``$ yaw merge --help``
+
+    .. literalinclude:: yaw_help_merge.txt
+        :language: none

@@ -8,6 +8,8 @@ Batch processing
 
     This is a stub, more content coming soon.
 
-.. literalinclude:: yaw_help_run.txt
-    :caption: ``$ yaw run --help``
-    :language: none
+
+.. dropdown:: ``$ yaw run --help``
+
+    .. literalinclude:: yaw_help_run.txt
+        :language: none

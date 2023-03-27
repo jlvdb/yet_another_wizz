@@ -11,9 +11,10 @@ Classical scripting
 yaw cross
 ^^^^^^^^^
 
-.. literalinclude:: yaw_help_cross.txt
-    :caption: ``$ yaw cross --help``
-    :language: none
+.. dropdown:: ``$ yaw cross --help``
+
+    .. literalinclude:: yaw_help_cross.txt
+        :language: none
 
 
 .. _yaw_auto:
@@ -21,9 +22,10 @@ yaw cross
 yaw auto
 ^^^^^^^^
 
-.. literalinclude:: yaw_help_auto.txt
-    :caption: ``$ yaw auto --help``
-    :language: none
+.. dropdown:: ``$ yaw auto --help``
+
+    .. literalinclude:: yaw_help_auto.txt
+        :language: none
 
 
 .. _yaw_ztrue:
@@ -31,9 +33,10 @@ yaw auto
 yaw ztrue
 ^^^^^^^^^
 
-.. literalinclude:: yaw_help_ztrue.txt
-    :caption: ``$ yaw ztrue --help``
-    :language: none
+.. dropdown:: ``$ yaw ztrue --help``
+
+    .. literalinclude:: yaw_help_ztrue.txt
+        :language: none
 
 
 .. _yaw_cache:
@@ -41,9 +44,10 @@ yaw ztrue
 yaw cache
 ^^^^^^^^^
 
-.. literalinclude:: yaw_help_cache.txt
-    :caption: ``$ yaw cache --help``
-    :language: none
+.. dropdown:: ``$ yaw cache --help``
+
+    .. literalinclude:: yaw_help_cache.txt
+        :language: none
 
 
 .. _yaw_zcc:
@@ -51,9 +55,10 @@ yaw cache
 yaw zcc
 ^^^^^^^
 
-.. literalinclude:: yaw_help_zcc.txt
-    :caption: ``$ yaw zcc --help``
-    :language: none
+.. dropdown:: ``$ yaw zcc --help``
+
+    .. literalinclude:: yaw_help_zcc.txt
+        :language: none
 
 
 .. _yaw_plot:
@@ -61,6 +66,7 @@ yaw zcc
 yaw plot
 ^^^^^^^^
 
-.. literalinclude:: yaw_help_plot.txt
-    :caption: ``$ yaw plot --help``
-    :language: none
+.. dropdown:: ``$ yaw plot --help``
+
+    .. literalinclude:: yaw_help_plot.txt
+        :language: none

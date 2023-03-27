@@ -6,6 +6,8 @@ Default setup file
 
     This is a stub, more content coming soon.
 
-.. literalinclude:: default_setup.yaml
-    :caption: ``$ yaw run --dump``
-    :language: yaml
+
+.. dropdown:: ``$ yaw run --dump``
+
+    .. literalinclude:: default_setup.yaml
+        :language: yaml
