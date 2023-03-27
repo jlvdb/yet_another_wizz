@@ -55,13 +55,13 @@ to mitigate its galaxy bias evolution. In our case, the ``yaw auto``
 :ref:`command<yaw_auto>` takes no further inputs since most run parameters are
 already configured at this point.
 
-.. code-block:: console
+.. code-block:: bash
 
-    yaw cross output \
+    $ yaw cross output \
         --unk-path unknown.fits \
         --unk-ra ra \
         --unk-dec dec
-    yaw auto output
+    $ yaw auto output
 
 .. Note::
 
@@ -79,10 +79,10 @@ Finally we transform the pair count into correlation functions and obtain the
 clustering redshift estimate with the ``yaw zcc`` :ref:`command<yaw_zcc>`. We
 also create a simple check plot with the ``yaw plot`` :ref:`command<yaw_plot>`.
 
-.. code-block:: console
+.. code-block:: bash
 
-    yaw zcc output
-    yaw plot output
+    $ yaw zcc output
+    $ yaw plot output
 
 That is all. The project directory should now contain a number of files, the
 most important ones are:

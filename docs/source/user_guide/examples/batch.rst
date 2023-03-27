@@ -13,7 +13,7 @@ contents below) found in the previously created project ``output``:
 
 .. code-block:: bash
 
-    yaw run reproduced -s output/setup.yaml
+    $ yaw run reproduced -s output/setup.yaml
 
 The results will be written to a new project folder called ``reproduced`` and
 will contain the same files in the end, including a copy of the original YAML
