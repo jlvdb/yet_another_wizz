@@ -110,10 +110,12 @@ class Coord3D(Coordinate):
         return CoordSky(ra, dec)
 
     def distance(self, other: Coord3D) -> Dist3D:
+        c1 = self.to_3d()
+        c2 = other.to_3d()
         return Dist3D(np.sqrt(
-            (self.x - other.x)**2 +
-            (self.y - other.y)**2 +
-            (self.z - other.z)**2))
+            (c1.x - c2.x)**2 +
+            (c1.y - c2.y)**2 +
+            (c1.z - c2.z)**2))
 
 
 class CoordSky(Coordinate):

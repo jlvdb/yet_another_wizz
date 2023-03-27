@@ -27,9 +27,6 @@ class CustomCosmology(ABC):
     """
 
     @abstractmethod
-    def to_format(self, format: str = "mapping") -> str: pass
-
-    @abstractmethod
     def comoving_distance(self, z: ArrayLike) -> ArrayLike: pass
 
     @abstractmethod
