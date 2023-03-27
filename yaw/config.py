@@ -414,8 +414,8 @@ class Configuration(DictRepresentation):
         rweight: float | None = DEFAULT.Configuration.scales.rweight,
         rbin_num: int = DEFAULT.Configuration.scales.rbin_num,
         # AutoBinningConfig /  ManualBinningConfig
-        zmin: ArrayLike,
-        zmax: ArrayLike,
+        zmin: ArrayLike = None,
+        zmax: ArrayLike = None,
         zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
         method: str = DEFAULT.Configuration.binning.method,
         zbins: NDArray[np.float_] | None = None,
