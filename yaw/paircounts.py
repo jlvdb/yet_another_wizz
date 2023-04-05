@@ -18,7 +18,8 @@ import scipy.sparse
 
 from yaw.config import ResamplingConfig
 from yaw.utils import (
-    BinnedQuantity, HDFSerializable, PatchedQuantity, PatchIDs, outer_triu_sum)
+    BinnedQuantity, HDFSerializable, LogCustomWarning, PatchedQuantity,
+    PatchIDs, outer_triu_sum)
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.sparse import dok_matrix
@@ -632,11 +633,15 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def get(self, config: ResamplingConfig) -> SampledData:
         counts = self.count.get_sum(config)
         totals = self.total.get_sum(config)
-        return SampledData(
-            binning=self.get_binning(),
-            data=(counts.data / totals.data),
-            samples=(counts.samples / totals.samples),
-            method=config.method)
+        with LogCustomWarning(
+            logger, "some patches contain no data after binning by redshift"
+        ):
+            samples = SampledData(
+                binning=self.get_binning(),
+                data=(counts.data / totals.data),
+                samples=(counts.samples / totals.samples),
+                method=config.method)
+        return samples
 
     @classmethod
     def from_hdf(cls, source: h5py.Group) -> PairCountResult:
