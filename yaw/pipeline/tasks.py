@@ -508,7 +508,11 @@ class TaskManager(Sequence):
         do_w_pp = auto_unk is not None
         do_zcc = zcc is not None
         do_true = ztrue is not None
-        if not isinstance(zcc, Sequence):
+        if not do_zcc:
+            zcc = tuple()
+        elif isinstance(zcc, Sequence):
+            zcc = tuple(zcc)
+        else:
             zcc = (zcc,)
 
         # some state parameters
