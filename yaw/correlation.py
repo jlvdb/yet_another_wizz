@@ -47,7 +47,7 @@ class SampledValue:
         if self.method == "bootstrap":
             error = np.std(self.samples, ddof=1, axis=0)
         else:  # jackknife
-            error = np.std(self.samples, ddof=0, axis=0) / (self.n_samples - 1)
+            error = np.std(self.samples, ddof=0, axis=0) * (self.n_samples - 1)
         object.__setattr__(self, "error", error)
 
     def __repr__(self) -> str:
