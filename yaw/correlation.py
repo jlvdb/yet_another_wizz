@@ -19,7 +19,8 @@ from yaw.paircounts import PairCountResult, SampledData
 from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
 from yaw.utils import (
-    LogCustomWarning, TimedLog, format_float_fixed_width as fmt_num)
+    LogCustomWarning, TimedLog, format_float_fixed_width as fmt_num,
+    shift_histogram, rebin)
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -57,6 +58,23 @@ class SampledValue:
         n_samples = self.n_samples
         method = self.method
         return f"{string}({value=:.3g}, {error=:.3g}, {n_samples=}, {method=})"
+
+    def __str__(self) -> str:
+        return f"{self.value:+.3g}+/-{self.error:.3g}"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            if self.samples.shape != other.samples.shape:
+                return False
+            return (
+                self.method == other.method and
+                self.value == other.value and
+                np.all(self.samples == other.samples))
+        else:
+            return False
+
+    def __ne__(self, other: object) -> bool:
+        return not self.__eq__(other)
 
     @property
     def n_samples(self) -> int:
@@ -949,6 +967,55 @@ class RedshiftData(CorrelationData):
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=self.method)
 
+    def rebin(self, bins: NDArray) -> RedshiftData:
+        old_bins = self.edges
+        # shift main values
+        data = rebin(bins, old_bins, self.data)
+        # shift the value samples
+        samples = np.empty([self.n_samples, len(bins)-1], data.dtype)
+        for i, sample in enumerate(self.samples):
+            samples[i] = rebin(bins, old_bins, sample)
+
+        return self.__class__(
+            binning=pd.IntervalIndex.from_breaks(bins),
+            data=data,
+            samples=samples,
+            method=self.method,
+            info=self.info)
+
+    def shift(
+        self,
+        dz: float | SampledValue = 0.0,
+        *,
+        amplitude: float | SampledValue = 1.0
+    ) -> RedshiftData:
+        if isinstance(amplitude, SampledValue):
+            A_samples = amplitude.samples
+            amplitude = amplitude.value
+        else:
+            A_samples = [amplitude] * self.n_samples
+        if isinstance(dz, SampledValue):
+            dz_samples = dz.samples
+            dz = dz.value
+        else:
+            dz_samples = [dz] * self.n_samples
+
+        bins = self.edges
+        # shift main values
+        data = shift_histogram(bins, self.data, A=amplitude, dx=dz)
+        # shift the value samples
+        samples = np.empty_like(self.samples)
+        iter_samples = zip(self.samples, A_samples, dz_samples)
+        for i, (sample, amplitude, dz) in enumerate(iter_samples):
+            samples[i] = shift_histogram(bins, sample, A=amplitude, dx=dz)
+
+        return self.__class__(
+            binning=self.get_binning(),
+            data=data,
+            samples=samples,
+            method=self.method,
+            info=self.info)
+
 
 @dataclass(frozen=True, repr=False)
 class HistogramData(RedshiftData):
@@ -1007,3 +1074,21 @@ class HistogramData(RedshiftData):
         mean = np.nansum(normed.data * normed.mids) / norm
         samples = np.nansum(normed.samples * normed.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=normed.method)
+
+    def rebin(self, bins: NDArray) -> HistogramData:
+        result = super().rebin(bins)
+        object.__setattr__(self, "density", self.density)
+        return result
+
+    def shift(
+        self,
+        dz: float | SampledValue = 0.0,
+        *,
+        amplitude: float | SampledValue = 1.0
+    ) -> HistogramData:
+        result = super().shift(dz, amplitude=amplitude)
+        if amplitude == 1.0:
+            object.__setattr__(self, "density", self.density)
+        else:
+            object.__setattr__(self, "density", False)
+        return result

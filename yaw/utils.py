@@ -14,14 +14,22 @@ import h5py
 import numpy as np
 import tqdm
 import yaml
+from numpy.typing import NDArray
 
 if TYPE_CHECKING:  # pragma: no cover
     from argparse import ArgumentParser
-    from numpy.typing import ArrayLike, NDArray
+    from numpy.typing import ArrayLike
     from pandas import IntervalIndex
 
 
+try:
+    from itertools import pairwise as iter_pairwise
+except ImportError:
+    from more_itertools import pairwise as iter_pairwise
+
+
 TypePathStr = Union[Path, str]
+_Tarr = TypeVar("_Tarr", bound=NDArray)
 
 
 def array_equal(arr1: NDArray, arr2: NDArray) -> bool:
@@ -32,7 +40,13 @@ def array_equal(arr1: NDArray, arr2: NDArray) -> bool:
         (arr1 == arr2).all())
 
 
-def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
+def outer_triu_sum(
+    a: ArrayLike,
+    b: ArrayLike,
+    *,
+    k: int = 0,
+    axis: int | None = None
+) -> NDArray:
     """
     Equivalent to
         np.triu(np.outer(a, b), k).sum(axis)
@@ -64,8 +78,56 @@ def outer_triu_sum(a, b , *, k: int = 0, axis: int | None = None) -> NDArray:
     return result[()]
 
 
+def apply_bool_mask_ndim(array: _Tarr, mask: NDArray[np.bool_]) -> _Tarr:
+    result = array
+    for axis in range(array.ndim):
+        result = np.compress(mask, result, axis=axis)
+    return result
+
+
 def sgn(val: ArrayLike) -> ArrayLike:
     return np.where(val == 0, 1.0, np.sign(val))
+
+
+def rebin(
+    bins_new: NDArray,
+    bins_old: NDArray,
+    counts_old: NDArray
+) -> NDArray:
+    # ensure numpy
+    counts_old = np.asarray(counts_old)
+    counts_new = np.zeros(len(bins_new)-1, dtype=np.float_)
+
+    # iterate the new bins and check which of the old bins overlap with it
+    for i, (zmin_n, zmax_n) in enumerate(iter_pairwise(bins_new)):
+        for (zmin_o, zmax_o), count in zip(iter_pairwise(bins_old), counts_old):
+
+            # check for full or partial overlap
+            contains = zmin_n >= zmin_o and zmax_n < zmax_o
+            overlaps_min = zmin_n <= zmin_o and zmax_n > zmin_o
+            overlaps_max = zmin_n <= zmax_o and zmax_n > zmax_o
+
+            if contains or overlaps_min or overlaps_max:
+                # compute fractional bin overlap 
+                zmin_overlap = max(zmin_o, zmin_n)
+                zmax_overlap = min(zmax_o, zmax_n)
+                fraction = (zmax_overlap - zmin_overlap) / (zmax_o - zmin_o)
+
+                # assume uniform distribution of data in bin and increment
+                # counts by the bin count weighted by the overlap fraction
+                counts_new[i] += count * fraction
+
+    return counts_new
+
+
+def shift_histogram(
+    bins: NDArray,
+    counts: NDArray,
+    *,
+    A: float = 1.0,
+    dx: float = 0.0
+) -> NDArray:
+    return A * rebin(bins+dx, bins, counts)
 
 
 Tjob = TypeVar("Tjob")
