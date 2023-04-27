@@ -12,8 +12,8 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import curve_fit
 
-from yaw.utils import apply_bool_mask_ndim, rebin
-from yaw.correlation import HistogramData, SampledValue, covariance_from_samples
+from yaw.correlation import HistogramData, SampledValue
+from yaw.utils import apply_bool_mask_ndim, cov_from_samples, rebin
 
 if TYPE_CHECKING:
     from yaw.correlation import RedshiftData
@@ -201,98 +201,10 @@ def log_prob(
     return -0.5 * chi_squared(params, model, data, inv_sigma)
 
 
-def shift_fit_realisation(
-    bins: NDArray,
-    counts: NDArray,
-    *,
-    data: NDArray,
-    sigma: NDArray
-) -> FitResult[float]:
-    sigma_is_cov = sigma.ndim > 1
-    if sigma_is_cov:
-        mask = np.isfinite(data) & np.isfinite(np.diag(sigma))
-        sigma_masked = apply_bool_mask_ndim(sigma, mask)
-        sigma_inv = np.linalg.inv(sigma_masked)
-    else:
-        mask = np.isfinite(data) & np.isfinite(sigma)
-        sigma_masked = sigma[mask]
-        sigma_inv = 1.0 / sigma_masked
-
-    data_masked = data[mask]
-    model = ShiftModel(bins, counts)
-    model.set_mask(mask)
-
-    # run fitting
-    mids = (bins[1:] + bins[:-1]) / 2.0
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        guess_A = 1.0 / np.trapz(counts, x=mids)
-        guess_dz = 0.0
-        popt, pcov, infodict, mesg, ier = curve_fit(
-            model.eval_curve_fit, xdata=bins, ydata=data_masked,
-            p0=[guess_A, guess_dz], sigma=sigma_masked,
-            full_output=True)
-
-    params = dict(zip(["A", "dz"], popt))
-    ndof = np.count_nonzero(mask) - len(params)
-    chisq = chi_squared(popt, model, data_masked, sigma_inv)
-    return FitResult(ndof=ndof, chisq=chisq, **params)
-
-
 def shift_fit(
-    data: RedshiftData,
-    model: HistogramData,
-    covariance: bool = False
-) -> FitResult[SampledValue]:
-    if not data.is_compatible(model):
-        raise ValueError(
-            "'data' and 'model' are not compatible in binning, spatial "
-            "patches, or resampling method")
-    if covariance:
-        sigma = data.get_covariance().to_numpy()
-    else:
-        sigma = data.get_error().to_numpy()
-
-    # fit the main values
-    result = shift_fit_realisation(
-        data.edges, model.data, data=data.data, sigma=sigma)
-
-    # fit the data samples
-    A = np.full(data.n_samples, fill_value=result["A"])
-    dz = np.full(data.n_samples, fill_value=result["dz"])
-    for i, (_data, _model) in enumerate(zip(data.samples, model.samples)):
-        result_sample = shift_fit_realisation(
-            data.edges, _model, data=_data, sigma=sigma)
-        A[i] = result_sample["A"]
-        dz[i] = result_sample["dz"]
-
-    return FitResult(
-        ndof=result.ndof,
-        chisq=result.chisq,
-        A=SampledValue(result["A"], A, method=data.method),
-        dz=SampledValue(result["dz"], dz, method=data.method))
-
-
-def covariance_diagblock_from_samples(
-    samples: Sequence[NDArray],
-    method: str
-) -> NDArray:
-    covmat = covariance_from_samples(
-        np.concatenate([data.samples for data in samples], axis=1),
-        method=method)
-    ks = np.cumsum([len(data.data) for data in samples])
-    ks -= ks[0]
-    cov_diags = np.diag(np.diag(covmat, k=0))
-    for k in ks[1:]:
-        cov_diags += np.diag(np.diag(covmat, k=-k), k=-k)
-        cov_diags += np.diag(np.diag(covmat, k=k), k=k)
-    return cov_diags
-
-
-def shift_mcmc(
     data: Sequence[RedshiftData],
     model: Sequence[HistogramData],
-    covariance: bool = False,
+    covariance: str = "var",
     nwalkers: int = None,
     nsteps: int = 300
 ) -> FitResult[SampledValue]:
@@ -303,22 +215,17 @@ def shift_mcmc(
                 "'data' and 'model' are not compatible in binning, spatial "
                 f"patches, or resampling method for the {i}-th entry")
 
-    # compute a joint covariance for the data
-    errors = [bin_data.get_error().to_numpy() for bin_data in data]
-    if covariance:
-        samples = [bin_data.samples for bin_data in data]
-        cov_mat = covariance_from_samples(
-            np.concatenate(samples, axis=1), method=bin_data.method)
-        cov_mat = covariance_diagblock_from_samples(
-            data, method=bin_data.method)
-    else:
-        cov_mat = np.diag(np.concatenate(errors)**2)
-
     # build the joint data vector
+    cov_mat = cov_from_samples(
+        [bin_data.samples for bin_data in data],
+        method=bin_data.method, kind=covariance)
+
+    errors = [bin_data.get_error().to_numpy() for bin_data in data]
     masks = [
         (np.isfinite(bin_data.data) & np.isfinite(error) & (error > 0.0))
         for error, bin_data in zip(errors, data)]
     mask = np.concatenate(masks)
+
     data_masked = np.concatenate([
         bin_data.data[mask] for bin_data, mask in zip(data, masks)])
     cov_mat_masked = apply_bool_mask_ndim(cov_mat, np.concatenate(masks))
