@@ -19,8 +19,8 @@ from yaw.paircounts import PairCountResult, SampledData
 from yaw.utils import (
     BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
 from yaw.utils import (
-    LogCustomWarning, TimedLog, format_float_fixed_width as fmt_num,
-    shift_histogram, rebin)
+    LogCustomWarning, TimedLog, cov_from_samples,
+    format_float_fixed_width as fmt_num, shift_histogram, rebin)
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -81,17 +81,6 @@ class SampledValue:
         return len(self.samples)
 
 
-def covariance_from_samples(samples: NDArray, method: str) -> NDArray:
-    if method == "bootstrap":
-        covmat = np.cov(samples, rowvar=False, ddof=1)
-    elif method == "jackknife":
-        covmat = np.cov(samples, rowvar=False, ddof=0)
-        covmat = covmat * (len(samples) - 1)
-    else:
-        raise ValueError(f"invalid sampling method '{method}'")
-    return covmat
-
-
 @dataclass(frozen=True, repr=False)
 class CorrelationData(SampledData):
     """Container for correlation function data.
@@ -127,7 +116,7 @@ class CorrelationData(SampledData):
         with LogCustomWarning(
             logger, "invalid values encountered in correlation samples"
         ):
-            covmat = covariance_from_samples(self.samples, self.method)
+            covmat = cov_from_samples(self.samples, self.method)
         object.__setattr__(self, "covariance", covmat)
 
     @classmethod

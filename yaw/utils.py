@@ -89,6 +89,57 @@ def sgn(val: ArrayLike) -> ArrayLike:
     return np.where(val == 0, 1.0, np.sign(val))
 
 
+def cov_from_samples(
+    samples: NDArray | Sequence[NDArray],
+    method: str,
+    rowvar: bool = False,
+    kind: str = "full"  # full, diag, var
+) -> NDArray:
+    ax_samples = 1 if rowvar else 0
+    ax_observ = 0 if rowvar else 1
+    # if many samples are provided, concatenate them
+    try:
+        concat_samples = np.concatenate(samples, axis=ax_observ)
+    except np.AxisError:
+        concat_samples = samples
+
+    if method == "bootstrap":
+        covmat = np.cov(concat_samples, rowvar=rowvar, ddof=1)
+    elif method == "jackknife":
+        n_samples = concat_samples.shape[ax_samples]
+        covmat = np.cov(concat_samples, rowvar=rowvar, ddof=0) * (n_samples - 1)
+    else:
+        raise ValueError(f"invalid sampling method '{method}'")
+
+    if kind == "full":
+        pass
+    elif kind == "diag":
+        # get a matrix with only the main diagonal elements
+        idx_diag = 0
+        cov_diags = np.diag(np.diag(covmat, k=idx_diag), k=idx_diag)
+        try:
+            for sample in samples:
+                # go to next diagonal that contains correlations between samples
+                idx_diag += sample.shape[ax_observ]
+                # add just the diagonal values to the existing matrix
+                cov_diags += np.diag(np.diag(covmat, k=-idx_diag), k=-idx_diag)
+                cov_diags += np.diag(np.diag(covmat, k=idx_diag), k=idx_diag)
+        except IndexError:
+            raise
+        covmat = cov_diags
+    elif kind == "var":
+        covmat = np.diag(np.diag(covmat, k=0), k=0)
+    else:
+        raise ValueError(f"invalid covariance kind '{kind}'")
+    return covmat
+
+
+def corr_from_cov(covariance: NDArray) -> NDArray:
+    v = np.sqrt(np.diag(covariance))
+    outer_v = np.outer(v, v)
+    return covariance / outer_v
+
+
 def rebin(
     bins_new: NDArray,
     bins_old: NDArray,
