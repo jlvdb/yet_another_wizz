@@ -81,6 +81,17 @@ class SampledValue:
         return len(self.samples)
 
 
+def covariance_from_samples(samples: NDArray, method: str) -> NDArray:
+    if method == "bootstrap":
+        covmat = np.cov(samples, rowvar=False, ddof=1)
+    elif method == "jackknife":
+        covmat = np.cov(samples, rowvar=False, ddof=0)
+        covmat = covmat * (len(samples) - 1)
+    else:
+        raise ValueError(f"invalid sampling method '{method}'")
+    return covmat
+
+
 @dataclass(frozen=True, repr=False)
 class CorrelationData(SampledData):
     """Container for correlation function data.
@@ -116,11 +127,7 @@ class CorrelationData(SampledData):
         with LogCustomWarning(
             logger, "invalid values encountered in correlation samples"
         ):
-            if self.method == "bootstrap":
-                covmat = np.cov(self.samples, rowvar=False, ddof=1)
-            else:  # jackknife
-                covmat = np.cov(self.samples, rowvar=False, ddof=0)
-                covmat = covmat * (self.n_samples - 1)
+            covmat = covariance_from_samples(self.samples, self.method)
         object.__setattr__(self, "covariance", covmat)
 
     @classmethod
