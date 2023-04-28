@@ -5,21 +5,22 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from itertools import chain, repeat
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 import emcee
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
-from scipy.special import erf
 
-from yaw import stats
 from yaw.correlation import HistogramData
+from yaw.stats import Stats
 from yaw.utils import apply_bool_mask_ndim, cov_from_samples, rebin
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
     from yaw.correlation import RedshiftData
 
+
+_Tslice = Union[int, Sequence[int | bool], slice]
 
 class MCSamples:
 
@@ -48,6 +49,8 @@ class MCSamples:
             data=log_prob.flatten(),
             index=index, name="log_prob")
 
+        self.stats = Stats(self.samples, self.stats)
+
     def __repr__(self) -> str:
         nsamples = f"{self.nsteps}x{self.nchains}"
         ndof = self.ndof
@@ -68,8 +71,21 @@ class MCSamples:
     def ndof(self) -> int:
         return self.ndata - self.ndim
 
-    def get(self, *, step=slice(None), chain=slice(None)) -> pd.DataFrame:
+    def get_samples(
+        self,
+        *,
+        step: _Tslice = slice(None),
+        chain: _Tslice = slice(None)
+    ) -> pd.DataFrame:
         return self.samples.loc(axis=0)[step, chain]
+
+    def get_logprob(
+        self,
+        *,
+        step: _Tslice = slice(None),
+        chain: _Tslice = slice(None)
+    ) -> pd.Series:
+        return self.logprob.loc(axis=0)[step, chain]
 
     def discard(self, n: int) -> MCSamples:
         if n >= self.nsteps:
@@ -81,46 +97,18 @@ class MCSamples:
         new.ndata = self.ndata
         new.samples = self.samples[n*self.nchains:]
         new.logprob = self.logprob[n*self.nchains:]
+        new.stats = Stats(new.samples, new.logprob)
         return new
-
-    def best(self) -> pd.Series:
-        idx = self.logprob.argmax()
-        return self.samples.iloc[idx]
-
-    def mean(self) -> pd.Series:
-        stat = lambda x: np.average(x, weights=self.logprob)
-        return self.samples.apply(stat)
-
-    def median(self) -> pd.Series:
-        stat = lambda x: stats.weighted_median(x, self.logprob)
-        return self.samples.apply(stat)
-
-    def mode(self) -> pd.Series:
-        stat = lambda x: stats.weighted_mode(x, self.logprob)
-        return self.samples.apply(stat)
 
     def values(self, statistic="median") -> pd.Series:
         if statistic not in ("best", "mean", "median", "mode"):
             raise ValueError(f"invalid statistic '{statistic}'")
-        return getattr(self, statistic)()
-
-    def quantile(self, sigma: float = 1.0) -> pd.Series:
-        p = erf(sigma / np.sqrt(2.0))
-        qs = [0.5 - p/2, 0.5 + p/2]
-        df = pd.DataFrame(columns=self.parnames)
-        for key, q in zip(["low", "high"], qs):
-            stat = lambda x: stats.weighted_quantile(x, q, weights=self.logprob)
-            df.loc[key] = self.samples.apply(stat)
-        return df - self.median()
-
-    def std(self, sigma: float = 1.0) -> pd.Series:
-        stat = lambda x: stats.weighted_std(x, weights=self.logprob)
-        return self.samples.apply(stat) * sigma
+        return getattr(self.stats, statistic)()
 
     def errors(self, sigma: float = 1.0, statistic="std") -> pd.Series:
         if statistic not in ("quantile", "std"):
             raise ValueError(f"invalid statistic '{statistic}'")
-        return getattr(self, statistic)(sigma)
+        return getattr(self.stats, statistic)(sigma)
 
     def chisq(self) -> float:
         return -2 * self.logprob.max()
