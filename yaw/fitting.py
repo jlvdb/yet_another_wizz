@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Union
 import emcee
 import numpy as np
 import pandas as pd
+from scipy.optimize import curve_fit
 
 from yaw.correlation import HistogramData
 from yaw.stats import Stats
@@ -24,6 +25,9 @@ _Tslice = Union[int, Sequence[int | bool], slice]
 
 class MCSamples:
 
+    _best: pd.Series | None = None
+    _chisq: float | None = None
+
     def __init__(
         self,
         sampler: emcee.EnsembleSampler,
@@ -31,25 +35,40 @@ class MCSamples:
         ndata: int
     ) -> MCSamples:
         samples: NDArray = sampler.get_chain()
-        self.nsteps, self.nchains, self.ndim = samples.shape
-        self.ndata = ndata
-        if len(parnames) != self.ndim:
+        log_prob: NDArray = sampler.get_log_prob()
+
+        nsteps, nchains, ndim = samples.shape
+        if len(parnames) != ndim:
             raise ValueError(
                 "length of 'parnames' does not match feature dimensions")
-
         index = pd.MultiIndex.from_product(
-            [range(self.nsteps), range(self.nchains)],
-            names=["step", "chain"])
-        self.samples = pd.DataFrame(
-            data=samples.reshape((self.nsteps * self.nchains, self.ndim)),
-            index=index, columns=parnames)
+            [range(nsteps), range(nchains)], names=["step", "chain"])
 
-        log_prob: NDArray = sampler.get_log_prob()
+        self.samples = pd.DataFrame(
+            data=samples.reshape((nsteps * nchains, ndim)),
+            index=index, columns=parnames)
         self.logprob = pd.Series(
             data=log_prob.flatten(),
             index=index, name="log_prob")
+        self._init(ndata)
 
-        self.stats = Stats(self.samples, self.stats)
+    def _init(self, ndata: int) -> None:
+        self.stats = Stats(self.samples, self.logprob)
+        self.ndata = ndata
+
+    @property
+    def ndim(self) -> int:
+        return len(self.parnames)
+
+    @property
+    def nchains(self) -> int:
+        _, chains = self.samples.index.codes
+        return len(np.unique(chains))
+
+    @property
+    def nsteps(self) -> int:
+        steps, _ = self.samples.index.codes
+        return len(np.unique(steps))
 
     def __repr__(self) -> str:
         nsamples = f"{self.nsteps}x{self.nchains}"
@@ -91,19 +110,29 @@ class MCSamples:
         if n >= self.nsteps:
             raise ValueError(f"'n' exceeds nsteps={self.nsteps}")
         new = self.__class__.__new__(self.__class__)
-        new.nsteps = self.nsteps - n
-        new.nchains = self.nchains
-        new.ndim = self.ndim
-        new.ndata = self.ndata
         new.samples = self.samples[n*self.nchains:]
         new.logprob = self.logprob[n*self.nchains:]
-        new.stats = Stats(new.samples, new.logprob)
+        new._init(self.ndata)
         return new
+
+    def set_best(self, best: Sequence, chisq: float) -> None:
+        self._best = pd.Series(data=best, index=self.parnames, name="best")
+        self._chisq = chisq
+
+    def best(self) -> pd.Series:
+        if self._best is None:
+            idx = self.logprob.argmax()
+            return self.samples.iloc[idx]
+        else:
+            return self._best
 
     def values(self, statistic="median") -> pd.Series:
         if statistic not in ("best", "mean", "median", "mode"):
             raise ValueError(f"invalid statistic '{statistic}'")
-        return getattr(self.stats, statistic)()
+        if statistic == "best":
+            return self.best()
+        else:
+            return getattr(self.stats, statistic)()
 
     def errors(self, sigma: float = 1.0, statistic="std") -> pd.Series:
         if statistic not in ("quantile", "std"):
@@ -111,7 +140,10 @@ class MCSamples:
         return getattr(self.stats, statistic)(sigma)
 
     def chisq(self) -> float:
-        return -2 * self.logprob.max()
+        if self._chisq is None:
+            return -2 * self.logprob.max()
+        else:
+            return self._chisq
 
     def chisq_red(self) -> float:
         return self.chisq() / self.ndof
@@ -253,7 +285,8 @@ def shift_fit(
     model: Sequence[HistogramData],
     covariance: str = "var",
     nwalkers: int = None,
-    nsteps: int = 300
+    nsteps: int = 300,
+    optimise: bool = True
 ) -> MCSamples:
     # verify that data and model have matching binning etc.
     for i, (bin_data, bin_model) in enumerate(zip(data, model), 1):
@@ -313,4 +346,15 @@ def shift_fit(
         for _ in sampler.sample(p0, iterations=ndiscard+nsteps, progress=True):
             pass
 
-    return MCSamples(sampler, names_all, len(data_masked))
+    samples = MCSamples(sampler, names_all, len(data_masked))
+    if optimise:
+        popt, _ = curve_fit(
+            fit_model.eval_curve_fit,
+            xdata=None,  # not needed
+            ydata=data_masked,
+            p0=samples.best().to_numpy(),
+            sigma=cov_mat_masked)
+        chisq = chi_squared(
+            popt, fit_model, data_masked, inv_sigma=inv_mat_masked)
+        samples.set_best(popt, chisq)
+    return samples

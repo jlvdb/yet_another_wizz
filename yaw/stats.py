@@ -109,11 +109,6 @@ class Stats:
     weights: Series
 
     @named
-    def best(self) -> Series:
-        idx = self.weights.argmax()
-        return self.samples.iloc[idx]
-
-    @named
     def mean(self) -> Series:
         stat = lambda x: weighted_mean(x, weights=self.weights)
         return self.samples.apply(stat)
