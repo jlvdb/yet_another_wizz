@@ -2,72 +2,131 @@ from __future__ import annotations
 
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from itertools import chain, cycle, repeat
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from itertools import chain, repeat
+from typing import TYPE_CHECKING, Any
 
 import emcee
 import numpy as np
+import pandas as pd
 from numpy.typing import NDArray
-from scipy.optimize import curve_fit
+from scipy.special import erf
 
-from yaw.correlation import HistogramData, SampledValue
+from yaw import stats
+from yaw.correlation import HistogramData
 from yaw.utils import apply_bool_mask_ndim, cov_from_samples, rebin
 
 if TYPE_CHECKING:
     from yaw.correlation import RedshiftData
 
 
-_Tname = TypeVar("_Tname", bound=str)
-_Tparam = TypeVar("_Tparam")
+class MCSamples:
 
+    def __init__(
+        self,
+        sampler: emcee.EnsembleSampler,
+        parnames: Sequence[str],
+        ndata: int
+    ) -> MCSamples:
+        samples: NDArray = sampler.get_chain()
+        self.nsteps, self.nchains, self.ndim = samples.shape
+        self.ndata = ndata
+        if len(parnames) != self.ndim:
+            raise ValueError(
+                "length of 'parnames' does not match feature dimensions")
 
-class FitResult(Generic[_Tname, _Tparam], Mapping[_Tname, _Tparam]):
+        index = pd.MultiIndex.from_product(
+            [range(self.nsteps), range(self.nchains)],
+            names=["step", "chain"])
+        self.samples = pd.DataFrame(
+            data=samples.reshape((self.nsteps * self.nchains, self.ndim)),
+            index=index, columns=parnames)
 
-    def __init__(self, ndof: int, chisq: float, **params: _Tparam) -> None:
-        self._ndof = ndof
-        self._chisq = chisq
-        self._params = params
+        log_prob: NDArray = sampler.get_log_prob()
+        self.logprob = pd.Series(
+            data=log_prob.flatten(),
+            index=index, name="log_prob")
 
     def __repr__(self) -> str:
-        string = self.__class__.__name__
-        values = [f"chi^2/dof={self.chisq_red:.3f}"]
-        for key, value in self._params.items():
-            values.append(f"{key}={value}")
-        string += f"({', '.join(values)})"
-        return string
+        nsamples = f"{self.nsteps}x{self.nchains}"
+        ndof = self.ndof
+        chisq = self.chisq()
+        return f"{self.__class__.__name__}({nsamples=}, {ndof=}, {chisq=:.3f})"
 
     def __len__(self) -> int:
-        return len(self._params)
+        return len(self.samples)
 
-    def __getitem__(self, name: _Tname) -> _Tparam:
-        return self._params[name]
-
-    def __iter__(self) -> Iterator[_Tname]:
-        return iter(self._params)
-
-    def __contains__(self, name: _Tname) -> bool:
-        return name in self._params
+    def __getitem__(self, name: str) -> pd.Series:
+        return self.samples[name]
 
     @property
-    def parnames(self) -> tuple[_Tname]:
-        return tuple(self.keys())
+    def parnames(self) -> list[str]:
+        return list(self.samples.columns)
 
     @property
     def ndof(self) -> int:
-        return self._ndof
+        return self.ndata - self.ndim
 
-    @property
+    def get(self, *, step=slice(None), chain=slice(None)) -> pd.DataFrame:
+        return self.samples.loc(axis=0)[step, chain]
+
+    def discard(self, n: int) -> MCSamples:
+        if n >= self.nsteps:
+            raise ValueError(f"'n' exceeds nsteps={self.nsteps}")
+        new = self.__class__.__new__(self.__class__)
+        new.nsteps = self.nsteps - n
+        new.nchains = self.nchains
+        new.ndim = self.ndim
+        new.ndata = self.ndata
+        new.samples = self.samples[n*self.nchains:]
+        new.logprob = self.logprob[n*self.nchains:]
+        return new
+
+    def best(self) -> pd.Series:
+        idx = self.logprob.argmax()
+        return self.samples.iloc[idx]
+
+    def mean(self) -> pd.Series:
+        stat = lambda x: np.average(x, weights=self.logprob)
+        return self.samples.apply(stat)
+
+    def median(self) -> pd.Series:
+        stat = lambda x: stats.weighted_median(x, self.logprob)
+        return self.samples.apply(stat)
+
+    def mode(self) -> pd.Series:
+        stat = lambda x: stats.weighted_mode(x, self.logprob)
+        return self.samples.apply(stat)
+
+    def values(self, statistic="median") -> pd.Series:
+        if statistic not in ("best", "mean", "median", "mode"):
+            raise ValueError(f"invalid statistic '{statistic}'")
+        return getattr(self, statistic)()
+
+    def quantile(self, sigma: float = 1.0) -> pd.Series:
+        p = erf(sigma / np.sqrt(2.0))
+        qs = [0.5 - p/2, 0.5 + p/2]
+        df = pd.DataFrame(columns=self.parnames)
+        for key, q in zip(["low", "high"], qs):
+            stat = lambda x: stats.weighted_quantile(x, q, weights=self.logprob)
+            df.loc[key] = self.samples.apply(stat)
+        return df - self.median()
+
+    def std(self, sigma: float = 1.0) -> pd.Series:
+        stat = lambda x: stats.weighted_std(x, weights=self.logprob)
+        return self.samples.apply(stat) * sigma
+
+    def errors(self, sigma: float = 1.0, statistic="std") -> pd.Series:
+        if statistic not in ("quantile", "std"):
+            raise ValueError(f"invalid statistic '{statistic}'")
+        return getattr(self, statistic)(sigma)
+
     def chisq(self) -> float:
-        return self._chisq
+        return -2 * self.logprob.max()
 
-    @property
     def chisq_red(self) -> float:
-        return self.chisq / self.ndof
-
-    def as_array(self) -> NDArray:
-        return np.column_stack(self._params.values())
+        return self.chisq() / self.ndof
 
 
 @dataclass
@@ -207,7 +266,7 @@ def shift_fit(
     covariance: str = "var",
     nwalkers: int = None,
     nsteps: int = 300
-) -> FitResult[SampledValue]:
+) -> MCSamples:
     # verify that data and model have matching binning etc.
     for i, (bin_data, bin_model) in enumerate(zip(data, model), 1):
         if not bin_data.is_compatible(bin_model):
@@ -251,8 +310,8 @@ def shift_fit(
         width_dz = repeat(0.05)
         width_all = list(chain.from_iterable(zip(width_A, width_dz)))
 
-        names_A = [f"A{i}" for i in range(len(data))]
-        names_dz = [f"dz{i}" for i in range(len(data))]
+        names_A = [f"A{i+1}" for i in range(len(data))]
+        names_dz = [f"dz{i+1}" for i in range(len(data))]
         names_all = list(chain.from_iterable(zip(names_A, names_dz)))
 
         ndim = len(guess_all)
@@ -266,19 +325,4 @@ def shift_fit(
         for _ in sampler.sample(p0, iterations=ndiscard+nsteps, progress=True):
             pass
 
-    samples = sampler.get_chain(discard=ndiscard, flat=True)
-    ndof = np.count_nonzero(mask) - ndim
-    popt, _ = curve_fit(
-        fit_model.eval_curve_fit, xdata=None, ydata=data_masked,
-        p0=np.median(samples, axis=0), sigma=cov_mat_masked)
-
-    params = dict()
-    for name, p, samp in zip(names_all, popt, samples.T):
-        params[name] = SampledValue(p, samp, method="bootstrap")
-
-    res = FitResult(
-        ndof=ndof,
-        chisq=chi_squared(popt, fit_model, data_masked, inv_mat_masked),
-        **params)
-    res.log_prob = sampler.get_log_prob(discard=ndiscard, flat=True)
-    return res
+    return MCSamples(sampler, names_all, len(data_masked))
