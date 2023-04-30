@@ -8,6 +8,7 @@ from itertools import chain, repeat
 from typing import TYPE_CHECKING, Any, Union
 
 import emcee
+import emcee.autocorr
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
@@ -106,9 +107,19 @@ class MCSamples:
     ) -> pd.Series:
         return self.logprob.loc(axis=0)[step, chain]
 
-    def discard(self, n: int) -> MCSamples:
+    def get_autocorr(self) -> pd.Series:
+        samples = self.samples.to_numpy()
+        return pd.Series(
+            emcee.autocorr.integrated_time(
+                samples.reshape((self.nsteps, self.nchains, self.ndim)),
+                quiet=True),
+            index=self.parnames, name="tau")
+
+    def discard(self, n: int | None = None) -> MCSamples:
+        if n is None:
+            n = int(2 * self.get_autocorr().max())
         if n >= self.nsteps:
-            raise ValueError(f"'n' exceeds nsteps={self.nsteps}")
+            raise ValueError(f"'{n=}' exceeds nsteps={self.nsteps}")
         new = self.__class__.__new__(self.__class__)
         new.samples = self.samples[n*self.nchains:]
         new.logprob = self.logprob[n*self.nchains:]
@@ -192,7 +203,7 @@ class ShiftModel(FitModel):
             bins_new=bins,
             bins_old=self.binning,
             counts_old=self.counts)
-        return amplitude * values[self.mask]
+        return 10**amplitude * values[self.mask]
 
     def eval_curve_fit(
         self,
@@ -271,13 +282,27 @@ def chi_squared(
     return chisq
 
 
-def log_prob(
-    params: Sequence[float],
-    model: FitModel,
-    data: NDArray, 
-    inv_sigma: NDArray
-) -> float:
-    return -0.5 * chi_squared(params, model, data, inv_sigma)
+class Posterior:
+
+    def __init__(self, mus: NDArray, sigmas: NDArray) -> None:
+        self.mus = mus
+        self.sigmas = sigmas
+
+    def log_like(
+        self,
+        params: Sequence[float],
+        model: FitModel,
+        data: NDArray, 
+        inv_sigma: NDArray
+    ) -> float:
+        return -0.5 * chi_squared(params, model, data, inv_sigma)
+
+    def log_prior(self, params: Sequence[float]) -> float:
+        priors = -0.5 * ((np.asarray(params) - self.mus) / self.sigmas)**2
+        return priors.sum()
+
+    def log_post(self, params: Sequence[float], *like_args) -> float:
+        return self.log_like(params, *like_args) + self.log_prior(params)
 
 
 def shift_fit(
@@ -308,7 +333,7 @@ def shift_fit(
 
     data_masked = np.concatenate([
         bin_data.data[mask] for bin_data, mask in zip(data, masks)])
-    cov_mat_masked = apply_bool_mask_ndim(cov_mat, np.concatenate(masks))
+    cov_mat_masked = apply_bool_mask_ndim(cov_mat, mask)
     inv_mat_masked = np.linalg.inv(cov_mat_masked)
 
     fit_model = ShiftModelEnsemble(
@@ -321,29 +346,30 @@ def shift_fit(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
-        guess_A = [
+        guess_A = np.log10([
             1 / np.trapz(bin_model.rebin(bin_data.edges).data, x=bin_model.mids)
-            for bin_data, bin_model in zip(data, model)]
+            for bin_data, bin_model in zip(data, model)])
         guess_dz = repeat(0.0)
         guess_all = list(chain.from_iterable(zip(guess_A, guess_dz)))
 
-        width_A = (0.3 * A for A in guess_A)
-        width_dz = repeat(0.05)
+        width_A = (0.5 for _ in guess_A)
+        width_dz = (0.02 for _ in guess_dz)
         width_all = list(chain.from_iterable(zip(width_A, width_dz)))
 
         names_A = [f"A{i+1}" for i in range(len(data))]
         names_dz = [f"dz{i+1}" for i in range(len(data))]
         names_all = list(chain.from_iterable(zip(names_A, names_dz)))
 
+        cost = Posterior(guess_all, width_all)
+
         ndim = len(guess_all)
         if nwalkers is None:
             nwalkers = 10 * ndim
         p0 = np.random.normal(guess_all, width_all, size=(nwalkers, ndim))
         sampler = emcee.EnsembleSampler(
-            nwalkers, ndim, log_prob,
+            nwalkers, ndim, cost.log_post,
             args=(fit_model, data_masked, inv_mat_masked))
-        ndiscard = 100
-        for _ in sampler.sample(p0, iterations=ndiscard+nsteps, progress=True):
+        for _ in sampler.sample(p0, iterations=nsteps, progress=True):
             pass
 
     samples = MCSamples(sampler, names_all, len(data_masked))
