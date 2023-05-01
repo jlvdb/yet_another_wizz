@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import warnings
 from abc import ABC, abstractmethod, abstractproperty
 from collections import Counter
@@ -16,7 +17,7 @@ from scipy.optimize import minimize
 
 from yaw.correlation import HistogramData
 from yaw.stats import Stats
-from yaw.utils import apply_bool_mask_ndim, cov_from_samples, rebin
+from yaw.utils import apply_bool_mask_ndim, cov_from_samples, rebin, round_to
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -355,6 +356,10 @@ class BayesianModel(ABC):
     def ndof(self) -> int:
         return self.neff - self.ndim
 
+    @property
+    def parnames(self) -> list[str]:
+        return self.model.parnames
+
     def set_mask(self, mask: NDArray[np.bool_] | None) -> None:
         if mask is None:
             mask = np.ones(len(self.data), dtype=np.bool_)
@@ -402,12 +407,83 @@ class BayesianModel(ABC):
         return self.log_like(params) + prior, prior
 
 
+def auto_sample_model(
+    bay_model: BayesianModel,
+    *,
+    p0: NDArray | None = None,
+    nwalkers: int | None = None,
+    max_steps: int = 10000,
+    tau_scale: int = 50,
+    tau_steps: int = 50
+) -> MCSamples:
+    if bay_model.priors is None:
+        raise ValueError("MCMC sampling requires to set parameter priors")
+    if nwalkers is None:
+        if p0 is not None:
+            nwalkers = len(p0)
+        else:
+            nwalkers = 10 * bay_model.ndim
+
+    # generate the starting position
+    if p0 is None:
+        rng = np.random.default_rng()
+        p0 = np.column_stack([
+            prior.draw_samples(nwalkers, rng)
+            for prior in bay_model.priors])
+
+    sampler = emcee.EnsembleSampler(
+        nwalkers, bay_model.ndim, bay_model.log_prob_with_prior)
+
+    # run the sampler, automatically expanding the step number up to the limit
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+
+        pbar = "sampling steps: {:d} of {:d} (est), max: {:d}\r"
+        n_expect = 2 * tau_steps
+        last_tau = sys.maxsize
+
+        for _ in sampler.sample(p0, iterations=max_steps):
+            it = sampler.iteration
+            sys.stderr.write(pbar.format(it, n_expect, max_steps))
+
+            # update autocorrelation time estimate
+            if it % tau_steps == 0:
+                tau = sampler.get_autocorr_time(tol=0).max()
+                converged = (
+                    np.all(tau * tau_scale < it) &
+                    np.all(np.abs(last_tau - tau) / tau < 0.01))
+                if converged:
+                    break
+
+                n_expect = min(max_steps, round_to(tau_scale * tau, tau_steps))
+                last_tau = tau
+
+        sys.stderr.write(
+            pbar.format(it, n_expect, max_steps) + "\n")
+        sys.stderr.flush()
+
+    return MCSamples(sampler, bay_model.parnames, bay_model.neff)
+
+
+def auto_fit_model(
+    bay_model: BayesianModel,
+    p0: NDArray
+) -> tuple[NDArray, float]:
+    opt = minimize(bay_model.chi_squared, x0=p0, method="Nelder-Mead")
+    status = "successful" if opt.success else "failed"
+    sys.stderr.write(
+        f"minimization {status} after {opt.nfev} evaluations: {opt.message}\n")
+    sys.stderr.flush()
+    return opt.x, opt.fun  # best estimate, chi squared
+
+
 def shift_fit(
     data: Sequence[RedshiftData],
     model: Sequence[HistogramData],
+    *,
     covariance: str = "var",
     nwalkers: int = None,
-    nsteps: int = 300,
+    max_steps: int = 10000,
     optimise: bool = True
 ) -> MCSamples:
     # verify that data and model have matching binning etc.
@@ -447,23 +523,9 @@ def shift_fit(
             priors.extend([prior_log_amp, prior_dz])
     full_model.set_priors(priors)
 
-    # run MCMC
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        if nwalkers is None:
-            nwalkers = 10 * fit_model.ndim
-        rng = np.random.default_rng()
-        p0 = np.column_stack([
-            prior.draw_samples(nwalkers, rng) for prior in priors])
-        sampler = emcee.EnsembleSampler(
-            nwalkers, fit_model.ndim, full_model.log_prob_with_prior)
-        for _ in sampler.sample(p0, iterations=nsteps, progress=True):
-            pass
-
-    samples = MCSamples(sampler, fit_model.parnames, full_model.neff)
+    samples = auto_sample_model(
+        full_model, nwalkers=nwalkers, max_steps=max_steps)
     if optimise:
-        opt = minimize(
-            full_model.chi_squared,
-            samples.best().to_numpy())
-        samples.set_best(opt.x, chisq=opt.fun)
+        best, chisq = auto_fit_model(full_model, samples.best().to_numpy())
+        samples.set_best(best, chisq)
     return samples

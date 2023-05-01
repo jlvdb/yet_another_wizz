@@ -213,6 +213,10 @@ def scales_to_keys(scales: NDArray[np.float_]) -> list[str]:
     return [f"kpc{scale[0]:.0f}t{scale[1]:.0f}" for scale in scales]
 
 
+def round_to(value: int, to: int) -> int:
+    return int(np.ceil(value / to) * to)
+
+
 def long_num_format(x: float) -> str:
     x = float(f"{x:.3g}")
     exp = 0
