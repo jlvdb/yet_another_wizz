@@ -14,10 +14,10 @@ from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.config import Configuration, ResamplingConfig
 from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.correlation import HistogramData
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult, PatchedCount, PatchedTotal
 from yaw.parallel import ParallelHelper
+from yaw.redshifts import HistogramData
 from yaw.utils import (
     LimitTracker, PatchIDs, TimedLog, job_progress_bar, long_num_format,
     scales_to_keys)

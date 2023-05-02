@@ -16,8 +16,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.catalogs import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
-    from yaw.correlation import HistogramData
     from yaw.paircounts import PairCountResult
+    from yaw.redshifts import HistogramData
 
 
 class BackendError(Exception):

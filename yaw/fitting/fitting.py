@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.correlation import HistogramData
+from yaw.redshifts import HistogramData
 from yaw.utils import cov_from_samples
 
 from yaw.fitting.models import ModelEnsemble, ShiftModel
@@ -15,7 +15,7 @@ from yaw.fitting.priors import Prior, GaussianPrior
 from yaw.fitting.samples import MCSamples
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.correlation import RedshiftData
+    from yaw.redshifts import RedshiftData
 
 
 def shift_fit(

@@ -13,9 +13,9 @@ from treecorr import Catalog, NNCorrelation
 from yaw.catalogs import BaseCatalog
 from yaw.config import Configuration
 from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.correlation import HistogramData
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import PairCountResult
+from yaw.redshifts import HistogramData
 from yaw.utils import TimedLog
 
 if TYPE_CHECKING:  # pragma: no cover
