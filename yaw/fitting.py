@@ -406,38 +406,36 @@ class BayesianModel(ABC):
         prior = self.log_prior(params)
         return self.log_like(params) + prior, prior
 
+    def run_mcmc(
+        self,
+        *,
+        p0: NDArray | None = None,
+        nwalkers: int | None = None,
+        max_steps: int = 10000,
+        tau_scale: int = 50,
+        tau_steps: int = 50,
+        tau_thresh: float = 0.01
+    ) -> MCSamples:
+        if self.priors is None:
+            raise ValueError("MCMC sampling requires to set parameter priors")
+        if nwalkers is None:
+            if p0 is not None:
+                nwalkers = len(p0)
+            else:
+                nwalkers = 10 * self.ndim
 
-def auto_sample_model(
-    bay_model: BayesianModel,
-    *,
-    p0: NDArray | None = None,
-    nwalkers: int | None = None,
-    max_steps: int = 10000,
-    tau_scale: int = 50,
-    tau_steps: int = 50
-) -> MCSamples:
-    if bay_model.priors is None:
-        raise ValueError("MCMC sampling requires to set parameter priors")
-    if nwalkers is None:
-        if p0 is not None:
-            nwalkers = len(p0)
-        else:
-            nwalkers = 10 * bay_model.ndim
+        # generate the starting position
+        if p0 is None:
+            rng = np.random.default_rng()
+            p0 = np.column_stack([
+                prior.draw_samples(nwalkers, rng)
+                for prior in self.priors])
 
-    # generate the starting position
-    if p0 is None:
-        rng = np.random.default_rng()
-        p0 = np.column_stack([
-            prior.draw_samples(nwalkers, rng)
-            for prior in bay_model.priors])
+        sampler = emcee.EnsembleSampler(
+            nwalkers, self.ndim, self.log_prob_with_prior)
 
-    sampler = emcee.EnsembleSampler(
-        nwalkers, bay_model.ndim, bay_model.log_prob_with_prior)
-
-    # run the sampler, automatically expanding the step number up to the limit
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-
+        # run the sampler, automatically expanding step number up to the limit
+        end_message = "Sampling terminated on automatic convergence estimate"
         pbar = "sampling steps: {:d} of {:d} (est), max: {:d}\r"
         n_expect = 2 * tau_steps
         last_tau = sys.maxsize
@@ -449,32 +447,30 @@ def auto_sample_model(
             # update autocorrelation time estimate
             if it % tau_steps == 0:
                 tau = sampler.get_autocorr_time(tol=0).max()
-                converged = (
-                    np.all(tau * tau_scale < it) &
-                    np.all(np.abs(last_tau - tau) / tau < 0.01))
-                if converged:
-                    break
-
+                d_tau = np.abs(last_tau - tau) / tau
                 n_expect = min(max_steps, round_to(tau_scale * tau, tau_steps))
                 last_tau = tau
+                if (tau * tau_scale < it) & (d_tau < tau_thresh):
+                    break
+        else:
+            end_message = "Sampling terminated after reaching maximum steps"
 
         sys.stderr.write(
             pbar.format(it, n_expect, max_steps) + "\n")
+        sys.stderr.writable(
+            f"sampling steps: {it:d} of {n_expect:d}: {end_message}")
         sys.stderr.flush()
 
-    return MCSamples(sampler, bay_model.parnames, bay_model.neff)
+        return MCSamples(sampler, self.parnames, self.neff)
 
-
-def auto_fit_model(
-    bay_model: BayesianModel,
-    p0: NDArray
-) -> tuple[NDArray, float]:
-    opt = minimize(bay_model.chi_squared, x0=p0, method="Nelder-Mead")
-    status = "successful" if opt.success else "failed"
-    sys.stderr.write(
-        f"minimization {status} after {opt.nfev} evaluations: {opt.message}\n")
-    sys.stderr.flush()
-    return opt.x, opt.fun  # best estimate, chi squared
+    def run_fitting(self, p0: NDArray) -> tuple[NDArray, float]:
+        opt = minimize(self.chi_squared, x0=p0, method="Nelder-Mead")
+        status = "successful" if opt.success else "failed"
+        sys.stderr.write(
+            f"minimization {status} after {opt.nfev} evaluations: "
+            f"{opt.message}\n")
+        sys.stderr.flush()
+        return opt.x, opt.fun  # best estimate, chi squared
 
 
 def shift_fit(
@@ -523,9 +519,9 @@ def shift_fit(
             priors.extend([prior_log_amp, prior_dz])
     full_model.set_priors(priors)
 
-    samples = auto_sample_model(
-        full_model, nwalkers=nwalkers, max_steps=max_steps)
+    samples = full_model.run_mcmc(
+        nwalkers=nwalkers, max_steps=max_steps)
     if optimise:
-        best, chisq = auto_fit_model(full_model, samples.best().to_numpy())
+        best, chisq = full_model.run_fitting(samples.best().to_numpy())
         samples.set_best(best, chisq)
     return samples
