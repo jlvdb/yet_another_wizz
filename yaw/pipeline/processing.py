@@ -4,12 +4,12 @@ import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Union
 
+import yaw
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.config import ResamplingConfig
+from yaw.core.utils import format_float_fixed_width as fmt_num
 from yaw.correlation import CorrelationData, CorrelationFunction
-from yaw.utils import format_float_fixed_width as fmt_num
-
-import yaw
+from yaw.redshifts import RedshiftData
 
 from yaw.pipeline.data import MissingCatalogError
 
@@ -112,7 +112,7 @@ class PostProcessor:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
             path = counts_dir.get_auto_reference()
-            cfs[scale] = yaw.CorrelationFunction.from_file(path)
+            cfs[scale] = CorrelationFunction.from_file(path)
         self._w_ss = cfs
         return cfs
 
@@ -120,7 +120,7 @@ class PostProcessor:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
             path = counts_dir.get_auto(self.get_bin_idx())
-            cfs[scale] = yaw.CorrelationFunction.from_file(path)
+            cfs[scale] = CorrelationFunction.from_file(path)
         self._w_pp = cfs
         return cfs
 
@@ -128,7 +128,7 @@ class PostProcessor:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
             path = counts_dir.get_cross(self.get_bin_idx())
-            cfs[scale] = yaw.CorrelationFunction.from_file(path)
+            cfs[scale] = CorrelationFunction.from_file(path)
         self._w_sp = cfs
         return cfs
 
@@ -226,7 +226,7 @@ class PostProcessor:
             key = (scale, tag)
             est_dir = self.project.get_estimate_dir(scale, tag, create=True)
             path = est_dir.get_cross(self.get_bin_idx())
-            nz_data = yaw.RedshiftData.from_correlation_data(
+            nz_data = RedshiftData.from_correlation_data(
                 cross_data[key], ref_data[key], unk_data[key], info=info)
             nz_data.to_files(path)
 

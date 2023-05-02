@@ -13,19 +13,21 @@ from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.config import Configuration, ResamplingConfig
-from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.cosmology import r_kpc_to_angle
-from yaw.paircounts import PairCountResult, PatchedCount, PatchedTotal
-from yaw.parallel import ParallelHelper
+from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.data import PatchIDs
+from yaw.core.logging import TimedLog
+from yaw.core.parallel import ParallelHelper
+from yaw.core.utils import (
+    LimitTracker, job_progress_bar, long_num_format, scales_to_keys)
+from yaw.correlation.paircounts import (
+    PairCountResult, PatchedCount, PatchedTotal)
 from yaw.redshifts import HistogramData
-from yaw.utils import (
-    LimitTracker, PatchIDs, TimedLog, job_progress_bar, long_num_format,
-    scales_to_keys)
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
-    from yaw.cosmology import TypeCosmology
+    from yaw.core.cosmology import TypeCosmology
 
 
 @dataclass(frozen=True)

@@ -5,10 +5,11 @@ import logging
 import sys
 from abc import ABC, abstractclassmethod
 
-from yaw import __version__, default as DEFAULT
+from yaw import __version__
 from yaw import config as yaw_config
 from yaw.config import Configuration
-from yaw.utils import populate_parser
+from yaw.core import default as DEFAULT
+from yaw.core.docs import populate_parser
 
 from yaw.pipeline import tasks as yaw_tasks
 from yaw.pipeline.merge import (

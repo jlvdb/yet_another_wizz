@@ -10,9 +10,11 @@ import pandas as pd
 import scipy.optimize
 
 from yaw.config import ResamplingConfig
-from yaw.correlation import CorrelationData, SampledValue
-from yaw.utils import TypePathStr
-from yaw.utils import LogCustomWarning, TimedLog, shift_histogram, rebin
+from yaw.core.data import SampledValue
+from yaw.core.logging import LogCustomWarning, TimedLog
+from yaw.core.math import shift_histogram, rebin
+from yaw.core.utils import TypePathStr
+from yaw.correlation import CorrelationData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

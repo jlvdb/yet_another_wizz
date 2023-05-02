@@ -9,10 +9,11 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields, asdict, MISSING
 from typing import TYPE_CHECKING, Any
 
-from yaw import default as DEFAULT
 from yaw.config import ResamplingConfig
-from yaw.estimators import CorrelationEstimator
-from yaw.utils import DictRepresentation, Parameter
+from yaw.core import default as DEFAULT
+from yaw.core.abc import DictRepresentation
+from yaw.core.docs import Parameter
+from yaw.correlation.estimators import CorrelationEstimator
 
 from yaw.pipeline.processing import DataProcessor
 from yaw.pipeline.logger import print_yaw_message

@@ -11,10 +11,11 @@ import pandas as pd
 
 from collections.abc import Sequence
 
-from yaw import default as DEFAULT
 from yaw.config import Configuration, ManualBinningConfig, ScalesConfig
-from yaw.correlation import CorrelationFunction, HistogramData
-from yaw.utils import TypePathStr
+from yaw.core import default as DEFAULT
+from yaw.core.utils import TypePathStr
+from yaw.correlation import CorrelationFunction
+from yaw.redshifts import HistogramData
 
 from yaw.pipeline.project import (
     ProjectDirectory, ProjectState, YawDirectory, compress_config)

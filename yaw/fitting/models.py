@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.utils import rebin
+from yaw.core.math import rebin
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

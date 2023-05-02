@@ -14,7 +14,11 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
 
+BINNING_OPTIONS = ("linear", "comoving", "logspace")
+"""Names of implemented redshift binning schemes."""
+
 COSMOLOGY_OPTIONS = available
+"""Names of available cosmological models."""
 
 
 def get_default_cosmology() -> FLRW:
@@ -44,9 +48,6 @@ def r_kpc_to_angle(
     """from kpc to radian"""
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
     return np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
-
-
-BINNING_OPTIONS = ("linear", "comoving", "logspace")
 
 
 class BinFactory:

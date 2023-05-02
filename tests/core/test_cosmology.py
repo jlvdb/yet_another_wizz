@@ -3,7 +3,7 @@ import numpy.testing as npt
 from astropy.cosmology import Planck15
 from pytest import mark
 
-from yaw import cosmology
+from yaw.core import cosmology
 
 
 def test_default_cosmology():

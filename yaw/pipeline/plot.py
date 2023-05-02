@@ -8,7 +8,8 @@ import matplotlib
 matplotlib.use("agg")
 import matplotlib.pyplot as plt
 
-from yaw.correlation import CorrelationData, RedshiftData
+from yaw.correlation import CorrelationData
+from yaw.redshifts import RedshiftData
 
 from yaw.pipeline.project import ProjectDirectory
 

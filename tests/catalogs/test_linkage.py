@@ -5,7 +5,7 @@ from pytest import fixture
 from yaw.catalogs import PatchLinkage
 from yaw.catalogs.linkage import LINK_ZMIN
 from yaw.config import Configuration
-from yaw.coordinates import CoordSky, DistSky
+from yaw.core.coordinates import CoordSky, DistSky
 
 
 class MockCatalog:

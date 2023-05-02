@@ -9,14 +9,15 @@ import astropandas as apd
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.coordinates import Coordinate, CoordSky, DistSky
-from yaw.utils import PatchedQuantity, long_num_format
+from yaw.core.abc import PatchedQuantity
+from yaw.core.coordinates import Coordinate, CoordSky, DistSky
+from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.catalogs import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
-    from yaw.paircounts import PairCountResult
+    from yaw.correlation.paircounts import PairCountResult
     from yaw.redshifts import HistogramData
 
 

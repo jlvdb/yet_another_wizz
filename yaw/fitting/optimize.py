@@ -10,7 +10,7 @@ import emcee.autocorr
 import numpy as np
 from scipy.optimize import minimize
 
-from yaw.utils import apply_bool_mask_ndim, round_to
+from yaw.core.math import apply_bool_mask_ndim, round_to
 
 from yaw.fitting.samples import MCSamples
 

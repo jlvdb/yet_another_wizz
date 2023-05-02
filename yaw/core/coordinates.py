@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.utils import sgn
+from yaw.core.math import sgn
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray

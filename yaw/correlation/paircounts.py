@@ -17,9 +17,10 @@ import pandas as pd
 import scipy.sparse
 
 from yaw.config import ResamplingConfig
-from yaw.utils import (
-    BinnedQuantity, HDFSerializable, LogCustomWarning, PatchedQuantity,
-    PatchIDs, outer_triu_sum)
+from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.data import PatchIDs, SampledData
+from yaw.core.logging import LogCustomWarning
+from yaw.core.math import outer_triu_sum
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.sparse import dok_matrix
@@ -34,73 +35,6 @@ _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 
 TypeSlice: TypeAlias = Union[slice, int, None]
-
-
-@dataclass(frozen=True, repr=False)
-class SampledData(BinnedQuantity):
-    """Container for data and resampled data with redshift binning.
-
-    Contains the redshift binning, data vector, and resampled data vector (e.g.
-    jackknife or bootstrap samples). The resampled values are used to compute
-    error estimates and covariance/correlation matrices.
-
-    Args:
-        binning (:obj:`pandas.IntervalIndex`):
-            The redshift bin edges used for this correlation function.
-        data (:obj:`NDArray`):
-            The correlation function values.
-        samples (:obj:`NDArray`):
-            The resampled correlation function values.
-        method (str):
-            The resampling method used, see :class:`~yaw.ResamplingConfig` for
-            available options.
-
-    Attributes:
-        covariance (:obj:`NDArray`):
-            Covariance matrix automatically computed from the resampled values.
-    """
-
-    binning: IntervalIndex
-    data: NDArray
-    samples: NDArray
-    method: str
-
-    def __post_init__(self) -> None:
-        if self.data.shape != (self.n_bins,):
-            raise ValueError("unexpected shape of 'data' array")
-        if not self.samples.shape[1] == self.n_bins:
-            raise ValueError(
-                "number of bins for 'data' and 'samples' do not match")
-        if self.method not in ResamplingConfig.implemented_methods:
-            raise ValueError(f"unknown sampling method '{self.method}'")
-
-    def __repr__(self) -> str:
-        string = super().__repr__()[:-1]
-        n_samples = self.n_samples
-        method = self.method
-        return f"{string}, {n_samples=}, {method=})"
-
-    def get_binning(self) -> IntervalIndex:
-        return self.binning
-
-    @property
-    def n_samples(self) -> int:
-        return len(self.samples)
-
-    def get_data(self) -> Series:
-        return pd.Series(self.data, index=self.binning)
-
-    def get_samples(self) -> DataFrame:
-        return pd.DataFrame(self.samples.T, index=self.binning)
-
-    def is_compatible(self, other: SampledData) -> bool:
-        if not super().is_compatible(other):
-            return False
-        if self.n_samples != other.n_samples:
-            return False
-        if self.method != other.method:
-            return False
-        return True
 
 
 def check_mergable(patched_arrays: Sequence[PatchedArray]) -> None:

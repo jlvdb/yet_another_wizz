@@ -12,11 +12,11 @@ from treecorr import Catalog, NNCorrelation
 
 from yaw.catalogs import BaseCatalog
 from yaw.config import Configuration
-from yaw.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.cosmology import r_kpc_to_angle
-from yaw.paircounts import PairCountResult
+from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.logging import TimedLog
+from yaw.correlation.paircounts import PairCountResult
 from yaw.redshifts import HistogramData
-from yaw.utils import TimedLog
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval

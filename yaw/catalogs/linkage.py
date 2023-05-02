@@ -7,9 +7,10 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import distance_matrix
 
-from yaw.coordinates import Dist3D, DistSky
-from yaw.cosmology import r_kpc_to_angle
-from yaw.utils import PatchIDs, PatchedQuantity
+from yaw.core.abc import PatchedQuantity
+from yaw.core.coordinates import Dist3D, DistSky
+from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.data import PatchIDs
 
 if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog

@@ -4,8 +4,7 @@ import textwrap
 
 from yaw import config
 from yaw.catalogs import BACKEND_OPTIONS
-from yaw.cosmology import BINNING_OPTIONS, COSMOLOGY_OPTIONS
-from yaw.utils import get_doc_args
+from yaw.core.docs import get_doc_args
 
 from yaw.pipeline import tasks
 

@@ -6,11 +6,10 @@ from pathlib import Path
 from yaw.catalogs import BaseCatalog
 from yaw.config import ResamplingConfig
 
-
-BACKEND_OPTIONS = tuple(sorted(BaseCatalog.backends.keys()))
-BINNING_OPTIONS = ("linear", "comoving", "logspace")
-from astropy.cosmology import available as COSMOLOGY_OPTIONS
-METHOD_OPTIONS = ResamplingConfig.implemented_methods
+# parameter options
+from yaw.catalogs import BACKEND_OPTIONS
+from yaw.core.cosmology import BINNING_OPTIONS, COSMOLOGY_OPTIONS
+from yaw.config.resampling import METHOD_OPTIONS
 
 
 class CommandlineInitError(Exception):

@@ -2,7 +2,7 @@ import numpy as np
 import numpy.testing as npt
 from pytest import mark
 
-from yaw import utils
+from yaw.core import math
 
 
 @mark.parametrize("axis", [None, 0, 1])
@@ -15,7 +15,7 @@ def test_outer_triu(axis):
     a = np.arange(1, N + 1)
     a2 = np.repeat(a, repeat).reshape((*a.shape, repeat))
     for k in range(-N, N):
-        got = utils.outer_triu_sum(a2, a2+1, k=k, axis=axis)
+        got = math.outer_triu_sum(a2, a2+1, k=k, axis=axis)
         require = ref(a, a+1, k=k, axis=axis)
         require = np.repeat(require, repeat).reshape((*require.shape, repeat))
         npt.assert_equal(got, require)

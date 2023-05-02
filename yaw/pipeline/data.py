@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from yaw import default as DEFAULT
 from yaw.catalogs import NewCatalog
-from yaw.coordinates import Coordinate, CoordSky
-from yaw.utils import (
-    DictRepresentation, TypePathStr, format_float_fixed_width as fmt_num)
+from yaw.core import default as DEFAULT
+from yaw.core.abc import DictRepresentation
+from yaw.core.coordinates import Coordinate, CoordSky
+from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 
 from yaw.pipeline.directories import CacheDirectory
 

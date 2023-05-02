@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from yaw import __version__
-from yaw import default as DEFAULT
 from yaw.config import Configuration, parse_section_error
-from yaw.utils import DictRepresentation, TypePathStr
+from yaw.core import default as DEFAULT
+from yaw.core.abc import DictRepresentation
+from yaw.core.utils import TypePathStr
 
 from yaw.pipeline.data import InputManager
 from yaw.pipeline.directories import (

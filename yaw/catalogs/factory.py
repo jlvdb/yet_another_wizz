@@ -6,7 +6,7 @@ from yaw.catalogs.catalog import BackendError, BaseCatalog
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
-    from yaw.coordinates import Coordinate
+    from yaw.core.coordinates import Coordinate
 
 
 class NewCatalog:

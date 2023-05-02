@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from pathlib import Path, _posix_flavour, _windows_flavour
 from typing import Any
 
-from yaw.utils import bytes_format
+from yaw.core.utils import bytes_format
 
 
 logger = logging.getLogger(__name__)

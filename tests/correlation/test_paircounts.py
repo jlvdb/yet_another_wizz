@@ -10,7 +10,7 @@ import pandas as pd
 import pandas.testing as pdt
 from pytest import fixture, raises
 
-from yaw import paircounts
+from yaw.correlation import paircounts
 from yaw.config import ResamplingConfig
 
 

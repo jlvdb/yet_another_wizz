@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw.core.math import cov_from_samples
 from yaw.redshifts import HistogramData
-from yaw.utils import cov_from_samples
 
 from yaw.fitting.models import ModelEnsemble, ShiftModel
 from yaw.fitting.optimize import Optimizer

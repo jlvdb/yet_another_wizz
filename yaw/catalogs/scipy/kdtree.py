@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from yaw.coordinates import Coordinate, DistSky
+from yaw.core.coordinates import Coordinate, DistSky
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

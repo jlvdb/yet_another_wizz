@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.parallel import (
-    POOL_SHARE, ParallelHelper, SharedArray)
-from yaw.utils import TimedLog, long_num_format
+from yaw.core.parallel import POOL_SHARE, ParallelHelper, SharedArray
+from yaw.core.logging import TimedLog
+from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

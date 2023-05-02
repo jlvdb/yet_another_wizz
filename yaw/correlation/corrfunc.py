@@ -12,14 +12,14 @@ import pandas as pd
 
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
-from yaw.estimators import (
+from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.data import SampledData
+from yaw.core.logging import LogCustomWarning, TimedLog
+from yaw.core.math import cov_from_samples
+from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
+from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
-from yaw.paircounts import PairCountResult, SampledData
-from yaw.utils import (
-    BinnedQuantity, HDFSerializable, PatchedQuantity, TypePathStr)
-from yaw.utils import (
-    LogCustomWarning, TimedLog, cov_from_samples,
-    format_float_fixed_width as fmt_num)
+from yaw.correlation.paircounts import PairCountResult
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.axis import Axis
@@ -27,57 +27,10 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, IntervalIndex, Series
     from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
-    from yaw.estimators import Cts
+    from yaw.correlation.estimators import Cts
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class SampledValue:
-
-    value: np.ScalarType
-    samples: NDArray[np.ScalarType]
-    method: str
-    error: np.ScalarType = field(init=False)
-
-    def __post_init__(self) -> None:
-        if self.method not in ResamplingConfig.implemented_methods:
-            raise ValueError(f"unknown sampling method '{self.method}'")
-        if self.method == "bootstrap":
-            error = np.std(self.samples, ddof=1, axis=0)
-        else:  # jackknife
-            error = np.std(self.samples, ddof=0, axis=0) * (self.n_samples - 1)
-        object.__setattr__(self, "error", error)
-
-    def __repr__(self) -> str:
-        string = self.__class__.__name__
-        value = self.value
-        error = self.error
-        n_samples = self.n_samples
-        method = self.method
-        return f"{string}({value=:.3g}, {error=:.3g}, {n_samples=}, {method=})"
-
-    def __str__(self) -> str:
-        return f"{self.value:+.3g}+/-{self.error:.3g}"
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, self.__class__):
-            if self.samples.shape != other.samples.shape:
-                return False
-            return (
-                self.method == other.method and
-                self.value == other.value and
-                np.all(self.samples == other.samples))
-        else:
-            return False
-
-    def __ne__(self, other: object) -> bool:
-        return not self.__eq__(other)
-
-    @property
-    def n_samples(self) -> int:
-        return len(self.samples)
 
 
 @dataclass(frozen=True, repr=False)
