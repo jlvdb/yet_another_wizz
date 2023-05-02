@@ -26,4 +26,5 @@ This is a documentation of the most important parts of the *yet_another_wizz*
         api/estimators
         api/paircounts
         api/randoms
+        api/redshifts
         api/utils

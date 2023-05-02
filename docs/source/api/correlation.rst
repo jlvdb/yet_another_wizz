@@ -21,6 +21,4 @@ yaw.correlation
 
     CorrelationFunction
     CorrelationData
-    RedshiftData
-    HistogramData
     SampledValue
