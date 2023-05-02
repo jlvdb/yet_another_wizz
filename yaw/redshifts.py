@@ -10,7 +10,7 @@ import pandas as pd
 import scipy.optimize
 
 from yaw.config import ResamplingConfig
-from yaw.core.data import SampledValue
+from yaw.core.containers import SampledValue
 from yaw.core.logging import LogCustomWarning, TimedLog
 from yaw.core.math import shift_histogram, rebin
 from yaw.core.utils import TypePathStr

@@ -13,9 +13,9 @@ from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.config import Configuration, ResamplingConfig
+from yaw.core.containers import PatchIDs
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
-from yaw.core.data import PatchIDs
 from yaw.core.logging import TimedLog
 from yaw.core.parallel import ParallelHelper
 from yaw.core.utils import (

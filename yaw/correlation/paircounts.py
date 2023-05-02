@@ -18,7 +18,7 @@ import scipy.sparse
 
 from yaw.config import ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
-from yaw.core.data import PatchIDs, SampledData
+from yaw.core.containers import PatchIDs, SampledData
 from yaw.core.logging import LogCustomWarning
 from yaw.core.math import outer_triu_sum
 
