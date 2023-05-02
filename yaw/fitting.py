@@ -457,7 +457,7 @@ class BayesianModel(ABC):
 
         sys.stderr.write(
             pbar.format(it, n_expect, max_steps) + "\n")
-        sys.stderr.writable(
+        sys.stderr.write(
             f"sampling steps: {it:d} of {n_expect:d}: {end_message}")
         sys.stderr.flush()
 
@@ -519,8 +519,7 @@ def shift_fit(
             priors.extend([prior_log_amp, prior_dz])
     full_model.set_priors(priors)
 
-    samples = full_model.run_mcmc(
-        nwalkers=nwalkers, max_steps=max_steps)
+    samples = full_model.run_mcmc(nwalkers=nwalkers, max_steps=max_steps)
     if optimise:
         best, chisq = full_model.run_fitting(samples.best().to_numpy())
         samples.set_best(best, chisq)
