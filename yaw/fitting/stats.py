@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from typing import TYPE_CHECKING, Callable, TypeVar
 
@@ -106,7 +106,7 @@ def weighted_quantile(
 class Stats:
 
     samples: DataFrame
-    weights: Series
+    weights: Series | None = field(default=None)
 
     @named
     def mean(self) -> Series:
