@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod, abstractproperty
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from itertools import chain
 from typing import TYPE_CHECKING, Union
 
 import emcee
@@ -413,7 +412,7 @@ class BayesianModel(ABC):
         nwalkers: int | None = None,
         max_steps: int = 10000,
         tau_scale: int = 50,
-        tau_steps: int = 50,
+        tau_steps: int = 100,
         tau_thresh: float = 0.01
     ) -> MCSamples:
         if self.priors is None:
@@ -435,14 +434,15 @@ class BayesianModel(ABC):
             nwalkers, self.ndim, self.log_prob_with_prior)
 
         # run the sampler, automatically expanding step number up to the limit
-        end_message = "Sampling terminated on automatic convergence estimate"
-        pbar = "sampling steps: {:d} of {:d} (est), max: {:d}\r"
+        end_message = "Sampling terminated on automatic convergence estimate."
+        pbar = "sampling step {:d} of {:d} (est), max: {:d}\r"
         n_expect = 2 * tau_steps
         last_tau = sys.maxsize
 
         for _ in sampler.sample(p0, iterations=max_steps):
             it = sampler.iteration
-            sys.stderr.write(pbar.format(it, n_expect, max_steps))
+            if it % 10 == 0:
+                sys.stderr.write(pbar.format(it, n_expect, max_steps))
 
             # update autocorrelation time estimate
             if it % tau_steps == 0:
@@ -453,12 +453,10 @@ class BayesianModel(ABC):
                 if (tau * tau_scale < it) & (d_tau < tau_thresh):
                     break
         else:
-            end_message = "Sampling terminated after reaching maximum steps"
+            end_message = "Sampling terminated after reaching maximum steps."
 
         sys.stderr.write(
-            pbar.format(it, n_expect, max_steps) + "\n")
-        sys.stderr.write(
-            f"sampling steps: {it:d} of {n_expect:d}: {end_message}")
+            f"sampling steps: {it:d} of {n_expect:d}: {end_message}\n")
         sys.stderr.flush()
 
         return MCSamples(sampler, self.parnames, self.neff)
@@ -515,7 +513,7 @@ def shift_fit(
             rebinned = bin_model.rebin(bin_data.edges)
             norm = np.trapz(rebinned.data, x=bin_data.mids)
             prior_log_amp = GaussianPrior(-np.log10(norm), 0.5)
-            prior_dz = GaussianPrior(0.0, 0.02)
+            prior_dz = GaussianPrior(0.0, 0.015)
             priors.extend([prior_log_amp, prior_dz])
     full_model.set_priors(priors)
 

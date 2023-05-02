@@ -11,6 +11,7 @@ from timeit import default_timer
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple, TypeVar, Union
 
 import h5py
+import numba
 import numpy as np
 import tqdm
 import yaml
@@ -140,25 +141,35 @@ def corr_from_cov(covariance: NDArray) -> NDArray:
     return covariance / outer_v
 
 
+@numba.njit
 def rebin(
     bins_new: NDArray,
     bins_old: NDArray,
     counts_old: NDArray
 ) -> NDArray:
+    n_bins_old = len(bins_old) - 1
+    n_bins_new = len(bins_new) - 1
+
     # ensure numpy
     counts_old = np.asarray(counts_old)
-    counts_new = np.zeros(len(bins_new)-1, dtype=np.float_)
+    counts_new = np.zeros(n_bins_new, dtype=np.float_)
 
     # iterate the new bins and check which of the old bins overlap with it
-    for i, (zmin_n, zmax_n) in enumerate(iter_pairwise(bins_new)):
-        for (zmin_o, zmax_o), count in zip(iter_pairwise(bins_old), counts_old):
+    for i_new in range(n_bins_new):
+        zmin_n = bins_new[i_new]
+        zmax_n = bins_new[i_new+1]
+
+        for i_old in range(n_bins_old):
+            zmin_o = bins_old[i_old]
+            zmax_o = bins_old[i_old+1]
+            count = counts_old[i_old]
 
             # check for full or partial overlap
-            contains = zmin_n >= zmin_o and zmax_n < zmax_o
-            overlaps_min = zmin_n <= zmin_o and zmax_n > zmin_o
-            overlaps_max = zmin_n <= zmax_o and zmax_n > zmax_o
+            contains = (zmin_n >= zmin_o) & (zmax_n < zmax_o)
+            overlaps_min = (zmin_n <= zmin_o) & (zmax_n > zmin_o)
+            overlaps_max = (zmin_n <= zmax_o) & (zmax_n > zmax_o)
 
-            if contains or overlaps_min or overlaps_max:
+            if contains | overlaps_min | overlaps_max:
                 # compute fractional bin overlap 
                 zmin_overlap = max(zmin_o, zmin_n)
                 zmax_overlap = min(zmax_o, zmax_n)
@@ -166,7 +177,7 @@ def rebin(
 
                 # assume uniform distribution of data in bin and increment
                 # counts by the bin count weighted by the overlap fraction
-                counts_new[i] += count * fraction
+                counts_new[i_new] += count * fraction
 
     return counts_new
 
