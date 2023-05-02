@@ -10,7 +10,7 @@ from yaw.correlation import HistogramData
 from yaw.utils import cov_from_samples
 
 from yaw.fitting.models import ModelEnsemble, ShiftModel
-from yaw.fitting.optmize import Optimizer
+from yaw.fitting.optimize import Optimizer
 from yaw.fitting.priors import Prior, GaussianPrior
 from yaw.fitting.samples import MCSamples
 
