@@ -47,7 +47,10 @@ class ScalesConfig(DictRepresentation):
         msg_scale_error = f"scales violates 'rmin' < 'rmax'"
         # validation, set to basic python types
         scalars = (float, int, np.number)
-        if isinstance(self.rmin, Sequence) and isinstance(self.rmax, Sequence):
+        if (
+            isinstance(self.rmin, (Sequence, np.array)) and
+            isinstance(self.rmax, (Sequence, np.array))
+        ):
             if len(self.rmin) != len(self.rmax):
                 raise ConfigurationError(
                     "number of elements in 'rmin' and 'rmax' do not match")

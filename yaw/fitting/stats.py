@@ -102,7 +102,7 @@ def weighted_quantile(
     return np.interp(quantiles, weighted_quantiles, values)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Stats:
 
     samples: DataFrame
@@ -123,7 +123,7 @@ class Stats:
         stat = lambda x: weighted_mode(x, self.weights)
         return self.samples.apply(stat)
 
-    def quantile(self, sigma: float = 1.0) -> Series:
+    def quantile(self, sigma: float = 1.0) -> DataFrame:
         p = erf(sigma / np.sqrt(2.0))
         qs = [0.5 - p/2, 0.5 + p/2]
         df = DataFrame(columns=self.samples.columns)
