@@ -17,6 +17,7 @@ from yaw.core.utils import TypePathStr
 from yaw.fitting.stats import Stats
 
 if TYPE_CHECKING:  # pragma: no cover
+    from matplotlib.figure import Figure
     from numpy.typing import NDArray
 
 
@@ -383,3 +384,19 @@ class MCSamples(HDFSerializable, FitData):
             for key, val in self._best.items():
                 group.create_dataset(key, data=val)
             group.attrs["chisq"] = self._chisq
+
+    def plot_triangle(
+        self,
+        params: Sequence[str] | None = None,
+        *,
+        thin: int = 1,
+        show_titles: bool = True,
+        fig: Figure | None = None,
+        **corner_kwargs
+    ) -> Figure:  # pragma: no cover
+        from corner import corner
+        if params is None:
+            params = self.parnames
+        return corner(
+            self.samples[params].to_numpy()[::thin],
+            labels=params, show_titles=show_titles, fig=fig, **corner_kwargs)

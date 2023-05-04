@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -68,13 +68,24 @@ class Optimizer:
         self._inv_sigma_masked = apply_bool_mask_ndim(self.inv_sigma, mask)
         self.mask = mask
 
-    def set_priors(self, priors: Sequence[Prior] | None) -> None:
+    def set_priors(
+        self,
+        priors: Sequence[Prior] | Mapping[Prior] | None
+    ) -> None:
         if priors is None:
             self.priors = None
         elif len(priors) != self.model.ndim:
             raise IndexError("number of priors does not match dimensions")
         else:
-            self.priors = [p for p in priors]
+            try:
+                prior_list = [None] * self.ndim
+                for name in priors:
+                    prior = priors[name]
+                    idx = self.parnames.index(name)
+                    prior_list[idx] = prior
+            except TypeError:
+                prior_list = [p for p in priors]
+            self.priors = prior_list
 
     def chi_squared(self, params: NDArray) -> float:
         prediction = self.model(params)
@@ -161,8 +172,14 @@ class Optimizer:
 
         return MCSamples(sampler, self.parnames, self.neff)
 
-    def run_fitting(self, p0: NDArray) -> tuple[NDArray, float]:
-        opt = minimize(self.chi_squared, x0=p0, method="Nelder-Mead")
+    def run_fitting(
+        self,
+        p0: NDArray,
+        max_eval: int = 1000
+    ) -> tuple[NDArray, float]:
+        opt = minimize(
+            self.chi_squared, x0=p0, method="Nelder-Mead",
+            options=dict(maxiter=max_eval))
         status = "successful" if opt.success else "failed"
         sys.stdout.write(
             f"minimization {status} after {opt.nfev} evaluations: "
