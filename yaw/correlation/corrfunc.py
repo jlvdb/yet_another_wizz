@@ -147,7 +147,7 @@ class CorrelationData(SampledData):
             write_head(f, comment(self._dat_desc), header, delim=DELIM)
             for zlow, zhigh, nz, nz_err in zip(
                 self.edges[:-1], self.edges[1:],
-                self.data, self.get_error().to_numpy()
+                self.data, self.error
             ):
                 values = [
                     fmt_num(val, PREC) for val in (zlow, zhigh, nz, nz_err)]
@@ -225,7 +225,7 @@ class CorrelationData(SampledData):
     ) -> Axis:  # pragma: no cover
         x = self.mids + xoffset
         y = self.data
-        yerr = self.get_error().to_numpy()
+        yerr = self.error
         if scale_by_dz:
             y *= self.dz
             yerr *= self.dz

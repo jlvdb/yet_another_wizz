@@ -116,12 +116,16 @@ class SampledData(BinnedQuantity):
         method = self.method
         return f"{string}, {n_samples=}, {method=})"
 
-    def get_binning(self) -> IntervalIndex:
-        return self.binning
-
     @property
     def n_samples(self) -> int:
         return len(self.samples)
+
+    @property
+    def error(self) -> NDArray:
+        return np.sqrt(np.diag(self.covariance))
+
+    def get_binning(self) -> IntervalIndex:
+        return self.binning
 
     def is_compatible(self, other: SampledData) -> bool:
         if not super().is_compatible(other):
@@ -145,7 +149,7 @@ class SampledData(BinnedQuantity):
         Returns:
             :obj:`pandas.Series`
         """
-        return pd.Series(np.sqrt(np.diag(self.covariance)), index=self.binning)
+        return pd.Series(self.error, index=self.binning)
 
     def get_covariance(self) -> DataFrame:
         """Get value covariance matrix as data frame with its corresponding

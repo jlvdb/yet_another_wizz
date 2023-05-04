@@ -58,15 +58,15 @@ class TestCorrelationData:
         err, cov, cor = stats_jackknife
         cd = corrfunc.CorrelationData(
             binning, data, samples, method="jackknife")
-        npt.assert_allclose(cd.get_error().to_numpy(), err)
-        npt.assert_allclose(cd.get_covariance().to_numpy(), cov)
+        npt.assert_allclose(cd.error, err)
+        npt.assert_allclose(cd.covariance, cov)
         npt.assert_allclose(cd.get_correlation().to_numpy(), cor)
         # bootstrap
         err, cov, cor = stats_bootstrap
         cd = corrfunc.CorrelationData(
             binning, data, samples, method="bootstrap")
-        npt.assert_allclose(cd.get_error().to_numpy(), err)
-        npt.assert_allclose(cd.get_covariance().to_numpy(), cov)
+        npt.assert_allclose(cd.error, err)
+        npt.assert_allclose(cd.covariance, cov)
         npt.assert_allclose(cd.get_correlation().to_numpy(), cor)
 
     def test_io(self, tmp_path_factory, correlation_data):
