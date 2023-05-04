@@ -13,8 +13,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class Prior(ABC):
 
     @abstractmethod
-    def __call__(self, value: float) -> float:
-        NotImplemented
+    def __call__(self, value: float) -> float: raise NotImplementedError
 
     @abstractmethod
     def draw_samples(

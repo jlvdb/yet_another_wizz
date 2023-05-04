@@ -129,8 +129,7 @@ class MergedTask(Task):
 class RepeatableTask(Task):
 
     @abstractmethod
-    def get_identifier(self) -> Any:
-        raise NotImplementedError
+    def get_identifier(self) -> Any: raise NotImplementedError
 
     def __eq__(self, other: Task) -> bool:
         if super().__eq__(other) and hasattr(other, "get_identifier"):

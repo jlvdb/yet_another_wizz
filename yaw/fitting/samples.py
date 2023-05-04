@@ -30,10 +30,10 @@ class FitData(ABC):
         return iter(self.parnames)
 
     @abstractproperty
-    def parnames(self) -> list[str]: NotImplemented
+    def parnames(self) -> list[str]: raise NotImplementedError
 
     @abstractproperty
-    def ndata(self) -> int: NotImplemented
+    def ndata(self) -> int: raise NotImplementedError
 
     @property
     def ndim(self) -> int:
@@ -44,7 +44,7 @@ class FitData(ABC):
         return self.ndata - self.ndim
 
     @abstractmethod
-    def chisq(self) -> float: NotImplemented
+    def chisq(self) -> float: raise NotImplementedError
 
     def chisq_red(self) -> float:
         return self.chisq() / self.ndof

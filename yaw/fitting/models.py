@@ -17,19 +17,16 @@ if TYPE_CHECKING:  # pragma: no cover
 class FitModel(ABC):
 
     @abstractproperty
-    def ndim(self) -> int:
-        NotImplemented
+    def ndim(self) -> int: raise NotImplementedError
 
     @abstractproperty
-    def parnames(self) -> list[str]:
-        NotImplemented
+    def parnames(self) -> list[str]: raise NotImplementedError
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({', '.join(self.parnames)})"
 
     @abstractmethod
-    def __call__(self, params: NDArray) -> NDArray:
-        NotImplemented
+    def __call__(self, params: NDArray) -> NDArray: raise NotImplementedError
 
 
 @dataclass(repr=False)
