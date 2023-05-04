@@ -25,6 +25,7 @@ def shift_fit(
     covariance: str = "var",
     nwalkers: int = None,
     max_steps: int = 10000,
+    dz_priors: Sequence[Prior] | None = None,
     optimise: bool = True
 ) -> MCSamples:
     # verify that data and model have matching binning etc.
@@ -54,14 +55,15 @@ def shift_fit(
 
     # add the priors
     priors: list[Prior] = []
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        for bin_data, bin_model in zip(data, model):
-            rebinned = bin_model.rebin(bin_data.edges)
-            norm = np.trapz(rebinned.data, x=bin_data.mids)
-            prior_log_amp = GaussianPrior(-np.log10(norm), 0.5)
+    for i, (bin_data, bin_model) in enumerate(zip(data, model)):
+        rebinned = bin_model.rebin(bin_data.edges)
+        norm = np.trapz(rebinned.data, x=bin_data.mids)
+        prior_log_amp = GaussianPrior(-np.log10(norm), 0.5)
+        if dz_priors is None:
             prior_dz = GaussianPrior(0.0, 0.015)
-            priors.extend([prior_log_amp, prior_dz])
+        else:
+            prior_dz = dz_priors[i]
+        priors.extend([prior_log_amp, prior_dz])
     full_model.set_priors(priors)
 
     samples = full_model.run_mcmc(nwalkers=nwalkers, max_steps=max_steps)
