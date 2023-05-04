@@ -48,8 +48,8 @@ class ScalesConfig(DictRepresentation):
         # validation, set to basic python types
         scalars = (float, int, np.number)
         if (
-            isinstance(self.rmin, (Sequence, np.array)) and
-            isinstance(self.rmax, (Sequence, np.array))
+            isinstance(self.rmin, (Sequence, np.ndarray)) and
+            isinstance(self.rmax, (Sequence, np.ndarray))
         ):
             if len(self.rmin) != len(self.rmax):
                 raise ConfigurationError(
