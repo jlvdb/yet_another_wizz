@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -7,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from yaw.core.abc import BinnedQuantity
+from yaw.core.math import cov_from_samples
 from yaw.config import METHOD_OPTIONS
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -94,6 +96,7 @@ class SampledData(BinnedQuantity):
     data: NDArray
     samples: NDArray
     method: str
+    covariance: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
         if self.data.shape != (self.n_bins,):
@@ -103,6 +106,9 @@ class SampledData(BinnedQuantity):
                 "number of bins for 'data' and 'samples' do not match")
         if self.method not in METHOD_OPTIONS:
             raise ValueError(f"unknown sampling method '{self.method}'")
+
+        covmat = cov_from_samples(self.samples, self.method)
+        object.__setattr__(self, "covariance", covmat)
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -117,12 +123,6 @@ class SampledData(BinnedQuantity):
     def n_samples(self) -> int:
         return len(self.samples)
 
-    def get_data(self) -> Series:
-        return pd.Series(self.data, index=self.binning)
-
-    def get_samples(self) -> DataFrame:
-        return pd.DataFrame(self.samples.T, index=self.binning)
-
     def is_compatible(self, other: SampledData) -> bool:
         if not super().is_compatible(other):
             return False
@@ -131,3 +131,43 @@ class SampledData(BinnedQuantity):
         if self.method != other.method:
             return False
         return True
+
+    def get_data(self) -> Series:
+        return pd.Series(self.data, index=self.binning)
+
+    def get_samples(self) -> DataFrame:
+        return pd.DataFrame(self.samples.T, index=self.binning)
+
+    def get_error(self) -> Series:
+        """Get value error estimate (diagonal of covariance matrix) as series
+        with its corresponding redshift bin intervals as index.
+        
+        Returns:
+            :obj:`pandas.Series`
+        """
+        return pd.Series(np.sqrt(np.diag(self.covariance)), index=self.binning)
+
+    def get_covariance(self) -> DataFrame:
+        """Get value covariance matrix as data frame with its corresponding
+        redshift bin intervals as index and column labels.
+        
+        Returns:
+            :obj:`pandas.DataFrame`
+        """
+        return pd.DataFrame(
+            data=self.covariance, index=self.binning, columns=self.binning)
+
+    def get_correlation(self) -> DataFrame:
+        """Get value correlation matrix as data frame with its corresponding
+        redshift bin intervals as index and column labels.
+        
+        Returns:
+            :obj:`pandas.DataFrame`
+        """
+        stdev = np.sqrt(np.diag(self.covariance))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            corr = self.covariance / np.outer(stdev, stdev)
+        corr[self.covariance == 0] = 0
+        return pd.DataFrame(
+            data=corr, index=self.binning, columns=self.binning)

@@ -15,7 +15,6 @@ from yaw.config import ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import SampledData
 from yaw.core.logging import LogCustomWarning, TimedLog
-from yaw.core.math import cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
@@ -24,7 +23,7 @@ from yaw.correlation.paircounts import PairCountResult
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.axis import Axis
     from numpy.typing import NDArray
-    from pandas import DataFrame, IntervalIndex, Series
+    from pandas import IntervalIndex
     from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
@@ -61,15 +60,12 @@ class CorrelationData(SampledData):
     """
 
     info: str | None = None
-    covariance: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
-        super().__post_init__()
         with LogCustomWarning(
             logger, "invalid values encountered in correlation samples"
         ):
-            covmat = cov_from_samples(self.samples, self.method)
-        object.__setattr__(self, "covariance", covmat)
+            super().__post_init__()
 
     @classmethod
     def from_files(cls, path_prefix: TypePathStr) -> CorrelationData:
@@ -111,40 +107,6 @@ class CorrelationData(SampledData):
             samples=samples.T[2:],  # remove redshift bin columns
             method=method,
             info=info)
-
-    def get_error(self) -> Series:
-        """Get value error estimate (diagonal of covariance matrix) as series
-        with its corresponding redshift bin intervals as index.
-        
-        Returns:
-            :obj:`pandas.Series`
-        """
-        return pd.Series(np.sqrt(np.diag(self.covariance)), index=self.binning)
-
-    def get_covariance(self) -> DataFrame:
-        """Get value covariance matrix as data frame with its corresponding
-        redshift bin intervals as index and column labels.
-        
-        Returns:
-            :obj:`pandas.DataFrame`
-        """
-        return pd.DataFrame(
-            data=self.covariance, index=self.binning, columns=self.binning)
-
-    def get_correlation(self) -> DataFrame:
-        """Get value correlation matrix as data frame with its corresponding
-        redshift bin intervals as index and column labels.
-        
-        Returns:
-            :obj:`pandas.DataFrame`
-        """
-        stdev = np.sqrt(np.diag(self.covariance))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            corr = self.covariance / np.outer(stdev, stdev)
-        corr[self.covariance == 0] = 0
-        return pd.DataFrame(
-            data=corr, index=self.binning, columns=self.binning)
 
     @property
     def _dat_desc(self) -> str:
