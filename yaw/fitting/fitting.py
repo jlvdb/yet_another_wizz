@@ -42,8 +42,7 @@ def shift_fit(
         ShiftModel(bin_model.edges, bin_model.data, bin_data.edges)
         for bin_model, bin_data in zip(model, data)]
     fit_model = ModelEnsemble(fit_models)
-    full_model = Optimizer(
-        data_all, np.linalg.inv(cov_mat_all), fit_model)
+    full_model = Optimizer(data_all, cov_mat_all, fit_model)
     full_model.set_mask(mask)
 
     # add the priors
