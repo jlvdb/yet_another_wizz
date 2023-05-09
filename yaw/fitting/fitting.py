@@ -28,18 +28,11 @@ def shift_fit(
     dz_priors: Sequence[Prior] | None = None,
     optimise: bool = True
 ) -> MCSamples:
-    # verify that data and model have matching binning etc.
-    for i, (bin_data, bin_model) in enumerate(zip(data, model), 1):
-        if not bin_data.is_compatible(bin_model):
-            raise ValueError(
-                "'data' and 'model' are not compatible in binning, spatial "
-                f"patches, or resampling method for the {i}-th entry")
-
     # build the joint data vector
     data_all = np.concatenate([bin_data.data for bin_data in data])
+    method = data[0].method
     cov_mat_all = cov_from_samples(
-        [bin_data.samples for bin_data in data],
-        method=bin_data.method, kind=covariance)
+        [bin_data.samples for bin_data in data], method=method, kind=covariance)
     # mask bad values
     var_all = np.diag(cov_mat_all)
     mask = np.isfinite(data_all) & np.isfinite(var_all) & (var_all > 0.0)
