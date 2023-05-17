@@ -108,7 +108,7 @@ class SampledData(BinnedQuantity):
             raise ValueError(f"unknown sampling method '{self.method}'")
 
         covmat = cov_from_samples(self.samples, self.method)
-        object.__setattr__(self, "covariance", covmat)
+        object.__setattr__(self, "covariance", np.atleast_2d(covmat))
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
