@@ -60,10 +60,21 @@ def outer_triu_sum(
     return result[()]
 
 
-def apply_bool_mask_ndim(array: _Tarr, mask: NDArray[np.bool_]) -> _Tarr:
+def apply_bool_mask_ndim(
+    array: _Tarr,
+    mask: NDArray[np.bool_],
+    axis: int | Sequence[int] | None = None
+) -> _Tarr:
+    if axis is None:
+        axis = list(range(array.ndim))
     result = array
-    for axis in range(array.ndim):
-        result = np.compress(mask, result, axis=axis)
+    for ax in axis:
+        if result.shape[ax] != len(mask):
+            raise IndexError(
+                f"boolean index did not match indexed array along dimension "
+                f"{ax}; dimension is {result.shape[ax]} but corresponding "
+                f"boolean dimension is {len(mask)}")
+        result = np.compress(mask, result, axis=ax)
     return result
 
 
