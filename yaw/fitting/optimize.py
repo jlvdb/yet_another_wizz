@@ -24,7 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class Optimizer:
 
     data: NDArray
-    inv_sigma: NDArray
+    sigma: NDArray
     model: FitModel
     priors: list[Prior] | None = field(default=None, init=False)
     mask: NDArray[np.bool_] | None = field(default=None, init=False)
@@ -65,7 +65,14 @@ class Optimizer:
         elif len(mask) != len(self.data):
             raise IndexError("length of data and mask do not agree")
         self._data_masked = self.data[mask]
-        self._inv_sigma_masked = apply_bool_mask_ndim(self.inv_sigma, mask)
+        self._sigma_masked = apply_bool_mask_ndim(self.sigma, mask)
+        if self.sigma.ndim == 2:
+            self._inv_sigma_masked = np.linalg.inv(self._sigma_masked)
+        elif self.sigma.ndim == 1:
+            self._inv_sigma_masked = 1.0 / self._sigma_masked
+        else:
+            raise ValueError(
+                f"cannot interpret sigma with {self.sigma.ndim} dimensions")
         self.mask = mask
 
     def set_priors(
@@ -90,14 +97,10 @@ class Optimizer:
     def chi_squared(self, params: NDArray) -> float:
         prediction = self.model(params)
         r = prediction[self.mask] - self._data_masked
-        if self.inv_sigma.ndim == 2:
+        if self.sigma.ndim == 2:
             chisq = r.T @ self._inv_sigma_masked @ r
-        elif self.inv_sigma.ndim == 1:
-            chisq = np.sum((r * self._inv_sigma_masked) ** 2)
         else:
-            raise ValueError(
-                f"cannot interpret inv_sigma with {self.inv_sigma.ndim} "
-                "dimensions")
+            chisq = np.sum((r * self._inv_sigma_masked) ** 2)
         return chisq
 
     def log_like(self, params: NDArray) -> float:
