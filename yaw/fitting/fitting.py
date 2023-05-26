@@ -15,6 +15,7 @@ from yaw.fitting.priors import Prior, GaussianPrior
 from yaw.fitting.samples import MCSamples
 
 if TYPE_CHECKING:  # pragma: no cover
+    from numpy.typing import NDArray
     from yaw.redshifts import RedshiftData
 
 
@@ -22,7 +23,7 @@ def shift_fit(
     data: Sequence[RedshiftData],
     model: Sequence[HistogramData],
     *,
-    covariance: str = "var",
+    covariance: NDArray | str = "var",
     nwalkers: int = None,
     max_steps: int = 10000,
     dz_priors: Sequence[Prior] | None = None,
@@ -31,8 +32,16 @@ def shift_fit(
     # build the joint data vector
     data_all = np.concatenate([bin_data.data for bin_data in data])
     method = data[0].method
-    cov_mat_all = cov_from_samples(
-        [bin_data.samples for bin_data in data], method=method, kind=covariance)
+    if isinstance(covariance, str):
+        cov_mat_all = cov_from_samples(
+            [bin_data.samples for bin_data in data],
+            method=method, kind=covariance)
+    elif covariance.shape != (len(data_all), len(data_all)):
+        raise ValueError(
+            f"expected covariance with shape {(len(data_all), len(data_all))}, "
+            f"but got {covariance.shape}")
+    else:
+        cov_mat_all = covariance
     # mask bad values
     var_all = np.diag(cov_mat_all)
     mask = np.isfinite(data_all) & np.isfinite(var_all) & (var_all > 0.0)
