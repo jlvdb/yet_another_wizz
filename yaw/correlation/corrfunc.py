@@ -15,6 +15,7 @@ from yaw.config import ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import SampledData
 from yaw.core.logging import LogCustomWarning, TimedLog
+from yaw.core.math import cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
@@ -265,6 +266,21 @@ def check_mergable(cfs: Sequence[CorrelationFunction | None]) -> None:
             pcounts = getattr(cf, kind)
             if type(ref_pcounts) != type(pcounts):
                 raise ValueError(f"cannot merge, '{kind}' incompatible")
+
+
+def global_covariance(
+    data: Sequence[SampledData],
+    method: str | None = None,
+    kind: str = "full"
+) -> NDArray:
+    if len(data) == 0:
+        raise ValueError("'data' must be a sequence with at least one item")
+    if method is None:
+        method = data[0].method
+    for d in data[1:]:
+        if d.method != method:
+            raise ValueError("resampling method of data items is inconsistent")
+    return cov_from_samples([d.samples for d in data], method=method, kind=kind)
 
 
 @dataclass(frozen=True)
