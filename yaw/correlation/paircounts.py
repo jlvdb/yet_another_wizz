@@ -383,6 +383,21 @@ class PatchedCount(PatchedArray):
             counts[key] = val
         self._keys.add(key)
 
+    def __add__(self, other: PatchedCount) -> PatchedCount:
+        if not self.is_compatible(other):
+            raise ValueError("binning of operands is not compatible")
+        if self.n_patches != other.n_patches:
+            raise ValueError("number of patches does not agree")
+        count_matrix = self.as_array() + other.as_array()
+        return self.__class__.from_matrix(
+            self.get_binning(), count_matrix, auto=self.auto)
+
+    def __radd__(self, other: PatchedCount | int | float) -> PatchedCount:
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
+
     def keys(self) -> NDArray:
         key_list = list(self._keys)
         if len(key_list) == 0:
@@ -556,6 +571,22 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         string = super().__repr__()[:-1]
         n_patches = self.n_patches
         return f"{string}, {n_patches=})"
+
+    def __add__(self, other: PairCountResult) -> PairCountResult:
+        count = self.count + other.count
+        if (
+            np.any(self.total.totals1 != other.total.totals1) or
+            np.any(self.total.totals2 != other.total.totals2)
+        ):
+            raise ValueError(
+                "total number of objects do not agree for operands")
+        return self.__class__(count, self.total)
+
+    def __radd__(self, other: PairCountResult | int | float) -> PairCountResult:
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 
     def get_binning(self) -> IntervalIndex:
         return self.total.get_binning()

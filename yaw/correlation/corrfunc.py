@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any
@@ -334,6 +333,32 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         pairs += f"rd={self.rd is not None}, rr={self.rr is not None}"
         other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
+
+    def __add__(self, other: CorrelationFunction) -> CorrelationFunction:
+        # check that the pair counts are set consistently
+        kinds = []
+        for field in fields(self):
+            kind = field.name
+            self_set = getattr(self, kind) is not None
+            other_set = getattr(other, kind) is not None
+            if (self_set and not other_set) or (not self_set and other_set):
+                raise ValueError(
+                    f"pair counts for '{kind}' not set for both operands")
+            elif self_set and other_set:
+                kinds.append(kind)
+
+        sum_dict = {
+            kind: getattr(self, kind) + getattr(other, kind) for kind in kinds}
+        return self.__class__(**sum_dict)
+
+    def __radd__(
+        self,
+        other: CorrelationFunction | int | float
+    ) -> CorrelationFunction:
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 
     def get_binning(self) -> IntervalIndex:
         return self.dd.get_binning()
