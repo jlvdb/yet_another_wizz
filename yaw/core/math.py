@@ -78,6 +78,28 @@ def apply_bool_mask_ndim(
     return result
 
 
+def apply_slice_ndim(
+    array: _Tarr,
+    item: int | slice | Sequence,
+    axis: int | Sequence[int] | None = None
+) -> _Tarr:
+    if axis is None:
+        axis = list(range(array.ndim))
+    if isinstance(item, slice):
+        slices = [slice(None) for _ in range(array.ndim)]
+        for ax in axis:
+            slices[ax] = item
+        return array[tuple(slices)]
+    else:
+        if isinstance(item, int):
+            item = [item]
+        indices = [range(n) for n in array.shape]
+        for ax in axis:
+            indices[ax] = item
+        mesh_indices = np.ix_(*indices)
+        return array[mesh_indices]
+
+
 def sgn(val: ArrayLike) -> ArrayLike:
     return np.where(val == 0, 1.0, np.sign(val))
 
@@ -95,6 +117,12 @@ def cov_from_samples(
         concat_samples = np.concatenate(samples, axis=ax_observ)
     except np.AxisError:
         concat_samples = samples
+
+    # np.cov will produce a scalar value instead of matrix with shape (N,N)
+    # for a single sample with shape (1,N)
+    if concat_samples.shape[ax_samples] == 1:
+        n_obs = concat_samples.shape[ax_observ]
+        return np.full((n_obs, n_obs), np.nan)
 
     if method == "bootstrap":
         covmat = np.cov(concat_samples, rowvar=rowvar, ddof=1)

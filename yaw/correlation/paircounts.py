@@ -20,12 +20,12 @@ from yaw.config import ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import PatchIDs, SampledData
 from yaw.core.logging import LogCustomWarning
-from yaw.core.math import outer_triu_sum
+from yaw.core.math import apply_bool_mask_ndim, apply_slice_ndim, outer_triu_sum
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.sparse import dok_matrix
     from numpy.typing import ArrayLike, NDArray, DTypeLike
-    from pandas import DataFrame, IntervalIndex, Series
+    from pandas import IntervalIndex
 
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 
 TypeSlice: TypeAlias = Union[slice, int, None]
+TypeItems: TypeAlias = Union[slice, int, Sequence[int]]
 
 
 def check_mergable(patched_arrays: Sequence[PatchedArray]) -> None:
@@ -76,6 +77,10 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         return i, j, k
 
     def __getitem__(self, key) -> ArrayLike: raise NotImplementedError
+
+    @abstractmethod
+    def get_patch_subset(self, item: TypeItems) -> PatchedArray:
+        raise NotImplementedError
 
     @abstractproperty
     def density(self) -> float: raise NotImplementedError
@@ -122,10 +127,13 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         if config is None:
             config = ResamplingConfig()  # pragma: no cover
         data = self._sum(config)
-        if config.method == "bootstrap":
-            samples = self._bootstrap(config)
+        if self.n_patches > 1:
+            if config.method == "bootstrap":
+                samples = self._bootstrap(config)
+            else:
+                samples = self._jackknife(config, signal=data)
         else:
-            samples = self._jackknife(config, signal=data)
+            samples = np.atleast_2d(data)
         return SampledData(
             binning=self.get_binning(),
             data=data,
@@ -203,6 +211,13 @@ class PatchedTotal(PatchedArray):
             a for a, val in enumerate((i, j))
             if isinstance(val, (int, np.integer)))
         return np.squeeze(arr, axis=squeeze_ax)
+
+    def get_patch_subset(self, item: TypeItems) -> PatchedTotal:
+        if isinstance(item, int):
+            item = [item]
+        return PatchedTotal(
+            binning=self._binning, totals1=self.totals1[item],
+            totals2=self.totals2[item], auto=self.auto)
 
     def get_binning(self) -> IntervalIndex:
         return self._binning
@@ -382,6 +397,12 @@ class PatchedCount(PatchedArray):
         for counts, val in zip(self._bins, item):
             counts[key] = val
         self._keys.add(key)
+
+    def get_patch_subset(self, item: TypeItems) -> PatchedCount:
+        return PatchedCount.from_matrix(
+            binning=self._binning,
+            matrix=apply_slice_ndim(self.as_array(), item, axis=(0, 1)),
+            auto=self.auto)
 
     def __add__(self, other: PatchedCount) -> PatchedCount:
         if not self.is_compatible(other):
@@ -587,6 +608,11 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self
         else:
             return self.__add__(other)
+
+    def get_patch_subset(self, item: TypeItems) -> PairCountResult:
+        return PairCountResult(
+            count=self.count.get_patch_subset(item),
+            total=self.total.get_patch_subset(item))
 
     def get_binning(self) -> IntervalIndex:
         return self.total.get_binning()

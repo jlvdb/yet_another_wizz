@@ -18,7 +18,7 @@ from yaw.core.math import cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
-from yaw.correlation.paircounts import PairCountResult
+from yaw.correlation.paircounts import PairCountResult, TypeItems
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.axis import Axis
@@ -359,6 +359,15 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self
         else:
             return self.__add__(other)
+
+    def get_patch_subset(self, item: TypeItems) -> CorrelationFunction:
+        kwargs = {}
+        for field in fields(self):
+            counts = getattr(self, field.name)
+            if counts is not None:
+                counts = counts.get_patch_subset(item)
+            kwargs[field.name] = counts
+        return CorrelationFunction(**kwargs)
 
     def get_binning(self) -> IntervalIndex:
         return self.dd.get_binning()
