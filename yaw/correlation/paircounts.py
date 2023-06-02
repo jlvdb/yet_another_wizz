@@ -374,6 +374,21 @@ class PatchedCount(PatchedArray):
             keys.update(set(bin.keys()))
         self._keys = keys
 
+    def __add__(self, other: PatchedCount) -> PatchedCount:
+        if not self.is_compatible(other):
+            raise ValueError("binning of operands is not compatible")
+        if self.n_patches != other.n_patches:
+            raise ValueError("number of patches does not agree")
+        count_matrix = self.as_array() + other.as_array()
+        return self.__class__.from_matrix(
+            self.get_binning(), count_matrix, auto=self.auto)
+
+    def __radd__(self, other: PatchedCount | int | float) -> PatchedCount:
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
+
     def set_measurement(self, key: PatchIDs, item: NDArray):
         item = np.asarray(item)
         if item.shape != (self.n_bins,):
@@ -397,20 +412,8 @@ class PatchedCount(PatchedArray):
     def as_array(self) -> NDArray:
         return np.moveaxis(np.array([b.toarray() for b in self._bins]), 0, 2)
 
-    def __add__(self, other: PatchedCount) -> PatchedCount:
-        if not self.is_compatible(other):
-            raise ValueError("binning of operands is not compatible")
-        if self.n_patches != other.n_patches:
-            raise ValueError("number of patches does not agree")
-        count_matrix = self.as_array() + other.as_array()
-        return self.__class__.from_matrix(
-            self.get_binning(), count_matrix, auto=self.auto)
-
-    def __radd__(self, other: PatchedCount | int | float) -> PatchedCount:
-        if other == 0:
-            return self
-        else:
-            return self.__add__(other)
+    def sum(self, axis: int | tuple[int] | None = None, **kwargs) -> NDArray:
+        return self.as_array().sum(axis=axis, **kwargs)
 
     @property
     def bins(self) -> Indexer[TypeIndex, PatchedCount]:
