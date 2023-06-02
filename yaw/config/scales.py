@@ -76,13 +76,6 @@ class ScalesConfig(DictRepresentation):
             raise ConfigurationError(
                 "'rmin' and 'rmax' must be both sequences or float")
 
-    @classmethod
-    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> ScalesConfig:
-        return super().from_dict(the_dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return super().to_dict()
-
     def __eq__(self, other: ScalesConfig) -> bool:
         if not array_equal(self.as_array(), other.as_array()):
             return False

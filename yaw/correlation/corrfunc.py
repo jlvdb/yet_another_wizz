@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Type, TypeVar
 
 import h5py
 import numpy as np
@@ -31,6 +31,9 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
+
+
+_Tdata = TypeVar("_Tdata", bound="CorrelationData")
 
 
 @dataclass(frozen=True, repr=False)
@@ -69,7 +72,7 @@ class CorrelationData(SampledData):
             super().__post_init__()
 
     @classmethod
-    def from_files(cls, path_prefix: TypePathStr) -> CorrelationData:
+    def from_files(cls: Type[_Tdata], path_prefix: TypePathStr) -> _Tdata:
         name = cls.__name__.lower()[:-4]
         logger.debug(f"reading {name} data from '{path_prefix}.*'")
         # load data and errors

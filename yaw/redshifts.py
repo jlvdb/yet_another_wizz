@@ -30,10 +30,6 @@ class RedshiftData(CorrelationData):
     """
 
     @classmethod
-    def from_files(cls, path_prefix: TypePathStr) -> RedshiftData:
-        return super().from_files(path_prefix)
-
-    @classmethod
     def from_correlation_data(
         cls,
         cross_data: CorrelationData,

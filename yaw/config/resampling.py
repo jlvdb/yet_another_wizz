@@ -76,10 +76,6 @@ class ResamplingConfig(DictRepresentation):
     def reset(self) -> None:
         object.__setattr__(self, "_resampling_idx", None)
 
-    @classmethod
-    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> ResamplingConfig:
-        return super().from_dict(the_dict)
-
     def to_dict(self) -> dict[str, Any]:
         if self.method == "jackknife":
             return dict(method=self.method, crosspatch=self.crosspatch)

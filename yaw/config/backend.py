@@ -39,13 +39,6 @@ class BackendConfig(DictRepresentation):
         if self.thread_num is None:
             object.__setattr__(self, "thread_num", os.cpu_count())
 
-    @classmethod
-    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> BackendConfig:
-        return super().from_dict(the_dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return super().to_dict()
-
     def get_threads(self, max=None) -> int:
         if self.thread_num is None:
             thread_num = os.cpu_count()

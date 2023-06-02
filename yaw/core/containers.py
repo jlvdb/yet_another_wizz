@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import warnings
-from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Generic, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 import numpy as np
 import pandas as pd

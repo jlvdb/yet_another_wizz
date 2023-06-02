@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, Type, TypeVar
 
 import h5py
 import numpy as np
@@ -102,19 +102,22 @@ class BinnedQuantity(ABC):
         return True
 
 
+_Thdf = TypeVar("_Thdf", bound="HDFSerializable")
+
+
 class HDFSerializable(ABC):
 
     @abstractclassmethod
     def from_hdf(
-        cls,
+        cls: Type[_Thdf],
         source: h5py.Group
-    ) -> HDFSerializable: raise NotImplementedError
+    ) -> _Thdf: raise NotImplementedError
 
     @abstractmethod
     def to_hdf(self, dest: h5py.Group) -> None: raise NotImplementedError
 
     @classmethod
-    def from_file(cls, path: TypePathStr) -> HDFSerializable:
+    def from_file(cls: Type[_Thdf], path: TypePathStr) -> _Thdf:
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
@@ -123,16 +126,18 @@ class HDFSerializable(ABC):
             self.to_hdf(f)
 
 
+_Tdict = TypeVar("_Tdict", bound="DictRepresentation")
+
+
 class DictRepresentation(ABC):
 
-    @abstractclassmethod
+    @classmethod
     def from_dict(
-        cls,
+        cls: Type[_Tdict],
         the_dict: dict[str, Any],
         **kwargs: dict[str, Any]  # passing additional constructor data
-    ) -> DictRepresentation:
+    ) -> _Tdict:
         return cls(**the_dict)
 
-    @abstractmethod
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
