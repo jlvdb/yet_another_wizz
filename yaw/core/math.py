@@ -67,6 +67,8 @@ def apply_bool_mask_ndim(
 ) -> _Tarr:
     if axis is None:
         axis = list(range(array.ndim))
+    elif isinstance(axis, int):
+        axis = [axis]
     result = array
     for ax in axis:
         if result.shape[ax] != len(mask):
@@ -85,6 +87,8 @@ def apply_slice_ndim(
 ) -> _Tarr:
     if axis is None:
         axis = list(range(array.ndim))
+    elif isinstance(axis, int):
+        axis = [axis]
     if isinstance(item, slice):
         slices = [slice(None) for _ in range(array.ndim)]
         for ax in axis:
