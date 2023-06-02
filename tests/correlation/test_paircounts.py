@@ -270,22 +270,6 @@ class TestPatchedTotal:
         full_matrix = add_zbin_dimension(patch_matrix_full, n_bins)
         # full array
         npt.assert_equal(pt.as_array(), full_matrix)
-        # some slices
-        npt.assert_equal(pt[:], full_matrix[:])
-        npt.assert_equal(pt[-1], full_matrix[-1])
-        npt.assert_equal(pt[-1, -1], full_matrix[-1, -1])
-        npt.assert_equal(pt[-1, -1, -1], full_matrix[-1, -1, -1])
-        npt.assert_equal(pt[:, -1], full_matrix[:, -1])
-        npt.assert_equal(pt[:, :, -1], full_matrix[:, :, -1])
-        npt.assert_equal(pt[:2], full_matrix[:2])
-        npt.assert_equal(pt[:, :2], full_matrix[:, :2])
-        npt.assert_equal(pt[:, :, :2], full_matrix[:, :, :2])
-        npt.assert_equal(pt[1:2], full_matrix[1:2])
-        npt.assert_equal(pt[:, 1:2], full_matrix[:, 1:2])
-        npt.assert_equal(pt[:, :, 1:2], full_matrix[:, :, 1:2])
-        # invalid index
-        with raises(IndexError):
-            pt[0, 0, 0, 0]
 
     def test_jackknife(
             self,
@@ -352,18 +336,18 @@ class TestPatchedCount:
         # insert single item
         key = (0, 1)
         value = [1.0] * n_bins
-        counts[key] = value
+        counts.set_measurement(key, value)
         npt.assert_equal(counts.keys(), np.atleast_2d(key))
         npt.assert_equal(counts.values(), np.atleast_2d(value))
         # check wrong assignments
         with raises(ValueError):  # extra element
-            counts[key] = [1.0] * (n_bins+1)
+            counts.set_measurement(key, [1.0] * (n_bins+1))
         with raises(TypeError):  # wrong key type
-            counts[1] = [1.0] * n_bins
+            counts.set_measurement(1, [1.0] * n_bins)
         with raises(IndexError):  # wrong key shape
-            counts[(1,)] = [1.0] * n_bins
+            counts.set_measurement((1,), [1.0] * n_bins)
         with raises(TypeError):  # wrong key type
-            counts[(1.0, 1.0)] = [1.0] * n_bins
+            counts.set_measurement((1.0, 1.0), [1.0] * n_bins)
 
     def test_array(self, binning, patch_matrix_full):
         counts = patched_counts_from_matrix(
@@ -373,20 +357,6 @@ class TestPatchedCount:
         full_matrix = add_zbin_dimension(patch_matrix_full, n_bins)
         # full array
         npt.assert_equal(counts.as_array(), full_matrix)
-        # some slices
-        npt.assert_equal(counts[-1], full_matrix[-1])
-        npt.assert_equal(counts[-1, -1], full_matrix[-1, -1])
-        npt.assert_equal(counts[-1, -1, -1], full_matrix[-1, -1, -1])
-        npt.assert_equal(counts[:], full_matrix[:])
-        npt.assert_equal(counts[-1], full_matrix[-1])
-        npt.assert_equal(counts[:, -1], full_matrix[:, -1])
-        npt.assert_equal(counts[:, :, -1], full_matrix[:, :, -1])
-        npt.assert_equal(counts[:2], full_matrix[:2])
-        npt.assert_equal(counts[:, :2], full_matrix[:, :2])
-        npt.assert_equal(counts[:, :, :2], full_matrix[:, :, :2])
-        npt.assert_equal(counts[1:2], full_matrix[1:2])
-        npt.assert_equal(counts[:, 1:2], full_matrix[:, 1:2])
-        npt.assert_equal(counts[:, :, 1:2], full_matrix[:, :, 1:2])
 
     def test_jackknife(
             self, binning,

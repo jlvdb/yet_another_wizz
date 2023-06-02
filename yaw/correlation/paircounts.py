@@ -24,7 +24,7 @@ from yaw.core.math import apply_bool_mask_ndim, apply_slice_ndim, outer_triu_sum
 
 if TYPE_CHECKING:  # pragma: no cover
     from scipy.sparse import dok_matrix
-    from numpy.typing import ArrayLike, NDArray, DTypeLike
+    from numpy.typing import NDArray, DTypeLike
     from pandas import IntervalIndex
 
 
@@ -76,7 +76,8 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
                     f"{len(key)} were indexed")
         return i, j, k
 
-    def __getitem__(self, key) -> ArrayLike: raise NotImplementedError
+    def __getitem__(self, item: slice | int | Sequence) -> PatchedArray:
+        raise NotImplementedError
 
     @abstractmethod
     def get_patch_subset(self, item: TypeItems) -> PatchedArray:
@@ -101,8 +102,8 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     def size(self) -> int:
         return np.prod(self.shape)
 
-    def as_array(self) -> NDArray:
-        return self[:, :, :]
+    @abstractmethod
+    def as_array(self) -> NDArray: raise NotImplementedError
 
     @abstractmethod
     def _sum(
@@ -202,15 +203,15 @@ class PatchedTotal(PatchedArray):
         self.totals2 = totals2
         self.auto = auto
 
-    def __getitem__(self, key) -> ArrayLike:
-        i, j, k = self._parse_key(key)
-        x = np.atleast_2d(self.totals1[i])[:, k]
-        y = np.atleast_2d(self.totals2[j])[:, k]
-        arr = np.einsum("i...,j...->ij...", x, y)
-        squeeze_ax = tuple(
-            a for a, val in enumerate((i, j))
-            if isinstance(val, (int, np.integer)))
-        return np.squeeze(arr, axis=squeeze_ax)
+    def as_array(self) -> NDArray:
+        return np.einsum("i...,j...->ij...", self.totals1, self.totals2)
+
+    def __getitem__(self, item: slice | int | Sequence) -> PatchedTotal:
+        if isinstance(item, int):
+            item = [item]
+        return PatchedTotal(
+            binning=self._binning[item], totals1=self.totals1[item],
+            totals2=self.totals2[item], auto=self.auto)
 
     def get_patch_subset(self, item: TypeItems) -> PatchedTotal:
         if isinstance(item, int):
@@ -363,22 +364,7 @@ class PatchedCount(PatchedArray):
             keys.update(set(bin.keys()))
         self._keys = keys
 
-    def __getitem__(self, key) -> ArrayLike:
-        i, j, k = self._parse_key(key)
-        squeeze_ax = tuple(
-            a for a, val in enumerate((i, j, k))
-            if isinstance(val, (int, np.integer)))
-        elems = []
-        for counts in np.atleast_1d(self._bins[k]):
-            sub = counts[i, j]
-            try:
-                elems.append(sub.toarray())
-            except AttributeError:
-                elems.append(np.atleast_2d(sub))
-        arr = np.rollaxis(np.array(elems), 0, 3)
-        return np.squeeze(arr, axis=squeeze_ax)
-
-    def __setitem__(self, key: PatchIDs, item: NDArray):
+    def set_measurement(self, key: PatchIDs, item: NDArray):
         item = np.asarray(item)
         if item.shape != (self.n_bins,):
             raise ValueError(
@@ -397,6 +383,17 @@ class PatchedCount(PatchedArray):
         for counts, val in zip(self._bins, item):
             counts[key] = val
         self._keys.add(key)
+
+    def as_array(self) -> NDArray:
+        return np.moveaxis(np.array([b.toarray() for b in self._bins]), 0, 2)
+
+    def __getitem__(self, item: slice | int | Sequence) -> PatchedCount:
+        if isinstance(item, int):
+            item = [item]
+        return PatchedCount.from_matrix(
+            binning=self._binning[item],
+            matrix=apply_slice_ndim(self.as_array(), item, axis=2),
+            auto=self.auto)
 
     def get_patch_subset(self, item: TypeItems) -> PatchedCount:
         return PatchedCount.from_matrix(
@@ -534,7 +531,9 @@ class PatchedCount(PatchedArray):
         new = cls(
             binning=binning, n_patches=n_patches, auto=auto, dtype=data.dtype)
         for key, value in zip(keys, data):
-            new[key] = value
+            for counts, val in zip(new._bins, value):
+                counts[key] = val
+            new._keys.add(key)
         return new
 
     def to_hdf(self, dest: h5py.Group) -> None:
@@ -593,6 +592,16 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         n_patches = self.n_patches
         return f"{string}, {n_patches=})"
 
+    def __getitem__(self, item: slice | int | Sequence) -> PatchedCount:
+        if isinstance(item, int):
+            item = [item]
+        return PairCountResult(count=self.count[item], total=self.total[item])
+
+    def get_patch_subset(self, item: TypeItems) -> PairCountResult:
+        return PairCountResult(
+            count=self.count.get_patch_subset(item),
+            total=self.total.get_patch_subset(item))
+
     def __add__(self, other: PairCountResult) -> PairCountResult:
         count = self.count + other.count
         if (
@@ -608,11 +617,6 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self
         else:
             return self.__add__(other)
-
-    def get_patch_subset(self, item: TypeItems) -> PairCountResult:
-        return PairCountResult(
-            count=self.count.get_patch_subset(item),
-            total=self.total.get_patch_subset(item))
 
     def get_binning(self) -> IntervalIndex:
         return self.total.get_binning()

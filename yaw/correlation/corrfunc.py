@@ -334,6 +334,18 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
 
+    def __getitem__(self, item: slice | int | Sequence) -> CorrelationFunction:
+        if isinstance(item, int):
+            item = [item]
+        kwargs = {}
+        for field in fields(self):
+            pairs = getattr(self, field.name)
+            if pairs is None:
+                kwargs[field.name] = None
+            else:
+                kwargs[field.name] = pairs[item]
+        return self.__class__(**kwargs)
+
     def __add__(self, other: CorrelationFunction) -> CorrelationFunction:
         # check that the pair counts are set consistently
         kinds = []

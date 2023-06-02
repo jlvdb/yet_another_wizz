@@ -413,7 +413,7 @@ class ScipyCatalog(BaseCatalog):
             for scale_key, count in patch_data.counts.items():
                 if auto and id1 == id2:
                     count = count * 0.5  # autocorr. pairs are counted twice
-                count_dict[scale_key][id1, id2] = count
+                count_dict[scale_key].set_measurement((id1, id2), count)
         total = PatchedTotal(  # not scale-dependent
             binning=binning,
             totals1=totals1,

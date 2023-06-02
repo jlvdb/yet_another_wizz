@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
@@ -115,6 +116,21 @@ class SampledData(BinnedQuantity):
         n_samples = self.n_samples
         method = self.method
         return f"{string}, {n_samples=}, {method=})"
+
+    def __getitem__(self, item: slice | int | Sequence) -> SampledData:
+        if isinstance(item, int):
+            item = [item]
+        # try to take subsets along bin axis
+        binning = self.binning[item]
+        data = self.data[item]
+        samples = self.samples[:, item]
+        # determine which extra attributes need to be copied
+        init_attrs = {field.name for field in fields(self) if field.init}
+        copy_attrs = init_attrs - {"binning", "data", "samples"}
+
+        kwargs = dict(binning=binning, data=data, samples=samples)
+        kwargs.update({attr: getattr(self, attr) for attr in copy_attrs})
+        return SampledData(**kwargs)
 
     @property
     def n_samples(self) -> int:
