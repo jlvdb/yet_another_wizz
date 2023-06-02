@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
 import h5py
 import numpy as np
@@ -11,6 +11,21 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import IntervalIndex
     from yaw.core.utils import TypePathStr
+
+
+_TK = TypeVar("_TK")
+_TV = TypeVar("_TV")
+
+
+class Indexer(Generic[_TK, _TV]):
+
+    def __init__(self, inst: _TV, builder: Callable[[_TV, _TK], _TV]) -> None:
+        self._inst = inst
+        self._class = inst.__class__
+        self._builder = builder
+
+    def __getitem__(self, item: _TK) -> _TV:
+        return self._builder(self._inst, item)
 
 
 class PatchedQuantity(ABC):

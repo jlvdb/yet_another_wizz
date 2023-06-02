@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import warnings
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Generic, NamedTuple, TypeVar
 
 import numpy as np
 import pandas as pd
 
-from yaw.core.abc import BinnedQuantity
+from yaw.core.abc import BinnedQuantity, Indexer
 from yaw.core.math import cov_from_samples
 from yaw.config import METHOD_OPTIONS
 
@@ -69,6 +70,9 @@ class SampledValue:
         return len(self.samples)
 
 
+_Tdata = TypeVar("_Tdata", bound="SampledData")
+
+
 @dataclass(frozen=True, repr=False)
 class SampledData(BinnedQuantity):
     """Container for data and resampled data with redshift binning.
@@ -117,20 +121,24 @@ class SampledData(BinnedQuantity):
         method = self.method
         return f"{string}, {n_samples=}, {method=})"
 
-    def __getitem__(self, item: slice | int | Sequence) -> SampledData:
-        if isinstance(item, int):
-            item = [item]
-        # try to take subsets along bin axis
-        binning = self.binning[item]
-        data = self.data[item]
-        samples = self.samples[:, item]
-        # determine which extra attributes need to be copied
-        init_attrs = {field.name for field in fields(self) if field.init}
-        copy_attrs = init_attrs - {"binning", "data", "samples"}
+    @property
+    def bins(self: _Tdata) -> Indexer[int | slice | Sequence, _Tdata]:
+        def builder(inst: _Tdata, item: int | slice | Sequence) -> _Tdata:
+            if isinstance(item, int):
+                item = [item]
+            # try to take subsets along bin axis
+            binning = inst.binning[item]
+            data = inst.data[item]
+            samples = inst.samples[:, item]
+            # determine which extra attributes need to be copied
+            init_attrs = {field.name for field in fields(inst) if field.init}
+            copy_attrs = init_attrs - {"binning", "data", "samples"}
 
-        kwargs = dict(binning=binning, data=data, samples=samples)
-        kwargs.update({attr: getattr(self, attr) for attr in copy_attrs})
-        return SampledData(**kwargs)
+            kwargs = dict(binning=binning, data=data, samples=samples)
+            kwargs.update({attr: getattr(inst, attr) for attr in copy_attrs})
+            return inst.__class__(**kwargs)
+
+        return Indexer(self, builder)
 
     @property
     def n_samples(self) -> int:

@@ -17,7 +17,8 @@ import pandas as pd
 import scipy.sparse
 
 from yaw.config import ResamplingConfig
-from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.abc import (
+    BinnedQuantity, HDFSerializable, Indexer, PatchedQuantity)
 from yaw.core.containers import PatchIDs, SampledData
 from yaw.core.logging import LogCustomWarning
 from yaw.core.math import apply_bool_mask_ndim, apply_slice_ndim, outer_triu_sum
@@ -35,7 +36,7 @@ _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 
 TypeSlice: TypeAlias = Union[slice, int, None]
-TypeItems: TypeAlias = Union[slice, int, Sequence[int]]
+TypeIndex: TypeAlias = Union[int, slice, Sequence]
 
 
 def check_mergable(patched_arrays: Sequence[PatchedArray]) -> None:
@@ -76,11 +77,12 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
                     f"{len(key)} were indexed")
         return i, j, k
 
-    def __getitem__(self, item: slice | int | Sequence) -> PatchedArray:
+    @abstractproperty
+    def bins(self, item: TypeIndex) -> Indexer:
         raise NotImplementedError
 
-    @abstractmethod
-    def get_patch_subset(self, item: TypeItems) -> PatchedArray:
+    @abstractproperty
+    def patches(self, item: TypeIndex) -> Indexer:
         raise NotImplementedError
 
     @abstractproperty
@@ -206,19 +208,27 @@ class PatchedTotal(PatchedArray):
     def as_array(self) -> NDArray:
         return np.einsum("i...,j...->ij...", self.totals1, self.totals2)
 
-    def __getitem__(self, item: slice | int | Sequence) -> PatchedTotal:
-        if isinstance(item, int):
-            item = [item]
-        return PatchedTotal(
-            binning=self._binning[item], totals1=self.totals1[item],
-            totals2=self.totals2[item], auto=self.auto)
+    @property
+    def bins(self) -> Indexer[TypeIndex, PatchedTotal]:
+        def builder(inst: PatchedTotal, item: TypeIndex) -> PatchedTotal:
+            if isinstance(item, int):
+                item = [item]
+            return PatchedTotal(
+                binning=inst._binning[item], totals1=inst.totals1[:, item],
+                totals2=inst.totals2[:, item], auto=inst.auto)
 
-    def get_patch_subset(self, item: TypeItems) -> PatchedTotal:
-        if isinstance(item, int):
-            item = [item]
-        return PatchedTotal(
-            binning=self._binning, totals1=self.totals1[item],
-            totals2=self.totals2[item], auto=self.auto)
+        return Indexer(self, builder)
+
+    @property
+    def patches(self) -> Indexer[TypeIndex, PatchedTotal]:
+        def builder(inst: PatchedTotal, item: TypeIndex) -> PatchedTotal:
+            if isinstance(item, int):
+                item = [item]
+            return PatchedTotal(
+                binning=inst._binning, totals1=inst.totals1[item],
+                totals2=inst.totals2[item], auto=inst.auto)
+
+        return Indexer(self, builder)
 
     def get_binning(self) -> IntervalIndex:
         return self._binning
@@ -387,20 +397,6 @@ class PatchedCount(PatchedArray):
     def as_array(self) -> NDArray:
         return np.moveaxis(np.array([b.toarray() for b in self._bins]), 0, 2)
 
-    def __getitem__(self, item: slice | int | Sequence) -> PatchedCount:
-        if isinstance(item, int):
-            item = [item]
-        return PatchedCount.from_matrix(
-            binning=self._binning[item],
-            matrix=apply_slice_ndim(self.as_array(), item, axis=2),
-            auto=self.auto)
-
-    def get_patch_subset(self, item: TypeItems) -> PatchedCount:
-        return PatchedCount.from_matrix(
-            binning=self._binning,
-            matrix=apply_slice_ndim(self.as_array(), item, axis=(0, 1)),
-            auto=self.auto)
-
     def __add__(self, other: PatchedCount) -> PatchedCount:
         if not self.is_compatible(other):
             raise ValueError("binning of operands is not compatible")
@@ -415,6 +411,28 @@ class PatchedCount(PatchedArray):
             return self
         else:
             return self.__add__(other)
+
+    @property
+    def bins(self) -> Indexer[TypeIndex, PatchedCount]:
+        def builder(inst: PatchedCount, item: TypeIndex) -> PatchedCount:
+            if isinstance(item, int):
+                item = [item]
+            return PatchedCount.from_matrix(
+                binning=inst._binning[item],
+                matrix=apply_slice_ndim(inst.as_array(), item, axis=2),
+                auto=inst.auto)
+
+        return Indexer(self, builder)
+
+    @property
+    def patches(self) -> Indexer[TypeIndex, PatchedCount]:
+        def builder(inst: PatchedCount, item: TypeIndex) -> PatchedCount:
+            return PatchedCount.from_matrix(
+                binning=inst._binning,
+                matrix=apply_slice_ndim(inst.as_array(), item, axis=(0, 1)),
+                auto=inst.auto)
+
+        return Indexer(self, builder)
 
     def keys(self) -> NDArray:
         key_list = list(self._keys)
@@ -592,15 +610,24 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         n_patches = self.n_patches
         return f"{string}, {n_patches=})"
 
-    def __getitem__(self, item: slice | int | Sequence) -> PatchedCount:
-        if isinstance(item, int):
-            item = [item]
-        return PairCountResult(count=self.count[item], total=self.total[item])
+    @property
+    def bins(self) -> Indexer[TypeIndex, PairCountResult]:
+        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
+            if isinstance(item, int):
+                item = [item]
+            return PairCountResult(
+                count=inst.count.bins[item], total=inst.total.bins[item])
 
-    def get_patch_subset(self, item: TypeItems) -> PairCountResult:
-        return PairCountResult(
-            count=self.count.get_patch_subset(item),
-            total=self.total.get_patch_subset(item))
+        return Indexer(self, builder)
+
+    @property
+    def patches(self) -> Indexer[TypeIndex, PairCountResult]:
+        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
+            return PairCountResult(
+                count=inst.count.patches[item],
+                total=inst.total.patches[item])
+
+        return Indexer(self, builder)
 
     def __add__(self, other: PairCountResult) -> PairCountResult:
         count = self.count + other.count

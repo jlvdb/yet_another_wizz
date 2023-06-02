@@ -11,14 +11,15 @@ import pandas as pd
 
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
-from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.abc import (
+    BinnedQuantity, HDFSerializable, Indexer, PatchedQuantity)
 from yaw.core.containers import SampledData
 from yaw.core.logging import LogCustomWarning, TimedLog
 from yaw.core.math import cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
-from yaw.correlation.paircounts import PairCountResult, TypeItems
+from yaw.correlation.paircounts import PairCountResult, TypeIndex
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.axis import Axis
@@ -334,18 +335,6 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
 
-    def __getitem__(self, item: slice | int | Sequence) -> CorrelationFunction:
-        if isinstance(item, int):
-            item = [item]
-        kwargs = {}
-        for field in fields(self):
-            pairs = getattr(self, field.name)
-            if pairs is None:
-                kwargs[field.name] = None
-            else:
-                kwargs[field.name] = pairs[item]
-        return self.__class__(**kwargs)
-
     def __add__(self, other: CorrelationFunction) -> CorrelationFunction:
         # check that the pair counts are set consistently
         kinds = []
@@ -372,14 +361,38 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         else:
             return self.__add__(other)
 
-    def get_patch_subset(self, item: TypeItems) -> CorrelationFunction:
-        kwargs = {}
-        for field in fields(self):
-            counts = getattr(self, field.name)
-            if counts is not None:
-                counts = counts.get_patch_subset(item)
-            kwargs[field.name] = counts
-        return CorrelationFunction(**kwargs)
+    @property
+    def bins(self) -> Indexer[TypeIndex, CorrelationFunction]:
+        def builder(
+            inst: CorrelationFunction, item: TypeIndex
+        ) -> CorrelationFunction:
+            if isinstance(item, int):
+                item = [item]
+            kwargs = {}
+            for field in fields(inst):
+                pairs: PairCountResult | None = getattr(inst, field.name)
+                if pairs is None:
+                    kwargs[field.name] = None
+                else:
+                    kwargs[field.name] = pairs.bins[item]
+            return CorrelationFunction(**kwargs)
+
+        return Indexer(self, builder)
+
+    @property
+    def patches(self) -> Indexer[TypeIndex, CorrelationFunction]:
+        def builder(
+            inst: CorrelationFunction, item: TypeIndex
+        ) -> CorrelationFunction:
+            kwargs = {}
+            for field in fields(inst):
+                counts: PairCountResult | None = getattr(inst, field.name)
+                if counts is not None:
+                    counts = counts.patches[item]
+                kwargs[field.name] = counts
+            return CorrelationFunction(**kwargs)
+
+        return Indexer(self, builder)
 
     def get_binning(self) -> IntervalIndex:
         return self.dd.get_binning()
