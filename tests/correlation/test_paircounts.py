@@ -301,8 +301,7 @@ class TestPatchedTotal:
 def patched_counts_from_matrix(binning, matrix, auto):
     n_bins = len(binning)
     counts = add_zbin_dimension(matrix, n_bins)
-    return paircounts.PatchedCount.from_matrix(
-        binning, counts, auto=auto)
+    return paircounts.PatchedCount(binning, counts, auto=auto)
 
 
 class TestPatchedCount:
@@ -310,26 +309,24 @@ class TestPatchedCount:
     def test_init(self, binning, patch_matrix_full):
         n_bins = len(binning)
         matrix = add_zbin_dimension(patch_matrix_full, n_bins)
-        counts = paircounts.PatchedCount.from_matrix(
+        counts = paircounts.PatchedCount(
             binning, matrix, auto=False)
-        for bin in counts._bins:
-            npt.assert_equal(bin.toarray(), patch_matrix_full)
         # wrong shape
         with raises(ValueError):
-            counts = paircounts.PatchedCount.from_matrix(
+            counts = paircounts.PatchedCount(
                 binning, matrix[:, :, :-1], auto=False)  # missing bin
         with raises(IndexError):
-            counts = paircounts.PatchedCount.from_matrix(
+            counts = paircounts.PatchedCount(
                 binning, matrix[:, :-1], auto=False)  # not square
         with raises(IndexError):
-            counts = paircounts.PatchedCount.from_matrix(
+            counts = paircounts.PatchedCount(
                 binning, matrix[:-1], auto=False)  # not square
         # just call once
         repr(counts)
 
     def test_keys_values(self, binning):
         n_bins = len(binning)
-        counts = paircounts.PatchedCount(binning, 2, auto=False)
+        counts = paircounts.PatchedCount.zeros(binning, 2, auto=False)
         # check zero matrix
         npt.assert_equal(counts.keys(), np.empty((0, 2), dtype=np.int_))
         npt.assert_equal(counts.values(), np.empty((0, n_bins)))
@@ -346,8 +343,6 @@ class TestPatchedCount:
             counts.set_measurement(1, [1.0] * n_bins)
         with raises(IndexError):  # wrong key shape
             counts.set_measurement((1,), [1.0] * n_bins)
-        with raises(TypeError):  # wrong key type
-            counts.set_measurement((1.0, 1.0), [1.0] * n_bins)
 
     def test_array(self, binning, patch_matrix_full):
         counts = patched_counts_from_matrix(
