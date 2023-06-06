@@ -338,6 +338,18 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
 
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        for field in fields(self):
+            kind = field.name
+            if getattr(self, kind) != getattr(other, kind):
+                return False
+        return True
+
+    def __neq__(self, other) -> bool:
+        return not self == other
+
     def __add__(self, other: CorrelationFunction) -> CorrelationFunction:
         # check that the pair counts are set consistently
         kinds = []

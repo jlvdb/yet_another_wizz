@@ -92,24 +92,19 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         shape = self.shape
         return f"{string}, {shape=})"
 
-    def _parse_key(
-        self,
-        key: tuple | TypeSlice
-    ) -> tuple[TypeSlice, TypeSlice, TypeSlice]:
-        default = slice(None, None, None)
-        j, k = default, default
-        if not isinstance(key, tuple):
-            i = key
-        else:
-            if len(key) == 2:
-                i, j = key
-            elif len(key) == 3:
-                i, j, k = key
-            else:
-                raise IndexError(
-                    f"too many indices for array: array is 3-dimensional, but "
-                    f"{len(key)} were indexed")
-        return i, j, k
+    @abstractmethod
+    def __eq__(self, other) -> bool:
+        if isinstance(other, self.__class__):
+            if self.n_bins != other.n_bins:
+                return False
+            elif self.n_patches != other.n_patches:
+                return False
+            elif not (self.get_binning() == other.get_binning()).all():
+                return False
+        return True
+
+    def __neq__(self, other) -> bool:
+        return not self == other
 
     @abstractproperty
     def bins(self, item: TypeIndex) -> Indexer:
@@ -199,6 +194,14 @@ class PatchedTotal(PatchedArray):
         self.totals1 = totals1
         self.totals2 = totals2
         self.auto = auto
+
+    def __eq__(self, other) -> bool:
+        if not super().__eq__(other):
+            return False  # checks type
+        return (
+            np.all(self.totals1 == other.totals1) and
+            np.all(self.totals2 == other.totals2) and
+            self.auto == other.auto)
 
     def as_array(self) -> NDArray:
         return np.einsum("i...,j...->ij...", self.totals1, self.totals2)
@@ -347,6 +350,11 @@ class PatchedCount(PatchedArray):
     ) -> PatchedCount:
         counts = np.zeros((n_patches, n_patches, len(binning)), dtype=dtype)
         return cls(binning, counts, auto=auto)
+
+    def __eq__(self, other) -> bool:
+        if not super().__eq__(other):
+            return False  # checks type
+        return np.all(self.counts == other.counts) and (self.auto == other.auto)
 
     def __add__(self, other: PatchedCount) -> PatchedCount:
         if not self.is_compatible(other):
@@ -579,24 +587,16 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         n_patches = self.n_patches
         return f"{string}, {n_patches=})"
 
-    @property
-    def bins(self) -> Indexer[TypeIndex, PairCountResult]:
-        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
-            if isinstance(item, int):
-                item = [item]
-            return PairCountResult(
-                count=inst.count.bins[item], total=inst.total.bins[item])
+    def __eq__(self, other) -> bool:
+        if isinstance(other, self.__class__):
+            return (
+                np.all(self.count == other.count) and
+                np.all(self.total == other.total))
+        else:
+            return False
 
-        return Indexer(self, builder)
-
-    @property
-    def patches(self) -> Indexer[TypeIndex, PairCountResult]:
-        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
-            return PairCountResult(
-                count=inst.count.patches[item],
-                total=inst.total.patches[item])
-
-        return Indexer(self, builder)
+    def __neq__(self, other) -> bool:
+        return not self == other
 
     def __add__(self, other: PairCountResult) -> PairCountResult:
         count = self.count + other.count
@@ -616,6 +616,25 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     def __mul__(self, other: np.number) -> PairCountResult:
         return self.__class__(self.count * other, self.total)
+
+    @property
+    def bins(self) -> Indexer[TypeIndex, PairCountResult]:
+        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
+            if isinstance(item, int):
+                item = [item]
+            return PairCountResult(
+                count=inst.count.bins[item], total=inst.total.bins[item])
+
+        return Indexer(self, builder)
+
+    @property
+    def patches(self) -> Indexer[TypeIndex, PairCountResult]:
+        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
+            return PairCountResult(
+                count=inst.count.patches[item],
+                total=inst.total.patches[item])
+
+        return Indexer(self, builder)
 
     def get_binning(self) -> IntervalIndex:
         return self.total.get_binning()
