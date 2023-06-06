@@ -351,9 +351,9 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             elif self_set and other_set:
                 kinds.append(kind)
 
-        sum_dict = {
+        kwargs = {
             kind: getattr(self, kind) + getattr(other, kind) for kind in kinds}
-        return self.__class__(**sum_dict)
+        return self.__class__(**kwargs)
 
     def __radd__(
         self,
@@ -363,6 +363,16 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self
         else:
             return self.__add__(other)
+
+    def __mul__(self, other: np.number) -> CorrelationFunction:
+        # check that the pair counts are set consistently
+        kwargs = {}
+        for field in fields(self):
+            kind = field.name
+            counts = getattr(self, kind)
+            if counts is not None:
+                kwargs[kind] = counts * other
+        return self.__class__(**kwargs)
 
     @property
     def bins(self) -> Indexer[TypeIndex, CorrelationFunction]:

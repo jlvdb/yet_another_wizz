@@ -362,6 +362,10 @@ class PatchedCount(PatchedArray):
         else:
             return self.__add__(other)
 
+    def __mul__(self, other: np.number) -> PatchedCount:
+        return self.__class__(
+            self.get_binning(), self.counts * other, auto=self.auto)
+
     def set_measurement(self, key: PatchIDs | tuple[int, int], item: NDArray):
         # check the key
         if not isinstance(key, tuple):
@@ -609,6 +613,9 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self
         else:
             return self.__add__(other)
+
+    def __mul__(self, other: np.number) -> PairCountResult:
+        return self.__class__(self.count * other, self.total)
 
     def get_binning(self) -> IntervalIndex:
         return self.total.get_binning()
