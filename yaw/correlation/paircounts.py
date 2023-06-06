@@ -21,10 +21,9 @@ from yaw.core.abc import (
     BinnedQuantity, HDFSerializable, Indexer, PatchedQuantity)
 from yaw.core.containers import PatchIDs, SampledData
 from yaw.core.logging import LogCustomWarning
-from yaw.core.math import apply_bool_mask_ndim, apply_slice_ndim, outer_triu_sum
+from yaw.core.math import apply_slice_ndim, outer_triu_sum
 
 if TYPE_CHECKING:  # pragma: no cover
-    from scipy.sparse import dok_matrix
     from numpy.typing import NDArray, DTypeLike
     from pandas import IntervalIndex
 
@@ -48,6 +47,42 @@ def check_mergable(patched_arrays: Sequence[PatchedArray]) -> None:
             raise ValueError("cannot merge, binning does not match")
 
 
+def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
+    dset = source["binning"]
+    left, right = dset[:].T
+    closed = dset.attrs["closed"]
+    return pd.IntervalIndex.from_arrays(left, right, closed=closed)
+
+
+def binning_to_hdf(binning: IntervalIndex, dest: h5py.Group) -> None:
+    edges = np.column_stack([binning.left, binning.right])
+    dset = dest.create_dataset("binning", data=edges, **_compression)
+    dset.attrs["closed"] = binning.closed
+
+
+def concatenate_bin_edges(*patched: PatchedArray) -> IntervalIndex:
+    reference = patched[0]
+    edges = reference.edges
+    for other in patched[1:]:
+        if reference.auto != other.auto:
+            raise ValueError(
+                "cannot merge mixed cross- and autocorrelations")
+        if reference.n_patches != other.n_patches:
+            raise ValueError("cannot merge, patch numbers do not match")
+        if edges[-1] == other.edges[0]:
+            edges = np.concatenate([edges, other.edges[1:]])
+        else:
+            raise ValueError("cannot merge, bins are not contiguous")
+    return pd.IntervalIndex.from_breaks(edges, closed=reference.closed)
+
+
+def patch_idx_offset(patched: PatchedArray) -> NDArray[np.int_]:
+    idx_offset = np.fromiter(
+        accumulate((p.n_patches for p in patched), initial=0),
+        dtype=np.int_, count=len(patched))
+    return idx_offset
+
+
 class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
 
     auto = False
@@ -55,8 +90,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
         shape = self.shape
-        density = self.density
-        return f"{string}, {shape=}, {density=})"
+        return f"{string}, {shape=})"
 
     def _parse_key(
         self,
@@ -84,9 +118,6 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     @abstractproperty
     def patches(self, item: TypeIndex) -> Indexer:
         raise NotImplementedError
-
-    @abstractproperty
-    def density(self) -> float: raise NotImplementedError
 
     @property
     def dtype(self) -> DTypeLike:
@@ -142,42 +173,6 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
             data=data,
             samples=samples,
             method=config.method)
-
-
-def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
-    dset = source["binning"]
-    left, right = dset[:].T
-    closed = dset.attrs["closed"]
-    return pd.IntervalIndex.from_arrays(left, right, closed=closed)
-
-
-def binning_to_hdf(binning: IntervalIndex, dest: h5py.Group) -> None:
-    edges = np.column_stack([binning.left, binning.right])
-    dset = dest.create_dataset("binning", data=edges, **_compression)
-    dset.attrs["closed"] = binning.closed
-
-
-def concatenate_bin_edges(*patched: PatchedArray) -> IntervalIndex:
-    reference = patched[0]
-    edges = reference.edges
-    for other in patched[1:]:
-        if reference.auto != other.auto:
-            raise ValueError(
-                "cannot merge mixed cross- and autocorrelations")
-        if reference.n_patches != other.n_patches:
-            raise ValueError("cannot merge, patch numbers do not match")
-        if edges[-1] == other.edges[0]:
-            edges = np.concatenate([edges, other.edges[1:]])
-        else:
-            raise ValueError("cannot merge, bins are not contiguous")
-    return pd.IntervalIndex.from_breaks(edges, closed=reference.closed)
-
-
-def patch_idx_offset(patched: PatchedArray) -> NDArray[np.int_]:
-    idx_offset = np.fromiter(
-        accumulate((p.n_patches for p in patched), initial=0),
-        dtype=np.int_, count=len(patched))
-    return idx_offset
 
 
 class PatchedTotal(PatchedArray):
@@ -237,9 +232,45 @@ class PatchedTotal(PatchedArray):
     def n_patches(self) -> int:
         return self.totals1.shape[0]
 
-    @property
-    def density(self) -> float:
-        return (self.totals1.size + self.totals2.size) / self.size
+    @classmethod
+    def from_hdf(cls, source: h5py.Group) -> PatchedTotal:
+        # reconstruct the binning
+        binning = binning_from_hdf(source)
+        # load the data
+        totals1 = source["totals1"][:]
+        totals2 = source["totals2"][:]
+        auto = source["auto"][()]
+        return cls(
+            binning=binning,
+            totals1=totals1,
+            totals2=totals2,
+            auto=auto)
+
+    def to_hdf(self, dest: h5py.Group) -> None:
+        # store the binning
+        binning_to_hdf(self.get_binning(), dest)
+        # store the data
+        dest.create_dataset("totals1", data=self.totals1, **_compression)
+        dest.create_dataset("totals2", data=self.totals2, **_compression)
+        dest.create_dataset("auto", data=self.auto)
+
+    def concatenate_patches(self, *totals: PatchedTotal) -> PatchedTotal:
+        check_mergable([self, *totals])
+        all_totals: list[PatchedTotal] = [self, *totals]
+        return self.__class__(
+            binning=self.get_binning().copy(),
+            totals1=np.concatenate([t.totals1 for t in all_totals], axis=0),
+            totals2=np.concatenate([t.totals2 for t in all_totals], axis=0),
+            auto=self.auto)
+
+    def concatenate_bins(self, *totals: PatchedTotal) -> PatchedTotal:
+        binning = concatenate_bin_edges(self, *totals)
+        all_totals: list[PatchedTotal] = [self, *totals]
+        return self.__class__(
+            binning=binning,
+            totals1=np.concatenate([t.totals1 for t in all_totals], axis=1),
+            totals2=np.concatenate([t.totals2 for t in all_totals], axis=1),
+            auto=self.auto)
 
     # methods implementing the signal
 
@@ -285,103 +316,45 @@ class PatchedTotal(PatchedArray):
     def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
         raise NotImplementedError
 
-    @classmethod
-    def from_hdf(cls, source: h5py.Group) -> PatchedTotal:
-        # reconstruct the binning
-        binning = binning_from_hdf(source)
-        # load the data
-        totals1 = source["totals1"][:]
-        totals2 = source["totals2"][:]
-        auto = source["auto"][()]
-        return cls(
-            binning=binning,
-            totals1=totals1,
-            totals2=totals2,
-            auto=auto)
-
-    def to_hdf(self, dest: h5py.Group) -> None:
-        # store the binning
-        binning_to_hdf(self.get_binning(), dest)
-        # store the data
-        dest.create_dataset("totals1", data=self.totals1, **_compression)
-        dest.create_dataset("totals2", data=self.totals2, **_compression)
-        dest.create_dataset("auto", data=self.auto)
-
-    def concatenate_patches(self, *totals: PatchedTotal) -> PatchedTotal:
-        check_mergable([self, *totals])
-        all_totals: list[PatchedTotal] = [self, *totals]
-        return self.__class__(
-            binning=self.get_binning().copy(),
-            totals1=np.concatenate([t.totals1 for t in all_totals], axis=0),
-            totals2=np.concatenate([t.totals2 for t in all_totals], axis=0),
-            auto=self.auto)
-
-    def concatenate_bins(self, *totals: PatchedTotal) -> PatchedTotal:
-        binning = concatenate_bin_edges(self, *totals)
-        all_totals: list[PatchedTotal] = [self, *totals]
-        return self.__class__(
-            binning=binning,
-            totals1=np.concatenate([t.totals1 for t in all_totals], axis=1),
-            totals2=np.concatenate([t.totals2 for t in all_totals], axis=1),
-            auto=self.auto)
-
 
 class PatchedCount(PatchedArray):
 
     def __init__(
         self,
         binning: IntervalIndex,
+        counts: NDArray,
+        *,
+        auto: bool,
+    ) -> None:
+        if counts.ndim != 3 or counts.shape[0] != counts.shape[1]:
+            raise IndexError(
+                "counts must be of shape (n_patches, n_patches, n_bins)")
+        if counts.shape[2] != len(binning):
+            raise ValueError(
+                "length of 'binning' and 'counts' dimension do not match")
+        self._binning = binning
+        self.counts = counts
+        self.auto = auto
+
+    @classmethod
+    def zeros(
+        cls,
+        binning: IntervalIndex,
         n_patches: int,
         *,
         auto: bool,
         dtype: DTypeLike = np.float_
-    ) -> None:
-        self._binning = binning
-        self._keys = set()
-        self._n_patches = n_patches
-        self._bins: list[dok_matrix] = [
-            scipy.sparse.dok_matrix((n_patches, n_patches), dtype=dtype)
-            for i in range(self.n_bins)]
-        self.auto = auto
-
-    @classmethod
-    def from_matrix(
-        cls,
-        binning: IntervalIndex,
-        matrix: NDArray,
-        *,
-        auto: bool
     ) -> PatchedCount:
-        if matrix.ndim != 3 or matrix.shape[0] != matrix.shape[1]:
-            raise IndexError(
-                "matrix must be of shape (n_patches, n_patches, n_bins)")
-        _, n_patches, n_bins = matrix.shape
-        if n_bins != len(binning):
-            raise ValueError("'binning' and matrix dimension 2 do not match")
-        new = cls(binning, n_patches, auto=auto, dtype=matrix.dtype)
-        # paste the third dimension of the input matrix into the _bins list and
-        # record the superset of keys encountered
-        new._bins = []  # discard preallocated empty matrices
-        for i in range(n_bins):
-            spmat = scipy.sparse.dok_matrix(matrix[:, :, i])
-            new._bins.append(spmat)
-        new._rebuild_keys()
-        return new
-
-    def _rebuild_keys(self) -> None:
-        keys = set()
-        for bin in self._bins:
-            keys.update(set(bin.keys()))
-        self._keys = keys
+        counts = np.zeros((n_patches, n_patches, len(binning)), dtype=dtype)
+        return cls(binning, counts, auto=auto)
 
     def __add__(self, other: PatchedCount) -> PatchedCount:
         if not self.is_compatible(other):
             raise ValueError("binning of operands is not compatible")
         if self.n_patches != other.n_patches:
             raise ValueError("number of patches does not agree")
-        count_matrix = self.as_array() + other.as_array()
-        return self.__class__.from_matrix(
-            self.get_binning(), count_matrix, auto=self.auto)
+        return self.__class__(
+            self.get_binning(), self.counts + other.counts, auto=self.auto)
 
     def __radd__(self, other: PatchedCount | int | float) -> PatchedCount:
         if other == 0:
@@ -389,40 +362,36 @@ class PatchedCount(PatchedArray):
         else:
             return self.__add__(other)
 
-    def set_measurement(self, key: PatchIDs, item: NDArray):
-        item = np.asarray(item)
-        if item.shape != (self.n_bins,):
-            raise ValueError(
-                f"can only set items with length 'n_bins'={self.n_bins}")
+    def set_measurement(self, key: PatchIDs | tuple[int, int], item: NDArray):
+        # check the key
         if not isinstance(key, tuple):
             raise TypeError(f"slice must be of type {tuple}")
         elif len(key) != 2:
             raise IndexError(
                 f"too many indices for array assignment: index must be "
                 f"2-dimensional, but {len(key)} where indexed")
-        for n, val in enumerate(key):
-            if not isinstance(val, (int, np.integer)):
-                raise TypeError(
-                    f"index for axis {n} must be of type {int}, "
-                    f"but got {type(val)}")
-        for counts, val in zip(self._bins, item):
-            counts[key] = val
-        self._keys.add(key)
+        # check the item
+        item = np.asarray(item)
+        if item.shape != (self.n_bins,):
+            raise ValueError(
+                f"can only set items with length n_bins={self.n_bins}")
+        # insert values
+        self.counts[key] = item
 
     def as_array(self) -> NDArray:
-        return np.moveaxis(np.array([b.toarray() for b in self._bins]), 0, 2)
+        return self.counts
 
     def sum(self, axis: int | tuple[int] | None = None, **kwargs) -> NDArray:
-        return self.as_array().sum(axis=axis, **kwargs)
+        return self.counts.sum(axis=axis, **kwargs)
 
     @property
     def bins(self) -> Indexer[TypeIndex, PatchedCount]:
         def builder(inst: PatchedCount, item: TypeIndex) -> PatchedCount:
             if isinstance(item, int):
                 item = [item]
-            return PatchedCount.from_matrix(
+            return PatchedCount(
                 binning=inst._binning[item],
-                matrix=apply_slice_ndim(inst.as_array(), item, axis=2),
+                counts=apply_slice_ndim(inst.counts, item, axis=2),
                 auto=inst.auto)
 
         return Indexer(self, builder)
@@ -430,132 +399,53 @@ class PatchedCount(PatchedArray):
     @property
     def patches(self) -> Indexer[TypeIndex, PatchedCount]:
         def builder(inst: PatchedCount, item: TypeIndex) -> PatchedCount:
-            return PatchedCount.from_matrix(
+            return PatchedCount(
                 binning=inst._binning,
-                matrix=apply_slice_ndim(inst.as_array(), item, axis=(0, 1)),
+                counts=apply_slice_ndim(inst.counts, item, axis=(0, 1)),
                 auto=inst.auto)
 
         return Indexer(self, builder)
-
-    def keys(self) -> NDArray:
-        key_list = list(self._keys)
-        if len(key_list) == 0:
-            return np.empty((0, 2), dtype=np.int_)
-        else:
-            return np.array(key_list)
-
-    def values(self) -> NDArray:
-        idx_ax0, idx_ax1 = self.keys().T
-        values = np.column_stack([
-            np.squeeze(counts[idx_ax0, idx_ax1].toarray())
-            for counts in self._bins])
-        return values
 
     def get_binning(self) -> IntervalIndex:
         return self._binning
 
     @property
     def n_patches(self) -> int:
-        return self._n_patches
+        return self.counts.shape[0]
 
     @property
     def n_bins(self) -> int:
         return len(self.get_binning())
 
-    @property
-    def density(self) -> float:
-        stored = sum(counts.nnz for counts in self._bins)
-        total = np.prod(self.shape)
-        return stored / total
+    def keys(self) -> NDArray:
+        # check which patch combinations contain data
+        has_data = np.any(self.counts, axis=2)
+        indices = np.nonzero(has_data)
+        return np.column_stack(indices)
 
-    # methods implementing the signal
-
-    def _bin_sum_diag(self, bin: dok_matrix) -> np.number:
-        return bin.diagonal().sum()
-
-    def _bin_sum_cross(self, bin: dok_matrix) -> np.number:
-        return bin.sum()
-
-    def _bin_sum_auto(self, bin: dok_matrix) -> np.number:
-        return scipy.sparse.triu(bin).sum()
-
-    def _sum(self, config: ResamplingConfig) -> NDArray:
-        out = np.empty(self.n_bins)
-        for i, bin in enumerate(self._bins):
-            if config.crosspatch:
-                if self.auto:
-                    out[i] = self._bin_sum_auto(bin)
-                else:
-                    out[i] = self._bin_sum_cross(bin)
-            else:
-                out[i] = self._bin_sum_diag(bin)
-        return out
-
-    # methods implementing jackknife samples
-
-    def _bin_jackknife_diag(
-        self,
-        bin: dok_matrix,
-        signal: NDArray
-    ) -> NDArray:
-        return signal - bin.diagonal()  # broadcast to (n_patches,)
-
-    def _bin_jackknife_cross(
-        self,
-        bin: dok_matrix,
-        signal: NDArray
-    ) -> NDArray:
-        diag = bin.diagonal()
-        rows = np.asarray(bin.sum(axis=1)).flatten()
-        cols = np.asarray(bin.sum(axis=0)).flatten()
-        return signal - rows - cols + diag  # broadcast to (n_patches,)
-
-    def _bin_jackknife_auto(
-        self,
-        bin: dok_matrix,
-        signal: NDArray
-    ) -> NDArray:
-        diag = bin.diagonal()
-        # sum along axes of upper triangle (without diagonal) of outer product
-        tri_upper = scipy.sparse.triu(bin, k=1)
-        rows = np.asarray(tri_upper.sum(axis=1)).flatten()
-        cols = np.asarray(tri_upper.sum(axis=0)).flatten()
-        return signal - rows - cols - diag  # broadcast to (n_patches,)
-
-    def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
-        out = np.empty((self.n_patches, self.n_bins))
-        for i, (bin, bin_signal) in enumerate(zip(self._bins, signal)):
-            if config.crosspatch:
-                if self.auto:
-                    out[:, i] = self._bin_jackknife_auto(bin, bin_signal)
-                else:
-                    out[:, i] = self._bin_jackknife_cross(bin, bin_signal)
-            else:
-                out[:, i] = self._bin_jackknife_diag(bin, bin_signal)
-        return out
-
-    # methods implementing bootstrap samples
-
-    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
-        raise NotImplementedError
+    def values(self) -> NDArray:
+        keys = self.keys()  # shape (n_nonzero, 2)
+        i1, i2 = keys.T
+        return self.counts[i1, i2, :]  # shape (n_nonzero, n_bins)
 
     @classmethod
     def from_hdf(cls, source: h5py.Group) -> PatchedCount:
         # reconstruct the binning
         binning = binning_from_hdf(source)
-        # load the data
+        # load the sparse data representation
         keys = [tuple(key) for key in source["keys"][:]]
         data = source["data"][:]
         n_patches = source["n_patches"][()]
         auto = source["auto"][()]
-        # reconstruct the sparse matrix incrementally
-        new = cls(
-            binning=binning, n_patches=n_patches, auto=auto, dtype=data.dtype)
-        for key, value in zip(keys, data):
-            for counts, val in zip(new._bins, value):
-                counts[key] = val
-            new._keys.add(key)
-        return new
+        # build dense counts matrix
+        counts = np.zeros(
+            (n_patches, n_patches, len(binning)), dtype=data.dtype)
+        for key, values in zip(keys, data):
+            counts[key] = values
+        return cls(
+            binning=binning,
+            counts=counts,
+            auto=auto)
 
     def to_hdf(self, dest: h5py.Group) -> None:
         # store the binning
@@ -569,29 +459,101 @@ class PatchedCount(PatchedArray):
     def concatenate_patches(self, *counts: PatchedCount) -> PatchedCount:
         check_mergable([self, *counts])
         all_counts: list[PatchedCount] = [self, *counts]
-        merged = self.__class__(
+        offsets = patch_idx_offset(all_counts)
+        merged = self.__class__.zeros(
             binning=self.get_binning(),
             n_patches=sum(count.n_patches for count in all_counts),
             auto=self.auto)
-        offsets = patch_idx_offset(all_counts)
+        # insert the blocks of counts into the merged counts array
+        loc = 0
         for count, offset in zip(all_counts, offsets):
-            for idx, bin in enumerate(count._bins):
-                merged_bin = merged._bins[idx]
-                for (i, j), c in bin.items():
-                    merged_bin[(i+offset, j+offset)] = c
-        merged._rebuild_keys()
+            merged.counts[loc:loc+offset, loc:loc+offset] = count.counts
+            loc += offset
         return merged
 
     def concatenate_bins(self, *counts: PatchedCount) -> PatchedCount:
         binning = concatenate_bin_edges(self, *counts)
-        merged = self.__class__(
-            binning=binning, n_patches=self.n_patches, auto=self.auto)
-        all_counts: list[PatchedCount] = [self, *counts]
-        for count in all_counts:
-            for idx, bin in enumerate(count._bins):
-                merged._bins[idx] = bin.copy()
-        merged._rebuild_keys()
+        merged = self.__class__.zeros(
+            binning=binning,
+            n_patches=self.n_patches,
+            auto=self.auto,
+            dtype=self.dtype)
+        merged.counts = np.concatenate(
+            [count.counts for count in [self, *counts]], axis=2)
         return merged
+
+    # methods implementing the signal
+
+    def _bin_sum_diag(self, data: NDArray) -> np.number:
+        return np.diagonal(data).sum()
+
+    def _bin_sum_cross(self, data: NDArray) -> np.number:
+        return data.sum()
+
+    def _bin_sum_auto(self, data: NDArray) -> np.number:
+        return np.triu(data).sum()
+
+    def _sum(self, config: ResamplingConfig) -> NDArray:
+        out = np.zeros(self.n_bins)
+        for i in range(self.n_bins):
+            data = self.counts[:, :, i]
+            if config.crosspatch:
+                if self.auto:
+                    out[i] = self._bin_sum_auto(data)
+                else:
+                    out[i] = self._bin_sum_cross(data)
+            else:
+                out[i] = self._bin_sum_diag(data)
+        return out
+
+    # methods implementing jackknife samples
+
+    def _bin_jackknife_diag(
+        self,
+        data: NDArray,
+        signal: NDArray
+    ) -> NDArray:
+        return signal - np.diagonal(data)  # broadcast to (n_patches,)
+
+    def _bin_jackknife_cross(
+        self,
+        data: NDArray,
+        signal: NDArray
+    ) -> NDArray:
+        diag = np.diagonal(data)
+        rows = data.sum(axis=1)
+        cols = data.sum(axis=0)
+        return signal - rows - cols + diag  # broadcast to (n_patches,)
+
+    def _bin_jackknife_auto(
+        self,
+        data: NDArray,
+        signal: NDArray
+    ) -> NDArray:
+        diag = np.diagonal(data)
+        # sum along axes of upper triangle (without diagonal) of outer product
+        tri_upper = np.triu(data, k=1)
+        rows = tri_upper.sum(axis=1).flatten()
+        cols = tri_upper.sum(axis=0).flatten()
+        return signal - rows - cols - diag  # broadcast to (n_patches,)
+
+    def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
+        out = np.empty((self.n_patches, self.n_bins))
+        for i, bin_signal in enumerate(signal):
+            data = self.counts[:, :, i]
+            if config.crosspatch:
+                if self.auto:
+                    out[:, i] = self._bin_jackknife_auto(data, bin_signal)
+                else:
+                    out[:, i] = self._bin_jackknife_cross(data, bin_signal)
+            else:
+                out[:, i] = self._bin_jackknife_diag(data, bin_signal)
+        return out
+
+    # methods implementing bootstrap samples
+
+    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
