@@ -36,6 +36,9 @@ class PatchedQuantity(ABC):
         pass
 
 
+_Tbinned = TypeVar("_Tbinned", bound="BinnedQuantity")
+
+
 class BinnedQuantity(ABC):
 
     def get_binning(self) -> IntervalIndex:
@@ -80,7 +83,7 @@ class BinnedQuantity(ABC):
         right, both, neither."""
         return self.get_binning().closed
 
-    def is_compatible(self, other: BinnedQuantity) -> bool:
+    def is_compatible(self: _Tbinned, other: _Tbinned) -> bool:
         """Check whether this instance is compatible with another instance by
         ensuring that the redshift binning is identical.
         

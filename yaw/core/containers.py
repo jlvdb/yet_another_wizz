@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Generic, NamedTuple, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -22,13 +22,16 @@ class PatchIDs(NamedTuple):
     id2: int
 
 
-@dataclass(frozen=True)
-class SampledValue:
+_Tscalar = TypeVar("_Tscalar", bound=np.number)
 
-    value: np.ScalarType
-    samples: NDArray[np.ScalarType]
+
+@dataclass(frozen=True)
+class SampledValue(Generic[_Tscalar]):
+
+    value: _Tscalar
+    samples: NDArray[_Tscalar]
     method: str
-    error: np.ScalarType = field(init=False)
+    error: _Tscalar = field(init=False)
 
     def __post_init__(self) -> None:
         if self.method not in METHOD_OPTIONS:
