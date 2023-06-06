@@ -397,7 +397,7 @@ class ScipyCatalog(BaseCatalog):
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
         count_dict = {
-            key: PatchedCount(binning=binning, n_patches=n_patches, auto=auto)
+            key: PatchedCount.zeros(binning, n_patches, auto=auto)
             for key in config.scales.dict_keys()}
         # run the scheduled tasks
         result_iter = pool.iter_result(ordered=False)
