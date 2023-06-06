@@ -22,11 +22,15 @@ def find_files_with_extension(directory, extension):
 
 
 def update_hdf_paircounts(fpath, keep=True):
+    # load the original data
     old = yaw.CorrelationFunction.from_file(fpath)
     if keep:
         os.rename(fpath, fpath + ".old")
-        old.to_file(fpath)
 
+    # rewrite the file with new engine
+    old.to_file(fpath)
+
+    # reload the newly written data and compare the key values
     new = yaw.CorrelationFunction.from_file(fpath)
     for kind in ("dd", "dr", "rd", "rr"):
         old_p = getattr(old, kind)
