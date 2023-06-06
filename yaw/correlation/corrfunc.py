@@ -637,6 +637,23 @@ def _create_dummy_counts(
     return dummy
 
 
+def add_corrfuncs(
+    corrfuncs: Sequence[CorrelationFunction],
+    weights: Sequence[np.number] | None = None
+) -> CorrelationFunction:
+    if weights is None:
+        weights = [1.0] * len(corrfuncs)
+    else:
+        if len(corrfuncs) != len(weights):
+            raise ValueError(
+                "number of weights must match number of correlation functions")
+    # run summation, rescaling by weights
+    combined = 0.0
+    for corrfunc, weight in zip(corrfuncs, weights):
+        combined = combined + (corrfunc * weight)
+    return combined
+
+
 def autocorrelate(
     config: Configuration,
     data: BaseCatalog,

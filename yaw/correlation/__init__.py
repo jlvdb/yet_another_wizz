@@ -1,3 +1,3 @@
 from yaw.correlation.corrfunc import (
-    CorrelationData, CorrelationFunction, autocorrelate, crosscorrelate,
-    global_covariance)
+    CorrelationData, CorrelationFunction, add_corrfuncs,
+    autocorrelate, crosscorrelate, global_covariance)
