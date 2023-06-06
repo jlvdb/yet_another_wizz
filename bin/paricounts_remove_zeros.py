@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Scan a directory for .hdf files containting pair count "
                     "data and rewrite them, dropping entries where all counts "
-                    "are zero.")
+                    "are zero. (Affects files produced by yaw<2.3.1)")
     parser.add_argument(
         "path", help="directory to scan for paircount .hdf files")
     parser.add_argument(
