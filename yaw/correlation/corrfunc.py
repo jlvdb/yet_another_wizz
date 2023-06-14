@@ -28,6 +28,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
+    from yaw.redshifts import RedshiftData
 
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,11 @@ class CorrelationData(SampledData):
             f.write(f"{comment(self._cov_desc)}\n")
             for values in self.covariance:
                 f.write(fmt_str.format(*values, prec=PREC-3))
+
+    def as_redshift(self) -> RedshiftData:
+        from yaw.redshifts import RedshiftData  # avoid circular imports
+
+        return RedshiftData.from_correlation_data(self, info=self.info)
 
     def _make_plot(
         self,
