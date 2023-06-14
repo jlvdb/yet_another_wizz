@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
+from collections.abc import Iterator
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Callable, Generic, Type, TypeVar
 
@@ -17,15 +18,30 @@ _TK = TypeVar("_TK")
 _TV = TypeVar("_TV")
 
 
-class Indexer(Generic[_TK, _TV]):
+class Indexer(Generic[_TK, _TV], Iterator):
 
     def __init__(self, inst: _TV, builder: Callable[[_TV, _TK], _TV]) -> None:
         self._inst = inst
-        self._class = inst.__class__
         self._builder = builder
+        self._iter_loc = 0
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self._inst.__class__.__name__})"
 
     def __getitem__(self, item: _TK) -> _TV:
         return self._builder(self._inst, item)
+
+    def __next__(self) -> _TV:
+        try:
+            val = self[self._iter_loc]
+        except IndexError:
+            raise StopIteration
+        else:
+            self._iter_loc += 1
+            return val
+
+    def __iter__(self) -> Iterator[_TV]:
+        return self.__class__(inst=self._inst, builder=self._builder)
 
 
 class PatchedQuantity(ABC):
