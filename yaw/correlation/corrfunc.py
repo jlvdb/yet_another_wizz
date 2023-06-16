@@ -333,9 +333,11 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             pairs: PairCountResult | None = getattr(self, kind)
             if pairs is None:
                 continue
-            if not self.dd.is_compatible(pairs):
+            try:
+                self.dd.is_compatible(pairs, require=True)
+            except ValueError as e:
                 raise ValueError(
-                    f"patches or binning of '{kind}' do not match 'dd'")
+                    f"pair counts '{kind}' and 'dd' are not compatible") from e
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -432,7 +434,11 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def n_patches(self) -> int:
         return self.dd.n_patches
 
-    def is_compatible(self, other: CorrelationFunction) -> bool:
+    def is_compatible(
+        self,
+        other: CorrelationFunction,
+        require: bool = True
+    ) -> bool:
         """Check whether this instance is compatible with another instance by
         ensuring that the redshift binning and the number of patches are
         identical.
@@ -440,12 +446,17 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         Args:
             other (:obj:`BinnedQuantity`):
                 Object instance to compare to.
+            require (bool)
+                Raise a ValueError if any of the checks fail.
         
         Returns:
             bool
         """
-        patches_ok = self.dd.n_patches == other.dd.n_patches
-        return patches_ok and self.dd.is_compatible(other.dd)
+        if self.dd.n_patches != other.dd.n_patches:
+            if require:
+                raise ValueError("number of patches does not agree")
+            return False
+        return self.dd.is_compatible(other.dd, require)
 
     @property
     def estimators(self) -> dict[str, CorrelationEstimator]:

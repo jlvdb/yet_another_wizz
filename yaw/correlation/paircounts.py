@@ -43,8 +43,7 @@ def check_mergable(patched_arrays: Sequence[PatchedArray]) -> None:
     for patched in patched_arrays[1:]:
         if reference.auto != patched.auto:
             raise ValueError("cannot merge mixed cross- and autocorrelations")
-        if not reference.is_compatible(patched):
-            raise ValueError("cannot merge, binning does not match")
+        reference.is_compatible(patched, require=True)
 
 
 def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
@@ -357,8 +356,7 @@ class PatchedCount(PatchedArray):
         return np.all(self.counts == other.counts) and (self.auto == other.auto)
 
     def __add__(self, other: PatchedCount) -> PatchedCount:
-        if not self.is_compatible(other):
-            raise ValueError("binning of operands is not compatible")
+        self.is_compatible(other, require=True)
         if self.n_patches != other.n_patches:
             raise ValueError("number of patches does not agree")
         return self.__class__(
@@ -371,6 +369,9 @@ class PatchedCount(PatchedArray):
             return self.__add__(other)
 
     def __mul__(self, other: np.number) -> PatchedCount:
+        self.is_compatible(other, require=True)
+        if self.n_patches != other.n_patches:
+            raise ValueError("number of patches does not agree")
         return self.__class__(
             self.get_binning(), self.counts * other, auto=self.auto)
 

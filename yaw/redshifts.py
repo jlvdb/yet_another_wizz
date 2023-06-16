@@ -59,10 +59,12 @@ class RedshiftData(CorrelationData):
             w_ss_data = np.float64(1.0)
             w_ss_samp = np.float64(1.0)
         else:
-            if not ref_data.is_compatible(cross_data):
+            try:
+                ref_data.is_compatible(cross_data, require=True)
+            except ValueError as e:
                 raise ValueError(
                     "'ref_corr' correlation data is not compatible with "
-                    "'cross_data'")
+                    "'cross_data'") from e
             w_ss_data = ref_data.data
             w_ss_samp = ref_data.samples
             mitigate.append("reference")
@@ -71,10 +73,12 @@ class RedshiftData(CorrelationData):
             w_pp_data = np.float64(1.0)
             w_pp_samp = np.float64(1.0)
         else:
-            if not unk_data.is_compatible(cross_data):
+            try:
+                unk_data.is_compatible(cross_data, require=True)
+            except ValueError as e:
                 raise ValueError(
                     "'unk_data' correlation data is not compatible with "
-                    "'cross_data'")
+                    "'cross_data'") from e
             w_pp_data = unk_data.data
             w_pp_samp = unk_data.samples
             mitigate.append("unknown")
@@ -131,9 +135,19 @@ class RedshiftData(CorrelationData):
         ):
             # check compatibilty before sampling anything
             if ref_corr is not None:
-                ref_corr.is_compatible(cross_corr)
+                try:
+                    cross_corr.is_compatible(ref_corr, require=True)
+                except ValueError as e:
+                    raise ValueError(
+                        "'ref_corr' correlation function is not compatible "
+                        "with 'cross_corr'") from e
             if unk_corr is not None:
-                unk_corr.is_compatible(cross_corr)
+                try:
+                    cross_corr.is_compatible(unk_corr, require=True)
+                except ValueError as e:
+                    raise ValueError(
+                        "'unk_corr' correlation function is not compatible "
+                        "with 'cross_corr'") from e
             # sample pair counts and evaluate estimator
             cross_data = cross_corr.get(config, estimator=cross_est)
             if ref_corr is not None:

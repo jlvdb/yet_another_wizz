@@ -153,12 +153,16 @@ class SampledData(BinnedQuantity):
     def get_binning(self) -> IntervalIndex:
         return self.binning
 
-    def is_compatible(self, other: SampledData) -> bool:
-        if not super().is_compatible(other):
+    def is_compatible(self, other: SampledData, require: bool = False) -> bool:
+        if not super().is_compatible(other, require):
             return False
         if self.n_samples != other.n_samples:
+            if require:
+                raise ValueError("number of samples do not agree")
             return False
         if self.method != other.method:
+            if require:
+                raise ValueError("resampling method does not agree")
             return False
         return True
 

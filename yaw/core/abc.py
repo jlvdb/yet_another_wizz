@@ -99,13 +99,19 @@ class BinnedQuantity(ABC):
         right, both, neither."""
         return self.get_binning().closed
 
-    def is_compatible(self: _Tbinned, other: _Tbinned) -> bool:
+    def is_compatible(
+        self: _Tbinned,
+        other: _Tbinned,
+        require: bool = False
+    ) -> bool:
         """Check whether this instance is compatible with another instance by
         ensuring that the redshift binning is identical.
         
         Args:
             other (:obj:`BinnedQuantity`):
                 Object instance to compare to.
+            require (bool)
+                Raise a ValueError if any of the checks fail.
         
         Returns:
             bool
@@ -115,8 +121,12 @@ class BinnedQuantity(ABC):
                 f"object of type {type(other)} is not compatible with "
                 f"{self.__class__}")
         if self.n_bins != other.n_bins:
+            if require:
+                raise ValueError("number of bins do not agree")
             return False
         if np.any(self.get_binning() != other.get_binning()):
+            if require:
+                raise ValueError("binning is not identical")
             return False
         return True
 
