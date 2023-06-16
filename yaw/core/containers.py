@@ -123,6 +123,37 @@ class SampledData(BinnedQuantity):
         method = self.method
         return f"{string}, {n_samples=}, {method=})"
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            if self.samples.shape != other.samples.shape:
+                return False
+            return (
+                self.method == other.method and
+                np.all(self.data == other.data) and
+                np.all(self.samples == other.samples) and
+                (self.binning == other.binning).all())
+        else:
+            return False
+
+    def __ne__(self, other: object) -> bool:
+        return not self.__eq__(other)
+
+    def __add__(self, other: _Tdata) -> _Tdata:
+        self.is_compatible(other, require=True)
+        return self.__class__(
+            binning=self.get_binning(),
+            data=self.data+other.data,
+            samples=self.samples+other.samples,
+            method=self.method)
+
+    def __sub__(self, other: _Tdata) -> _Tdata:
+        self.is_compatible(other, require=True)
+        return self.__class__(
+            binning=self.get_binning(),
+            data=self.data-other.data,
+            samples=self.samples-other.samples,
+            method=self.method)
+
     @property
     def bins(self: _Tdata) -> Indexer[int | slice | Sequence, _Tdata]:
         def builder(inst: _Tdata, item: int | slice | Sequence) -> _Tdata:
