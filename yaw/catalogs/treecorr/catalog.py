@@ -252,19 +252,17 @@ class TreecorrCatalog(BaseCatalog):
         # iterate the bins and compute the correlation
         self.logger.debug(
             f"running treecorr on {config.backend.get_threads()} threads")
-        result = {
-            scale_key: [] for scale_key in config.scales.dict_keys()}
+        result = {str(scale): [] for scale in config.scales}
         for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
             scales = r_kpc_to_angle(
                 config.scales.as_array(), intv.mid, config.cosmology)
-            for scale_key, (ang_min, ang_max) in zip(
-                    config.scales.dict_keys(), scales):
+            for scale, (ang_min, ang_max) in zip(config.scales, scales):
                 correlation = NNCorrelation(
                     min_sep=ang_min, max_sep=ang_max, **nncorr_config)
                 correlation.process(
                     bin_cat1.to_treecorr(),
                     None if bin_cat2 is None else bin_cat2.to_treecorr())
-                result[scale_key].append(
+                result[str(scale)].append(
                     PairCountResult.from_nncorrelation(intv, correlation))
         if len(result) == 1:
             result = PairCountResult.from_bins(tuple(result.values())[0])

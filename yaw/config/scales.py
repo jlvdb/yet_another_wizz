@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -8,9 +8,9 @@ import numpy as np
 
 from yaw.core import default as DEFAULT
 from yaw.core.abc import DictRepresentation
+from yaw.core.cosmology import Scale
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
-from yaw.core.utils import scales_to_keys
 
 from yaw.config.utils import ConfigurationError
 
@@ -85,8 +85,16 @@ class ScalesConfig(DictRepresentation):
             return False
         return True
 
+    def __getitem__(self, idx: int) -> Scale:
+        scales = self.as_array()
+        return Scale(rmin=scales[idx, 0], rmax=scales[idx, 1])
+
+    def __iter__(self) -> Iterator[Scale]:
+        for rmin, rmax in self.as_array():
+            yield Scale(rmin=rmin, rmax=rmax)
+
     def as_array(self) -> NDArray[np.float_]:
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
 
-    def dict_keys(self) -> list[str]:
-        return scales_to_keys(self.as_array())
+    def dict_keys(self) -> list[str]:  # deprecated
+        return [str(scale) for scale in self]

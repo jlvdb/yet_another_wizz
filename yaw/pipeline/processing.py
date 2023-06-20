@@ -35,9 +35,8 @@ def _cf_as_dict(
     cfs: CorrelationFunction | _Tcf
 ) -> _Tcf:
     if not isinstance(cfs, dict):
-        cfs = {config.scales.dict_keys()[0]: cfs}
+        cfs = {str(config.scales[0]): cfs}
     return cfs
-
 
 
 class PostProcessor:
@@ -422,7 +421,7 @@ class DataProcessor(PostProcessor):
 
     def write_total_unk(self) -> None:
         # important: exclude data outside the redshift binning range
-        any_scale = self.config.scales.dict_keys()[0]
+        any_scale = str(self.config.scales[0])
         if self._w_sp is not None:
             total = self._w_sp[any_scale].dd.total.totals2.sum()
         elif self._w_pp is not None:

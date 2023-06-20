@@ -9,7 +9,6 @@ yaw.utils
 .. autosummary::
     :toctree: utils
 
-    scales_to_keys
     long_num_format
     bytes_format
     get_doc_args

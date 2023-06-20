@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 try:  # pragma: no cover
     from typing import TypeAlias
@@ -41,13 +43,45 @@ TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
 
 
 def r_kpc_to_angle(
-    r_kpc: NDArray[np.float_],
+    r_kpc: NDArray[np.float_] | Sequence[float],
     z: float,
     cosmology: TypeCosmology
 ) -> NDArray[np.float_]:
     """from kpc to radian"""
     f_K = cosmology.comoving_transverse_distance(z)  # for 1 radian in Mpc
     return np.asarray(r_kpc) / 1000.0 * (1.0 + z) / f_K.value
+
+
+@dataclass(frozen=True)
+class Scale:
+
+    rmin: float  # in kpc
+    rmax: float  # in kpc
+
+    def __post_init__(self) -> None:
+        if self.rmin >= self.rmax:
+            raise ValueError("'rmin' must be less than 'rmax'")
+
+    @property
+    def mid(self) -> float:
+        return (self.rmin + self.rmax) / 2.0
+
+    @property
+    def mid_log(self) -> float:
+        lmin = np.log10(self.rmin)
+        lmax = np.log10(self.rmax)
+        lmid = (lmin + lmax) / 2.0
+        return 10**lmid
+
+    def __str__(self) -> str:
+        return f"kpc{self.rmin:.0f}t{self.rmax:.0f}"
+
+    def to_radian(
+        self,
+        z: float,
+        cosmology: TypeCosmology
+    ) -> NDArray[np.float_]:
+        return r_kpc_to_angle([self.rmin, self.rmax], z, cosmology)
 
 
 class BinFactory:

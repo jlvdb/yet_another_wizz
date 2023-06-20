@@ -213,8 +213,8 @@ class YawDirectory(DictRepresentation):
         return self._config
 
     def iter_scales(self) -> Iterator[str]:
-        for scale in self.config.scales.dict_keys():
-            yield scale
+        for scale in self.config.scales:
+            yield str(scale)
 
     def get_state(self) -> ProjectState:
         # input data

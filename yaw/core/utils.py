@@ -44,10 +44,6 @@ class LimitTracker:
         return vmin, vmax
 
 
-def scales_to_keys(scales: NDArray[np.float_]) -> list[str]:
-    return [f"kpc{scale[0]:.0f}t{scale[1]:.0f}" for scale in scales]
-
-
 def long_num_format(x: float) -> str:
     x = float(f"{x:.3g}")
     exp = 0

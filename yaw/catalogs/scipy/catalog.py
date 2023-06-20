@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -15,11 +15,11 @@ from yaw.catalogs.scipy.patches import (
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchIDs
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.core.cosmology import r_kpc_to_angle
+from yaw.core.cosmology import Scale
 from yaw.core.logging import TimedLog
 from yaw.core.parallel import ParallelHelper
 from yaw.core.utils import (
-    LimitTracker, job_progress_bar, long_num_format, scales_to_keys)
+    LimitTracker, job_progress_bar, long_num_format)
 from yaw.correlation.paircounts import (
     PairCountResult, PatchedCount, PatchedTotal)
 from yaw.redshifts import HistogramData
@@ -41,7 +41,7 @@ class PatchCorrelationData:
 def _count_pairs_thread(
     patch1: PatchCatalog,
     patch2: PatchCatalog,
-    scales: NDArray[np.float_],
+    scales: Sequence[Scale],
     cosmology: TypeCosmology,
     z_bins: NDArray[np.float_],
     bin1: bool = True,
@@ -68,12 +68,16 @@ def _count_pairs_thread(
     for i, (intv, tree1, tree2) in enumerate(zip(z_intervals, trees1, trees2)):
         # if bin1 is False and bin2 is False, these will still give different
         # counts since the angle for scales is chaning
+        angles = [
+            scale.to_radian(intv.mid, cosmology) for scale in scales]
         counts[:, i] = tree1.count(
-            tree2, scales=r_kpc_to_angle(scales, intv.mid, cosmology),
-            dist_weight_scale=dist_weight_scale, weight_res=dist_weight_res)
+            tree2,
+            scales=angles,
+            dist_weight_scale=dist_weight_scale,
+            weight_res=dist_weight_res)
         totals1[i] = tree1.total
         totals2[i] = tree2.total
-    counts = {key: count for key, count in zip(scales_to_keys(scales), counts)}
+    counts = {str(scale): count for scale, count in zip(scales, counts)}
     return PatchCorrelationData(
         patches=PatchIDs(patch1.id, patch2.id),
         totals1=totals1,
@@ -375,8 +379,8 @@ class ScipyCatalog(BaseCatalog):
         pool.add_iterable(patch1_list)
         # patch2: PatchCatalog
         pool.add_iterable(patch2_list)
-        # scales: NDArray[np.float_]
-        pool.add_constant(config.scales.as_array())
+        # scales: Sequence[Scale]
+        pool.add_constant(list(config.scales))
         # cosmology: TypeCosmology
         pool.add_constant(config.cosmology)
         # z_bins: NDArray[np.float_]
@@ -397,8 +401,8 @@ class ScipyCatalog(BaseCatalog):
         totals1 = np.zeros((n_patches, n_bins))
         totals2 = np.zeros((n_patches, n_bins))
         count_dict = {
-            key: PatchedCount.zeros(binning, n_patches, auto=auto)
-            for key in config.scales.dict_keys()}
+            str(scale): PatchedCount.zeros(binning, n_patches, auto=auto)
+            for scale in config.scales}
         # run the scheduled tasks
         result_iter = pool.iter_result(ordered=False)
         # add an optional progress bar
