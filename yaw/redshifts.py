@@ -149,13 +149,13 @@ class RedshiftData(CorrelationData):
                         "'unk_corr' correlation function is not compatible "
                         "with 'cross_corr'") from e
             # sample pair counts and evaluate estimator
-            cross_data = cross_corr.get(config, estimator=cross_est)
+            cross_data = cross_corr.sample(config, estimator=cross_est)
             if ref_corr is not None:
-                ref_data = ref_corr.get(config, estimator=ref_est)
+                ref_data = ref_corr.sample(config, estimator=ref_est)
             else:
                 ref_data = None
             if unk_corr is not None:
-                unk_data = unk_corr.get(config, estimator=unk_est)
+                unk_data = unk_corr.sample(config, estimator=unk_est)
             else:
                 unk_data = None
             return cls.from_correlation_data(

@@ -280,14 +280,14 @@ class TestPatchedTotal:
             config = ResamplingConfig(method="jackknife", crosspatch=crosspatch)
 
             # cross-correlation case
-            result = patched_totals_full.get_sum(config)
+            result = patched_totals_full.sample_sum(config)
             # compare to expected results, take only first bin
             data, jack, boot = expect_matrix_full
             assert result.data[0] == data
             npt.assert_equal(result.samples[:, 0], jack)
 
             # autocorrelation case
-            result = patched_totals_auto.get_sum(config)
+            result = patched_totals_auto.sample_sum(config)
             # compare to expected results, take only first bin
             data, jack, boot = expect_matrix_auto
             assert result.data[0] == data
@@ -295,7 +295,7 @@ class TestPatchedTotal:
 
     def test_bootstrap(self, patched_totals_full):
         with raises(NotImplementedError):
-            patched_totals_full.get_sum(ResamplingConfig(method="bootstrap"))
+            patched_totals_full.sample_sum(ResamplingConfig(method="bootstrap"))
 
 
 def patched_counts_from_matrix(binning, matrix, auto):
@@ -363,7 +363,7 @@ class TestPatchedCount:
         config = ResamplingConfig(method="jackknife", crosspatch=True)
         counts = patched_counts_from_matrix(
             binning, patch_matrix_full, auto=False)
-        result = counts.get_sum(config)
+        result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_matrix_full
         assert result.data[0] == data
@@ -373,7 +373,7 @@ class TestPatchedCount:
         config = ResamplingConfig(method="jackknife", crosspatch=False)
         counts = patched_counts_from_matrix(
             binning, patch_diag_full, auto=False)
-        result = counts.get_sum(config)
+        result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_diag_full
         assert result.data[0] == data
@@ -383,7 +383,7 @@ class TestPatchedCount:
         config = ResamplingConfig(method="jackknife", crosspatch=True)
         counts = patched_counts_from_matrix(
             binning, patch_matrix_auto, auto=True)
-        result = counts.get_sum(config)
+        result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_matrix_auto
         assert result.data[0] == data
@@ -393,7 +393,7 @@ class TestPatchedCount:
         config = ResamplingConfig(method="jackknife", crosspatch=False)
         counts = patched_counts_from_matrix(
             binning, patch_diag_auto, auto=True)
-        result = counts.get_sum(config)
+        result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_diag_auto
         assert result.data[0] == data
@@ -403,7 +403,7 @@ class TestPatchedCount:
         counts = patched_counts_from_matrix(
             binning, patch_matrix_full, auto=False)
         with raises(NotImplementedError):
-            counts.get_sum(ResamplingConfig(method="bootstrap"))
+            counts.sample_sum(ResamplingConfig(method="bootstrap"))
 
 
 @fixture
@@ -434,9 +434,9 @@ class TestPairCountResult:
         # just call once
         repr(res)
 
-    def test_get(self, pair_count_result, expect_matrix_full):
+    def test_sample(self, pair_count_result, expect_matrix_full):
         config = ResamplingConfig(method="jackknife")
-        result = pair_count_result.get(config)
+        result = pair_count_result.sample(config)
         data, jack, boot = expect_matrix_full
         # since totals and counts are identical, expect ones everywhere
         npt.assert_equal(result.data[0], np.ones_like(data))
@@ -459,7 +459,8 @@ class TestPairCountResult:
         assert restored.total.auto == pair_count_result.total.auto
         # compare count
         for binA, binB in zip(
-            restored.count._bins, pair_count_result.count._bins
+            restored.count._binning, pair_count_result.count._binning
         ):
-            npt.assert_equal(binA.toarray(), binB.toarray())
+            assert binA.left == binB.left
+            assert binA.right == binB.right
         assert restored.total.auto == pair_count_result.total.auto

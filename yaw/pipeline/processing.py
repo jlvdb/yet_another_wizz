@@ -146,7 +146,7 @@ class PostProcessor:
             data = {}
         for scale, cf in cfs.items():
             logger.debug(f"processing pair counts for {tag=} / {scale=}")
-            data[(scale, tag)] = cf.get(
+            data[(scale, tag)] = cf.sample(
                 config, estimator=estimator, info=cfs_kind)
         setattr(self, f"_{cfs_kind}_data", data)
         return data

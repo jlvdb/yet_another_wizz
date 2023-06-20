@@ -528,7 +528,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         else:
             return getattr(self, str(cts))
 
-    def get(
+    def sample(
         self,
         config: ResamplingConfig | None = None,
         *,
@@ -560,23 +560,23 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
         logger.debug(f"computing correlation and {config.method} samples")
-        # get the pair counts for the required terms
+        # get the pair counts for the required terms (DD, maybe DR and/or RR)
         required_data = {}
         required_samples = {}
         for cts in est_fun.requires:
             try:  # if pairs are None, estimator with throw error
-                pairs = self._getattr_from_cts(cts).get(config)
+                pairs = self._getattr_from_cts(cts).sample(config)
                 required_data[str(cts)] = pairs.data
                 required_samples[str(cts)] = pairs.samples
             except AttributeError as e:
                 if "NoneType" not in e.args[0]:
                     raise
-        # get the pair counts for the optional terms
+        # get the pair counts for the optional terms (e.g. RD)
         optional_data = {}
         optional_samples = {}
         for cts in est_fun.optional:
             try:  # if pairs are None, estimator with throw error
-                pairs = self._getattr_from_cts(cts).get(config)
+                pairs = self._getattr_from_cts(cts).sample(config)
                 optional_data[str(cts)] = pairs.data
                 optional_samples[str(cts)] = pairs.samples
             except AttributeError as e:

@@ -151,7 +151,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         config: ResamplingConfig
     ) -> NDArray: raise NotImplementedError
 
-    def get_sum(self, config: ResamplingConfig | None = None) -> SampledData:
+    def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         if config is None:
             config = ResamplingConfig()  # pragma: no cover
         data = self._sum(config)
@@ -301,11 +301,11 @@ class PatchedTotal(PatchedArray):
         return signal - rows - cols + diag  # subtracted diag twice
 
     def _jackknife_auto(self, signal: NDArray) -> NDArray:
-        diag = 0.5 * np.einsum("i...,i...->i...", self.totals1, self.totals2)
+        diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
         # sum along axes of upper triangle (without diagonal) of outer product
         rows = outer_triu_sum(self.totals1, self.totals2, k=1, axis=1)
         cols = outer_triu_sum(self.totals1, self.totals2, k=1, axis=0)
-        return signal - rows - cols - diag  # diag not in rows or cols
+        return signal - rows - cols - 0.5*diag  # diag not in rows or cols
 
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
         if self.auto:
@@ -644,9 +644,9 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def n_patches(self) -> int:
         return self.total.n_patches
 
-    def get(self, config: ResamplingConfig) -> SampledData:
-        counts = self.count.get_sum(config)
-        totals = self.total.get_sum(config)
+    def sample(self, config: ResamplingConfig) -> SampledData:
+        counts = self.count.sample_sum(config)
+        totals = self.total.sample_sum(config)
         with LogCustomWarning(
             logger, "some patches contain no data after binning by redshift"
         ):
