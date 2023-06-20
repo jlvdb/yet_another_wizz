@@ -13,7 +13,7 @@ from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
 from yaw.config import Configuration, ResamplingConfig
-from yaw.core.containers import PatchIDs
+from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.core.cosmology import Scale
 from yaw.core.logging import TimedLog
@@ -21,21 +21,13 @@ from yaw.core.parallel import ParallelHelper
 from yaw.core.utils import (
     LimitTracker, job_progress_bar, long_num_format)
 from yaw.correlation.paircounts import (
-    PairCountResult, PatchedCount, PatchedTotal)
+    PairCountResult, PatchedCount, PatchedTotal, pack_results)
 from yaw.redshifts import HistogramData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
     from yaw.core.cosmology import TypeCosmology
-
-
-@dataclass(frozen=True)
-class PatchCorrelationData:
-    patches: PatchIDs
-    totals1: NDArray
-    totals2: NDArray
-    counts: dict[str, NDArray]
 
 
 def _count_pairs_thread(
@@ -418,20 +410,13 @@ class ScipyCatalog(BaseCatalog):
                 if auto and id1 == id2:
                     count = count * 0.5  # autocorr. pairs are counted twice
                 count_dict[scale_key].set_measurement((id1, id2), count)
+
         total = PatchedTotal(  # not scale-dependent
             binning=binning,
             totals1=totals1,
             totals2=totals2,
             auto=auto)
-
-        # pack result
-        result = {}
-        for scale_key, count in count_dict.items():
-            result[scale_key] = PairCountResult(count=count, total=total)
-        # drop the dictionary if there is only one scale
-        if len(result) == 1:
-            result = tuple(result.values())[0]
-        return result
+        return pack_results(count_dict, total)
 
     def true_redshifts(
         self,

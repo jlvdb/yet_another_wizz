@@ -22,6 +22,14 @@ class PatchIDs(NamedTuple):
     id2: int
 
 
+@dataclass(frozen=True)
+class PatchCorrelationData:
+    patches: PatchIDs
+    totals1: NDArray
+    totals2: NDArray
+    counts: dict[str, NDArray]
+
+
 _Tscalar = TypeVar("_Tscalar", bound=np.number)
 
 

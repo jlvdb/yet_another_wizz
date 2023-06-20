@@ -682,3 +682,17 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return self.__class__(
             count=self.count.concatenate_bins(*counts),
             total=self.total.concatenate_bins(*totals))
+
+
+def pack_results(
+    count_dict: dict[str, PatchedCount],
+    total: PatchedTotal
+) -> PairCountResult | dict[str, PairCountResult]:
+    # drop the dictionary if there is only one scale
+    if len(count_dict) == 1:
+        result = tuple(count_dict.values())[0]
+    else:
+        result = {}
+        for scale_key, count in count_dict.items():
+            result[scale_key] = PairCountResult(count=count, total=total)
+    return result
