@@ -281,6 +281,12 @@ class BaseCatalog(Sequence, PatchedQuantity):
     @abstractmethod
     def has_redshifts(self) -> bool:
         """Indicates whether the :meth:`redshifts` attribute holds data."""
+        pass
+
+    @abstractmethod
+    def has_weights(self) -> bool:
+        """Indicates whether the :meth:`weights` attribute holds data."""
+        pass
 
     @property
     def pos(self) -> CoordSky:

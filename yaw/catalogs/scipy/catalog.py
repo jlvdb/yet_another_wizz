@@ -285,6 +285,9 @@ class ScipyCatalog(BaseCatalog):
     def has_redshifts(self) -> bool:
         return all(patch.has_redshifts() for patch in self._patches.values())
 
+    def has_weights(self) -> bool:
+        return all(patch.has_weights() for patch in self._patches.values())
+
     @property
     def ra(self) -> NDArray[np.float_]:
         return np.concatenate([patch.ra for patch in iter(self)])
