@@ -4,6 +4,10 @@ import itertools
 import os
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
+try:  # pragma: no cover
+    from typing import TypeAlias
+except ImportError:  # pragma: no cover
+    from typing_extensions import TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -13,15 +17,18 @@ from treecorr import Catalog, NNCorrelation
 from yaw.catalogs import BaseCatalog
 from yaw.config import Configuration
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
-from yaw.core.cosmology import r_kpc_to_angle
 from yaw.core.logging import TimedLog
-from yaw.correlation.paircounts import PairCountResult
+from yaw.correlation.paircounts import (
+    PairCountResult, PatchedCount, PatchedTotal, pack_results)
 from yaw.redshifts import HistogramData
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval
     from yaw.catalogs import PatchLinkage
     from yaw.config import ResamplingConfig
+
+
+TypeNNResult: TypeAlias = dict[tuple[int, int], NNCorrelation]
 
 
 def _iter_bin_masks(
@@ -33,8 +40,8 @@ def _iter_bin_masks(
         raise ValueError("'closed' must be either of 'left', 'right'")
     intervals = pd.IntervalIndex.from_breaks(bins, closed=closed)
     bin_ids = np.digitize(data, bins, right=(closed=="right"))
-    for i, interval in zip(range(1, len(bins)), intervals):
-        yield interval, bin_ids==i
+    for i, interval in enumerate(intervals, 1):
+        yield interval, (bin_ids == i)
 
 
 class TreecorrCatalog(BaseCatalog):
@@ -191,7 +198,7 @@ class TreecorrCatalog(BaseCatalog):
         return self._catalog.sumw
 
     def get_totals(self) -> NDArray[np.float_]:
-        return np.array([patch.sumw for patch in iter(self)])
+        return np.array([patch.total for patch in iter(self)])
 
     @property
     def centers(self) -> CoordSky:
@@ -207,16 +214,21 @@ class TreecorrCatalog(BaseCatalog):
             radii.append(radius.to_sky())
         return DistSky.from_dists(radii)
 
-    def bin_iter(
+    def iter_bins(
         self,
         z_bins: NDArray[np.float_],
+        allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, TreecorrCatalog]]:
-        if not self.has_redshifts():
-            raise ValueError("no redshifts for iteration provided")
-        for interval, bin_mask in _iter_bin_masks(self.redshifts, z_bins):
-            new = self._catalog.copy()
-            new.select(bin_mask)
-            yield interval, self.__class__.from_treecorr(new)
+        if not allow_no_redshift and not self.has_redshifts():
+            raise ValueError("no redshifts for iteration provdided")
+        if allow_no_redshift:
+            for intv in pd.IntervalIndex.from_breaks(z_bins, closed="left"):
+                yield intv, self
+        else:
+            for interval, bin_mask in _iter_bin_masks(self.redshifts, z_bins):
+                new = self._catalog.copy()
+                new.select(bin_mask)
+                yield interval, self.__class__.from_treecorr(new)
 
     def correlate(
         self,
@@ -240,36 +252,59 @@ class TreecorrCatalog(BaseCatalog):
             num_threads=config.backend.get_threads())
 
         # bin the catalogues if necessary
-        cats1 = self.bin_iter(config.binning.zbins)
+        cats1 = self.iter_bins(config.binning.zbins)
         if auto:
             cats2 = itertools.repeat((None, None))
         else:
             if binned:
-                cats2 = other.bin_iter(config.binning.zbins)
+                cats2 = other.iter_bins(config.binning.zbins)
             else:
                 cats2 = itertools.repeat((None, other))
+
+        # allocate output data containers
+        binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
+        n_bins = len(binning)
+        n_patches = self.n_patches
+        totals1 = np.zeros((n_patches, n_bins))
+        totals2 = np.zeros((n_patches, n_bins))
+        count_dict = {
+            str(scale): PatchedCount.zeros(binning, n_patches, auto=auto)
+            for scale in config.scales}
 
         # iterate the bins and compute the correlation
         self.logger.debug(
             f"running treecorr on {config.backend.get_threads()} threads")
-        result = {str(scale): [] for scale in config.scales}
-        for (intv, bin_cat1), (_, bin_cat2) in zip(cats1, cats2):
-            scales = r_kpc_to_angle(
-                config.scales.as_array(), intv.mid, config.cosmology)
-            for scale, (ang_min, ang_max) in zip(config.scales, scales):
+        for i, ((intv, bincat1), (_, bincat2)) in enumerate(zip(cats1, cats2)):
+            angles = [
+                scale.to_radian(intv.mid, config.cosmology)
+                for scale in config.scales]
+            # extract the total number of objects per patch
+            totals1[:, i] = bincat1.get_totals()
+            if bincat2 is None:
+                totals2[:, i] = totals1[:, i]
+            else:
+                totals2[:, i] = bincat2.get_totals()
+
+            for scale, (ang_min, ang_max) in zip(config.scales, angles):
+                # run the correlation measurement
                 correlation = NNCorrelation(
                     min_sep=ang_min, max_sep=ang_max, **nncorr_config)
                 correlation.process(
-                    bin_cat1.to_treecorr(),
-                    None if bin_cat2 is None else bin_cat2.to_treecorr())
-                result[str(scale)].append(
-                    PairCountResult.from_nncorrelation(intv, correlation))
-        if len(result) == 1:
-            result = PairCountResult.from_bins(tuple(result.values())[0])
-        else:
-            for scale_key, binned_result in result.items():
-                result[scale_key] = PairCountResult.from_bins(binned_result)
-        return result
+                    bincat1.to_treecorr(),
+                    None if bincat2 is None else bincat2.to_treecorr())
+
+                # extract the pair counts
+                scale_counts = count_dict[str(scale)]
+                result: TypeNNResult = correlation.results
+                for (pid1, pid2), corr_result in result.items():
+                    scale_counts.counts[pid1, pid2, i] = corr_result.weight
+
+        total = PatchedTotal(  # not scale-dependent
+            binning=binning,
+            totals1=totals1,
+            totals2=totals2,
+            auto=auto)
+        return pack_results(count_dict, total)
 
     def true_redshifts(
         self,

@@ -690,7 +690,8 @@ def pack_results(
 ) -> PairCountResult | dict[str, PairCountResult]:
     # drop the dictionary if there is only one scale
     if len(count_dict) == 1:
-        result = tuple(count_dict.values())[0]
+        count = tuple(count_dict.values())[0]
+        result = PairCountResult(count=count, total=total)
     else:
         result = {}
         for scale_key, count in count_dict.items():

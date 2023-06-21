@@ -247,6 +247,9 @@ class BaseCatalog(Sequence, PatchedQuantity):
         pass
 
     @abstractmethod
+    def n_patches(self) -> int: pass
+
+    @abstractmethod
     def __iter__(self) -> Iterator: pass
 
     @abstractmethod
@@ -350,8 +353,6 @@ class BaseCatalog(Sequence, PatchedQuantity):
         progress: bool = False
     ) -> PairCountResult | dict[str, PairCountResult]:
         """Compute the angular correlation between two catalogs.
-
-
         """
         n1 = long_num_format(len(self))
         n2 = long_num_format(len(self) if other is None else len(other))
