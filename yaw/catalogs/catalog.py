@@ -25,7 +25,7 @@ class BackendError(Exception):
     pass
 
 
-class BaseCatalog(Sequence, PatchedQuantity):
+class BaseCatalog(PatchedQuantity):
     """The data catalog base class.
 
     Every new backend must implement a catalog class. On creation this subclass
