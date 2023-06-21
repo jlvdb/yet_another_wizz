@@ -44,6 +44,21 @@ def _iter_bin_masks(
         yield interval, (bin_ids == i)
 
 
+def take_subset(
+    cat: TreecorrCatalog,
+    items: NDArray[np.bool_] | NDArray[np.int_] | slice
+) -> TreecorrCatalog:
+    kwargs = dict(
+        ra=cat.ra[items], ra_units="radian",
+        dec=cat.dec[items], dec_units="radian",
+        patch=cat.patch[items])
+    if cat.has_redshifts():
+        kwargs["r"] = cat.redshifts[items]
+    if cat.has_weights():
+        kwargs["w"] = cat.weights[items]
+    return TreecorrCatalog.from_treecorr(Catalog(**kwargs))
+
+
 class TreecorrCatalog(BaseCatalog):
 
     def __init__(
@@ -96,6 +111,7 @@ class TreecorrCatalog(BaseCatalog):
                 r=None if redshift_name is None else data[redshift_name],
                 w=None if weight_name is None else data[weight_name],
                 **kwargs)
+            self._make_patches()
 
         if cache_directory is not None:
             self.unload()
@@ -107,13 +123,21 @@ class TreecorrCatalog(BaseCatalog):
         progress: bool = False
     ) -> TreecorrCatalog:
         # super().from_cache(cache_directory)
+        #self._make_patches()
         raise NotImplementedError
 
     @classmethod
     def from_treecorr(cls, cat: Catalog) -> TreecorrCatalog:
         new = cls.__new__(cls)
         new._catalog = cat
+        new._make_patches()
         return new
+
+    def _make_patches(self) -> None:
+        c = self._catalog
+        if c._patches is None:
+            low_mem = (not self.is_loaded()) and (c.save_patch_dir is not None)
+            c.get_patches(low_mem=low_mem)
 
     def to_treecorr(self) -> Catalog:
         return self._catalog
@@ -121,13 +145,7 @@ class TreecorrCatalog(BaseCatalog):
     def __len__(self) -> int:
         return self._catalog.ntot
 
-    def _make_patches(self) -> None:
-        c = self._catalog
-        low_mem = (not self.is_loaded()) and (c.save_patch_dir is not None)
-        c.get_patches(low_mem=low_mem)
-
-    def __getitem__(self, item: int) -> TreecorrCatalog:
-        self._make_patches()
+    def __getitem__(self, item: int) -> Catalog:
         return self._catalog._patches[item]
 
     @property
@@ -138,10 +156,9 @@ class TreecorrCatalog(BaseCatalog):
     def n_patches(self) -> int:
         return self._catalog.npatch
 
-    def __iter__(self) -> Iterator[TreecorrCatalog]:
-        self._make_patches()
+    def __iter__(self) -> Iterator[Catalog]:
         for patch in self._catalog._patches:
-            yield self.__class__.from_treecorr(patch)
+            yield patch
 
     def is_loaded(self) -> bool:
         return self._catalog.loaded
@@ -156,6 +173,9 @@ class TreecorrCatalog(BaseCatalog):
 
     def has_redshifts(self) -> bool:
         return self.redshifts is not None
+
+    def has_weights(self) -> bool:
+        return self.weights is not None
 
     @property
     def ra(self) -> NDArray[np.float_]:
@@ -198,7 +218,7 @@ class TreecorrCatalog(BaseCatalog):
         return self._catalog.sumw
 
     def get_totals(self) -> NDArray[np.float_]:
-        return np.array([patch.total for patch in iter(self)])
+        return np.array([patch.sumw for patch in iter(self)])
 
     @property
     def centers(self) -> CoordSky:
@@ -208,7 +228,12 @@ class TreecorrCatalog(BaseCatalog):
     @property
     def radii(self) -> DistSky:
         radii = []
-        for patch in iter(self):
+        cls = self.__class__
+        for cat in iter(self):
+            # build a new TreecorrCatalog without any postprocessing
+            patch = cls.__new__(cls)
+            patch._catalog = cat
+            # compute the angular radius from the maximum separation in 3D
             position = patch.pos.to_3d()
             radius = patch.centers.to_3d().distance(position).max()
             radii.append(radius.to_sky())
@@ -226,9 +251,7 @@ class TreecorrCatalog(BaseCatalog):
                 yield intv, self
         else:
             for interval, bin_mask in _iter_bin_masks(self.redshifts, z_bins):
-                new = self._catalog.copy()
-                new.select(bin_mask)
-                yield interval, self.__class__.from_treecorr(new)
+                yield interval, take_subset(self, bin_mask)
 
     def correlate(
         self,
