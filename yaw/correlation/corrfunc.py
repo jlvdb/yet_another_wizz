@@ -683,6 +683,21 @@ def add_corrfuncs(
     return combined
 
 
+class PatchError(Exception):
+    pass
+
+
+def _check_patch_centers(catalogues: Sequence[BaseCatalog]) -> None:
+    refcat = catalogues[0]
+    for cat in catalogues[1:]:
+        if refcat.n_patches != cat.n_patches:
+            raise PatchError("number of patches does not agree")
+        ref_coord = refcat.centers.to_3d().values
+        cat_coord = cat.centers.to_3d().values
+        if not np.allclose(ref_coord, cat_coord, rtol=0.0, atol=1e-10):
+            raise PatchError("the patch centers are inconsistent")
+
+
 def autocorrelate(
     config: Configuration,
     data: BaseCatalog,
@@ -722,6 +737,7 @@ def autocorrelate(
         - :obj:`CorrelationFunction`: If running a single correlation scale.
         - :obj:`dict`: Otherwise a dictionary of correlation functions.
     """
+    _check_patch_centers([data, random])
     scales = config.scales.as_array()
     logger.info(
         f"running autocorrelation ({len(scales)} scales, "
@@ -802,6 +818,13 @@ def crosscorrelate(
     compute_dr = unk_rand is not None
     compute_rd = ref_rand is not None
     compute_rr = compute_dr and compute_rd
+    # make sure that the patch centers are consistent
+    all_cats = [reference, unknown]
+    if compute_dr:
+        all_cats.append(unk_rand)
+    if compute_rd:
+        all_cats.append(ref_rand)
+    _check_patch_centers(all_cats)
 
     scales = config.scales.as_array()
     logger.info(
