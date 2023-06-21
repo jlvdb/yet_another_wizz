@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import sys
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 try:  # pragma: no cover
@@ -47,9 +48,13 @@ def _iter_bin_masks(
 def take_subset(
     cat: TreecorrCatalog,
     items: NDArray[np.bool_] | NDArray[np.int_] | slice
-) -> TreecorrCatalog:
+) -> TreecorrCatalog | EmptyCatalog:
+    # first check if the selection yields no elements
+    ra = cat.ra[items]
+    if len(ra) == 0:
+        return EmptyCatalog(n_patches=cat.n_patches)
     kwargs = dict(
-        ra=cat.ra[items], ra_units="radian",
+        ra=ra, ra_units="radian",
         dec=cat.dec[items], dec_units="radian",
         patch=cat.patch[items])
     if cat.has_redshifts():
@@ -57,6 +62,21 @@ def take_subset(
     if cat.has_weights():
         kwargs["w"] = cat.weights[items]
     return TreecorrCatalog.from_treecorr(Catalog(**kwargs))
+
+
+class EmptyCatalog:
+
+    def __init__(self, n_patches: int) -> None:
+        self.n_patches = n_patches
+
+    def __len__(self) -> int:
+        return 0
+
+    def total(self) -> float:
+        return 0.0
+
+    def get_totals(self) -> NDArray[np.float_]:
+        return np.zeros(self.n_patches)
 
 
 class TreecorrCatalog(BaseCatalog):
@@ -243,7 +263,7 @@ class TreecorrCatalog(BaseCatalog):
         self,
         z_bins: NDArray[np.float_],
         allow_no_redshift: bool = False
-    ) -> Iterator[tuple[Interval, TreecorrCatalog]]:
+    ) -> Iterator[tuple[Interval, TreecorrCatalog | EmptyCatalog]]:
         if not allow_no_redshift and not self.has_redshifts():
             raise ValueError("no redshifts for iteration provdided")
         if allow_no_redshift:
@@ -298,6 +318,11 @@ class TreecorrCatalog(BaseCatalog):
         self.logger.debug(
             f"running treecorr on {config.backend.get_threads()} threads")
         for i, ((intv, bincat1), (_, bincat2)) in enumerate(zip(cats1, cats2)):
+            if progress:
+                _prog_msg = f"processing bin {i+1} / {n_bins}\r"
+                sys.stderr.write(_prog_msg)
+                sys.stderr.flush()
+
             angles = [
                 scale.to_radian(intv.mid, config.cosmology)
                 for scale in config.scales]
@@ -307,6 +332,13 @@ class TreecorrCatalog(BaseCatalog):
                 totals2[:, i] = totals1[:, i]
             else:
                 totals2[:, i] = bincat2.get_totals()
+
+            # trivial case: no data in redshift interval, no counts to update
+            if (
+                isinstance(bincat1, EmptyCatalog) or
+                isinstance(bincat2, EmptyCatalog)
+            ):
+                continue
 
             for scale, (ang_min, ang_max) in zip(config.scales, angles):
                 # run the correlation measurement
@@ -321,6 +353,9 @@ class TreecorrCatalog(BaseCatalog):
                 result: TypeNNResult = correlation.results
                 for (pid1, pid2), corr_result in result.items():
                     scale_counts.counts[pid1, pid2, i] = corr_result.weight
+
+        if progress:
+            sys.stderr.write((" " * len(_prog_msg)) + "\r")  # clear line
 
         total = PatchedTotal(  # not scale-dependent
             binning=binning,
