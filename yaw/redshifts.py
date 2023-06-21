@@ -24,7 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class RedshiftData(CorrelationData):
     """Container object for redshift estimates.
     """
@@ -250,7 +250,7 @@ class RedshiftData(CorrelationData):
             info=self.info)
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class HistogramData(RedshiftData):
 
     density: bool = field(default=False)

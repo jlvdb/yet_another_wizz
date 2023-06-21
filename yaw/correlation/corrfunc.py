@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 _Tdata = TypeVar("_Tdata", bound="CorrelationData")
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class CorrelationData(SampledData):
     """Container for correlation function data.
 
