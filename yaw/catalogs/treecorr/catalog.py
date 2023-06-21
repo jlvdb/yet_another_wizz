@@ -141,9 +141,10 @@ class TreecorrCatalog(BaseCatalog):
         cache_directory: str,
         progress: bool = False
     ) -> TreecorrCatalog:
-        # super().from_cache(cache_directory)
+        #super().from_cache(cache_directory)
         #self._make_patches()
-        raise NotImplementedError
+        raise NotImplementedError(
+            "restoring from cache is currently not supported")
 
     @classmethod
     def from_treecorr(cls, cat: Catalog) -> TreecorrCatalog:
