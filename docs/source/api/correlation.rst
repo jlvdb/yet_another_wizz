@@ -19,6 +19,6 @@ yaw.correlation
     :toctree: correlation
     :template: custom-class-template.rst
 
-    CorrelationFunction
-    CorrelationData
+    CorrFunc
+    CorrData
     SampledValue

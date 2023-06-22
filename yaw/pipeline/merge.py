@@ -11,11 +11,11 @@ import pandas as pd
 
 from collections.abc import Sequence
 
-from yaw.config import Configuration, ManualBinningConfig, ScalesConfig
+from yaw.config import Config, ManualBinningConfig, ScalesConfig
 from yaw.core import default as DEFAULT
 from yaw.core.utils import TypePathStr
-from yaw.correlation import CorrelationFunction
-from yaw.redshifts import HistogramData
+from yaw.correlation import CorrFunc
+from yaw.redshifts import HistData
 
 from yaw.pipeline.project import (
     ProjectDirectory, ProjectState, YawDirectory, compress_config)
@@ -43,7 +43,7 @@ def all_equal(iterable: Iterable) -> bool:
 def merge_config(
     projects: Sequence[YawDirectory],
     merge_binning: bool = True
-) -> Configuration:
+) -> Config:
     if len(projects) == 0:
         raise ValueError("'projects' is an empty sequence")
 
@@ -88,7 +88,7 @@ def merge_config(
     else:
         bin_config = config.binning  # all identical
 
-    config = Configuration(
+    config = Config(
         scales=ScalesConfig(
             rmin=[r for r, _ in common],
             rmax=[r for _, r in common],
@@ -159,8 +159,8 @@ def get_merged_state(projects: Sequence[YawDirectory]) -> ProjectState:
 
 def merge_cfs(
     mode: str,
-    cfs: Sequence[CorrelationFunction]
-) -> CorrelationFunction:
+    cfs: Sequence[CorrFunc]
+) -> CorrFunc:
     cfs_ordered = sorted(cfs, key=lambda cf: cf.edges[0])
     if mode == "redshift":
         return cfs_ordered[0].concatenate_bins(*cfs_ordered[1:])
@@ -171,8 +171,8 @@ def merge_cfs(
 def merge_hists(
     mode: str,
     bin_edges: NDArray[np.float_],
-    hists: Sequence[HistogramData]
-) -> HistogramData:
+    hists: Sequence[HistData]
+) -> HistData:
     methods = [hist.method for hist in hists]
     if all_equal(methods):
         method = methods[0]
@@ -186,14 +186,14 @@ def merge_hists(
 
     hists_ordered = sorted(hists, key=lambda hist: hist.edges[0])
     if mode == "redshift":
-        return HistogramData(
+        return HistData(
             binning=pd.IntervalIndex.from_breaks(bin_edges),
             data=np.concatenate([hist.data for hist in hists_ordered]),
             samples=np.concatenate([
                 hist.samples for hist in hists_ordered], axis=1),
             method=method)
     else:
-        return HistogramData(
+        return HistData(
             binning=pd.IntervalIndex.from_breaks(bin_edges),
             data=np.sum([hist.data for hist in hists], axis=0),
             samples=np.sum([hist.samples for hist in hists], axis=1),
@@ -266,21 +266,21 @@ class MergedDirectory(YawDirectory):
             if merged_state.has_w_ss:
                 logger.info(logmsg.format("reference autocorrelation function"))
                 cf = merge_cfs(mode, [
-                    CorrelationFunction.from_file(cdir.get_auto_reference())
+                    CorrFunc.from_file(cdir.get_auto_reference())
                     for cdir in project_counts_dir])
                 cf.to_file(counts_dir.get_auto_reference())
             if merged_state.has_w_sp:
                 logger.info(logmsg.format("unknown autocorrelation functions"))
                 for bin_idx in bins:
                     cf = merge_cfs(mode, [
-                        CorrelationFunction.from_file(cdir.get_cross(bin_idx))
+                        CorrFunc.from_file(cdir.get_cross(bin_idx))
                         for cdir in project_counts_dir])
                     cf.to_file(counts_dir.get_cross(bin_idx))
             if merged_state.has_w_pp:
                 logger.info(logmsg.format("crosscorrelation functions"))
                 for bin_idx in bins:
                     cf = merge_cfs(mode, [
-                        CorrelationFunction.from_file(cdir.get_auto(bin_idx))
+                        CorrFunc.from_file(cdir.get_auto(bin_idx))
                         for cdir in project_counts_dir])
                     cf.to_file(counts_dir.get_auto(bin_idx))
 
@@ -291,7 +291,7 @@ class MergedDirectory(YawDirectory):
             logger.info("merging reference sample redshift distribution")
             try:
                 hist = merge_hists(mode, config.binning.zbins, [
-                    HistogramData.from_files(tdir.get_reference())
+                    HistData.from_files(tdir.get_reference())
                     for tdir in project_true_dir])
             except MergeError as e:
                 logger.error(e.args[0] + ", skipping")
@@ -302,7 +302,7 @@ class MergedDirectory(YawDirectory):
                 logger.info("merging true redshift distributions")
                 try:
                     hist = merge_hists(mode, config.binning.zbins, [
-                        HistogramData.from_files(tdir.get_unknown(bin_idx))
+                        HistData.from_files(tdir.get_unknown(bin_idx))
                         for tdir in project_true_dir])
                 except MergeError as e:
                     logger.error(e.args[0] + ", skipping")
@@ -329,7 +329,7 @@ class MergedDirectory(YawDirectory):
     def to_dict(self) -> dict[str, Any]:
         # strip default values from config
         configuration = compress_config(
-            self._config.to_dict(), DEFAULT.Configuration.__dict__)
+            self._config.to_dict(), DEFAULT.Config.__dict__)
         setup = dict(
             configuration=configuration,
             sources=[str(fpath) for fpath in self._sources],

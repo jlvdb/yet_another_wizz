@@ -7,7 +7,7 @@ from abc import ABC, abstractclassmethod
 
 from yaw import __version__
 from yaw import config as yaw_config
-from yaw.config import Configuration
+from yaw.config import Config
 from yaw.core import default as DEFAULT
 from yaw.core.docs import populate_parser
 
@@ -81,7 +81,7 @@ class CommandInit(SubCommand):
             "--n-patches", type=int, metavar="<int>",
             help="split all input data into this number of spatial patches for "
                  "covariance estimation (default: patch index for catalogs)")
-        populate_parser(yaw_config.Configuration, group_other)
+        populate_parser(yaw_config.Config, group_other)
 
         Commandline.add_input_parser(
             parser, "reference (data)", prefix="ref",
@@ -112,7 +112,7 @@ class CommandInit(SubCommand):
 
     @classmethod
     def run(cls, args: argparse.Namespace) -> None:
-        # parser arguments for Configuration
+        # parser arguments for Config
         config_args = dict(
             cosmology=args.cosmology,
             rmin=args.rmin, rmax=args.rmax,
@@ -144,7 +144,7 @@ class CommandInit(SubCommand):
 
         # parse the configuration as given
         else:
-            config = Configuration.create(**config_args)
+            config = Config.create(**config_args)
 
         # create the project directory
         with ProjectDirectory.create(

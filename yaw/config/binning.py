@@ -13,7 +13,7 @@ from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
 
 from yaw.config.scales import ScalesConfig
-from yaw.config.utils import ConfigurationError
+from yaw.config.utils import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -46,7 +46,7 @@ class ManualBinningConfig(BaseBinningConfig):
 
     def __post_init__(self) -> None:
         if len(self.zbins) < 2:
-            raise ConfigurationError("'zbins' must have at least two edges")
+            raise ConfigError("'zbins' must have at least two edges")
         BinFactory.check(self.zbins)
         object.__setattr__(self, "zbins", np.asarray(self.zbins))
 
@@ -88,7 +88,7 @@ class AutoBinningConfig(BaseBinningConfig):
 
     zbins: NDArray[np.float_]
     method: str = field(
-        default=DEFAULT.Configuration.binning.method,
+        default=DEFAULT.Config.binning.method,
         metadata=Parameter(
             choices=BINNING_OPTIONS,
             help="redshift binning method, 'logspace' means equal size in "
@@ -175,7 +175,7 @@ def make_binning_config(
 ) -> ManualBinningConfig | AutoBinningConfig:
     auto_args_set =  (zmin is not None, zmax is not None, zbin_num is not None)
     if zbins is None and not all(auto_args_set):
-        raise ConfigurationError(
+        raise ConfigError(
             "either 'zbins' or 'zmin', 'zmax', 'zbin_num' are required")
     elif all(auto_args_set):
         return AutoBinningConfig.generate(

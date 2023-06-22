@@ -11,4 +11,4 @@ yaw.redshifts
     :template: custom-class-template.rst
 
     RedshiftData
-    HistogramData
+    HistData

@@ -22,5 +22,5 @@ yaw.config
     ManualBinningConfig
     AutoBinningConfig
     BackendConfig
-    Configuration
+    Config
     ResamplingConfig

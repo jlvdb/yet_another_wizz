@@ -8,13 +8,13 @@ import yaw
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.config import ResamplingConfig
 from yaw.core.utils import format_float_fixed_width as fmt_num
-from yaw.correlation import CorrelationData, CorrelationFunction
+from yaw.correlation import CorrData, CorrFunc
 from yaw.redshifts import RedshiftData
 
 from yaw.pipeline.data import MissingCatalogError
 
 if TYPE_CHECKING: ## pragma: no cover
-    from yaw.config import Configuration
+    from yaw.config import Config
     from yaw.pipeline.project import ProjectDirectory, ProjectState
 
 
@@ -26,13 +26,13 @@ class NoCountsError(Exception):
 
 
 _Tbc = tuple[BaseCatalog, Union[BaseCatalog, None]]
-_Tcf = dict[str, CorrelationFunction]
-_Tcd = dict[str, CorrelationData]
+_Tcf = dict[str, CorrFunc]
+_Tcd = dict[str, CorrData]
 
 
 def _cf_as_dict(
-    config: Configuration,
-    cfs: CorrelationFunction | _Tcf
+    config: Config,
+    cfs: CorrFunc | _Tcf
 ) -> _Tcf:
     if not isinstance(cfs, dict):
         cfs = {str(config.scales[0]): cfs}
@@ -111,7 +111,7 @@ class PostProcessor:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
             path = counts_dir.get_auto_reference()
-            cfs[scale] = CorrelationFunction.from_file(path)
+            cfs[scale] = CorrFunc.from_file(path)
         self._w_ss = cfs
         return cfs
 
@@ -119,7 +119,7 @@ class PostProcessor:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
             path = counts_dir.get_auto(self.get_bin_idx())
-            cfs[scale] = CorrelationFunction.from_file(path)
+            cfs[scale] = CorrFunc.from_file(path)
         self._w_pp = cfs
         return cfs
 
@@ -127,7 +127,7 @@ class PostProcessor:
         cfs = {}
         for scale, counts_dir in self.project.iter_counts():
             path = counts_dir.get_cross(self.get_bin_idx())
-            cfs[scale] = CorrelationFunction.from_file(path)
+            cfs[scale] = CorrFunc.from_file(path)
         self._w_sp = cfs
         return cfs
 
@@ -201,7 +201,7 @@ class PostProcessor:
         bias_ref: bool = True,
         bias_unk: bool = True
     ) -> None:
-        def get_info(w_ii_data: dict[str, CorrelationData | None]) -> str:
+        def get_info(w_ii_data: dict[str, CorrData | None]) -> str:
             if len(w_ii_data) == 0:
                 return None
             cd = next(iter(w_ii_data.values()))

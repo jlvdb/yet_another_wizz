@@ -20,7 +20,7 @@ from yaw.config.binning import (
     AutoBinningConfig, ManualBinningConfig, make_binning_config,
     warn_binning_args_ignored)
 from yaw.config.scales import ScalesConfig
-from yaw.config.utils import ConfigurationError
+from yaw.config.utils import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
@@ -33,16 +33,16 @@ logger = logging.getLogger(__name__)
 
 def cosmology_to_yaml(cosmology: TypeCosmology) -> str:
     if not isinstance(cosmology, astropy.cosmology.FLRW):
-        raise ConfigurationError("cannot serialise custom cosmoligies to YAML")
+        raise ConfigError("cannot serialise custom cosmoligies to YAML")
     if cosmology.name not in astropy.cosmology.available:
-        raise ConfigurationError(
+        raise ConfigError(
             "can only serialise predefined astropy cosmologies to YAML")
     return cosmology.name
 
 
 def yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
     if cosmo_name not in astropy.cosmology.available:
-        raise ConfigurationError(
+        raise ConfigError(
             f"unknown cosmology with name '{cosmo_name}', see "
             "'astropy.cosmology.available'")
     return getattr(astropy.cosmology, cosmo_name)
@@ -55,7 +55,7 @@ def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
         cosmology = yaml_to_cosmology(cosmology)
     elif not isinstance(cosmology, get_args(TypeCosmology)):
         which = ", ".join(get_args(TypeCosmology))
-        raise ConfigurationError(
+        raise ConfigError(
             f"'cosmology' must be instance of: {which}")
     return cosmology
 
@@ -63,7 +63,7 @@ def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
 def parse_section_error(
     exception: Exception,
     section: str,
-    reraise: Exception = ConfigurationError
+    reraise: Exception = ConfigError
 ) -> NoReturn:
     msg = exception.args[0]
     item = msg.split("'")[1]
@@ -82,7 +82,7 @@ def parse_section_error(
 
 
 @dataclass(frozen=True)
-class Configuration(DictRepresentation):
+class Config(DictRepresentation):
     """The central configration for correlation measurements.
 
     Construct with .create() method.
@@ -92,7 +92,7 @@ class Configuration(DictRepresentation):
     binning: AutoBinningConfig | ManualBinningConfig
     backend: BackendConfig = field(default_factory=BackendConfig)
     cosmology: TypeCosmology | str | None = field(
-        default=DEFAULT.Configuration.cosmology,
+        default=DEFAULT.Config.cosmology,
         metadata=Parameter(
             type=str, choices=COSMOLOGY_OPTIONS,
             help="cosmological model used for distance calculations",
@@ -106,7 +106,7 @@ class Configuration(DictRepresentation):
             cosmology = yaml_to_cosmology(self.cosmology)
         elif not isinstance(self.cosmology, get_args(TypeCosmology)):
             which = ", ".join(get_args(TypeCosmology))
-            raise ConfigurationError(
+            raise ConfigError(
                 f"'cosmology' must be instance of: {which}")
         else:
             cosmology = self.cosmology
@@ -117,23 +117,23 @@ class Configuration(DictRepresentation):
     def create(
         cls,
         *,
-        cosmology: TypeCosmology | str | None = DEFAULT.Configuration.cosmology,
+        cosmology: TypeCosmology | str | None = DEFAULT.Config.cosmology,
         # ScalesConfig
         rmin: ArrayLike,
         rmax: ArrayLike,
-        rweight: float | None = DEFAULT.Configuration.scales.rweight,
-        rbin_num: int = DEFAULT.Configuration.scales.rbin_num,
+        rweight: float | None = DEFAULT.Config.scales.rweight,
+        rbin_num: int = DEFAULT.Config.scales.rbin_num,
         # AutoBinningConfig /  ManualBinningConfig
         zmin: ArrayLike = None,
         zmax: ArrayLike = None,
-        zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
-        method: str = DEFAULT.Configuration.binning.method,
+        zbin_num: int | None = DEFAULT.Config.binning.zbin_num,
+        method: str = DEFAULT.Config.binning.method,
         zbins: NDArray[np.float_] | None = None,
         # BackendConfig
-        thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
-        crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
-        rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop
-    ) -> Configuration:
+        thread_num: int | None = DEFAULT.Config.backend.thread_num,
+        crosspatch: bool = DEFAULT.Config.backend.crosspatch,
+        rbin_slop: float = DEFAULT.Config.backend.rbin_slop
+    ) -> Config:
         """Create a new configuration object.
 
         Keyword Args:
@@ -169,7 +169,7 @@ class Configuration(DictRepresentation):
                 TreeCorr 'rbin_slop' parameter
     
         Returns:
-            :obj:`Configuration`
+            :obj:`Config`
         
         .. Note::
             If provided, ``zbins`` takes precedence over ``zmin``, ``zmax``,
@@ -207,7 +207,7 @@ class Configuration(DictRepresentation):
         thread_num: int | None = NotSet,
         crosspatch: bool | None = NotSet,
         rbin_slop: float | None = NotSet
-    ) -> Configuration:
+    ) -> Config:
         config = self.to_dict()
         if cosmology is not NotSet:
             if isinstance(cosmology, str):
@@ -285,10 +285,10 @@ class Configuration(DictRepresentation):
         cls,
         the_dict: dict[str, Any],
         **kwargs
-    ) -> Configuration:
+    ) -> Config:
         config = {k: v for k, v in the_dict.items()}
         cosmology = parse_cosmology(config.pop(
-            "cosmology", DEFAULT.Configuration.cosmology))
+            "cosmology", DEFAULT.Config.cosmology))
         # parse the required subgroups
         try:
             scales = ScalesConfig.from_dict(config.pop("scales"))
@@ -313,7 +313,7 @@ class Configuration(DictRepresentation):
         # check that there are no entries left
         if len(config) > 0:
             key = next(iter(config.keys()))
-            raise ConfigurationError(f"encountered unknown section '{key}'")
+            raise ConfigError(f"encountered unknown section '{key}'")
         return cls(
             scales=scales, binning=binning,
             backend=backend, cosmology=cosmology)
@@ -329,7 +329,7 @@ class Configuration(DictRepresentation):
         return values
 
     @classmethod
-    def from_yaml(cls, path: str) -> Configuration:
+    def from_yaml(cls, path: str) -> Config:
         logger.info(f"reading configuration file '{path}'")
         with open(path) as f:
             config = yaml.safe_load(f.read())

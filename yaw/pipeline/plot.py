@@ -8,7 +8,7 @@ import matplotlib
 matplotlib.use("agg")
 import matplotlib.pyplot as plt
 
-from yaw.correlation import CorrelationData
+from yaw.correlation import CorrData
 from yaw.redshifts import RedshiftData
 
 from yaw.pipeline.project import ProjectDirectory
@@ -112,7 +112,7 @@ class Plotter:
 
         fig, ax = self.mkfig(1)
         for (scale, tag), est_dir in self.project.iter_estimate():
-            cf = CorrelationData.from_files(est_dir.get_auto_reference())
+            cf = CorrData.from_files(est_dir.get_auto_reference())
             label = f"{scale_key_to_math(scale)} / {tag=}"
             cf.plot(zero_line=True, label=label, ax=ax)
 
@@ -134,7 +134,7 @@ class Plotter:
         axes = np.atleast_2d(axes)
         for (scale, tag), est_dir in self.project.iter_estimate():
             for ax, (bin, path) in zip(axes.flatten(), est_dir.iter_auto()):
-                cf = CorrelationData.from_files(path)
+                cf = CorrData.from_files(path)
                 label = f"{scale_key_to_math(scale)} / {tag=}"
                 cf.plot(zero_line=True, label=label, ax=ax)
                 ax.legend(title=f"{bin=}", prop=dict(size=8))

@@ -12,7 +12,7 @@ import pandas as pd
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
-from yaw.config import Configuration, ResamplingConfig
+from yaw.config import Config, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.core.cosmology import Scale
@@ -22,7 +22,7 @@ from yaw.core.utils import (
     LimitTracker, job_progress_bar, long_num_format)
 from yaw.correlation.paircounts import (
     PairCountResult, PatchedCount, PatchedTotal, pack_results)
-from yaw.redshifts import HistogramData
+from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -344,7 +344,7 @@ class ScipyCatalog(BaseCatalog):
 
     def correlate(
         self,
-        config: Configuration,
+        config: Config,
         binned: bool,
         other: ScipyCatalog | None = None,
         linkage: PatchLinkage | None = None,
@@ -423,10 +423,10 @@ class ScipyCatalog(BaseCatalog):
 
     def true_redshifts(
         self,
-        config: Configuration,
+        config: Config,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
-    ) -> HistogramData:
+    ) -> HistData:
         super().true_redshifts(config)
         if sampling_config is None:
             sampling_config = ResamplingConfig()  # default values
@@ -452,7 +452,7 @@ class ScipyCatalog(BaseCatalog):
         patch_idx = sampling_config.get_samples(self.n_patches)
         nz_data = hist_counts.sum(axis=0)
         nz_samp = np.sum(hist_counts[patch_idx], axis=1)
-        return HistogramData(
+        return HistData(
             binning=binning,
             data=nz_data,
             samples=nz_samp,

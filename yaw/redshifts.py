@@ -8,44 +8,51 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import scipy.optimize
+from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
 from yaw.core.containers import SampledValue
 from yaw.core.logging import LogCustomWarning, TimedLog
 from yaw.core.math import shift_histogram, rebin
 from yaw.core.utils import TypePathStr
-from yaw.correlation import CorrelationData
+from yaw.correlation import CorrData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
-    from yaw.correlation import CorrelationFunction
+    from yaw.correlation import CorrFunc
 
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class RedshiftData(CorrelationData):
+class RedshiftData(CorrData):
     """Container object for redshift estimates.
     """
 
     @classmethod
-    def from_correlation_data(
+    @deprecated(
+        reason="renamed to RedshiftData.from_corrdata", version="2.3.2")
+    def from_correlation_data(cls, *args, **kwargs):
+        return cls.from_corrdata(*args, **kwargs)
+
+    @classmethod
+    def from_corrdata(
         cls,
-        cross_data: CorrelationData,
-        ref_data: CorrelationData | None = None,
-        unk_data: CorrelationData | None = None,
+        cross_data: CorrData,
+        ref_data: CorrData | None = None,
+        unk_data: CorrData | None = None,
         info: str | None = None
     ) -> RedshiftData:
         """Compute redshift estimate from readily sampled function data.
 
         Args:
-            cross_corr (:obj:`CorrelationData`):
+            cross_corr (:obj:`CorrData`):
                 Data from the sampled cross-correlation function.
-            ref_corr (:obj:`CorrelationData`, optional):
+            ref_corr (:obj:`CorrData`, optional):
                 Data from the sampled reference sample autocorrelation function.
                 Used to mitigate reference bias evolution.
-            unk_corr (:obj:`CorrelationData`, optional):
+            unk_corr (:obj:`CorrData`, optional):
                 Data from the sampled unknown sample autocorrelation function.
                 Used to mitigate unknown bias evolution.
         """
@@ -103,11 +110,17 @@ class RedshiftData(CorrelationData):
             info=info)
 
     @classmethod
-    def from_correlation_functions(
+    @deprecated(
+        reason="renamed to RedshiftData.from_corrfuncs", version="2.3.2")
+    def from_correlation_functions(cls, *args, **kwargs):
+        return cls.from_corrfuncs(*args, **kwargs)
+
+    @classmethod
+    def from_corrfuncs(
         cls,
-        cross_corr: CorrelationFunction,
-        ref_corr: CorrelationFunction | None = None,
-        unk_corr: CorrelationFunction | None = None,
+        cross_corr: CorrFunc,
+        ref_corr: CorrFunc | None = None,
+        unk_corr: CorrFunc | None = None,
         *,
         cross_est: str | None = None,
         ref_est: str | None = None,
@@ -118,12 +131,12 @@ class RedshiftData(CorrelationData):
         """Sample correlation functions to compute redshift estimate.
 
         Args:
-            cross_corr (:obj:`CorrelationFunction`):
+            cross_corr (:obj:`CorrFunc`):
                 The measured cross-correlation function.
-            ref_corr (:obj:`CorrelationFunction`, optional):
+            ref_corr (:obj:`CorrFunc`, optional):
                 The measured reference sample autocorrelation function. Used to
                 mitigate reference bias evolution.
-            unk_corr (:obj:`CorrelationFunction`, optional):
+            unk_corr (:obj:`CorrFunc`, optional):
                 The measured unknown sample autocorrelation function. Used to
                 mitigate unknown bias evolution.
         """
@@ -176,7 +189,7 @@ class RedshiftData(CorrelationData):
     def _cov_desc(self) -> str:
         return f"# n(z) estimate covariance matrix ({self.n_bins}x{self.n_bins})"
 
-    def normalised(self, to: CorrelationData | None = None) -> RedshiftData:
+    def normalised(self, to: CorrData | None = None) -> RedshiftData:
         if to is None:
             norm = np.nansum(self.dz * self.data)
         else:
@@ -251,7 +264,7 @@ class RedshiftData(CorrelationData):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class HistogramData(RedshiftData):
+class HistData(RedshiftData):
 
     density: bool = field(default=False)
 
@@ -273,7 +286,7 @@ class HistogramData(RedshiftData):
             f"({self.n_bins}x{self.n_bins})")
 
     @classmethod
-    def from_files(cls, path_prefix: TypePathStr) -> HistogramData:
+    def from_files(cls, path_prefix: TypePathStr) -> HistData:
         new = super().from_files(path_prefix)
         with open(f"{path_prefix}.dat") as f:
             line = f.readline()
@@ -308,7 +321,7 @@ class HistogramData(RedshiftData):
         samples = np.nansum(normed.samples * normed.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=normed.method)
 
-    def rebin(self, bins: NDArray) -> HistogramData:
+    def rebin(self, bins: NDArray) -> HistData:
         result = super().rebin(bins)
         object.__setattr__(self, "density", self.density)
         return result
@@ -318,7 +331,7 @@ class HistogramData(RedshiftData):
         dz: float | SampledValue = 0.0,
         *,
         amplitude: float | SampledValue = 1.0
-    ) -> HistogramData:
+    ) -> HistData:
         result = super().shift(dz, amplitude=amplitude)
         if amplitude == 1.0:
             object.__setattr__(self, "density", self.density)

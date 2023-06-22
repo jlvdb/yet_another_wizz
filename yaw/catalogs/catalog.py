@@ -16,9 +16,9 @@ from yaw.core.utils import long_num_format
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.catalogs import PatchLinkage
-    from yaw.config import Configuration, ResamplingConfig
+    from yaw.config import Config, ResamplingConfig
     from yaw.correlation.paircounts import PairCountResult
-    from yaw.redshifts import HistogramData
+    from yaw.redshifts import HistData
 
 
 class BackendError(Exception):
@@ -352,7 +352,7 @@ class BaseCatalog(PatchedQuantity):
     @abstractmethod
     def correlate(
         self,
-        config: Configuration,
+        config: Config,
         binned: bool,
         other: BaseCatalog = None,
         linkage: PatchLinkage | None = None,
@@ -369,15 +369,15 @@ class BaseCatalog(PatchedQuantity):
     @abstractmethod
     def true_redshifts(
         self,
-        config: Configuration,
+        config: Config,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
-    ) -> HistogramData:
+    ) -> HistData:
         """
         Compute a histogram of the object redshifts.
 
         Args:
-            config (:obj:`~yaw.config.Configuration`):
+            config (:obj:`~yaw.config.Config`):
                 Defines the bin edges used for the histogram.
             sampling_config (:obj:`~yaw.config.ResamplingConfig`, optional):
                 Specifies the spatial resampling for error estimates.
@@ -385,7 +385,7 @@ class BaseCatalog(PatchedQuantity):
                 Show a progress bar.
 
         Returns:
-            HistogramData:
+            HistData:
                 Object holding the redshift histogram
         """
         self.logger.info("computing true redshift distribution")

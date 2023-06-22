@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Type, TypeVar
 import h5py
 import numpy as np
 import pandas as pd
+from deprecated import deprecated
 
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig
@@ -26,18 +27,18 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import IntervalIndex
     from yaw.catalogs import BaseCatalog
-    from yaw.config import Configuration
+    from yaw.config import Config
     from yaw.correlation.estimators import Cts
 
 
 logger = logging.getLogger(__name__)
 
 
-_Tdata = TypeVar("_Tdata", bound="CorrelationData")
+_Tdata = TypeVar("_Tdata", bound="CorrData")
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class CorrelationData(SampledData):
+class CorrData(SampledData):
     """Container for correlation function data.
 
     Contains the redshift binning, correlation function amplitudes, and
@@ -56,7 +57,7 @@ class CorrelationData(SampledData):
             available options.
         info (str, optional):
             Descriptive text included in the headers of output files produced
-            by :func:`CorrelationData.to_files`.
+            by :func:`CorrData.to_files`.
 
     Attributes:
         covariance (:obj:`NDArray`):
@@ -261,7 +262,7 @@ class CorrelationData(SampledData):
         return ax
 
 
-def check_mergable(cfs: Sequence[CorrelationFunction | None]) -> None:
+def check_mergable(cfs: Sequence[CorrFunc | None]) -> None:
     reference = cfs[0]
     for kind in ("dd", "dr", "rd", "rr"):
         ref_pcounts = getattr(reference, kind)
@@ -287,7 +288,7 @@ def global_covariance(
 
 
 @dataclass(frozen=True)
-class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
+class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     """Container object for measured correlation pair counts.
 
     Container returned by correlation by functions that compute correlations
@@ -296,7 +297,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     Provides methods to read and write data to disk and compute the actual
     correlation function values using spatial resampling (see
-    :class:`~yaw.ResamplingConfig` and :class:`~yaw.CorrelationData`).
+    :class:`~yaw.ResamplingConfig` and :class:`~yaw.CorrData`).
 
     Args:
         dd (:obj:`~yaw.paircounts.PairCountResult`):
@@ -352,7 +353,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __neq__(self, other) -> bool:
         return not self == other
 
-    def __add__(self, other: CorrelationFunction) -> CorrelationFunction:
+    def __add__(self, other: CorrFunc) -> CorrFunc:
         # check that the pair counts are set consistently
         kinds = []
         for field in fields(self):
@@ -371,14 +372,14 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     def __radd__(
         self,
-        other: CorrelationFunction | int | float
-    ) -> CorrelationFunction:
+        other: CorrFunc | int | float
+    ) -> CorrFunc:
         if other == 0:
             return self
         else:
             return self.__add__(other)
 
-    def __mul__(self, other: np.number) -> CorrelationFunction:
+    def __mul__(self, other: np.number) -> CorrFunc:
         # check that the pair counts are set consistently
         kwargs = {}
         for field in fields(self):
@@ -389,10 +390,10 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return self.__class__(**kwargs)
 
     @property
-    def bins(self) -> Indexer[TypeIndex, CorrelationFunction]:
+    def bins(self) -> Indexer[TypeIndex, CorrFunc]:
         def builder(
-            inst: CorrelationFunction, item: TypeIndex
-        ) -> CorrelationFunction:
+            inst: CorrFunc, item: TypeIndex
+        ) -> CorrFunc:
             if isinstance(item, int):
                 item = [item]
             kwargs = {}
@@ -402,22 +403,22 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                     kwargs[field.name] = None
                 else:
                     kwargs[field.name] = pairs.bins[item]
-            return CorrelationFunction(**kwargs)
+            return CorrFunc(**kwargs)
 
         return Indexer(self, builder)
 
     @property
-    def patches(self) -> Indexer[TypeIndex, CorrelationFunction]:
+    def patches(self) -> Indexer[TypeIndex, CorrFunc]:
         def builder(
-            inst: CorrelationFunction, item: TypeIndex
-        ) -> CorrelationFunction:
+            inst: CorrFunc, item: TypeIndex
+        ) -> CorrFunc:
             kwargs = {}
             for field in fields(inst):
                 counts: PairCountResult | None = getattr(inst, field.name)
                 if counts is not None:
                     counts = counts.patches[item]
                 kwargs[field.name] = counts
-            return CorrelationFunction(**kwargs)
+            return CorrFunc(**kwargs)
 
         return Indexer(self, builder)
 
@@ -430,7 +431,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     def is_compatible(
         self,
-        other: CorrelationFunction,
+        other: CorrFunc,
         require: bool = True
     ) -> bool:
         """Check whether this instance is compatible with another instance by
@@ -522,13 +523,17 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         else:
             return getattr(self, str(cts))
 
+    @deprecated(reason="renamed to CorrFunc.sample", version="2.3.1")
+    def get(self, *args, **kwargs):
+        return self.sample(*args, **kwargs)
+
     def sample(
         self,
         config: ResamplingConfig | None = None,
         *,
         estimator: str | None = None,
         info: str | None = None
-    ) -> CorrelationData:
+    ) -> CorrData:
         """Compute the correlation function from the stored pair counts,
         including an error estimate from spatial resampling of patches.
 
@@ -542,11 +547,11 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 Defaults to Landy-Szalay if RR is available, otherwise to
                 Davis-Peebles.
             info (str, optional):
-                Descriptive text passed on to the output :obj:`CorrelationData`
+                Descriptive text passed on to the output :obj:`CorrData`
                 object.
 
         Returns:
-            :obj:`CorrelationData`:
+            :obj:`CorrData`:
                 Correlation function data, including redshift binning, function
                 values and samples.
         """
@@ -579,7 +584,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         # evaluate the correlation estimator
         data = est_fun(**required_data, **optional_data)
         samples = est_fun(**required_samples, **optional_samples)
-        return CorrelationData(
+        return CorrData(
             binning=self.get_binning(),
             data=data,
             samples=samples,
@@ -587,7 +592,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
             info=info)
 
     @classmethod
-    def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrelationFunction:
+    def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrFunc:
         def _try_load(root: h5py.Group, name: str) -> PairCountResult | None:
             try:
                 return PairCountResult.from_hdf(root[name])
@@ -613,7 +618,7 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
         dest.create_dataset("n_patches", data=self.n_patches)
 
     @classmethod
-    def from_file(cls, path: TypePathStr) -> CorrelationFunction:
+    def from_file(cls, path: TypePathStr) -> CorrFunc:
         logger.debug(f"reading pair counts from '{path}'")
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
@@ -625,8 +630,8 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     def concatenate_patches(
         self,
-        *cfs: CorrelationFunction
-    ) -> CorrelationFunction:
+        *cfs: CorrFunc
+    ) -> CorrFunc:
         check_mergable([self, *cfs])
         merged = {}
         for kind in ("dd", "dr", "rd", "rr"):
@@ -638,8 +643,8 @@ class CorrelationFunction(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     def concatenate_bins(
         self,
-        *cfs: CorrelationFunction
-    ) -> CorrelationFunction:
+        *cfs: CorrFunc
+    ) -> CorrFunc:
         check_mergable([self, *cfs])
         merged = {}
         for kind in ("dd", "dr", "rd", "rr"):
@@ -661,9 +666,9 @@ def _create_dummy_counts(
 
 
 def add_corrfuncs(
-    corrfuncs: Sequence[CorrelationFunction],
+    corrfuncs: Sequence[CorrFunc],
     weights: Sequence[np.number] | None = None
-) -> CorrelationFunction:
+) -> CorrFunc:
     if weights is None:
         weights = [1.0] * len(corrfuncs)
     else:
@@ -693,21 +698,21 @@ def _check_patch_centers(catalogues: Sequence[BaseCatalog]) -> None:
 
 
 def autocorrelate(
-    config: Configuration,
+    config: Config,
     data: BaseCatalog,
     random: BaseCatalog,
     *,
     linkage: PatchLinkage | None = None,
     compute_rr: bool = True,
     progress: bool = False
-) -> CorrelationFunction | dict[str, CorrelationFunction]:
+) -> CorrFunc | dict[str, CorrFunc]:
     """Compute autocorrelation function.
 
     Compute the angular autocorrelation amplitude in bins of redshift. Requires
     object redshifts configured.
 
     Args:
-        config (:obj:`~yaw.Configuration`):
+        config (:obj:`~yaw.Config`):
             Provides all major run parameters.
         data (:obj:`~yaw.catalogs.BaseCatalog`):
             The data sample.
@@ -728,7 +733,7 @@ def autocorrelate(
     Returns:
         Container that holds the measured pair counts.
 
-        - :obj:`CorrelationFunction`: If running a single correlation scale.
+        - :obj:`CorrFunc`: If running a single correlation scale.
         - :obj:`dict`: Otherwise a dictionary of correlation functions.
     """
     _check_patch_centers([data, random])
@@ -752,15 +757,15 @@ def autocorrelate(
 
     if isinstance(DD, dict):
         result = {
-            scale: CorrelationFunction(dd=DD[scale], dr=DR[scale], rr=RR[scale])
+            scale: CorrFunc(dd=DD[scale], dr=DR[scale], rr=RR[scale])
             for scale in DD}
     else:
-        result = CorrelationFunction(dd=DD, dr=DR, rr=RR)
+        result = CorrFunc(dd=DD, dr=DR, rr=RR)
     return result
 
 
 def crosscorrelate(
-    config: Configuration,
+    config: Config,
     reference: BaseCatalog,
     unknown: BaseCatalog,
     *,
@@ -768,7 +773,7 @@ def crosscorrelate(
     unk_rand: BaseCatalog | None = None,
     linkage: PatchLinkage | None = None,
     progress: bool = False
-) -> CorrelationFunction | dict[str, CorrelationFunction]:
+) -> CorrFunc | dict[str, CorrFunc]:
     """Compute crosscorrelation function.
 
     Compute the angular crosscorrelation amplitude in bins of redshift between
@@ -776,7 +781,7 @@ def crosscorrelate(
     (reference) catalogue.
 
     Args:
-        config (:obj:`~yaw.Configuration`):
+        config (:obj:`~yaw.Config`):
             Provides all major run parameters.
         reference (:obj:`yaw.catalogs.BaseCatalog`):
             The reference sample.
@@ -800,7 +805,7 @@ def crosscorrelate(
     Returns:
         Container that holds the measured pair counts.
 
-        - :obj:`CorrelationFunction`: If running a single correlation scale.
+        - :obj:`CorrFunc`: If running a single correlation scale.
         - :obj:`dict`: Otherwise a dictionary of correlation functions.
 
     .. Note::
@@ -854,9 +859,9 @@ def crosscorrelate(
 
     if isinstance(DD, dict):
         result = {
-            scale: CorrelationFunction(
+            scale: CorrFunc(
                 dd=DD[scale], dr=DR[scale], rd=RD[scale], rr=RR[scale])
             for scale in DD}
     else:
-        result = CorrelationFunction(dd=DD, dr=DR, rd=RD, rr=RR)
+        result = CorrFunc(dd=DD, dr=DR, rd=RD, rr=RR)
     return result

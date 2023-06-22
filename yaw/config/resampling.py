@@ -8,7 +8,7 @@ import numpy as np
 from yaw.core import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 
-from yaw.config.utils import ConfigurationError
+from yaw.config.utils import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -33,7 +33,7 @@ class ResamplingConfig(DictRepresentation):
     def __post_init__(self) -> None:
         if self.method not in self.implemented_methods:
             opts = ", ".join(f"'{s}'" for s in self.implemented_methods)
-            raise ConfigurationError(
+            raise ConfigError(
                 f"invalid resampling method '{self.method}', "
                 f"must either of {opts}")
 

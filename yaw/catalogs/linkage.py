@@ -14,7 +14,7 @@ from yaw.core.cosmology import r_kpc_to_angle
 
 if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
-    from yaw.config import Configuration
+    from yaw.config import Config
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class PatchLinkage(PatchedQuantity):
     @classmethod
     def from_setup(
         cls,
-        config: Configuration,
+        config: Config,
         catalog: BaseCatalog
     ) -> PatchLinkage:
         # determine the additional overlap from the spatial query

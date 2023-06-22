@@ -16,12 +16,12 @@ from numpy.typing import NDArray
 from treecorr import Catalog, NNCorrelation
 
 from yaw.catalogs import BaseCatalog
-from yaw.config import Configuration, ResamplingConfig
+from yaw.config import Config, ResamplingConfig
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.core.logging import TimedLog
 from yaw.correlation.paircounts import (
     PairCountResult, PatchedCount, PatchedTotal, pack_results)
-from yaw.redshifts import HistogramData
+from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval
@@ -275,7 +275,7 @@ class TreecorrCatalog(BaseCatalog):
 
     def correlate(
         self,
-        config: Configuration,
+        config: Config,
         binned: bool,
         other: TreecorrCatalog = None,
         linkage: PatchLinkage | None = None,
@@ -366,10 +366,10 @@ class TreecorrCatalog(BaseCatalog):
 
     def true_redshifts(
         self,
-        config: Configuration,
+        config: Config,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
-    ) -> HistogramData:
+    ) -> HistData:
         if sampling_config is None:
             sampling_config = ResamplingConfig()  # default values
 
@@ -389,7 +389,7 @@ class TreecorrCatalog(BaseCatalog):
         patch_idx = sampling_config.get_samples(self.n_patches)
         nz_data = hist_counts.sum(axis=0)
         nz_samp = np.sum(hist_counts[patch_idx], axis=1)
-        return HistogramData(
+        return HistData(
             binning=binning,
             data=nz_data,
             samples=nz_samp,

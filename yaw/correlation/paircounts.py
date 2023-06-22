@@ -15,6 +15,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import scipy.sparse
+from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
 from yaw.core.abc import (
@@ -150,6 +151,10 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         self,
         config: ResamplingConfig
     ) -> NDArray: raise NotImplementedError
+
+    @deprecated(reason="renamed to CorrFunc.sample_sum", version="2.3.1")
+    def get_sum(self, *args, **kwargs):
+        return self.sample_sum(*args, **kwargs)
 
     def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         if config is None:

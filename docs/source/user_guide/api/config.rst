@@ -4,20 +4,19 @@ Measurement configuration
 
 *yet_another_wizz* uses configuration objects to organise its free parameters.
 These are implemented in the :mod:`~yaw.config` module, the most important one,
-:class:`~yaw.config.Configuration`, is directly availale after importing the
-main module.
+:class:`~yaw.config.Config`, is directly availale after importing the main
+module.
 
 .. code-block:: python
 
-    from yaw import Configuration
+    from yaw import Config
 
 The recommended way to create a new configuration is through its constructor
 method, which is a keyword-only function. A minimum example is:
 
 .. code-block:: python
 
-    >>> config = Configuration.create(
-    ...     rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
+    >>> config = Config.create(rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
 
 The configuration object is hierarchical and holds the parameters in its
 attributes. The structure matches the layout of the YAML configuration file used
@@ -51,8 +50,8 @@ itself, e.g.:
 
     To protect configuration objects from accidental modification, all
     attributes are read-only. To modify a configuration, use the
-    :meth:`~yaw.config.Configuration.modify` method, which supports the same
-    arguments as :meth:`~yaw.config.Configuration.create`. The method creates
+    :meth:`~yaw.config.Config.modify` method, which supports the same
+    arguments as :meth:`~yaw.config.Config.create`. The method creates
     a new instance and replaces all values by the given keyword arguments, e.g.:
 
     .. code-block:: python
@@ -65,7 +64,7 @@ itself, e.g.:
         (200.0, 2000.0)
 
 
-``Configuration.scales``
+``Config.scales``
 ------------------------
 
 Scales for correlation measurements are implemented in the
@@ -81,7 +80,7 @@ to the bin center and the summed together to approximate a radially weighted
 correlation measurement.
 
 
-``Configuration.binning``
+``Config.binning``
 -------------------------
 
 The redshift binning is either constructed automatically using the ``zmin`` and
@@ -90,10 +89,10 @@ manually using the ``zbins`` parameter:
 
 .. code-block:: python
 
-    >>> Configuration.create(
+    >>> Config.create(
     ...     rmin=100, rmax=1000, zbins=[0.1, 0.2, 0.3, 0.4])
 
-    >>> Configuration.create(
+    >>> Config.create(
     ...     rmin=100, rmax=1000, zmin=0.07, zmax=1.42,
     ...     zbin_num=30, method="linear")
 
@@ -106,11 +105,11 @@ redshift. Other spacings can be selected using the method parameter, see also
 .. Note::
 
     Either ``zmin`` and ``zmax`` or ``zbins`` are required to construct a valid
-    redshift binning, otherwise a :exc:`~yaw.config.ConfigurationError` is
+    redshift binning, otherwise a :exc:`~yaw.config.ConfigError` is
     raised.
 
 
-``Configuration.backend``
+``Config.backend``
 -------------------------
 
 This section maps to the :class:`~yaw.config.BackendConfig` class, which are
@@ -122,7 +121,7 @@ The ``crosspatch`` parameter specifies, whether the backend counts pairs beyond
 patch boundaries (``crosspatch=False`` not supported by all backends).
 
 
-``Configuration.cosmology``
+``Config.cosmology``
 ---------------------------
 
 The cosmological model that is used for distance calculation has usually a minor

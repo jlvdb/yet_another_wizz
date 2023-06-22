@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from deprecated import deprecated
 
 from yaw.core import default as DEFAULT
 from yaw.core.abc import DictRepresentation
@@ -12,7 +13,7 @@ from yaw.core.cosmology import Scale
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
 
-from yaw.config.utils import ConfigurationError
+from yaw.config.utils import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -52,12 +53,12 @@ class ScalesConfig(DictRepresentation):
             isinstance(self.rmax, (Sequence, np.ndarray))
         ):
             if len(self.rmin) != len(self.rmax):
-                raise ConfigurationError(
+                raise ConfigError(
                     "number of elements in 'rmin' and 'rmax' do not match")
             # for clean YAML conversion
             for rmin, rmax in zip(self.rmin, self.rmax):
                 if rmin >= rmax:
-                    raise ConfigurationError(msg_scale_error)
+                    raise ConfigError(msg_scale_error)
             if len(self.rmin) == 1:
                 rmin = float(self.rmin[0])
                 rmax = float(self.rmax[0])
@@ -71,9 +72,9 @@ class ScalesConfig(DictRepresentation):
             object.__setattr__(self, "rmin", float(self.rmin))
             object.__setattr__(self, "rmax", float(self.rmax))
             if self.rmin >= self.rmax:
-                raise ConfigurationError(msg_scale_error)
+                raise ConfigError(msg_scale_error)
         else:
-            raise ConfigurationError(
+            raise ConfigError(
                 "'rmin' and 'rmax' must be both sequences or float")
 
     def __eq__(self, other: ScalesConfig) -> bool:
@@ -96,5 +97,7 @@ class ScalesConfig(DictRepresentation):
     def as_array(self) -> NDArray[np.float_]:
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
 
-    def dict_keys(self) -> list[str]:  # deprecated
+    @deprecated(
+        "use [str(scale) for scale in ScalesConfig] instead", version="2.3.1")
+    def dict_keys(self) -> list[str]:
         return [str(scale) for scale in self]

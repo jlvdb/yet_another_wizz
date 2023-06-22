@@ -45,25 +45,25 @@ def stats_bootstrap(binning):
 @fixture
 def correlation_data(test_data_samples):
     binning, data, samples = test_data_samples
-    return corrfunc.CorrelationData(
+    return corrfunc.CorrData(
         binning, data, samples, method="jackknife")
 
 
-class TestCorrelationData:
+class TestCorrData:
 
     def test_stats(
             self, test_data_samples, stats_jackknife, stats_bootstrap):
         binning, data, samples = test_data_samples
         # jackknife
         err, cov, cor = stats_jackknife
-        cd = corrfunc.CorrelationData(
+        cd = corrfunc.CorrData(
             binning, data, samples, method="jackknife")
         npt.assert_allclose(cd.error, err)
         npt.assert_allclose(cd.covariance, cov)
         npt.assert_allclose(cd.get_correlation().to_numpy(), cor)
         # bootstrap
         err, cov, cor = stats_bootstrap
-        cd = corrfunc.CorrelationData(
+        cd = corrfunc.CorrData(
             binning, data, samples, method="bootstrap")
         npt.assert_allclose(cd.error, err)
         npt.assert_allclose(cd.covariance, cov)

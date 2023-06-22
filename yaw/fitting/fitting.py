@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import warnings
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from yaw.core.math import cov_from_samples
-from yaw.redshifts import HistogramData
+from yaw.redshifts import HistData
 
 from yaw.fitting.models import ModelEnsemble, ShiftModel
 from yaw.fitting.optimize import Optimizer
@@ -21,7 +20,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def shift_fit(
     data: Sequence[RedshiftData],
-    model: Sequence[HistogramData],
+    model: Sequence[HistData],
     *,
     covariance: NDArray | str = "var",
     nwalkers: int = None,

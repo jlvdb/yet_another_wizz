@@ -74,7 +74,7 @@ setup_default += make_doc(config.ManualBinningConfig, indent=2)
 setup_default += format_line("scales:", "specify the correlation measurement scales", indents=1)
 setup_default += make_doc(config.ScalesConfig, indent=2)
 
-setup_default += make_doc(config.Configuration, indent=1)
+setup_default += make_doc(config.Config, indent=1)
 
 # data
 setup_default += "\n"

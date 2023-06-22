@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from yaw import __version__
-from yaw.config import Configuration, parse_section_error
+from yaw.config import Config, parse_section_error
 from yaw.core import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 from yaw.core.utils import TypePathStr
@@ -112,15 +112,15 @@ def load_setup_as_dict(setup_file: TypePathStr) -> dict[str, Any]:
                 f"parsing the setup file '{setup_file}' failed") from e
 
 
-def load_config_from_setup(setup_file: TypePathStr) -> Configuration:
+def load_config_from_setup(setup_file: TypePathStr) -> Config:
     logger.info(f"importing configuration from '{setup_file}'")
     setup_dict = load_setup_as_dict(setup_file)
     return parse_config_from_setup(setup_dict)
 
 
-def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
+def parse_config_from_setup(setup_dict: dict[str, Any]) -> Config:
     try:
-        return Configuration.from_dict(setup_dict["configuration"])
+        return Config.from_dict(setup_dict["configuration"])
     except KeyError as e:
         parse_section_error(e, "configuration", SetupError)
 
@@ -209,7 +209,7 @@ class YawDirectory(DictRepresentation):
         return cls(path)
 
     @property
-    def config(self) -> Configuration:
+    def config(self) -> Config:
         return self._config
 
     def iter_scales(self) -> Iterator[str]:
@@ -365,7 +365,7 @@ class ProjectDirectory(YawDirectory):
     def create(
         cls,
         path: TypePathStr,
-        config: Configuration,
+        config: Config,
         n_patches: int | None = None,
         cachepath: TypePathStr | None = None,
         backend: str = DEFAULT.backend
@@ -424,7 +424,7 @@ class ProjectDirectory(YawDirectory):
     def to_dict(self) -> dict[str, Any]:
         # strip default values from config
         configuration = compress_config(
-            self._config.to_dict(), DEFAULT.Configuration.__dict__)
+            self._config.to_dict(), DEFAULT.Config.__dict__)
         setup = dict(
             configuration=configuration,
             data=self._inputs.to_dict(),
