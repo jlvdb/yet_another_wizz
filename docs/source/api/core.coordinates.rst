@@ -1,13 +1,13 @@
-yaw.coordinates
-===============
+yaw.core.coordinates
+====================
 
-.. currentmodule:: yaw.coordinates
+.. currentmodule:: yaw.core.coordinates
 
 
 .. rubric:: Classes
 
 .. autosummary::
-    :toctree: coordinates
+    :toctree: core.coordinates
     :template: custom-class-template.rst
 
     Coord3D

@@ -18,9 +18,9 @@ yaw.config
     :toctree: config
     :template: custom-class-template.rst
 
-    ScalesConfig
-    ManualBinningConfig
-    AutoBinningConfig
-    BackendConfig
     Config
+    ScalesConfig
+    AutoBinningConfig
+    ManualBinningConfig
+    BackendConfig
     ResamplingConfig

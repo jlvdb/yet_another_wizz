@@ -10,5 +10,5 @@ yaw.redshifts
     :toctree: redshifts
     :template: custom-class-template.rst
 
-    RedshiftData
     HistData
+    RedshiftData

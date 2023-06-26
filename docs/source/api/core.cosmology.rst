@@ -1,13 +1,13 @@
-yaw.cosmology
-=============
+yaw.core.cosmology
+==================
 
-.. currentmodule:: yaw.cosmology
+.. currentmodule:: yaw.core.cosmology
 
 
 .. rubric:: Attributes
 
 .. autosummary::
-    :toctree: config
+    :toctree: core.cosmology
 
     BINNING_OPTIONS
     COSMOLOGY_OPTIONS
@@ -16,7 +16,7 @@ yaw.cosmology
 .. rubric:: Functions
 
 .. autosummary::
-    :toctree: cosmology
+    :toctree: core.cosmology
 
     get_default_cosmology
     r_kpc_to_angle
@@ -25,7 +25,7 @@ yaw.cosmology
 .. rubric:: Classes
 
 .. autosummary::
-    :toctree: cosmology
+    :toctree: core.cosmology
     :template: custom-class-template.rst
 
     BinFactory

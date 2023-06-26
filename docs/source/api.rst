@@ -19,12 +19,12 @@ This is a documentation of the most important parts of the *yet_another_wizz*
 
         api/catalogs
         api/catalogs.scipy
+        api/catalogs.treecorr
         api/config
-        api/coordinates
+        api/core
+        api/core.coordinates
+        api/core.cosmology
         api/correlation
-        api/cosmology
-        api/estimators
-        api/paircounts
+        api/fitting
         api/randoms
         api/redshifts
-        api/utils

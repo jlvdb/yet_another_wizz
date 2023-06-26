@@ -9,8 +9,10 @@ yaw.correlation
 .. autosummary::
     :toctree: correlation
 
-    crosscorrelate
     autocorrelate
+    crosscorrelate
+    add_corrfuncs
+    global_covariance
 
 
 .. rubric:: Classes
@@ -21,4 +23,3 @@ yaw.correlation
 
     CorrFunc
     CorrData
-    SampledValue
