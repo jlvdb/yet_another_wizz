@@ -22,6 +22,8 @@ This is a documentation of the most important parts of the *yet_another_wizz*
         api/catalogs.treecorr
         api/config
         api/core
+        api/core.abc
+        api/core.containers
         api/core.coordinates
         api/core.cosmology
         api/correlation

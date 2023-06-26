@@ -18,12 +18,32 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 class PatchIDs(NamedTuple):
+    """Named tuple that can hold a pair of patch indices.
+
+    Attributes:
+        id1 (int): First patch index.
+        id2 (int): Second patch index.
+    """
     id1: int
     id2: int
 
 
 @dataclass(frozen=True)
 class PatchCorrelationData:
+    """Container to hold the result of a pair counting operation between two
+    spatial patches.
+
+    Args:
+        patches (:obj:`PatchIDs`):
+            The indices of used the patches.
+        totals1 (:obj:`NDArray`):
+            Total number of objects after binning by redshift in first patch.
+        totals1 (:obj:`NDArray`):
+            Total number of objects after binning by redshift in second patch.
+        counts (dict):
+            Dictionary listing the number of counted pairs after binning by
+            redshift. Each item represents results from a different scale.
+    """
     patches: PatchIDs
     totals1: NDArray
     totals2: NDArray
@@ -35,6 +55,22 @@ _Tscalar = TypeVar("_Tscalar", bound=np.number)
 
 @dataclass(frozen=True)
 class SampledValue(Generic[_Tscalar]):
+    """Container to hold a scalar value with an empirically estimated
+    uncertainty from resampling.
+
+    Args:
+        value:
+            Numerical, scalar value.
+        samples (:obj:`NDArray`):
+            Samples of ``value`` obtained from resampling methods.
+        method (str):
+            Resampling method used to obtain the data samples, see
+            :class:`~yaw.ResamplingConfig` for available options.
+
+    Attributes:
+        error:
+            Uncertainty estimate for the value.
+    """
 
     value: _Tscalar
     samples: NDArray[_Tscalar]
@@ -77,6 +113,7 @@ class SampledValue(Generic[_Tscalar]):
 
     @property
     def n_samples(self) -> int:
+        """Number of samples used for error estimate."""
         return len(self.samples)
 
 
@@ -105,6 +142,23 @@ class SampledData(BinnedQuantity):
     Attributes:
         covariance (:obj:`NDArray`):
             Covariance matrix automatically computed from the resampled values.
+
+    The container supports addition and subtraction, which return a new instance
+    of the container, holding the modified data. This requires that both
+    operands are compatible (same binning and same sampling). The operands are
+    applied to the ``data`` and ``samples`` attribtes.
+
+    .. Note::
+        Provide an example.
+
+    Furthermore, the container supports indexing and iteration over the redshift
+    bins using the :meth:`SampledData.bin` attribute. This attribute yields
+    instances of :obj:`SampledData` containing a single bin when iterating.
+    Slicing and indexing follows the same rules as the underlying ``data``
+    :obj:`NDArray``.
+
+    .. Note::
+        Provide an example.
     """
 
     binning: IntervalIndex
@@ -164,6 +218,12 @@ class SampledData(BinnedQuantity):
 
     @property
     def bins(self: _Tdata) -> Indexer[int | slice | Sequence, _Tdata]:
+        """An indexer attribute that supports iteration over the bins or
+        selecting a subset of the bins.
+
+        Returns:
+            :obj:`~yaw.core.abc.Indexer`
+        """
         def builder(inst: _Tdata, item: int | slice | Sequence) -> _Tdata:
             if isinstance(item, int):
                 item = [item]
@@ -183,16 +243,36 @@ class SampledData(BinnedQuantity):
 
     @property
     def n_samples(self) -> int:
+        """Number of samples used for error estimate."""
         return len(self.samples)
 
     @property
     def error(self) -> NDArray:
+        """The uncertainty (standard error) of the data.
+        
+        Returns:
+            :obj:`NDArray`
+        """
         return np.sqrt(np.diag(self.covariance))
 
     def get_binning(self) -> IntervalIndex:
         return self.binning
 
     def is_compatible(self, other: SampledData, require: bool = False) -> bool:
+        """Check whether this instance is compatible with another instance by
+        ensuring that both objects are instances of the same class, that the
+        redshift binning is identical, that the number of samples agree, and
+        that the resampling method is identical.
+
+        Args:
+            other (:obj:`BinnedQuantity`):
+                Object instance to compare to.
+            require (bool, optional)
+                Raise a ValueError if any of the checks fail.
+        
+        Returns:
+            bool
+        """
         if not super().is_compatible(other, require):
             return False
         if self.n_samples != other.n_samples:
@@ -206,9 +286,13 @@ class SampledData(BinnedQuantity):
         return True
 
     def get_data(self) -> Series:
+        """Get the data as :obj:`pandas.Series` with the binning as index."""
         return pd.Series(self.data, index=self.binning)
 
     def get_samples(self) -> DataFrame:
+        """Get the data as :obj:`pandas.DataFrame` with the binning as index.
+        The columns are labelled numerically and each represent one of the
+        samples."""
         return pd.DataFrame(self.samples.T, index=self.binning)
 
     def get_error(self) -> Series:
