@@ -691,9 +691,10 @@ def _check_patch_centers(catalogues: Sequence[BaseCatalog]) -> None:
     for cat in catalogues[1:]:
         if refcat.n_patches != cat.n_patches:
             raise PatchError("number of patches does not agree")
-        ref_coord = refcat.centers.to_3d().values
-        cat_coord = cat.centers.to_3d().values
-        if not np.allclose(ref_coord, cat_coord, rtol=0.0, atol=1e-10):
+        ref_coord = refcat.centers.to_sky()
+        cat_coord = cat.centers.to_sky()
+        dist = ref_coord.distance(cat_coord)
+        if np.any(dist.values > refcat.radii.values):
             raise PatchError("the patch centers are inconsistent")
 
 
