@@ -27,6 +27,7 @@ class CachingError(Exception):
 
 
 def patch_id_from_path(fpath: str) -> int:
+    """Extract the patch ID from the file name in the cache directory"""
     ext = ".feather"
     if not fpath.endswith(ext):
         raise NotAPatchFileError("input must be a .feather file")
@@ -35,6 +36,20 @@ def patch_id_from_path(fpath: str) -> int:
 
 
 class PatchCatalog:
+    """Represents a single spatial patch of a :obj:`ScipyCatalog`.
+
+    A patch holds the data from single patch of the catalogue and provides
+    method to access this data. Furthermore, it implements the caching to and
+    restoring from disk. Data is temporarily saved to a .feather file, making
+    it easy to pass patches to new threads and processes, which can, load the
+    data back into memory if necessary.
+
+    Attr:
+        cachefile (str, None):
+            The patch to the cached .feather data file if caching is enabled.
+        id (int):
+            Unique index of the patch.
+    """
 
     id = 0
     cachefile = None
@@ -55,6 +70,29 @@ class PatchCatalog:
         radius: Distance | None = None,
         degrees: bool = True
     ) -> None:
+        """Create a new patch from a data frame.
+
+        Coordiantes are converted to radian. If a cache path is provided, a
+        cache file is created and the data is dropped from memory.     
+
+        Args:
+            id (int):
+                Unique index of the patch.
+            data (:obj:`pandas.DataFrame`):
+                Data frame with columns ``ra``, ``dec`` (by default assumed to
+                be in degrees) and optionally ``weights``, ``redshift`` if
+                either data is available.
+            cachefile (str, optional):
+                If provided, the data is cached as .feather file at this path.
+            center (:obj:`yaw.core.coordiante.Coordiante`, optional):
+                Center coordinates of the patch. Computed automatically if not
+                provided.
+            radius (:obj:`yaw.core.coordiante.Distance`, optional):
+                The angular size of the patch. Computed automatically if not
+                provided.
+            degrees (bool):
+                Whether the input coordinates ``ra``, ``dec`` are in degrees.
+        """
         self.id = id
         if "ra" not in data:
             raise KeyError("right ascension column ('ra') is required")
@@ -127,6 +165,21 @@ class PatchCatalog:
         center: Coordinate | None = None,
         radius: Distance | None = None
     ) -> PatchCatalog:
+        """Restore the patch instance from its cache file.
+
+        Optionally, the center and radius of the patch can be provided to avoid
+        recomputing these quantities.
+
+        Args:
+            cachefile (str):
+                Path to the cach file (.feather)
+            center (:obj:`yaw.core.coordiante.Coordiante`, optional):
+                Center coordinates of the patch. Computed automatically if not
+                provided.
+            radius (:obj:`yaw.core.coordiante.Distance`, optional):
+                The angular size of the patch. Computed automatically if not
+                provided.
+        """
         # create the data instance
         new = cls.__new__(cls)
         new.id = patch_id_from_path(cachefile)
@@ -142,13 +195,18 @@ class PatchCatalog:
         return new
 
     def is_loaded(self) -> bool:
+        """Whether the data is present in memory"""
         return self._data is not None
 
     def require_loaded(self) -> None:
+        """Raise a :obj:`CachingError` if the data is not present in memory."""
         if not self.is_loaded():
             raise CachingError("data is not loaded")
 
     def load(self, use_threads: bool = True) -> None:
+        """Load the data from the cache file into memory.
+        
+        Raises a :obj:`CachingError` if no cache file is sepcified."""
         if not self.is_loaded():
             if self.cachefile is None:
                 raise CachingError("no datapath provided to load the data")
@@ -156,39 +214,62 @@ class PatchCatalog:
                 self.cachefile, use_threads=use_threads)
 
     def unload(self) -> None:
+        """Drop the data from memory.
+        
+        Raises a :obj:`CachingError` if no cache file is sepcified."""
         if self.cachefile is None:
             raise CachingError("no datapath provided to unload the data")
         self._data = None
         gc.collect()
 
     def has_redshifts(self) -> bool:
+        """Whether the patch data include redshifts."""
         return self._has_z
 
     def has_weights(self) -> bool:
+        """Whether the patch data include weights."""
         return self._has_weights
 
     @property
     def data(self) -> DataFrame:
+        """Direct access to the underlying :obj:`pandas.DataFrame` which holds
+        the patch data."""
         self.require_loaded()
         return self._data
 
     @property
     def ra(self) -> NDArray[np.float_]:
+        """Get an array of the right ascension values in radians.
+        
+        Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
         return self._data["ra"].to_numpy()
 
     @property
     def dec(self) -> NDArray[np.float_]:
+        """Get an array of the declination values in radians.
+        
+        Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
         return self._data["dec"].to_numpy()
 
     @property
     def pos(self) -> CoordSky:
+        """Get a vector of the object sky positions in radians.
+        
+        Raises a :obj:`CachingError` if data is not loaded.
+
+        Returns:
+            :obj:`yaw.core.coordinates.CoordSky`
+        """
         self.require_loaded()
         return CoordSky(self.ra, self.dec)
 
     @property
     def redshifts(self) -> NDArray[np.float_]:
+        """Get the redshifts as array or ``None`` if not available.
+
+        Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
         if self.has_redshifts():
             return self._data["redshift"].to_numpy()
@@ -197,6 +278,9 @@ class PatchCatalog:
 
     @property
     def weights(self) -> NDArray[np.float_]:
+        """Get the object weights as array or ``None`` if not available.
+
+        Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
         if self.has_weights():
             return self._data["weights"].to_numpy()
@@ -205,14 +289,32 @@ class PatchCatalog:
 
     @property
     def total(self) -> float:
+        """Get the sum of weights or the number of objects if weights are not
+        available.
+        
+        Available even if no data is loaded."""
         return self._total
 
     @property
     def center(self) -> CoordSky:
+        """Get the patch centers in radians.
+        
+        Available even if no data is loaded.
+
+        Returns:
+            :obj:`yaw.core.coordinates.CoordSky`
+        """
         return self._center.to_sky()
 
     @property
     def radius(self) -> DistSky:
+        """Get the patch size in radians.
+        
+        Available even if no data is loaded.
+
+        Returns:
+            :obj:`yaw.core.coordinates.DistSky`
+        """
         return self._radius
 
     def iter_bins(
@@ -220,6 +322,21 @@ class PatchCatalog:
         z_bins: NDArray[np.float_],
         allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, PatchCatalog]]:
+        """Iterate the patch in bins of redshift.
+
+        Args:
+            z_bins (:obj:`NDArray`):
+                Edges of the redshift bins.
+            allow_no_redshift (bool):
+                If true and the data has no redshifts, the iterator yields the
+                whole patch at each iteration step.
+
+        Yields:
+            (tuple): tuple containing:
+                - **intv** (:obj:`pandas.Interval`): the selection for this bin.
+                - **cat** ():obj:`PatchCatalog`): instance containing the data
+                  for this bin.
+        """
         if not allow_no_redshift and not self.has_redshifts():
             raise ValueError("no redshifts for iteration provdided")
         if allow_no_redshift:
@@ -233,6 +350,7 @@ class PatchCatalog:
                     center=self._center, radius=self._radius)
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
+        """Build a :obj:`SphericalKDTree` from the patch data coordiantes."""
         tree = SphericalKDTree(self.pos, self.weights, **kwargs)
         tree._total = self.total  # no need to recompute this
         return tree
@@ -246,6 +364,8 @@ def assign_patches(
     centers: Coordinate,
     position: Coordinate
 ) -> NDArray[np.int_]:
+    """Assign objects based on their coordinate to a list of points based on
+    proximit."""
     patches, dist = vq.vq(position.to_3d().values, centers.to_3d().values)
     return patches
 
@@ -258,6 +378,9 @@ try:
         n_patches: int,
         **kwargs
     ) -> tuple[Coord3D, NDArray[np.int_]]:
+        """Use the *k*-means clustering algorithm of :obj:`treecorr.Catalog` to
+        generate spatial patches and assigning objects to those patches.
+        """
         position = position.to_sky()
         cat = treecorr.Catalog(
             ra=position.ra, ra_units="radians",
@@ -281,6 +404,9 @@ except ImportError:
         n_patches: int,
         n_max: int = 500_000
     ) -> tuple[Coord3D, NDArray[np.int_]]:
+        """Use the *k*-means clustering algorithm of :obj:`scipy.cluster` to
+        generate spatial patches and assigning objects to those patches.
+        """
         position = position.to_3d()
         subset = np.random.randint(
             0, len(position), size=min(n_max, len(position)))

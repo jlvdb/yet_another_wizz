@@ -10,25 +10,56 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 class NewCatalog:
-    """Factory class for data catalogs implemented by the backends.
+    """Factory class for data catalogues implemented by the backends.
 
-    Configured for a specific backend, this class provides a uniform interface
-    to the different constructors of subclasses of
-    :class:`~yaw.catalogs.BaseCatalog`.
+    A catalogue provides all the functionality to compute pair counts for
+    correlation measurements by implementing an interface to the object
+    positions, spatial patches for error estimation, and data management if the
+    data is cached on disk. Aside from accessing the data directly, the most
+    important methods are the :meth:`correlate` (pair counting) and
+    :meth:`true_redshifts` (redshift histogram, if redshifts are provided).
 
-    Args:
-        backend (str):
-            Specify the backend for which the catalog instances should be
-            produced for. For availble options see
-            :attr:`~yaw.catalogs.BACKEND_OPTIONS`.
+    A new catalogue can be created using an instance of this factory class.
+    The sole argument is the name of the backend for which catalogue instances
+    should be produced. For example
+
+    >>> yaw.NewCatalog("scipy")
+    NewCatalog<scipy>()
+
+    is the default factory, which produces catalogues for the ``scipy`` backend
+    through its constructor methods.
+
+    A key concept is :ref:`caching<caching>`, which can be used to reduce
+    memory usage or even speed up the computation for some backends. A cache
+    directory is a directory in which temporary data is stored in different
+    formats (depending on the backend), such that parts of the data (typically
+    individual spatial patches) can be read back into memory on demand.
+
+    .. Warning::
+
+        - The ``scipy`` backend does not preserve the order the input data, but
+          instead groups objects by there spatial patch.
+        - The ``treecorr`` backend does currently not support restoration from
+          cache.    
     """
 
     def __init__(self, backend: str = "scipy") -> None:
+        """Create a new catalogue factory.
+
+        Args:
+            backend (str):
+                Specify the backend for which the catalog instances should be
+                produced for. For availble options see
+                :attr:`~yaw.catalogs.BACKEND_OPTIONS`.
+        """
         try:
-            self.catalog: BaseCatalog = BaseCatalog.backends[backend]
+            self.catalog: BaseCatalog = BaseCatalog._backends[backend]
             self.backend_name = backend
         except KeyError as e:
             raise BackendError(f"invalid backend '{backend}'") from e
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}<{self.backend_name}>()"
 
     def from_dataframe(
         self,
@@ -44,7 +75,14 @@ class NewCatalog:
         cache_directory: str | None = None,
         progress: bool = False
     ) -> BaseCatalog:
-        """Construct a catalog from a data frame.
+        """Build a catalogue from in-memory data.
+        
+        Specify the names of the required and or available columns in a
+        :obj:`pandas.DataFrame`. Additional parameters control the creation
+        spatial patches used for error estimates. Patches can be assigned based
+        on a column in the data frame (``patch_name``), constructed from a set
+        of existing patch centers (``patch_centers``), or generated with
+        `k`-means clustering (``n_patches``).
 
         Args:
             data (:obj:`pandas.Dataframe`):
@@ -59,7 +97,7 @@ class NewCatalog:
                 Name of the column that specifies the patch index, i.e.
                 assigning each object to a spatial patch. Index starts counting
                 from 0 (see :ref:`patches`).
-            patch_centers (:obj:`BaseCatalog`, `Coordinate`, optional):
+            patch_centers (:obj:`~yaw.catalogs.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`, optional):
                 Assign objects to existing patch centers based on their
                 coordinates. Must be either a different catalog instance or a
                 vector of coordinates.
@@ -77,9 +115,6 @@ class NewCatalog:
             progress (bool, optional):
                 Display a progress bar while creating patches.
 
-        Returns:
-            :obj:`BaseCatalog`
-
         .. Note::
             Either of ``patch_name``, ``patch_centers``, or ``n_patches`` is
             required.
@@ -90,8 +125,11 @@ class NewCatalog:
         :meth:`load` and :meth:`unload`).
 
         The underlying patch data can be accessed through indexing and
-        iteration.
-        ``TODO:`` add example.
+        iterating the Catalog instance.
+
+        .. Note::
+    
+            ``TODO:`` add example.
         """
         return self.catalog(
             data,
@@ -121,15 +159,15 @@ class NewCatalog:
         **kwargs
     ) -> BaseCatalog:
         """
-        Build catalog from data file.
+        Build catalogue from data file.
 
-        Loads the input file and constructs the catalog using the specified
+        Loads the input file and constructs the catalogue using the specified
         column names.
 
         Args:
             filepath (str):
                 Path to the input data file.
-            patches (str, int, :obj:`BaseCatalog`, :obj:`coordainte`):
+            patches (str, int, :obj:`~yaw.catalogs.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`):
                 Specifies the construction of patches. If `str`, patch indices
                 are read from the file. If `int`, generates this number of
                 patches. Otherwise assign objects based on existing patch
@@ -191,7 +229,7 @@ class NewCatalog:
         progress: bool = False
     ) -> BaseCatalog:
         """
-        Restore the catalog from its cache directory.
+        Restore the catalogue from its cache directory.
 
         Args:
             cache_directory (str):

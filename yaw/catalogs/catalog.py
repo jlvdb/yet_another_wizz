@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
-from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from abc import abstractclassmethod, abstractmethod, abstractproperty
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import astropandas as apd
 import numpy as np
@@ -21,6 +21,9 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.redshifts import HistData
 
 
+_Tcat = TypeVar("_Tcat", bound="BaseCatalog")
+
+
 class BackendError(Exception):
     pass
 
@@ -28,15 +31,22 @@ class BackendError(Exception):
 class BaseCatalog(PatchedQuantity):
     """The data catalog base class.
 
-    Every new backend must implement a catalog class. On creation this subclass
-    is automatically registered and can be instantiated using the factory class
-    :class:`~yaw.catalogs.NewCatalog`.
+    Every new backend must implement a catalog class based on this abstract base
+    class. On import this subclass is automatically registered and can be
+    instantiated using the factory class :class:`yaw.NewCatalog`.
+
+    .. Note::
+
+        Base classes must follow the ``[Backendname]Catalog`` naming convention.
+        The new backend is then registered with name ``backendname`` (lower
+        case).
     """
 
-    logger = logging.getLogger("yaw.catalog")
-    backends = dict()
+    _logger = logging.getLogger("yaw.catalog")
+    _backends = dict()
 
     def __init_subclass__(cls, **kwargs):
+        """Handles the backend subclass registration."""
         super().__init_subclass__(**kwargs)
         if not cls.__name__.endswith("Catalog"):
             raise BackendError(
@@ -44,7 +54,7 @@ class BaseCatalog(PatchedQuantity):
                 f"'[Backend name]Catalog for registration (e.g. ScipyCatalog "
                 f"-> 'scipy')")
         backend = cls.__name__.strip("Catalog").lower()
-        cls.backends[backend] = cls
+        cls._backends[backend] = cls
 
     @abstractmethod
     def __init__(
@@ -61,52 +71,10 @@ class BaseCatalog(PatchedQuantity):
         cache_directory: str | None = None,
         progress: bool = False
     ) -> None:
-        """Construct a catalog from a data frame.
-
-        Args:
-            data (:obj:`pandas.Dataframe`):
-                Holds the catalog data.
-            ra_name (str):
-                Name of the column with right ascension data in degrees.
-            dec_name (str):
-                Name of the column with declination data in degress.
+        """Build a catalogue from in-memory data.
         
-        Keyword Args:
-            patch_name (str, optional):
-                Name of the column that specifies the patch index, i.e.
-                assigning each object to a spatial patch. Index starts counting
-                from 0 (see :ref:`patches`).
-            patch_centers (:obj:`BaseCatalog`, `Coordinate`, optional):
-                Assign objects to existing patch centers based on their
-                coordinates. Must be either a different catalog instance or a
-                vector of coordinates.
-            n_patches (int, optional):
-                Assign objects to a given number of patches, generated using
-                k-means clustering.
-            redshift_name (str, optional):
-                Name of the column with point-redshift estimates.
-            weight_name (str, optional):
-                Name of the column with object weights.
-            cache_directory (str, optional):
-                Path to directory used to cache patch data, must exists (see
-                :ref:`caching`). If provided, patch data is automatically
-                unloaded from memory.
-            progress (bool, optional):
-                Display a progress bar while creating patches.
-
-        .. Note::
-            Either of ``patch_name``, ``patch_centers``, or ``n_patches`` is
-            required.
-
-        Caching may significantly speed up parallel computations (e.g.
-        :meth:`correlate`), accessing data attributes will trigger loading
-        cached data as long as the catalog remains in the unloaded state (see
-        :meth:`load` and :meth:`unload`).
-
-        The underlying patch data can be accessed through indexing and
-        iteration.
-        ``TODO:`` add example.
-        """
+        Catalogs should be instantiated through the factory class, see
+        :meth:`yaw.catalogs.NewCatalog.from_dataframe`."""
         pass
 
     @classmethod
@@ -125,58 +93,10 @@ class BaseCatalog(PatchedQuantity):
         progress: bool = False,
         **kwargs
     ) -> BaseCatalog:
-        """
-        Build catalog from data file.
-
-        Loads the input file and constructs the catalog using the specified
-        column names.
-
-        Args:
-            filepath (str):
-                Path to the input data file.
-            patches (str, int, :obj:`BaseCatalog`, :obj:`coordainte`):
-                Specifies the construction of patches. If `str`, patch indices
-                are read from the file. If `int`, generates this number of
-                patches. Otherwise assign objects based on existing patch
-                centers from a catalog instance or a coordinate vector.
-            ra (str):
-                Name of the column with right ascension data in degrees.
-            dec (str):
-                Name of the column with declination data in degress.
+        """Build a catalogue from data file.
         
-        Keyword Args:
-            redshift (str, optional):
-                Name of the column with point-redshift estimates.
-            weight (str, optional):
-                Name of the column with object weights.
-            sparse (int, optional):
-                Load every N-th row of the input data.
-            cache_directory (str, optional):
-                Path to directory used to cache patch data, must exists (see
-                :ref:`caching`). If provided, patch data is automatically
-                unloaded from memory.
-            file_ext (str, optional):
-                Hint for the input file type, if a uncommon file extension is
-                used.
-            progress (bool, optional):
-                Display a progress bar while creating patches.
-
-        Returns:
-            :obj:`BaseCatalog`
-
-        .. Note::
-            Currently, the following file extensions are recognised
-            automatically:
-
-            - FITS: ``.fits``, ``.cat``
-            - CSV: ``.csv``
-            - HDF5: ``.hdf5``, ``.h5``,
-            - Parquet: ``.pqt``, ``.parquet``
-            - Feather: ``.feather``
-
-            Otherwise provide the appropriate extension (including the dot)
-            in the ``file_ext`` argument.
-        """
+        Catalogs should be instantiated through the factory class, see
+        :meth:`yaw.catalogs.NewCatalog.from_file`."""
         columns = [c for c in [ra, dec, redshift, weight] if c is not None]
         if isinstance(patches, str):
             columns.append(patches)
@@ -193,10 +113,10 @@ class BaseCatalog(PatchedQuantity):
                 "(number of patches), or 'Catalog' or 'Coordinate' (specify "
                 "centers)")
 
-        cls.logger.info(f"reading catalog file '{filepath}'")
+        cls._logger.info(f"reading catalog file '{filepath}'")
         data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
         if sparse is not None:
-            cls.logger.debug(f"sparse sampling data {sparse}x")
+            cls._logger.debug(f"sparse sampling data {sparse}x")
             data = data[::sparse]
         return cls(
             data, ra, dec, **patch_kwarg,
@@ -211,19 +131,11 @@ class BaseCatalog(PatchedQuantity):
         cache_directory: str,
         progress: bool = False
     ) -> BaseCatalog:
-        """
-        Restore the catalog from its cache directory.
-
-        Args:
-            cache_directory (str):
-                Path to the cache directory.
-            progress (bool, optional):
-                Display a progress bar while restoring patches.
-
-        Returns:
-            :obj:`BaseCatalog`
-        """
-        cls.logger.info(f"restoring from cache directory '{cache_directory}'")
+        """Restore the catalogue from its cache directory.
+        
+        Catalogs should be instantiated through the factory class, see
+        :meth:`yaw.catalogs.NewCatalog.from_cache`."""
+        cls._logger.info(f"restoring from cache directory '{cache_directory}'")
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -247,7 +159,9 @@ class BaseCatalog(PatchedQuantity):
         pass
 
     @abstractmethod
-    def n_patches(self) -> int: pass
+    def n_patches(self) -> int:
+        """The number of spatial patches of this catalogue."""
+        pass
 
     @abstractmethod
     def __iter__(self) -> Iterator: pass
@@ -267,16 +181,12 @@ class BaseCatalog(PatchedQuantity):
         Raises a :obj:`~yaw.catalogs.scipy.patches.CachingError` if no cache
         is configured.
         """
-        self.logger.debug("bulk loading catalog")
+        self._logger.debug("bulk loading catalog")
 
     @abstractmethod
     def unload(self) -> None:
-        """Unload data from memory if a disk cache is provided.
-
-        Raises a :obj:`~yaw.catalogs.scipy.patches.CachingError` if no cache
-        is configured.
-        """
-        self.logger.debug("bulk unloading catalog")
+        """Unload data from memory if a disk cache is provided."""
+        self._logger.debug("bulk unloading catalog")
 
     @abstractmethod
     def has_redshifts(self) -> bool:
@@ -290,32 +200,36 @@ class BaseCatalog(PatchedQuantity):
 
     @property
     def pos(self) -> CoordSky:
-        """Get a vector of the object sky positions in radians."""
+        """Get a vector of the object sky positions in radians.
+        
+        Returns:
+            :obj:`yaw.core.coordinates.CoordSky`
+        """
         return CoordSky(self.ra, self.dec)
 
     @abstractproperty
     def ra(self) -> NDArray[np.float_]:
-        """Get the right ascension in radians."""
+        """Get an array of the right ascension values in radians."""
         pass
 
     @abstractproperty
     def dec(self) -> NDArray[np.float_]:
-        """Get the declination in radians."""
+        """Get an array of the declination values in radians."""
         pass
 
     @abstractproperty
     def redshifts(self) -> NDArray[np.float_] | None:
-        """Get the redshifts or ``None`` if not available."""
+        """Get the redshifts as array or ``None`` if not available."""
         pass
 
     @abstractproperty
     def weights(self) -> NDArray[np.float_]:
-        """Get the redshifts or ``None`` if not available."""
+        """Get the object weights as array or ``None`` if not available."""
         pass
 
     @abstractproperty
     def patch(self) -> NDArray[np.int_]:
-        """Get the patch indices of each object."""
+        """Get the patch indices of each object as array."""
         pass
 
     @abstractmethod
@@ -330,23 +244,34 @@ class BaseCatalog(PatchedQuantity):
 
     @abstractproperty
     def total(self) -> float:
-        """Get the sum of weights or the number of objects if not available."""
+        """Get the sum of weights or the number of objects if weights are not
+        available."""
 
     @abstractmethod
     def get_totals(self) -> NDArray[np.float_]:
-        """Get an array of the sum of weights or number of objects per patch."""
+        """Get an array of the sum of weights or number of objects in each
+        patch."""
 
     @abstractproperty
     def centers(self) -> CoordSky:
-        """Get a vector of sky coordinates of the patch centers in radians."""
+        """Get a vector of sky coordinates of the patch centers in radians.
+        
+        Returns:
+            :obj:`yaw.core.coordinates.CoordSky`
+        """
         pass
 
     @abstractproperty
     def radii(self) -> DistSky:
-        """Get a vector of distances in radians that describe the patch sizes.
+        """Get a vector of angular separations in radians that describe the
+        patch sizes.
 
         The radius of the patch is defined as the maximum angular distance of
-        any object from the patch center."""
+        any object from the patch center.
+                
+        Returns:
+            :obj:`yaw.core.coordinates.DistSky`
+        """
         pass
 
     @abstractmethod
@@ -354,15 +279,56 @@ class BaseCatalog(PatchedQuantity):
         self,
         config: Config,
         binned: bool,
-        other: BaseCatalog = None,
+        other: _Tcat = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
     ) -> PairCountResult | dict[str, PairCountResult]:
-        """Compute the angular correlation between two catalogs.
+        """Count pairs between objects at a given separation and in bins of
+        redshift.
+
+        If another catalog instance is passed to ``other``, then pairs are
+        formed between these catalogues (cross), otherwise pairs are formed with
+        the catalog (auto). Pairs are counted in bins of redshift, as defined in
+        the configuration object (``config``). Pairs are only considered within
+        fixed angular scales that are computed from the physical scales in the
+        configuration and the mid of the current redshift bin.
+
+        Args:
+            config (:obj:`yaw.Config`):
+                Configuration object that defines measurement scales, redshift
+                binning, cosmological model, and various backend specific
+                parameters.
+            binned (bool):
+                Whether to apply the redshift binning to the second catalogue
+                (see ``other``).
+            other (Catalog instance, optional):
+                Second catalog instance used for cross-catalogue pair counting.
+                Catalogue must use the same backend.
+            linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, optional):
+                Linkage object that defines with patches must be correlated for
+                a given scales and which patch combinations can be skipped. Can
+                be used for the ``scipy`` backend to count pairs consistently
+                between multiple catalogue instances.
+            progress (bool):
+                Show a progress indication, depends on backend.
+
+        There are three different modes of operation that are determined by the
+        combination of the ``binned`` and ``other`` parameters:
+
+        1) If no second catalogue is provided, pairs are counted within the
+           catalogue while applying the redshift binning.
+        2) If a second catalogue is provided and ``binned=True``, pairs are
+           counted between the catalogues and the binning is applied to both
+           cataluges.
+        3) If a second catalogue is provided and ``binned=False``, the redshift
+           binning is not applied to the second catalogue, otherwise above.
+        
+        The catalogue from the calling instance of :meth:`correlate` has always
+        redshift binning applied.
         """
         n1 = long_num_format(len(self))
         n2 = long_num_format(len(self) if other is None else len(other))
-        self.logger.debug(
+        self._logger.debug(
             f"correlating with {'' if binned else 'un'}binned catalog "
             f"({n1}x{n2}) in {config.binning.zbin_num} redshift bins")
 
@@ -374,7 +340,8 @@ class BaseCatalog(PatchedQuantity):
         progress: bool = False
     ) -> HistData:
         """
-        Compute a histogram of the object redshifts.
+        Compute a histogram of the object redshifts from the binning defined in
+        the provided configuration.
 
         Args:
             config (:obj:`~yaw.config.Config`):
@@ -388,4 +355,4 @@ class BaseCatalog(PatchedQuantity):
             HistData:
                 Object holding the redshift histogram
         """
-        self.logger.info("computing true redshift distribution")
+        self._logger.info("computing true redshift distribution")

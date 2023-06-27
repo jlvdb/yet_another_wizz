@@ -4,7 +4,7 @@ import itertools
 import os
 import sys
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:  # pragma: no cover
@@ -36,6 +36,8 @@ def _iter_bin_masks(
     bins: NDArray,
     closed: str = "left"
 ) -> Iterator[tuple[Interval, NDArray[np.bool_]]]:
+    """Split data into bins and return an iterator that yields the boolean masks
+    that select the data of the current bin out of the input data array."""
     if closed not in ("left", "right"):
         raise ValueError("'closed' must be either of 'left', 'right'")
     intervals = pd.IntervalIndex.from_breaks(bins, closed=closed)
@@ -48,7 +50,7 @@ def take_subset(
     cat: TreecorrCatalog,
     items: NDArray[np.bool_] | NDArray[np.int_] | slice
 ) -> TreecorrCatalog | EmptyCatalog:
-    # first check if the selection yields no elements
+    """Construct a new TreecorrCatalog with a subset of its entries."""
     ra = cat.ra[items]
     if len(ra) == 0:
         return EmptyCatalog(n_patches=cat.n_patches)
@@ -64,6 +66,7 @@ def take_subset(
 
 
 class EmptyCatalog:
+    """A minimal representation of a TreecorrCatalog that contains no data."""
 
     def __init__(self, n_patches: int) -> None:
         self.n_patches = n_patches
@@ -79,6 +82,21 @@ class EmptyCatalog:
 
 
 class TreecorrCatalog(BaseCatalog):
+    """An implementation of the :obj:`BaseCatalog` using ``TreeCorr`` for the
+    pair counting.
+
+    .. Note::
+    
+        The current implementation is not very efficient, because the internal
+        fields of the underlying :obj:`treecorr.Catalog` must be rebuilt every
+        time the catalog is iterated in redshift bins for the pair counting.
+
+    .. Warning::
+
+        Currently this backend does not support restoration from cache and
+        raises an :obj:`NotImplementedError`` when calling the
+        :meth:`from_cache` method.
+    """
 
     def __init__(
         self,
@@ -101,7 +119,7 @@ class TreecorrCatalog(BaseCatalog):
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'")
-            self.logger.info(f"using cache directory '{cache_directory}'")
+            self._logger.info(f"using cache directory '{cache_directory}'")
 
         if n_patches is not None:
             kwargs["npatch"] = n_patches
@@ -123,7 +141,7 @@ class TreecorrCatalog(BaseCatalog):
                 "either of 'patch_name', 'patch_centers', or 'n_patches' "
                 "must be provided")
 
-        with TimedLog(self.logger.info, log_msg):
+        with TimedLog(self._logger.info, log_msg):
             self._catalog = Catalog(
                 ra=data[ra_name], ra_units="degrees",
                 dec=data[dec_name], dec_units="degrees",
@@ -140,7 +158,15 @@ class TreecorrCatalog(BaseCatalog):
         cls,
         cache_directory: str,
         progress: bool = False
-    ) -> TreecorrCatalog:
+    ) -> NoReturn:
+        """
+        Raises:
+            NotImplementedError
+
+        .. Warning::
+
+            Currently this backend does not support restoration from cache.
+        """
         #super().from_cache(cache_directory)
         #self._make_patches()
         raise NotImplementedError(
@@ -315,7 +341,7 @@ class TreecorrCatalog(BaseCatalog):
             for scale in config.scales}
 
         # iterate the bins and compute the correlation
-        self.logger.debug(
+        self._logger.debug(
             f"running treecorr on {config.backend.get_threads()} threads")
         for i, ((intv, bincat1), (_, bincat2)) in enumerate(zip(cats1, cats2)):
             if progress:

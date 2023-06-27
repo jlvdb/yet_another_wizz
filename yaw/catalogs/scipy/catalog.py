@@ -41,6 +41,13 @@ def _count_pairs_thread(
     dist_weight_scale: float | None = None,
     dist_weight_res: int = 50
 ) -> PatchCorrelationData:
+    """Implementes the pair counting between two patches.
+
+    Bins the data as needed and builds the KDTrees for the pair finding.
+    Converts the physical scales to angles for the given cosmology and redshift
+    and counts the pairs. Pairs are recoreded for each set of scales and stored
+    in a PatchCorrelationData object.
+    """
     z_intervals = pd.IntervalIndex.from_breaks(z_bins)
     # build trees
     patch1.load(use_threads=False)
@@ -81,6 +88,8 @@ def _histogram_thread(
     patch: PatchCatalog,
     z_bins: NDArray[np.float_]
 ) -> NDArray[np.float_]:
+    """Computes a redshift histogram for a single PatchCatalog and returns the
+    counts as array."""
     is_loaded = patch.is_loaded()
     patch.load()
     counts, _ = np.histogram(patch.redshifts, z_bins, weights=patch.weights)
@@ -90,6 +99,17 @@ def _histogram_thread(
 
 
 class ScipyCatalog(BaseCatalog):
+    """An implementation of the :obj:`BaseCatalog` using a wrapper around
+    :obj:`scipy.spatial.cKDTree` for the pair counting, which is implemented in
+    :obj:`yaw.catalogs.scipy.kdtree`. Fully supports caching.
+
+    .. Note::
+    
+        This is currently the default backend and has the best support and
+        performance. Currently, trees cannot be shared across the
+        multiprocessing interface and must be rebuilt every time a patch is
+        used for pair counting again.
+    """
 
     def __init__(
         self,
@@ -134,7 +154,7 @@ class ScipyCatalog(BaseCatalog):
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'")
-            self.logger.debug(f"using cache directory '{cache_directory}'")
+            self._logger.debug(f"using cache directory '{cache_directory}'")
 
         # create new patches
         if patch_mode != "dividing":
@@ -158,11 +178,11 @@ class ScipyCatalog(BaseCatalog):
             n_patches = len(data[patch_name].unique())
             log_msg = f"dividing data into {n_patches} predefined patches"
             centers = dict()  # this can be empty
-        self.logger.debug(log_msg)
+        self._logger.debug(log_msg)
 
         # run groupby first to avoid any intermediate copies of full data
         n_obj_str = long_num_format(len(data))
-        with TimedLog(self.logger.info, f"processed {n_obj_str} records"):
+        with TimedLog(self._logger.info, f"processed {n_obj_str} records"):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
             patch_iter = data.groupby(patch_name)

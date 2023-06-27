@@ -16,6 +16,13 @@ class InvalidScalesError(Exception):
 
 
 class SphericalKDTree:
+    """Wrapper around :obj:`scipy.spatial.cKDTree` that represents angular
+    coordinates as points on the unitsphere.
+
+    The only implemented operation is counting pairs in a fixed angular annulus.
+    Angular distances are converted to the corresponding Euclidean distance on
+    the unitsphere. Individual weights for points are supported.
+    """
 
     _total = None
 
@@ -25,6 +32,18 @@ class SphericalKDTree:
         weights: NDArray[np.float_] | None = None,
         leafsize: int = 16
     ) -> None:
+        """Build a new tree from a set of coordinates.
+
+        Args:
+            position (:obj:`yaw.coordinates.Coordinate`):
+                A vector of coordinates in either angular or 3D coordiantes, is
+                converted to 3D coordinates if needed.
+            weights (:obj:`NDArray`, optional):
+                Individual weights for the points.
+            leafsize (int, optional):
+                Size at which branches of the KDTree are considered leaf nodes
+                with no further childs.
+        """
         position = np.atleast_2d(position.to_3d().values)
         self.tree = cKDTree(position, leafsize)
         if weights is None:
@@ -38,6 +57,7 @@ class SphericalKDTree:
 
     @property
     def total(self) -> float:
+        """Sum of weights or total number of objects if not provided."""
         if self._total is None:
             self._total = self.weights.sum()
         return self._total
@@ -45,10 +65,50 @@ class SphericalKDTree:
     def count(
         self,
         other: SphericalKDTree,
-        scales: NDArray[np.float_],  # radian
+        scales: NDArray[np.float_],
         dist_weight_scale: float | None = None,
         weight_res: int = 50
     ) -> NDArray:
+        """Count pairs on a set of angular scales.
+
+        Pairs are counted with in a range of minimum and maximum angle in
+        radian. If multiple scales are provided, the set of scales is converted
+        into a list of radial bins. After counting, the binned counts are summed
+        to obtain the counts for the (potentially overlapping) input scales.
+
+        The method also supports weighting the pairs radially by a simple
+        power-law :math:`r^\\alpha`, where :math:`r` is the pair separation. To
+        speed up computation, the weight is computed individually, but for all
+        pairs within one angular bin in the logarithmic center of the bin. If
+        radial weights are provided, the resultion of the angular binning is
+        increased beyond the binning obtained by combining the scale limits (see
+        above).
+
+        Args:
+            other (:obj:`SphericalKDTree`):
+                Second tree used to count pairs.
+            scales (:obj:`NDArray`):
+                Array with angular scales in radian with shape (2, N). The
+                scales are provided as at least one tuple of minimum and maximum
+                angular scale.
+            dist_weight_scale (float, optional):
+                The power-law index for the radial weighting.
+            weight_res (:obj:`NDArray`):
+                The number of logarithmic angular bins used to compute the
+                angular weights. Ignored if no power-law index is set.
+
+        Returns:
+            :obj:`NDArray`:
+                The pair counts for each input scale, with optional inidividual
+                point weights and radial weights applied.
+        
+        .. Warning::
+
+            For autocorrelation measurements, ``other`` must be the same
+            tree as the calling instance itself. This will results in pairs
+            being counted twice, as they normally would be in the cross-tree
+            counting case.
+        """
         # unpack query scales
         scales = np.atleast_2d(scales)
         if scales.shape[1] != 2:

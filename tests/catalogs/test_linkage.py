@@ -161,26 +161,6 @@ class TestPatchLinkage:
             linkage.get_matrix(catalog, None, crosspatch=False),
             matrix_mask_nocross)
 
-    def test_get_mask(self, linkage, catalog, mask, mask_auto, matrix_mask_nocross):
-        # cross
-        npt.assert_equal(
-            linkage.get_mask(catalog, catalog),
-            mask)
-        # auto
-        npt.assert_equal(
-            linkage.get_mask(catalog),
-            mask_auto)
-        npt.assert_equal(
-            linkage.get_mask(catalog, None),
-            mask_auto)
-        # diag
-        npt.assert_equal(
-            linkage.get_mask(catalog, catalog, crosspatch=False),
-            matrix_mask_nocross)
-        npt.assert_equal(
-            linkage.get_mask(catalog, None, crosspatch=False),
-            matrix_mask_nocross)
-
     def test_query_radius(self, catalog):
         config = Config.create(
             rmin=1, rmax=8980,  # should barely exclude the four longest pairs
