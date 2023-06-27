@@ -1,7 +1,7 @@
 yaw.core.cosmology
 ==================
 
-.. currentmodule:: yaw.core.cosmology
+.. automodule:: yaw.core.cosmology
 
 
 .. rubric:: Attributes

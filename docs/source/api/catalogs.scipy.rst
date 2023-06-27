@@ -1,11 +1,15 @@
-yaw.core
-========
+yaw.catalogs.scipy
+==================
 
-.. currentmodule:: yaw.core
+.. automodule:: yaw.catalogs.scipy
 
 
 .. rubric:: Classes
 
 .. autosummary::
-    :toctree: core
+    :toctree: catalogs.scipy
     :template: custom-class-template.rst
+
+    ScipyCatalog
+    PatchCatalog
+    SphericalKDTree

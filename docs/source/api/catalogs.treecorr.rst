@@ -1,7 +1,7 @@
 yaw.catalogs.treecorr
 =====================
 
-.. currentmodule:: yaw.catalogs.treecorr
+.. automodule:: yaw.catalogs.treecorr
 
 
 .. rubric:: Classes

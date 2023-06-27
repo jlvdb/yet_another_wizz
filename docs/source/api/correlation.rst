@@ -1,7 +1,7 @@
 yaw.correlation
 ===============
 
-.. currentmodule:: yaw.correlation
+.. automodule:: yaw.correlation
 
 
 .. rubric:: Functions

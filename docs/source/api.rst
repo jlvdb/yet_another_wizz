@@ -18,14 +18,8 @@ This is a documentation of the most important parts of the *yet_another_wizz*
         :maxdepth: 2
 
         api/catalogs
-        api/catalogs.scipy
-        api/catalogs.treecorr
         api/config
         api/core
-        api/core.abc
-        api/core.containers
-        api/core.coordinates
-        api/core.cosmology
         api/correlation
         api/fitting
         api/randoms

@@ -1,7 +1,7 @@
 yaw.core.abc
 ============
 
-.. currentmodule:: yaw.core.abc
+.. automodule:: yaw.core.abc
 
 
 .. rubric:: Classes

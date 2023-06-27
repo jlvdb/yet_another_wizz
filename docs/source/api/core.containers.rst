@@ -1,7 +1,7 @@
 yaw.core.containers
 ===================
 
-.. currentmodule:: yaw.core.containers
+.. automodule:: yaw.core.containers
 
 
 .. rubric:: Classes

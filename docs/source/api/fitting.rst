@@ -1,7 +1,7 @@
 yaw.fitting
 ===========
 
-.. currentmodule:: yaw.fitting
+.. automodule:: yaw.fitting
 
 
 .. rubric:: Functions

@@ -1,7 +1,7 @@
 yaw.config
 ==========
 
-.. currentmodule:: yaw.config
+.. automodule:: yaw.config
 
 
 .. rubric:: Attributes

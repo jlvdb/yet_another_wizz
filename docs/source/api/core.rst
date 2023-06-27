@@ -1,7 +1,18 @@
 yaw.core
 ========
 
-.. currentmodule:: yaw.core
+.. automodule:: yaw.core
+
+
+.. rubric:: Submodules
+
+.. toctree::
+    :maxdepth: 1
+
+    core.abc
+    core.containers
+    core.coordinates
+    core.cosmology
 
 
 .. rubric:: Attributes

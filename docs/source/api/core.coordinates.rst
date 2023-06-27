@@ -1,7 +1,7 @@
 yaw.core.coordinates
 ====================
 
-.. currentmodule:: yaw.core.coordinates
+.. automodule:: yaw.core.coordinates
 
 
 .. rubric:: Classes

@@ -1,7 +1,7 @@
 yaw.redshifts
 ===============
 
-.. currentmodule:: yaw.redshifts
+.. automodule:: yaw.redshifts
 
 
 .. rubric:: Classes
