@@ -30,3 +30,4 @@ yaw.core.cosmology
 
     BinFactory
     CustomCosmology
+    Scale

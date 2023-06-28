@@ -12,6 +12,14 @@ yaw.config
     METHOD_OPTIONS
 
 
+.. rubric:: Functions
+
+.. autosummary::
+    :toctree: correlation
+
+    make_binning_config
+
+
 .. rubric:: Classes
 
 .. autosummary::

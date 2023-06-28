@@ -9,10 +9,10 @@ yaw.core
 .. toctree::
     :maxdepth: 1
 
-    core.abc
-    core.containers
     core.coordinates
     core.cosmology
+    core.math
+    core.parallel
 
 
 .. rubric:: Attributes

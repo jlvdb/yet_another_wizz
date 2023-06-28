@@ -4,6 +4,15 @@ yaw.correlation
 .. automodule:: yaw.correlation
 
 
+.. rubric:: Submodules
+
+.. toctree::
+    :maxdepth: 1
+
+    correlation.estimators
+    correlation.paircounts
+
+
 .. rubric:: Functions
 
 .. autosummary::
