@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from yaw import __version__
-from yaw.config import Config, parse_section_error
-from yaw.core import default as DEFAULT
+from yaw.config import Config, default as DEFAULT
+from yaw.config.utils import parse_section_error 
 from yaw.core.abc import DictRepresentation
 from yaw.core.utils import TypePathStr
 

@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from deprecated import deprecated
 
-from yaw.core import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import Scale
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
 
 from yaw.config.utils import ConfigError
+from yaw.config import default as DEFAULT
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

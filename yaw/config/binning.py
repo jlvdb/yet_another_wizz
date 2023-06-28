@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from yaw.core import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import BINNING_OPTIONS, BinFactory, TypeCosmology
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
 
+from yaw.config import default as DEFAULT
 from yaw.config.scales import ScalesConfig
 from yaw.config.utils import ConfigError
 

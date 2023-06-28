@@ -7,8 +7,7 @@ from abc import ABC, abstractclassmethod
 
 from yaw import __version__
 from yaw import config as yaw_config
-from yaw.config import Config
-from yaw.core import default as DEFAULT
+from yaw.config import Config, default as DEFAULT
 from yaw.core.docs import populate_parser
 
 from yaw.pipeline import tasks as yaw_tasks

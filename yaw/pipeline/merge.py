@@ -11,8 +11,8 @@ import pandas as pd
 
 from collections.abc import Sequence
 
-from yaw.config import Config, ManualBinningConfig, ScalesConfig
-from yaw.core import default as DEFAULT
+from yaw.config import (
+    Config, ManualBinningConfig, ScalesConfig, default as DEFAULT)
 from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrFunc
 from yaw.redshifts import HistData

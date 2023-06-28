@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from yaw.core import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 
+from yaw.config import default as DEFAULT
 from yaw.config.utils import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
