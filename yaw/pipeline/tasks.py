@@ -9,7 +9,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields, asdict, MISSING
 from typing import TYPE_CHECKING, Any
 
-from yaw.config import ResamplingConfig, default as DEFAULT
+from yaw.config import ResamplingConfig, default as DEFAULT, OPTIONS
 from yaw.core.abc import DictRepresentation
 from yaw.core.docs import Parameter
 from yaw.correlation.estimators import CorrelationEstimator
@@ -25,7 +25,6 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 ESTIMATORS = [est.short for est in CorrelationEstimator.variants]
-METHOD_OPTIONS = ResamplingConfig.implemented_methods
 
 
 class TaskError(Exception):
@@ -268,7 +267,7 @@ class TaskEstimateCorr(MergedTask, RepeatableTask):
     method: str = field(
         default=DEFAULT.Resampling.method,
         metadata=Parameter(
-            type=str, choices=METHOD_OPTIONS,
+            type=str, choices=OPTIONS.method,
             help="resampling method for covariance estimates",
             default_text="(default: %(default)s)",
             parser_id="sampling"))

@@ -128,8 +128,9 @@ class BinnedQuantity(ABC):
         other: _Tbinned,
         require: bool = False
     ) -> bool:
-        """Check whether this instance is compatible with another instance by
-        ensuring that both objects are instances of the same class and that the
+        """Check whether this instance is compatible with another instance.
+         
+        Ensures that both objects are instances of the same class and that the
         redshift binning is identical.
 
         Args:
@@ -227,8 +228,8 @@ class DictRepresentation(ABC):
         **kwargs: dict[str, Any]  # passing additional constructor data
     ) -> _Tdict:
         """Create a class instance from a dictionary representation of the
-        minimally required data (e.g. to restore from YAML).
-
+        minimally required data.
+        
         Args:
             the_dict (dict):
                 Dictionary containing the data.
@@ -238,7 +239,7 @@ class DictRepresentation(ABC):
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the class instance to a dictionary containing a minimal set
-        of required data (e.g. for YAML serialisation).
+        of required data.
 
         Returns:
             dict

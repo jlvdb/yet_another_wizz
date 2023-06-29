@@ -1,3 +1,8 @@
+"""This module implements the default values for the different configuration
+objects. Each of the ``*Config`` objects has a corresponding class holding just
+the default values, as listed below.
+"""
+
 class _NotSet_meta(type):
 
     def __repr__(self) -> str:

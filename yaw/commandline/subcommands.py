@@ -7,12 +7,11 @@ from abc import ABC, abstractclassmethod
 
 from yaw import __version__
 from yaw import config as yaw_config
-from yaw.config import Config, default as DEFAULT
+from yaw.config import Config, DEFAULT, OPTIONS
 from yaw.core.docs import populate_parser
 
 from yaw.pipeline import tasks as yaw_tasks
-from yaw.pipeline.merge import (
-    MERGE_OPTIONS, MergedDirectory, open_yaw_directory)
+from yaw.pipeline.merge import MergedDirectory, open_yaw_directory
 from yaw.pipeline.project import (
     ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 
@@ -70,7 +69,7 @@ class CommandInit(SubCommand):
         group_other = parser.add_argument_group(
             title="additional arguments")
         group_other.add_argument(
-            "--backend", choices=utils.BACKEND_OPTIONS, default=DEFAULT.backend,
+            "--backend", choices=OPTIONS.backend, default=DEFAULT.backend,
             help="backend used for pair counting (default: %(default)s)")
         group_other.add_argument(
             "--cache-path", metavar="<path>", type=utils.Path_absolute,
@@ -315,7 +314,7 @@ class CommandMerge(SubCommand):
             "wdir", metavar="<path>", type=utils.Path_absolute,
             help="directory where data is merged, must not exist")
         parser.add_argument(
-            "--mode", choices=MERGE_OPTIONS, required=True,
+            "--mode", choices=OPTIONS.merge, required=True,
             help="specify whether merging is performed on tomographic bins, "
                  "extending spatially from patches, or by concatenating along "
                  "the redshift axis")

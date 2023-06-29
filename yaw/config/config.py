@@ -10,9 +10,9 @@ import yaml
 from yaw.core.abc import DictRepresentation
 from yaw.core.docs import Parameter
 from yaw.core.cosmology import (
-    COSMOLOGY_OPTIONS, TypeCosmology, get_default_cosmology, r_kpc_to_angle)
+    TypeCosmology, get_default_cosmology, r_kpc_to_angle)
 
-from yaw.config import default as DEFAULT, utils
+from yaw.config import default as DEFAULT, OPTIONS, utils
 from yaw.config.backend import BackendConfig
 from yaw.config.binning import (
     AutoBinningConfig, ManualBinningConfig, make_binning_config,
@@ -32,18 +32,41 @@ logger = logging.getLogger(__name__)
 class Config(DictRepresentation):
     """The central configration for correlation measurements.
 
-    Construct with .create() method.
+    Bundles the configuration of measurement scales, redshift binning, and
+    backend parameters in a single, hierarchical configuration class.
+    Additionally holds the cosmological model used for distance calculations.
+
+    .. Note::
+
+        The structure and meaning of the parameters is described in more detail
+        in the specialised configuration objects :obj:`ScalesConfig`,
+        :obj:`AutoBinningConfig` / :obj:`ManualBinningConfig`,
+        :obj:`BackendConfig`, which are stored as class attributes.
+
+        To access e.g. the lower measurement scale limit, use
+
+        >>> Config.scales.rmin
+        ...
+
+        which accesses the :obj:`ScalesConfig.rmin` attribute.
+
+    A new instance should be constructed with the :meth:`create` method or
+    as a modified variant with the :meth:`modify` method.
     """
 
     scales: ScalesConfig
+    """The configuration of the measurement scales."""
     binning: AutoBinningConfig | ManualBinningConfig
+    """The redshift binning configuration."""
     backend: BackendConfig = field(default_factory=BackendConfig)
+    """The backend-specific configuration."""
     cosmology: TypeCosmology | str | None = field(
         default=DEFAULT.Config.cosmology,
         metadata=Parameter(
-            type=str, choices=COSMOLOGY_OPTIONS,
+            type=str, choices=OPTIONS.cosmology,
             help="cosmological model used for distance calculations",
             default_text="(see astropy.cosmology, default: %(default)s)"))
+    """The cosmological model for distance calculations."""
 
     def __post_init__(self) -> None:
         # parse cosmology
@@ -83,10 +106,24 @@ class Config(DictRepresentation):
     ) -> Config:
         """Create a new configuration object.
 
+        Except for the ``cosmology`` parameter, all other parameters are passed
+        to the constructors of the respective :obj:`ScalesConfig`,
+        :obj:`AutoBinningConfig` / :obj:`ManualBinningConfig`,
+        :obj:`BackendConfig` classes.
+
+        .. Note::
+
+            If custom bin edges are provided through the ``zbins`` parameter,
+            ``zmin``, ``zmax``, ``zbin_num`` (optional), and ``method``
+            (optional) are ignored. Otherwise, at least ``zmin``, ``zmax`` are
+            required and a binning will be generated automatically.
+
+        Otherwise, only ``rmin`` and ``rmax`` are required arguments.
+
         Keyword Args:
             cosmology (optional):
                 Named astropy cosmology used to compute distances. For options
-                see :obj:`~yaw.cosmology.COSMOLOGY_OPTIONS`.
+                see :obj:`~yaw.config.options.Options.cosmology`.
             rmin (:obj:`ArrayLike`):
                 (List of) lower scale limit in kpc (pyhsical).
             rmax (:obj:`ArrayLike`):
@@ -103,8 +140,8 @@ class Config(DictRepresentation):
             zbin_num (int, optional):
                 Number of redshift bins
             method (str, optional):
-                Redshift binning method, 'logspace' means equal size in
-                log(1+z).
+                Method used to generate the redshift binning. For options see
+                :obj:`~yaw.config.options.Options.binning`.
             zbins (:obj:`NDArray`, optional):
                 Manually define redshift bin edges.
             thread_num (int, optional):
@@ -117,11 +154,6 @@ class Config(DictRepresentation):
     
         Returns:
             :obj:`Config`
-        
-        .. Note::
-            If provided, ``zbins`` takes precedence over ``zmin``, ``zmax``,
-            and ``zbin_num``; ``method`` is automatically set to
-            ``"manual"``.
         """
         cosmology = utils.parse_cosmology(cosmology)
         scales = ScalesConfig(
@@ -155,6 +187,13 @@ class Config(DictRepresentation):
         crosspatch: bool | None = DEFAULT.NotSet,
         rbin_slop: float | None = DEFAULT.NotSet
     ) -> Config:
+        """Create a copy of the current configuration with updated parameter
+        values.
+
+        The method arguments are identical to :meth:`create`. Values that should
+        not be modified are by default represented by the special value
+        :obj:`~yaw.config.default.NotSet`.
+        """
         config = self.to_dict()
         if cosmology is not DEFAULT.NotSet:
             if isinstance(cosmology, str):

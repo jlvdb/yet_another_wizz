@@ -4,20 +4,13 @@ yaw.config
 .. automodule:: yaw.config
 
 
-.. rubric:: Attributes
+.. rubric:: Submodules
 
-.. autosummary::
-    :toctree: config
+.. toctree::
+    :maxdepth: 1
 
-    METHOD_OPTIONS
-
-
-.. rubric:: Functions
-
-.. autosummary::
-    :toctree: correlation
-
-    make_binning_config
+    config.default
+    config.options
 
 
 .. rubric:: Classes

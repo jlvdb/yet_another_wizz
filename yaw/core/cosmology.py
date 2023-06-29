@@ -16,12 +16,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
 
-BINNING_OPTIONS = ("linear", "comoving", "logspace")
-"""Names of implemented redshift binning schemes."""
-
-COSMOLOGY_OPTIONS = available
-"""Names of available cosmological models."""
-
 
 def get_default_cosmology() -> FLRW:
     return Planck15

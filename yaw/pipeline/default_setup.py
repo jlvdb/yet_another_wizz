@@ -3,7 +3,6 @@ from __future__ import annotations
 import textwrap
 
 from yaw import config
-from yaw.catalogs import BACKEND_OPTIONS
 from yaw.core.docs import get_doc_args
 
 from yaw.pipeline import tasks
@@ -81,7 +80,7 @@ setup_default += "\n"
 setup_default += wrap_comment("This section defines the input data products and their meta data. These can be FITS, PARQUET, CSV or FEATHER files.")
 setup_default += "data:\n"
 
-setup_default += format_line("backend: scipy", f"(opt) name of the data catalog backend ({', '.join(BACKEND_OPTIONS)})", indents=1)
+setup_default += format_line("backend: scipy", f"(opt) name of the data catalog backend ({', '.join(config.OPTIONS.backend)})", indents=1)
 setup_default += format_line("cachepath: null", "(opt) cache directory path, e.g. on fast storage device (recommended for 'backend=scipy', default is within project directory)", indents=1)
 setup_default += format_line("n_patches: null", "(opt) number of automatic spatial patches to use for input catalogs below, provide only if no 'data/rand.patches' provided", indents=1)
 

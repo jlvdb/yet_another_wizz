@@ -11,6 +11,10 @@ class ConfigError(Exception):
 
 
 def cosmology_to_yaml(cosmology: TypeCosmology) -> str:
+    """Try to represent the cosmological model in a YAML-friendly way.
+    
+    If it is one of the names :obj:`astropy` cosmologies, returns the name,
+    otherwise raises an :exc:`ConfigError`."""
     if not isinstance(cosmology, astropy.cosmology.FLRW):
         raise ConfigError("cannot serialise custom cosmoligies to YAML")
     if cosmology.name not in astropy.cosmology.available:
@@ -20,6 +24,7 @@ def cosmology_to_yaml(cosmology: TypeCosmology) -> str:
 
 
 def yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
+    """Reinstantiate the cosmological model from its name representation."""
     if cosmo_name not in astropy.cosmology.available:
         raise ConfigError(
             f"unknown cosmology with name '{cosmo_name}', see "
@@ -28,6 +33,12 @@ def yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
 
 
 def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
+    """Construct the cosmological model.
+    
+    Either returns the default model, loads one of the named cosmological
+    :obj:`astropy` cosmologies, otherwise returns the input if it is an
+    :obj:`astropy` cosmologies or subclass of
+    :obj:`yaw.core.cosmology.CustomCosmology`."""
     if cosmology is None:
         cosmology = get_default_cosmology()
     elif isinstance(cosmology, str):
@@ -44,6 +55,12 @@ def parse_section_error(
     section: str,
     reraise: Exception = ConfigError
 ) -> NoReturn:
+    """Reraises are a more descriptive exception from an existing exception when
+    parsing a YAML configuration.
+
+    Covered cases are undefined key names, missing required key names or
+    entirely missing subsection in the configuration.
+    """
     msg = exception.args[0]
     item = msg.split("'")[1]
     if isinstance(exception, TypeError):

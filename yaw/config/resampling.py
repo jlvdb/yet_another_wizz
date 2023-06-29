@@ -7,60 +7,110 @@ import numpy as np
 
 from yaw.core.abc import DictRepresentation
 
-from yaw.config import default as DEFAULT
+from yaw.config import default as DEFAULT, OPTIONS
 from yaw.config.utils import ConfigError
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
 
-METHOD_OPTIONS = ("jackknife", "bootstrap")
-"""Names of implemented resampling methods.
-"""
-
-
 @dataclass(frozen=True)
 class ResamplingConfig(DictRepresentation):
+    """Configuration for error estimation from spatial resampling.
+
+    Used for all functions and methods that use spatial patches for error
+    estimation. Use the :meth:`get_samples` method to generate samples from the
+    spatial patches, which can be reused to ensure consistent error estimates
+    for different data products that use the same patches.
+
+    Args:
+        method (str):
+            Resampling method to use, see
+            :obj:`~yaw.config.options.Options.method`.
+        crosspath (str):
+            Whether to use cross-patch pair count measurements.
+        n_boot (int):
+            Number of samples to generate for the ``bootstrap`` method.
+        global_norm (bool):
+            Whether to normalise paircounts globally or for each sample. Usually
+            not recommended.
+        seed (int):
+            Random seed to use.
+    """
 
     method: str = DEFAULT.Resampling.method
+    """Resampling method to use, see :obj:`~yaw.config.options.Options.method`.
+    """
     crosspatch: bool = DEFAULT.Resampling.crosspatch
+    """Whether to use cross-patch pair count measurements."""
     n_boot: int = DEFAULT.Resampling.n_boot
+    """Number of samples to generate for the ``bootstrap`` method."""
     global_norm: bool = DEFAULT.Resampling.global_norm
+    """Whether to normalise paircounts globally or for each sample."""
     seed: int = DEFAULT.Resampling.seed
+    """Random seed to use."""
     _resampling_idx: NDArray[np.int_] | None = field(
         default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.method not in self.implemented_methods:
-            opts = ", ".join(f"'{s}'" for s in self.implemented_methods)
+        if self.method not in OPTIONS.methods:
+            opts = ", ".join(f"'{s}'" for s in OPTIONS.methods)
             raise ConfigError(
                 f"invalid resampling method '{self.method}', "
                 f"must either of {opts}")
 
-    @classmethod
-    @property
-    def implemented_methods(cls) -> tuple[str]:
-        return METHOD_OPTIONS
-
     @property
     def n_patches(self) -> int | None:
+        """The number of spatial patches for which this configuratin is valid.
+        
+        Available only after generating samples with :meth:`get_samples`.
+        
+        Returns:
+            int if samples have been generated, else None.
+        """
         if self._resampling_idx is None:
             return None
         else:
             return self._resampling_idx.shape[1]
 
     def _generate_bootstrap(self, n_patches: int) -> NDArray[np.int_]:
+        """Generate samples for the bootstrap resampling method.
+
+        For N patches, draw M realisations each containing N randomly chosen
+        patches.
+        """
         N = n_patches
         rng = np.random.default_rng(seed=self.seed)
         return rng.integers(0, N, size=(self.n_boot, N))
 
     def _generate_jackknife(self, n_patches: int) -> NDArray[np.int_]:
+        """Generate samples for the jackknife resampling method.
+
+        For N patches, draw N realisations by leaving out one of the N patches.
+        """
         N = n_patches
         idx = np.delete(np.tile(np.arange(0, N), N), np.s_[::N+1])
         return idx.reshape((N, N-1))
 
     def get_samples(self, n_patches: int) -> NDArray[np.int_]:
-        # generate samples once, afterwards check that n_patches matches
+        """Generate a list of patch indices that produces samples for the
+        selected resampling method.
+
+        Args:
+            n_patches (int):
+                Total number of patches for which the samples are generated.
+
+        .. Note::
+
+            Samples are generated only once for each instance. Later calls to
+            this method will only check if the number of patches agree with the
+            first call and return the initially generated index list. Raises a
+            :exc:`ValueError` otherwise.
+
+            The reason is, that the ``bootstrap`` method produces random
+            samples, which must be consistent if the resampling is applied to
+            different pair count measurements.
+        """
         if self._resampling_idx is None:
             if self.method == "jackknife":
                 idx = self._generate_jackknife(n_patches)
@@ -74,6 +124,8 @@ class ResamplingConfig(DictRepresentation):
         return self._resampling_idx
 
     def reset(self) -> None:
+        """Reset the internally stored patch indices generated by
+        :meth:`get_samples`."""
         object.__setattr__(self, "_resampling_idx", None)
 
     def to_dict(self) -> dict[str, Any]:

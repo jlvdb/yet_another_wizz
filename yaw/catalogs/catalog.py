@@ -315,12 +315,12 @@ class BaseCatalog(PatchedQuantity):
         There are three different modes of operation that are determined by the
         combination of the ``binned`` and ``other`` parameters:
 
-        1) If no second catalogue is provided, pairs are counted within the
+        1. If no second catalogue is provided, pairs are counted within the
            catalogue while applying the redshift binning.
-        2) If a second catalogue is provided and ``binned=True``, pairs are
+        2. If a second catalogue is provided and ``binned=True``, pairs are
            counted between the catalogues and the binning is applied to both
            cataluges.
-        3) If a second catalogue is provided and ``binned=False``, the redshift
+        3. If a second catalogue is provided and ``binned=False``, the redshift
            binning is not applied to the second catalogue, otherwise above.
         
         The catalogue from the calling instance of :meth:`correlate` has always

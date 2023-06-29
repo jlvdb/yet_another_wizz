@@ -15,15 +15,6 @@ yaw.core
     core.parallel
 
 
-.. rubric:: Attributes
-
-.. autosummary::
-    :toctree: config
-
-    BINNING_OPTIONS
-    COSMOLOGY_OPTIONS
-
-
 .. rubric:: Classes
 
 .. autosummary::

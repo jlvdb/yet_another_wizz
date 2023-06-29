@@ -12,7 +12,7 @@ import pandas as pd
 from collections.abc import Sequence
 
 from yaw.config import (
-    Config, ManualBinningConfig, ScalesConfig, default as DEFAULT)
+    Config, ManualBinningConfig, ScalesConfig, default as DEFAULT, OPTIONS)
 from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrFunc
 from yaw.redshifts import HistData
@@ -27,8 +27,6 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
-
-MERGE_OPTIONS = ("patches", "redshift")
 
 
 class MergeError(Exception):
@@ -242,7 +240,7 @@ class MergedDirectory(YawDirectory):
             projects.append(open_yaw_directory(project))
 
         # check and merge configurations
-        if mode not in MERGE_OPTIONS:
+        if mode not in OPTIONS.merge:
             raise ValueError(f"invalid merge mode '{mode}'")
         elif mode == "redshift":
             config = merge_config(projects, merge_binning=True)

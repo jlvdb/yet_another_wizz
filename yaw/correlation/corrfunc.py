@@ -11,7 +11,7 @@ import pandas as pd
 from deprecated import deprecated
 
 from yaw.catalogs import PatchLinkage
-from yaw.config import ResamplingConfig
+from yaw.config import ResamplingConfig, OPTIONS
 from yaw.core.abc import (
     BinnedQuantity, HDFSerializable, Indexer, PatchedQuantity)
 from yaw.core.containers import SampledData
@@ -101,7 +101,7 @@ class CorrData(SampledData):
         method_key, n_samples = header[-1].rsplit("_", 1)
         n_samples = int(n_samples) + 1
         # reconstruct sampling method
-        for method in ResamplingConfig.implemented_methods:
+        for method in OPTIONS.methods:
             if method.startswith(method_key):
                 break
         else:

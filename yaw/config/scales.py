@@ -21,21 +21,51 @@ if TYPE_CHECKING:  # pragma: no cover
 
 @dataclass(frozen=True)
 class ScalesConfig(DictRepresentation):
+    """Configuration of scales used for correlation measurements.
+
+    Correlation functions are measured on one or many intervals
+    :math:`r_{\\rm min} \leq r < r_{\\rm max}` angular diameter distance in kpc.
+    When measuring correlations, this scale is coverted to angles at the current
+    redshift.
+    
+    Additionally, pairs can be weighted by their separation
+    :math:`r^\\alpha` if a power-law exponent is provided through ``rweight``.
+    The weighting is applied logarithmically spaced bins of separation (based
+    on the logarithmic bin centers). This is an approximation to actually
+    weighting each pair individually and the resolution of this approximation
+    can be controlled by setting the number of bins.
+
+    Args:
+        rmin (float, Sequence[float]):
+            Single or multiple lower scale limits in kpc (angular diameter
+            distance).
+        rmax (float, Sequence[float]):
+            Single or multiple upper scale limits in kpc (angular diameter
+            distance).
+        rweight (float, optional):
+            Power-law exponent used to weight pairs by their separation.
+        rbin_num (int, optional):
+            Number of radial logarithmic bin used to approximate the weighting
+            by separation.
+    """
 
     rmin: Sequence[float] | float = field(
         metadata=Parameter(
             type=float, nargs="*", required=True,
             help="(list of) lower scale limit in kpc (pyhsical)"))
+    """Lower scale limit(s) in kpc (angular diameter distance)."""
     rmax: Sequence[float] | float = field(
         metadata=Parameter(
             type=float, nargs="*", required=True,
             help="(list of) upper scale limit in kpc (pyhsical)"))
+    """Upper scale limit(s) in kpc (angular diameter distance)."""
     rweight: float | None = field(
         default=DEFAULT.Scales.rweight,
         metadata=Parameter(
             type=float,
             help="weight galaxy pairs by their separation to power 'rweight'",
             default_text="(default: no weighting applied)"))
+    """Power-law exponent used to weight pairs by their separation."""
     rbin_num: int = field(
         default=DEFAULT.Scales.rbin_num,
         metadata=Parameter(
@@ -43,6 +73,8 @@ class ScalesConfig(DictRepresentation):
             help="number of bins in log r used (i.e. resolution) to compute "
                  "distance weights",
             default_text="(default: %(default)s)"))
+    """Number of radial logarithmic bin used to approximate the weighting by
+    separation."""
 
     def __post_init__(self) -> None:
         msg_scale_error = f"scales violates 'rmin' < 'rmax'"
@@ -95,9 +127,22 @@ class ScalesConfig(DictRepresentation):
             yield Scale(rmin=rmin, rmax=rmax)
 
     def as_array(self) -> NDArray[np.float_]:
+        """Obtain the scales cuts as array of shape (2, N)"""
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
 
     @deprecated(
         "use [str(scale) for scale in ScalesConfig] instead", version="2.3.1")
     def dict_keys(self) -> list[str]:
+        """Get the scale cuts formatted as a list of strings.
+
+        Format is ``kpc[rmin]t[rmax]``, used as keys to pack outputs of
+        correlation measurements in a dictionary when measuring with multiple
+        scales cuts.
+
+        .. deprecated:: 2.3.1
+            Use instead
+
+            >>> [str(scale) for scale in ScalesConfig]
+            ...
+        """
         return [str(scale) for scale in self]

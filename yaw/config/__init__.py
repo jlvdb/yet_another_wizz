@@ -1,6 +1,33 @@
+"""This module implements the configuration for ``yaw``, which are the free
+parameters for the correlation function measurements. These parameters control
+
+1. the scales on which correlations are measured (:obj:`ScalesConfig`),
+2. the redshift binning for the redshift reconstruction
+   (:obj:`AutoBinningConfig` or :obj:`ManualBinningConfig`),
+3. backend related parameters (:obj:`BackendConfig`), and
+4. the resampling method for error estimation (:obj:`ResamplingConfig`).
+
+Each of these four configuration classes are implemented as immuateble
+dataclasses, i.e. their values cannot be modified after creation.
+
+For convenience, the first three configuration classes are grouped together in
+the :obj:`Config` class, since these parameters are often needed together. This
+configuration class additionally specifies the cosmological model. For more
+details, refer to the :obj:`yaw.core.cosmology` module.
+
+The recommended way to create a new configuration is thorough its constructor
+methods :meth:`Config.create` or :meth:`Config.modify` to create a new, modified
+configuration from an existing one. The default values for the parameters are
+listed in :mod:`yaw.config.default` (also available as ``yaw.config.DEFAULT``),
+parameters that support a fixed set of options can be accessed through
+:obj:`yaw.config.OPTIONS`, an instance of the
+:obj:`~yaw.config.options.Options` generating class.
+"""
+
+from yaw.config import default as DEFAULT
+from yaw.config.options import OPTIONS
 from yaw.config.backend import BackendConfig
-from yaw.config.binning import (
-    AutoBinningConfig, ManualBinningConfig, make_binning_config)
+from yaw.config.binning import AutoBinningConfig, ManualBinningConfig
 from yaw.config.config import Config
-from yaw.config.resampling import ResamplingConfig, METHOD_OPTIONS
+from yaw.config.resampling import ResamplingConfig
 from yaw.config.scales import ScalesConfig

@@ -1,3 +1,5 @@
+.. _api_catalogs:
+
 yaw.catalogs
 ============
 
@@ -11,14 +13,6 @@ yaw.catalogs
 
     catalogs.scipy
     catalogs.treecorr
-
-
-.. rubric:: Attributes
-
-.. autosummary::
-    :toctree: catalogs
-
-    BACKEND_OPTIONS
 
 
 .. rubric:: Classes

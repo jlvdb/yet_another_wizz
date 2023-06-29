@@ -50,7 +50,7 @@ class NewCatalog:
             backend (str):
                 Specify the backend for which the catalog instances should be
                 produced for. For availble options see
-                :attr:`~yaw.catalogs.BACKEND_OPTIONS`.
+                :attr:`~yaw.config.options.Options.backend`.
         """
         try:
             self.catalog: BaseCatalog = BaseCatalog._backends[backend]

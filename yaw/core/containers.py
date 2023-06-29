@@ -10,7 +10,7 @@ import pandas as pd
 
 from yaw.core.abc import BinnedQuantity, Indexer
 from yaw.core.math import cov_from_samples
-from yaw.config import METHOD_OPTIONS
+from yaw.config import OPTIONS
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -78,7 +78,7 @@ class SampledValue(Generic[_Tscalar]):
     error: _Tscalar = field(init=False)
 
     def __post_init__(self) -> None:
-        if self.method not in METHOD_OPTIONS:
+        if self.method not in OPTIONS.method:
             raise ValueError(f"unknown sampling method '{self.method}'")
         if self.method == "bootstrap":
             error = np.std(self.samples, ddof=1, axis=0)
@@ -173,7 +173,7 @@ class SampledData(BinnedQuantity):
         if not self.samples.shape[1] == self.n_bins:
             raise ValueError(
                 "number of bins for 'data' and 'samples' do not match")
-        if self.method not in METHOD_OPTIONS:
+        if self.method not in OPTIONS.method:
             raise ValueError(f"unknown sampling method '{self.method}'")
 
         covmat = cov_from_samples(self.samples, self.method)

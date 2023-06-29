@@ -4,15 +4,6 @@ yaw.core.cosmology
 .. automodule:: yaw.core.cosmology
 
 
-.. rubric:: Attributes
-
-.. autosummary::
-    :toctree: core.cosmology
-
-    BINNING_OPTIONS
-    COSMOLOGY_OPTIONS
-
-
 .. rubric:: Functions
 
 .. autosummary::

@@ -3,14 +3,6 @@ from __future__ import annotations
 from argparse import Action, ArgumentTypeError
 from pathlib import Path
 
-from yaw.catalogs import BaseCatalog
-from yaw.config import ResamplingConfig
-
-# parameter options
-from yaw.catalogs import BACKEND_OPTIONS
-from yaw.core.cosmology import BINNING_OPTIONS, COSMOLOGY_OPTIONS
-from yaw.config.resampling import METHOD_OPTIONS
-
 
 class CommandlineInitError(Exception):
     pass
