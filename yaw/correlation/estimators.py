@@ -1,3 +1,25 @@
+"""This module implements the correlation estimators and a way to symbolically
+represent paircounts (e.g. data-data counts are represented by :obj:`CtsDD`).
+
+The latter is used in :obj:`yaw.CorrFunc` to determine which correlation
+estimator can be computed for a possibly incomplete set of pair counts (e.g.
+only data-data and random-random). Their key property is that they can be
+compared, e.g.
+
+>>> CtsDR() == CtsRR()  # random-data is random-random?
+False
+
+A special case is the :obj:`DavisPeebles` Estimator, which is the ratio
+:math:`DD/DR-1`. In the case of a crosscorrelation it is irrelevant which of the
+samples provides a random sample. Therefore, there is the special class
+:obj:`CtsMix`, with the property:
+
+>>> CtsMix() == CtsDR()
+True
+>>> CtsMix() == CtsRD()
+True
+"""
+
 from __future__ import annotations
 
 import logging
@@ -18,9 +40,15 @@ class EstimatorError(Exception):
 
 
 class Cts(ABC):
+    """Base class to symbolically represent pair counts."""
 
     @abstractproperty
-    def _hash(self) -> int: pass
+    def _hash(self) -> int: 
+        """Used for comparison.
+        
+        Equivalent pair counts types should have the same hash value, see
+        :obj:`CtsMix`."""
+        pass
 
     @abstractproperty
     def _str(self) -> str: pass
@@ -43,61 +71,93 @@ class Cts(ABC):
 
 
 class CtsDD(Cts):
+    """Symbolic representation of data-data paircounts."""
     _str = "dd"
     _hash = 1
 
 
 class CtsDR(Cts):
+    """Symbolic representation of data-random paircounts."""
     _str = "dr"
     _hash = 2
 
 
 class CtsRD(Cts):
+    """Symbolic representation of random-data paircounts."""
     _str = "rd"
     _hash = 2
 
 
 class CtsMix(Cts):
+    """Symbolic representation of either data-random or random-data paircounts.
+    
+    >>> CtsDR() == CtsMix()
+    True
+    >>> CtsRD() == CtsMix()
+    True
+    """
     _str = "dr_rd"
     _hash = 2
 
 
 class CtsRR(Cts):
+    """Symbolic representation of random-random paircounts."""
     _str = "rr"
     _hash = 3
 
 
 def cts_from_code(code: str) -> Cts:
+    """Instantiate the correct :obj:`Cts` subclass from a string.
+    
+    Valid options are ``dd``, ``dr``, ``rd``, ``rr``, e.g.:
+
+    >>> cts_from_code("dr")
+    <CtsDR>    
+    """
     codes = dict(dd=CtsDD, dr=CtsDR, rd=CtsRD, rr=CtsRR)
     if code not in codes:
-        raise EstimatorError(f"unknown estimator '{code}'")
+        raise ValueError(f"unknown pair counts '{code}'")
     return codes[code]()
 
 
 class CorrelationEstimator(ABC):
+    short: str
+    """Get a short form representation of the estimator name.
+
+    >>> LandySzalay.short
+    'LS'
+    """
+    requires: list[Cts]
+    """Get a symbolic list of pair counts required to evaluate the estimator.
+
+    >>> LandySzalay.short
+    [<CtsDD>, <CtsDR>, <CtsRR>]
+    """
+    optional: list[Cts]
+    """Get a symbolic list of optional pair counts that may be used to evaluate
+    the estimator.
+
+    >>> LandySzalay.short
+    [<CtsRD>]
+    """
 
     variants: list[CorrelationEstimator] = []
+    """List of all implemented correlation estimators classes."""
 
     def __init_subclass__(cls, **kwargs):
+        """Add all subclusses to the :obj:`variants` attribute list."""
         super().__init_subclass__(**kwargs)
         cls.variants.append(cls)
 
     def _warn_enum_zero(self, counts: NDArray):
+        """Raise a warning if any value in the expression enumerator is zero"""
         if np.any(counts == 0.0):
             logger.warn(
                 f"estimator {self.short} encontered zeros in enumerator")
 
     def name(self) -> str:
+        """Get the full name of the estimator."""
         return self.__class__.__name__
-
-    @abstractproperty
-    def short(self) -> str: pass  # "CE"
-
-    @abstractproperty
-    def requires(self) -> list[str]: pass  # [CtsDD(), CtsDR(), CtsRR()]
-
-    @abstractproperty
-    def optional(self) -> list[str]: pass  # [CtsRD()]
 
     @abstractmethod
     def __call__(
@@ -111,6 +171,19 @@ class CorrelationEstimator(ABC):
 
 
 class PeeblesHauser(CorrelationEstimator):
+    """Implementation of the Peebles-Hauser correlation estimator.
+
+    Instances are callable and evaluate :math:`DD / RR - 1`:
+
+    Args:
+        dd (:obj:`NDArray`):
+            Data-data pair counts (normalised).
+        rr (:obj:`NDArray`):
+            Random-random pair counts (normalised).
+
+    Returns:
+        :obj:`NDArray`
+    """
     short: str = "PH"
     requires = [CtsDD(), CtsRR()]
     optional = []
@@ -126,6 +199,19 @@ class PeeblesHauser(CorrelationEstimator):
 
 
 class DavisPeebles(CorrelationEstimator):
+    """Implementation of the Davis-Peebles correlation estimator.
+
+    Instances are callable and evaluate :math:`DD / DR - 1`:
+
+    Args:
+        dd (:obj:`NDArray`):
+            Data-data pair counts (normalised).
+        dr_rd (:obj:`NDArray`):
+            Either data-random or random-data pair counts (normalised).
+
+    Returns:
+        :obj:`NDArray`
+    """
     short = "DP"
     requires = [CtsDD(), CtsMix()]
     optional = []
@@ -141,6 +227,24 @@ class DavisPeebles(CorrelationEstimator):
 
 
 class Hamilton(CorrelationEstimator):
+    """Implementation of the Hamilton correlation estimator.
+
+    Instances are callable and evaluate :math:`(DD * RR) / (DR * RD) - 1`:
+
+    Args:
+        dd (:obj:`NDArray`):
+            Data-data pair counts (normalised).
+        dr (:obj:`NDArray`):
+            Data-random pair counts (normalised).
+        rd (:obj:`NDArray`, optional):
+            Random-data pair counts (normalised). If not provided, use ``dr``
+            instead.
+        rr (:obj:`NDArray`):
+            Random-random pair counts (normalised).
+
+    Returns:
+        :obj:`NDArray`
+    """
     short = "HM"
     requires = [CtsDD(), CtsDR(), CtsRR()]
     optional = [CtsRD()]
@@ -160,6 +264,24 @@ class Hamilton(CorrelationEstimator):
 
 
 class LandySzalay(CorrelationEstimator):
+    """Implementation of the Peebles-Hauser correlation estimator.
+
+    Instances are callable and evaluate :math:`(DD - (DR + RD)) / RR + 1`:
+
+    Args:
+        dd (:obj:`NDArray`):
+            Data-data pair counts (normalised).
+        dr (:obj:`NDArray`):
+            Data-random pair counts (normalised).
+        rd (:obj:`NDArray`, optional):
+            Random-data pair counts (normalised). If not provided, use ``dr``
+            instead.
+        rr (:obj:`NDArray`):
+            Random-random pair counts (normalised).
+
+    Returns:
+        :obj:`NDArray`
+    """
     short = "LS"
     requires = [CtsDD(), CtsDR(), CtsRR()]
     optional = [CtsRD()]
