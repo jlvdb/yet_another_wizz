@@ -54,9 +54,9 @@ html_favicon = "_static/icon.ico"
 html_theme_options = {
     "github_url": "https://github.com/jlvdb/yet_another_wizz",
     "collapse_navigation": True,
-    "navigation_depth": 2,
-    "show_nav_level": 2,
-    "show_toc_level": 2,
+    "navigation_depth": 3,
+    "show_nav_level": 3,
+    "show_toc_level": 3,
     "navbar_align": "content",
     "secondary_sidebar_items": ["page-toc"],
     "logo": {
