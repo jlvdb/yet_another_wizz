@@ -1,20 +1,72 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Generic, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Callable, Generic, NamedTuple, TypeVar
 
 import numpy as np
 import pandas as pd
 
-from yaw.core.abc import BinnedQuantity, Indexer
+from yaw.core.abc import BinnedQuantity
 from yaw.core.math import cov_from_samples
 from yaw.config import OPTIONS
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame, IntervalIndex, Series
+
+
+_TK = TypeVar("_TK")
+_TV = TypeVar("_TV")
+
+
+class Indexer(Generic[_TK, _TV], Iterator):
+    """Helper class to implemented a class attribute that can be used as
+    indexer and iterator for the classes stored data (e.g. indexing patches or
+    redshift bins).
+    """
+
+    def __init__(self, inst: _TV, builder: Callable[[_TV, _TK], _TV]) -> None:
+        """Construct a new indexer.
+
+        Args:
+            inst:
+                Class instance on which the indexing operations are applied.
+            builder:
+                Callable signature ``builder(inst, item) -> inst`` that
+                constructs a new class instance with the indexing specified from
+                ``item`` applied.
+
+
+        The resulting indexer supports indexing and slicing (depending on the
+        subclass implementation), as well as iteration, where instances holding
+        individual items are yielded.
+        """
+        self._inst = inst
+        self._builder = builder
+        self._iter_loc = 0
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self._inst.__class__.__name__})"
+
+    def __getitem__(self, item: _TK) -> _TV:
+        return self._builder(self._inst, item)
+
+    def __next__(self) -> _TV:
+        """Returns the next value and increments the iterator location index."""
+        try:
+            val = self[self._iter_loc]
+        except IndexError:
+            raise StopIteration
+        else:
+            self._iter_loc += 1
+            return val
+
+    def __iter__(self) -> Iterator[_TV]:
+        """Returns a new instance of this class to have an independent iterator
+        location index"""
+        return self.__class__(inst=self._inst, builder=self._builder)
 
 
 class PatchIDs(NamedTuple):

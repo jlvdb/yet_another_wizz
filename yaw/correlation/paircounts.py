@@ -18,9 +18,8 @@ import scipy.sparse
 from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
-from yaw.core.abc import (
-    BinnedQuantity, HDFSerializable, Indexer, PatchedQuantity)
-from yaw.core.containers import PatchIDs, SampledData
+from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.containers import Indexer, PatchIDs, SampledData
 from yaw.core.logging import LogCustomWarning
 from yaw.core.math import apply_slice_ndim, outer_triu_sum
 

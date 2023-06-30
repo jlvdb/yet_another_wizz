@@ -12,9 +12,8 @@ from deprecated import deprecated
 
 from yaw.catalogs import PatchLinkage
 from yaw.config import ResamplingConfig, OPTIONS
-from yaw.core.abc import (
-    BinnedQuantity, HDFSerializable, Indexer, PatchedQuantity)
-from yaw.core.containers import SampledData
+from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.containers import Indexer, SampledData
 from yaw.core.logging import LogCustomWarning, TimedLog
 from yaw.core.math import cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
