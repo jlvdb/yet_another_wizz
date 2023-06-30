@@ -101,7 +101,7 @@ class CorrData(SampledData):
         method_key, n_samples = header[-1].rsplit("_", 1)
         n_samples = int(n_samples) + 1
         # reconstruct sampling method
-        for method in OPTIONS.methods:
+        for method in OPTIONS.method:
             if method.startswith(method_key):
                 break
         else:
