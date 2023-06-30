@@ -53,8 +53,8 @@ class ResamplingConfig(DictRepresentation):
         default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.method not in OPTIONS.methods:
-            opts = ", ".join(f"'{s}'" for s in OPTIONS.methods)
+        if self.method not in OPTIONS.method:
+            opts = ", ".join(f"'{s}'" for s in OPTIONS.method)
             raise ConfigError(
                 f"invalid resampling method '{self.method}', "
                 f"must either of {opts}")
