@@ -7,7 +7,6 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import distance_matrix
 
-from yaw.core.abc import PatchedQuantity
 from yaw.core.containers import PatchIDs
 from yaw.core.coordinates import Dist3D, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
@@ -24,7 +23,7 @@ LINK_ZMIN = 0.05
 """The reference redshift at which the maximum angular size is computed."""
 
 
-class PatchLinkage(PatchedQuantity):
+class PatchLinkage:
     """Class that links patches for pair counting, serves as task generator.
 
     This class is useful to generate pairs of patches that need to be paired

@@ -15,7 +15,7 @@ from yaw.config import ResamplingConfig, OPTIONS
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData
 from yaw.core.logging import LogCustomWarning, TimedLog
-from yaw.core.math import cov_from_samples
+from yaw.core.math import apply_slice_ndim, cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
@@ -57,10 +57,6 @@ class CorrData(SampledData):
         info (str, optional):
             Descriptive text included in the headers of output files produced
             by :func:`CorrData.to_files`.
-
-    Attributes:
-        covariance (:obj:`NDArray`):
-            Covariance matrix automatically computed from the resampled values.
     """
 
     info: str | None = None
@@ -524,6 +520,10 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     @deprecated(reason="renamed to CorrFunc.sample", version="2.3.1")
     def get(self, *args, **kwargs):
+        """
+        .. deprecated:: 2.3.1
+            Renamed to :meth:`sample`.
+        """
         return self.sample(*args, **kwargs)
 
     def sample(

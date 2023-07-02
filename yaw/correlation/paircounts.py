@@ -1,11 +1,21 @@
+"""This module implements containers for storing pair counts
+(:obj:`PatchedCount`) and the total number of objects (:obj:`PatchedTotal`) for
+pair count normalisation. The data is stored per spatial patch and in bins of
+redshift.
+
+The containers implement methods to compute total value (summing over all
+patches) and samples needed for error estimations after evaluating the
+correlation estimator (e.g. jackknife or bootstrap resampling).
+"""
+
 from __future__ import annotations
 
 import logging
-from abc import abstractmethod, abstractproperty
-from collections.abc import Sequence
+from abc import abstractmethod
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import accumulate
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, NoReturn, Union
 try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:  # pragma: no cover
@@ -14,11 +24,11 @@ except ImportError:  # pragma: no cover
 import h5py
 import numpy as np
 import pandas as pd
-import scipy.sparse
 from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
-from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
+from yaw.core.abc import (
+    BinnedQuantity, HDFSerializable, PatchedQuantity, concatenate_bin_edges)
 from yaw.core.containers import Indexer, PatchIDs, SampledData
 from yaw.core.logging import LogCustomWarning
 from yaw.core.math import apply_slice_ndim, outer_triu_sum
@@ -32,21 +42,45 @@ logger = logging.getLogger(__name__)
 
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
+"""default compression settings for :obj:`h5py.Dataset`."""
 
 
 TypeSlice: TypeAlias = Union[slice, int, None]
 TypeIndex: TypeAlias = Union[int, slice, Sequence]
 
 
-def check_mergable(patched_arrays: Sequence[PatchedArray]) -> None:
+def check_mergable(
+    patched_arrays: Sequence[PatchedArray],
+    *,
+    patches: bool
+) -> None:
+    """Check if two instaces of PatchedArray can be merged along the patch
+    or binning axis.
+    
+    Args:
+        patched_arrays (Sequence[PatchedArray]):
+            Instances to merge
+    
+    Keyword args:
+        patches (bool):
+            Whether to check for merging patches or binning.
+    """
     reference = patched_arrays[0]
     for patched in patched_arrays[1:]:
         if reference.auto != patched.auto:
             raise ValueError("cannot merge mixed cross- and autocorrelations")
-        reference.is_compatible(patched, require=True)
+        if patches:
+            reference.is_compatible(patched, require=True)
+        else:
+            if reference.auto != patched.auto:
+                raise ValueError(
+                    "cannot merge mixed cross- and autocorrelations")
+            if reference.n_patches != patched.n_patches:
+                raise ValueError("cannot merge, patch numbers do not match")
 
 
 def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
+    """Construct a :obj:`pandas.IntervalIndex` from a group in an HDF5 file."""
     dset = source["binning"]
     left, right = dset[:].T
     closed = dset.attrs["closed"]
@@ -54,28 +88,19 @@ def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
 
 
 def binning_to_hdf(binning: IntervalIndex, dest: h5py.Group) -> None:
+    """Serialise a :obj:`pandas.IntervalIndex` into a group of an HDF5 file.
+    
+    Stores the left and right edges for each interval, as well as on which side
+    the intervals are closed as group attribute.
+    """
     edges = np.column_stack([binning.left, binning.right])
     dset = dest.create_dataset("binning", data=edges, **_compression)
     dset.attrs["closed"] = binning.closed
 
 
-def concatenate_bin_edges(*patched: PatchedArray) -> IntervalIndex:
-    reference = patched[0]
-    edges = reference.edges
-    for other in patched[1:]:
-        if reference.auto != other.auto:
-            raise ValueError(
-                "cannot merge mixed cross- and autocorrelations")
-        if reference.n_patches != other.n_patches:
-            raise ValueError("cannot merge, patch numbers do not match")
-        if edges[-1] == other.edges[0]:
-            edges = np.concatenate([edges, other.edges[1:]])
-        else:
-            raise ValueError("cannot merge, bins are not contiguous")
-    return pd.IntervalIndex.from_breaks(edges, closed=reference.closed)
-
-
-def patch_idx_offset(patched: PatchedArray) -> NDArray[np.int_]:
+def patch_idx_offset(patched: Iterable[PatchedArray]) -> NDArray[np.int_]:
+    """Compute the offsets for patch indices of a set of :obj:`PatchedArray` if
+    they were merged into one large :obj:`PatchedArray`."""
     idx_offset = np.fromiter(
         accumulate((p.n_patches for p in patched), initial=0),
         dtype=np.int_, count=len(patched))
@@ -83,8 +108,12 @@ def patch_idx_offset(patched: PatchedArray) -> NDArray[np.int_]:
 
 
 class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
+    """Base class that implements the interface for classes that store results
+    from pair count measurements.
+    """
 
     auto = False
+    """Whether the stored data are from an autocorrelation measurement."""
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -105,57 +134,91 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     def __neq__(self, other) -> bool:
         return not self == other
 
-    @abstractproperty
-    def bins(self, item: TypeIndex) -> Indexer:
-        raise NotImplementedError
-
-    @abstractproperty
-    def patches(self, item: TypeIndex) -> Indexer:
-        raise NotImplementedError
-
     @property
     def dtype(self) -> DTypeLike:
+        """The numpy data type of the underlying data."""
         return np.float_
 
     @property
     def shape(self) -> tuple[int]:
+        """The shape of underlying data if viewed as array."""
         return (self.n_patches, self.n_patches, self.n_bins)
 
     @property
     def ndim(self) -> int:
+        """The number of dimensions of underlying data if viewed as array."""
         return len(self.shape)
 
     @property
     def size(self) -> int:
+        """The number of items in the underlying data if viewed as array."""
         return np.prod(self.shape)
 
     @abstractmethod
-    def as_array(self) -> NDArray: raise NotImplementedError
+    def as_array(self) -> NDArray:
+        """Get the underlying data as contiguous array.
+        
+        The array 3-dimensional with shape (N, N, K), where N is the number of
+        spatial patches, and K is the number of redshift bins."""
+        raise NotImplementedError
 
     @abstractmethod
     def _sum(
         self,
         config: ResamplingConfig
-    ) -> NDArray: raise NotImplementedError
+    ) -> NDArray:
+        """Method that implements the sum over all patches."""
+        raise NotImplementedError
 
     @abstractmethod
     def _jackknife(
         self,
         config: ResamplingConfig,
         signal: NDArray
-    ) -> NDArray: raise NotImplementedError
+    ) -> NDArray:
+        """Method that implements generating jackknife samples of the sum over
+        all patches.
+
+        For N patches, draw N realisations by leaving out one of the N patches. 
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def _bootstrap(
         self,
         config: ResamplingConfig
-    ) -> NDArray: raise NotImplementedError
+    ) -> NDArray:
+        """Method that implements generating bootstrap samples of the sum over
+        all patches.
+
+        For N patches, draw M realisations each containing N randomly chosen
+        patches.
+        """
+        raise NotImplementedError
 
     @deprecated(reason="renamed to CorrFunc.sample_sum", version="2.3.1")
     def get_sum(self, *args, **kwargs):
+        """
+        .. deprecated:: 2.3.1
+            Renamed to :meth:`sample_sum`.
+        """
         return self.sample_sum(*args, **kwargs)
 
     def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
+        """Compute the sum of the data over all patches and samples thereof.
+
+        Returns a data container with the sum in each redshift bin and samples
+        generated from the patches using the resampling method specified in the
+        configuration parameter.
+
+        Args:
+            config (:obj:`~yaw.config.ResamplingConfig`):
+                Specifies the resampling method and its customisation
+                parameters.
+
+        Returns:
+            :obj:`~yaw.core.SampledData`
+        """
         if config is None:
             config = ResamplingConfig()  # pragma: no cover
         data = self._sum(config)
@@ -174,6 +237,38 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
 
 
 class PatchedTotal(PatchedArray):
+    """Container class for the product of the total number of objects of two
+    samples.
+
+    The data in this container, the product of the total number of objects from
+    two samples, is constructed by multiplting the total number of objects of
+    both samples (split into spatial patches and redshift bins). This data is
+    required to normalise pair counts when computing correlation functions, e.g.
+    to account for different sizes of a data and a random sample.
+
+    Internally, the nubmer of objects are stored per sample as :obj:`totals1`
+    and :obj:`totals2` respectively. The (outer) product for all combinations
+    of patches is only computed when calling the :meth:`as_array` or
+    :meth:`sample_sum` methods.
+
+    The container supports comparison of the data elements and the redshift
+    binning with ``==`` and ``!=``.
+    """
+
+    totals1: NDArray
+    """The total number of objects from the first data catalogue per patch and
+    redshift bin.
+    
+    The array is of shape (N, K), where N is the number of spatial patches, and
+    K is the number of redshift bins.
+    """
+    totals2: NDArray
+    """The total number of objects from the second data catalogue per patch and
+    redshift bin.
+    
+    The array is of shape (N, K), where N is the number of spatial patches, and
+    K is the number of redshift bins.
+    """
 
     def __init__(
         self,
@@ -260,18 +355,19 @@ class PatchedTotal(PatchedArray):
         dest.create_dataset("totals2", data=self.totals2, **_compression)
         dest.create_dataset("auto", data=self.auto)
 
-    def concatenate_patches(self, *totals: PatchedTotal) -> PatchedTotal:
-        check_mergable([self, *totals])
-        all_totals: list[PatchedTotal] = [self, *totals]
+    def concatenate_patches(self, *data: PatchedTotal) -> PatchedTotal:
+        all_totals: list[PatchedTotal] = [self, *data]
+        check_mergable(all_totals, patches=True)
         return self.__class__(
             binning=self.get_binning().copy(),
             totals1=np.concatenate([t.totals1 for t in all_totals], axis=0),
             totals2=np.concatenate([t.totals2 for t in all_totals], axis=0),
             auto=self.auto)
 
-    def concatenate_bins(self, *totals: PatchedTotal) -> PatchedTotal:
-        binning = concatenate_bin_edges(self, *totals)
-        all_totals: list[PatchedTotal] = [self, *totals]
+    def concatenate_bins(self, *data: PatchedTotal) -> PatchedTotal:
+        all_totals: list[PatchedTotal] = [self, *data]
+        check_mergable(all_totals, patches=False)
+        binning = concatenate_bin_edges(*all_totals)
         return self.__class__(
             binning=binning,
             totals1=np.concatenate([t.totals1 for t in all_totals], axis=1),
@@ -281,11 +377,20 @@ class PatchedTotal(PatchedArray):
     # methods implementing the signal
 
     def _sum_cross(self) -> NDArray:
-        # sum of outer product
+        """Implements the sum over all patches for crosscorrelation data.
+        
+        Effectively computes the sum of the outer product of :obj:`totals1` and
+        :obj:`totals2` along the redshift bin axis.
+        """
         return np.einsum("i...,j...->...", self.totals1, self.totals2)
 
     def _sum_auto(self) -> NDArray:
-        # sum of upper triangle (without diagonal) of outer product
+        """Implements the sum over all patches for autocorrelation data.
+        
+        The same as :meth:`_sum_cross`, but only computes the upper triangle of
+        the outer product and weights the diagonal with 1/2 to account for the
+        fact that the diagonal elements are true autocorrelations.
+        """
         sum_upper = outer_triu_sum(self.totals1, self.totals2, k=1)
         sum_diag = np.einsum("i...,i...->...", self.totals1, self.totals2)
         return sum_upper + 0.5 * sum_diag
@@ -299,12 +404,27 @@ class PatchedTotal(PatchedArray):
     # methods implementing jackknife samples
 
     def _jackknife_cross(self, signal: NDArray) -> NDArray:
+        """Implements jackknife samples of the sum over all patches for
+        crosscorrelation data.
+        
+        The same as :meth:`_sum_cross`, but adds an additional dimension as
+        first axis which lists the samples. For the i-th sample, subtract all
+        data containing :obj:`totals1` or :obj:`totals2` from the i-th patch.
+        """
         diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
         rows = np.einsum("i...,j...->i...", self.totals1, self.totals2)
         cols = np.einsum("i...,j...->j...", self.totals1, self.totals2)
         return signal - rows - cols + diag  # subtracted diag twice
 
     def _jackknife_auto(self, signal: NDArray) -> NDArray:
+        """Implements jackknife samples of the sum over all patches for
+        autocorrelation data.
+        
+        The same as :meth:`_jackknife_cross`, but only computes the upper
+        triangle of the outer product for each sample and weights the diagonal
+        with 1/2 to account for the fact that the diagonal elements are true
+        autocorrelations.
+        """
         diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
         # sum along axes of upper triangle (without diagonal) of outer product
         rows = outer_triu_sum(self.totals1, self.totals2, k=1, axis=1)
@@ -319,11 +439,76 @@ class PatchedTotal(PatchedArray):
 
     # methods implementing bootstrap samples
 
-    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
+    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NoReturn:
+        """Bootstrap resampling currently not implemented.
+        
+        Raises:
+            :exc:`NotImplementedError`
+        """
         raise NotImplementedError
 
 
 class PatchedCount(PatchedArray):
+    """Container class for pair counts between two samples.
+
+    The data in this container are the pair counts between two samples of
+    points. The counts are stored for each spatial patch and per redshift bin,
+    forming a data array of shape shape (N, N, K), where N is the number of
+    spatial patches, and K is the number of redshift bins.
+
+    The container supports comparison of the data elements and the redshift
+    binning with ``==`` and ``!=``. Additionally, :obj:`PatchedCount` can be
+    added together if they have the same redshift binning and number of patches,
+    e.g. to add pair counts measured on different scales. The count values can
+    be rescaled/multiplied by a floating point number, e.g. to apply a weighting
+    before summing different scales (see also
+    :func:`yaw.correlation.add_corrfuncs`). Any sequence of :obj:`PatchedCount`
+    can be summed together with the built-in python function ``sum()``.
+
+    .. rubric:: Examples
+
+    Create a redshift binning:
+
+    >>> import pandas as pd
+    >>> bins = pd.IntervalIndex.from_breaks([0.1, 0.2, 0.3])
+    >>> bins
+    IntervalIndex([(0.1, 0.2], (0.2, 0.3]], dtype='interval[float64, right]')
+
+    Create two data containers with some dummy values:
+
+    >>> count1 = PatchedCount.zeros(bins, n_patches=5, auto=False)
+    >>> count1.counts += 1  # set all counts with dummy value 1
+    >>> count2 = PatchedCount.zeros(bins, n_patches=5, auto=False)
+    >>> count2.counts += 2  # set all counts with dummy value 2
+    >>> count2
+    PatchedCount(n_bins=2, z='0.100...0.300', shape=(5, 5, 2))
+
+    Sum the pair counts and compare different methods:
+
+    >>> summed = count1 + count2
+    >>> summed
+    PatchedCount(n_bins=2, z='0.100...0.300', shape=(5, 5, 2))
+    >>> sum([count1, count2]) == summed
+    True
+    >>> (summed.counts == 3).all()
+    True
+
+    Rescale the pair counts:
+
+    >>> count1 * 2.0
+    PatchedCount(n_bins=2, z='0.100...0.300', shape=(5, 5, 2))
+    >>> count1 * 2.0 == count2
+    True
+    """
+
+    counts: NDArray
+    """Internal data array containing the pair counts between spatial patches in
+    bins of redshift.
+    
+    The array is 3-dimensional with shape (N, N, K), where N is the number of
+    spatial patches, and K is the number of redshift bins. Same as
+    :meth:`as_array`.
+    """
 
     def __init__(
         self,
@@ -351,6 +536,24 @@ class PatchedCount(PatchedArray):
         auto: bool,
         dtype: DTypeLike = np.float_
     ) -> PatchedCount:
+        """Create a new instance where all elements of the counts array are
+        initialised to zero.
+        
+        Args:
+            binning (:obj:`pandas.IntervalIndex`):
+                Redshift binning for the container, determines size of last data
+                array dimension.
+            n_patches (int):
+                Number of spatial patches, determines the size of the first two
+                data array dimensions.
+        
+        Keyword Args:
+            auto (bool):
+                Whether the data originates from an autocorrelation measurement.
+            dtype (:obj:`DTypeLike`, optional):
+                Data type to use for the internal data array.
+
+        """
         counts = np.zeros((n_patches, n_patches, len(binning)), dtype=dtype)
         return cls(binning, counts, auto=auto)
 
@@ -373,13 +576,20 @@ class PatchedCount(PatchedArray):
             return self.__add__(other)
 
     def __mul__(self, other: np.number) -> PatchedCount:
-        self.is_compatible(other, require=True)
-        if self.n_patches != other.n_patches:
-            raise ValueError("number of patches does not agree")
         return self.__class__(
             self.get_binning(), self.counts * other, auto=self.auto)
 
     def set_measurement(self, key: PatchIDs | tuple[int, int], item: NDArray):
+        """Set the counts value in all redshift bins for a pair of patch
+        indices.
+
+        Args:
+            key (:obj:`yaw.core.containers.PatchIDs`, tuple):
+                Pair of patch indices for which the new values are set.
+            item (:obj:`NDArray`):
+                Values to set, must be an array with length matching the number
+                of redshift bins.
+        """
         # check the key
         if not isinstance(key, tuple):
             raise TypeError(f"slice must be of type {tuple}")
@@ -399,6 +609,14 @@ class PatchedCount(PatchedArray):
         return self.counts
 
     def sum(self, axis: int | tuple[int] | None = None, **kwargs) -> NDArray:
+        """Shorthand for :meth:`PatchedCount.counts.sum`
+        
+        Args:
+            axis (tuple, int, optional):
+                Axis over which the internal 3-dimensional data array is summed.
+            **kwargs:
+                Keyword arguments passed to :meth:`numpy.ndarry.sum`.
+        """
         return self.counts.sum(axis=axis, **kwargs)
 
     @property
@@ -435,12 +653,22 @@ class PatchedCount(PatchedArray):
         return len(self.get_binning())
 
     def keys(self) -> NDArray:
-        # check which patch combinations contain data
+        """Array of patch index pairs with non-zero pair counts.
+        
+        The index pairs are ordered by first, then second index. The returned
+        array is of shape (N, 2), where N is the number patches that contain
+        non-zero entries in any of the redshift bins.
+        """
         has_data = np.any(self.counts, axis=2)
         indices = np.nonzero(has_data)
         return np.column_stack(indices)
 
     def values(self) -> NDArray:
+        """Array of non-zero pair count values.
+        
+        The values are ordered in the same way as the indices returned by
+        :meth:`keys`.
+        """
         keys = self.keys()  # shape (n_nonzero, 2)
         i1, i2 = keys.T
         return self.counts[i1, i2, :]  # shape (n_nonzero, n_bins)
@@ -473,9 +701,9 @@ class PatchedCount(PatchedArray):
         dest.create_dataset("n_patches", data=self.n_patches)
         dest.create_dataset("auto", data=self.auto)
 
-    def concatenate_patches(self, *counts: PatchedCount) -> PatchedCount:
-        check_mergable([self, *counts])
-        all_counts: list[PatchedCount] = [self, *counts]
+    def concatenate_patches(self, *data: PatchedCount) -> PatchedCount:
+        all_counts: list[PatchedCount] = [self, *data]
+        check_mergable(all_counts, patches=True)
         offsets = patch_idx_offset(all_counts)
         merged = self.__class__.zeros(
             binning=self.get_binning(),
@@ -488,30 +716,51 @@ class PatchedCount(PatchedArray):
             loc += offset
         return merged
 
-    def concatenate_bins(self, *counts: PatchedCount) -> PatchedCount:
-        binning = concatenate_bin_edges(self, *counts)
+    def concatenate_bins(self, *data: PatchedCount) -> PatchedCount:
+        all_counts: list[PatchedCount] = [self, *data]
+        check_mergable(all_counts, patches=False)
+        binning = concatenate_bin_edges(*all_counts)
         merged = self.__class__.zeros(
             binning=binning,
             n_patches=self.n_patches,
             auto=self.auto,
             dtype=self.dtype)
         merged.counts = np.concatenate(
-            [count.counts for count in [self, *counts]], axis=2)
+            [count.counts for count in all_counts], axis=2)
         return merged
 
     # methods implementing the signal
 
     def _bin_sum_diag(self, data: NDArray) -> np.number:
+        """Implements the sum over the autocorrelation patches in a single
+        redshift bin.
+        
+        The autocorrelation patches are stored in the diagonal of the first two
+        dimension of the pair count data array.
+
+        .. Note::
+            This method is valid for both cross- and autocorrelation data.
+        """
         return np.diagonal(data).sum()
 
     def _bin_sum_cross(self, data: NDArray) -> np.number:
+        """Implements the sum over all patches for crosscorrelation data in a
+        single redshift bin.
+        """
         return data.sum()
 
     def _bin_sum_auto(self, data: NDArray) -> np.number:
+        """Implements the sum over all patches for autocorrelation data in a
+        single redshift bin.
+
+        The same as :meth:`_bin_sum_cross`, but only sums the upper triangle of
+        the counts array.
+        """
         return np.triu(data).sum()
 
     def _sum(self, config: ResamplingConfig) -> NDArray:
         out = np.zeros(self.n_bins)
+        # compute the counts bin-wise
         for i in range(self.n_bins):
             data = self.counts[:, :, i]
             if config.crosspatch:
@@ -530,6 +779,16 @@ class PatchedCount(PatchedArray):
         data: NDArray,
         signal: NDArray
     ) -> NDArray:
+        """Implements jackknife samples of the sum over the autocorrelation
+        patches in a single redshift bin.
+
+        The autocorrelation patches are stored in the diagonal of the first two
+        dimension of the pair count data array. Samples are computed by leaving
+        out the i-th patch in the i-th sample.
+
+        .. Note::
+            This method is valid for both cross- and autocorrelation data.
+        """
         return signal - np.diagonal(data)  # broadcast to (n_patches,)
 
     def _bin_jackknife_cross(
@@ -537,6 +796,13 @@ class PatchedCount(PatchedArray):
         data: NDArray,
         signal: NDArray
     ) -> NDArray:
+        """Implements jackknife samples of the sum over all patches for
+        crosscorrelation data in a single redshift bin.
+        
+        The same as :meth:`_bin_sum_cross`, but adds an additional dimension as
+        first axis which lists the samples. For the i-th sample, subtract all
+        data containing counts with objects of the i-th patch.
+        """
         diag = np.diagonal(data)
         rows = data.sum(axis=1)
         cols = data.sum(axis=0)
@@ -547,6 +813,12 @@ class PatchedCount(PatchedArray):
         data: NDArray,
         signal: NDArray
     ) -> NDArray:
+        """Implements jackknife samples of the sum over all patches for
+        autocorrelation data in a single redshift bin.
+        
+        The same as :meth:`_bin_jackknife_cross`, but only sums elements on the
+        main diagonal and upper triangle of the pair count array.
+        """
         diag = np.diagonal(data)
         # sum along axes of upper triangle (without diagonal) of outer product
         tri_upper = np.triu(data, k=1)
@@ -556,6 +828,7 @@ class PatchedCount(PatchedArray):
 
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
         out = np.empty((self.n_patches, self.n_bins))
+        # compute the counts bin-wise
         for i, bin_signal in enumerate(signal):
             data = self.counts[:, :, i]
             if config.crosspatch:
@@ -569,15 +842,38 @@ class PatchedCount(PatchedArray):
 
     # methods implementing bootstrap samples
 
-    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NDArray:
+    def _bootstrap(self, config: ResamplingConfig, **kwargs) -> NoReturn:
+        """Bootstrap resampling currently not implemented.
+        
+        Raises:
+            :exc:`NotImplementedError`
+        """
         raise NotImplementedError
 
 
 @dataclass(frozen=True)
 class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
+    """Container to store counts and the total number of objects obtained from
+    measuring pair counts for a correlation function.
+
+    Both input containers must have the same binning and the same number of
+    spatial patches. The container supports the same arithmetic as
+    :obj:`PatchedCount` (see the listed examples), i.e. comparison, addition,
+    and multiplication by a scalar. The resulting pair counts of addition and
+    multiplication are always normalised by the number of objects stored in
+    :obj:`total`.
+
+    Args:
+        count (:obj:`PatchedCount`):
+            The pair count container.
+        total (:obj:`PatchedTotal`):
+            The container for the total number of objects from the samples.
+    """
 
     count: PatchedCount
+    """The pair count container."""
     total: PatchedTotal
+    """The container for the total number of objects from the samples."""
 
     def __post_init__(self) -> None:
         if self.count.n_patches != self.total.n_patches:
@@ -649,6 +945,24 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return self.total.n_patches
 
     def sample(self, config: ResamplingConfig) -> SampledData:
+        """Sum the pair counts across all spatial patches and generate samples
+        from resampling the patches.
+
+        Calls the ``sample_sum()`` method of the :obj:`counts` and :obj:`total`
+        containers. Returns a :obj:`~yaw.SampledData` instance that contains the
+        normalised pair counts and spatially resampled values. Effectively
+        computes :math:`\\frac{XX}{n_1 n_2}`, where :math:XX` are the number of
+        pairs between the two samples with a total number of objects :math:`n_1`
+        and :math:`n_2` respectively.
+
+        Args:
+            config (:obj:`~yaw.config.ResamplingConfig`):
+                Specifies the resampling method and its customisation
+                parameters.
+
+        Returns:
+            :obj:`~yaw.core.SampledData`
+        """
         counts = self.count.sample_sum(config)
         totals = self.total.sample_sum(config)
         with LogCustomWarning(
@@ -692,6 +1006,12 @@ def pack_results(
     count_dict: dict[str, PatchedCount],
     total: PatchedTotal
 ) -> PairCountResult | dict[str, PairCountResult]:
+    """Pack pair counts and the total number of objects.
+     
+    If measured for multiple scales, the counts should be a dictionary of with
+    the scale name as key. In this case, the function returns a dictionary of
+    :obj:`PairCountResult` with the same keys.
+    """
     # drop the dictionary if there is only one scale
     if len(count_dict) == 1:
         count = tuple(count_dict.values())[0]

@@ -9,23 +9,35 @@ from yaw.redshifts import HistData
 
 @deprecated(reason="renamed to yaw.Config", action="module", version="2.3.2")
 class Configuration(Config):
-    """Deprecated, renamed to (:obj:`~yaw.Config`)"""
+    """
+    .. deprecated:: 2.3.2
+        Renamed to :meth:`yaw.Config`.
+    """
     pass
 
 
 @deprecated(reason="renamed to yaw.CorrData", action="module", version="2.3.2")
 class CorrelationData(CorrData):
-    """Deprecated, renamed to (:obj:`~yaw.CorrData`)"""
+    """
+    .. deprecated:: 2.3.2
+        Renamed to :meth:`yaw.CorrData`.
+    """
     pass
 
 
 @deprecated(reason="renamed to yaw.CorrFunc", action="module", version="2.3.2")
 class CorrelationFunction(CorrFunc):
-    """Deprecated, renamed to (:obj:`~yaw.CorrFunc`)"""
+    """
+    .. deprecated:: 2.3.2
+        Renamed to :meth:`yaw.CorrFunc`.
+    """
     pass
 
 
 @deprecated(reason="renamed to yaw.HistData", action="module", version="2.3.2")
 class HistogramData(HistData):
-    """Deprecated, renamed to (:obj:`~yaw.HistData`)"""
+    """
+    .. deprecated:: 2.3.2
+        Renamed to :meth:`yaw.HistData`.
+    """
     pass

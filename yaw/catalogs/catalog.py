@@ -9,7 +9,6 @@ import astropandas as apd
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.core.abc import PatchedQuantity
 from yaw.core.coordinates import Coordinate, CoordSky, DistSky
 from yaw.core.utils import long_num_format
 
@@ -28,7 +27,7 @@ class BackendError(Exception):
     pass
 
 
-class BaseCatalog(PatchedQuantity):
+class BaseCatalog:
     """The data catalog base class.
 
     Every new backend must implement a catalog class based on this abstract base

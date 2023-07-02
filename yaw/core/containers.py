@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable, Generic, NamedTuple, TypeVar
 import numpy as np
 import pandas as pd
 
-from yaw.core.abc import BinnedQuantity
+from yaw.core.abc import BinnedQuantity, concatenate_bin_edges
 from yaw.core.math import cov_from_samples
 from yaw.config import OPTIONS
 
@@ -70,14 +70,12 @@ class Indexer(Generic[_TK, _TV], Iterator):
 
 
 class PatchIDs(NamedTuple):
-    """Named tuple that can hold a pair of patch indices.
+    """Named tuple that can hold a pair of patch indices."""
 
-    Attributes:
-        id1 (int): First patch index.
-        id2 (int): Second patch index.
-    """
     id1: int
+    """First patch index."""
     id2: int
+    """Second patch index."""
 
 
 @dataclass(frozen=True)
@@ -118,16 +116,17 @@ class SampledValue(Generic[_Tscalar]):
         method (str):
             Resampling method used to obtain the data samples, see
             :class:`~yaw.ResamplingConfig` for available options.
-
-    Attributes:
-        error:
-            Uncertainty estimate for the value.
     """
 
     value: _Tscalar
+    """Numerical, scalar value."""
     samples: NDArray[_Tscalar]
+    """Samples of ``value`` obtained from resampling methods."""
     method: str
+    """Resampling method used to obtain the data samples, see
+    :class:`~yaw.ResamplingConfig` for available options."""
     error: _Tscalar = field(init=False)
+    """The uncertainty (standard error) of the value."""
 
     def __post_init__(self) -> None:
         if self.method not in OPTIONS.method:
@@ -184,16 +183,12 @@ class SampledData(BinnedQuantity):
         binning (:obj:`pandas.IntervalIndex`):
             The redshift bin edges used for this correlation function.
         data (:obj:`NDArray`):
-            The correlation function values.
+            The data values, one for each redshift bin.
         samples (:obj:`NDArray`):
-            The resampled correlation function values.
+            The resampled data values (e.g. jackknife or bootstrap samples).
         method (str):
             The resampling method used, see :class:`~yaw.ResamplingConfig` for
             available options.
-
-    Attributes:
-        covariance (:obj:`NDArray`):
-            Covariance matrix automatically computed from the resampled values.
 
     The container supports addition and subtraction, which return a new instance
     of the container, holding the modified data. This requires that both
@@ -214,10 +209,15 @@ class SampledData(BinnedQuantity):
     """
 
     binning: IntervalIndex
+    """The redshift bin edges used for this correlation function."""
     data: NDArray
+    """The data values, one for each redshift bin."""
     samples: NDArray
+    """Samples of the data values, shape (# samples, # bins)."""
     method: str
+    """The resampling method used."""
     covariance: NDArray = field(init=False)
+    """Covariance matrix automatically computed from the resampled values."""
 
     def __post_init__(self) -> None:
         if self.data.shape != (self.n_bins,):
@@ -270,17 +270,11 @@ class SampledData(BinnedQuantity):
 
     @property
     def bins(self: _Tdata) -> Indexer[int | slice | Sequence, _Tdata]:
-        """An indexer attribute that supports iteration over the bins or
-        selecting a subset of the bins.
-
-        Returns:
-            :obj:`~yaw.core.abc.Indexer`
-        """
         def builder(inst: _Tdata, item: int | slice | Sequence) -> _Tdata:
             if isinstance(item, int):
                 item = [item]
             # try to take subsets along bin axis
-            binning = inst.binning[item]
+            binning = inst.get_binning()[item]
             data = inst.data[item]
             samples = inst.samples[:, item]
             # determine which extra attributes need to be copied
@@ -336,6 +330,22 @@ class SampledData(BinnedQuantity):
                 raise ValueError("resampling method does not agree")
             return False
         return True
+
+    def concatenate_bins(self: _Tdata, *data: _Tdata) -> _Tdata:
+        for other in data:
+            self.is_compatible(other, require=True)
+        all_data: list[_Tdata] = [self, *data]
+        binning = concatenate_bin_edges(*all_data)
+        # concatenate data
+        data = np.concatenate([d.data for d in all_data])
+        samples = np.concatenate([d.samples for d in all_data], axis=1)
+        # determine which extra attributes need to be copied
+        init_attrs = {field.name for field in fields(self) if field.init}
+        copy_attrs = init_attrs - {"binning", "data", "samples"}
+
+        kwargs = dict(binning=binning, data=data, samples=samples)
+        kwargs.update({attr: getattr(self, attr) for attr in copy_attrs})
+        return self.__class__(**kwargs)
 
     def get_data(self) -> Series:
         """Get the data as :obj:`pandas.Series` with the binning as index."""
