@@ -1,5 +1,3 @@
-.. _api_catalogs:
-
 yaw.catalogs
 ============
 

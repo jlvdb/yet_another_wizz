@@ -411,26 +411,26 @@ def pair_count_result(patched_totals_full, patch_matrix_full):
     totals = patched_totals_full
     counts = patched_counts_from_matrix(
         totals.get_binning(), patch_matrix_full, auto=False)
-    return paircounts.PairCountResult(total=totals, count=counts)
+    return paircounts.NormalisedCounts(total=totals, count=counts)
 
 
-class TestPairCountResult:
+class TestNormalisedCounts:
 
     def test_init(self, patched_totals_full, patch_matrix_full):
         totals = patched_totals_full
         counts = patched_counts_from_matrix(
             totals.get_binning(), patch_matrix_full, auto=False)
-        res = paircounts.PairCountResult(total=totals, count=counts)
+        res = paircounts.NormalisedCounts(total=totals, count=counts)
         # wrong number of bins
         with raises(ValueError, match="bins"):
             counts = patched_counts_from_matrix(
                 totals.get_binning()[:-1], patch_matrix_full, auto=False)
-            paircounts.PairCountResult(total=totals, count=counts)
+            paircounts.NormalisedCounts(total=totals, count=counts)
         # wrong number of patches
         with raises(ValueError, match="patches"):
             counts = patched_counts_from_matrix(
                 totals.get_binning(), patch_matrix_full[:-1, :-1], auto=False)
-            paircounts.PairCountResult(total=totals, count=counts)
+            paircounts.NormalisedCounts(total=totals, count=counts)
         # just call once
         repr(res)
 
@@ -446,7 +446,7 @@ class TestPairCountResult:
         pair_count_result.to_hdf(tmp_hdf5)
         assert "count" in tmp_hdf5
         assert "total" in tmp_hdf5
-        restored = paircounts.PairCountResult.from_hdf(tmp_hdf5)
+        restored = paircounts.NormalisedCounts.from_hdf(tmp_hdf5)
         assert restored.n_bins == pair_count_result.n_bins
         assert restored.n_patches == pair_count_result.n_patches
         pdt.assert_index_equal(

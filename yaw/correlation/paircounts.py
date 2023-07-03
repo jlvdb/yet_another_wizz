@@ -6,6 +6,11 @@ redshift.
 The containers implement methods to compute total value (summing over all
 patches) and samples needed for error estimations after evaluating the
 correlation estimator (e.g. jackknife or bootstrap resampling).
+
+Finally, :obj:`NormalisedCounts` implements normalised pair counts and holds both
+a :obj:`PatchedCount` and :obj:`PatchedTotal` container. Its
+:meth:~NormalisedCounts.sample` method computes the ratio of
+counts-to-total-objects and samples thereof.
 """
 
 from __future__ import annotations
@@ -888,7 +893,7 @@ class PatchedCount(PatchedArray):
 
 
 @dataclass(frozen=True)
-class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
+class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
     """Container to store counts and the total number of objects obtained from
     measuring pair counts for a correlation function.
 
@@ -935,7 +940,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __neq__(self, other) -> bool:
         return not self == other
 
-    def __add__(self, other: PairCountResult) -> PairCountResult:
+    def __add__(self, other: NormalisedCounts) -> NormalisedCounts:
         count = self.count + other.count
         if (
             np.any(self.total.totals1 != other.total.totals1) or
@@ -945,29 +950,38 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 "total number of objects do not agree for operands")
         return self.__class__(count, self.total)
 
-    def __radd__(self, other: PairCountResult | int | float) -> PairCountResult:
+    def __radd__(
+        self,
+        other: NormalisedCounts | int | float
+    ) -> NormalisedCounts:
         if other == 0:
             return self
         else:
             return self.__add__(other)
 
-    def __mul__(self, other: np.number) -> PairCountResult:
+    def __mul__(self, other: np.number) -> NormalisedCounts:
         return self.__class__(self.count * other, self.total)
 
     @property
-    def bins(self) -> Indexer[TypeIndex, PairCountResult]:
-        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
+    def bins(self) -> Indexer[TypeIndex, NormalisedCounts]:
+        def builder(
+            inst: NormalisedCounts,
+            item: TypeIndex
+        ) -> NormalisedCounts:
             if isinstance(item, int):
                 item = [item]
-            return PairCountResult(
+            return NormalisedCounts(
                 count=inst.count.bins[item], total=inst.total.bins[item])
 
         return Indexer(self, builder)
 
     @property
-    def patches(self) -> Indexer[TypeIndex, PairCountResult]:
-        def builder(inst: PairCountResult, item: TypeIndex) -> PairCountResult:
-            return PairCountResult(
+    def patches(self) -> Indexer[TypeIndex, NormalisedCounts]:
+        def builder(
+            inst: NormalisedCounts,
+            item: TypeIndex
+        ) -> NormalisedCounts:
+            return NormalisedCounts(
                 count=inst.count.patches[item],
                 total=inst.total.patches[item])
 
@@ -1012,7 +1026,7 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return samples
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> PairCountResult:
+    def from_hdf(cls, source: h5py.Group) -> NormalisedCounts:
         count = PatchedCount.from_hdf(source["count"])
         total = PatchedTotal.from_hdf(source["total"])
         return cls(count=count, total=total)
@@ -1023,14 +1037,19 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
         group = dest.create_group("total")
         self.total.to_hdf(group)
 
-    def concatenate_patches(self, *pcounts: PairCountResult) -> PairCountResult:
+    def concatenate_patches(
+        self, *pcounts: NormalisedCounts
+    ) -> NormalisedCounts:
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]
         return self.__class__(
             count=self.count.concatenate_patches(*counts),
             total=self.total.concatenate_patches(*totals))
 
-    def concatenate_bins(self, *pcounts: PairCountResult) -> PairCountResult:
+    def concatenate_bins(
+        self, 
+        *pcounts: NormalisedCounts
+    ) -> NormalisedCounts:
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]
         return self.__class__(
@@ -1041,19 +1060,19 @@ class PairCountResult(PatchedQuantity, BinnedQuantity, HDFSerializable):
 def pack_results(
     count_dict: dict[str, PatchedCount],
     total: PatchedTotal
-) -> PairCountResult | dict[str, PairCountResult]:
+) -> NormalisedCounts | dict[str, NormalisedCounts]:
     """Pack pair counts and the total number of objects.
      
     If measured for multiple scales, the counts should be a dictionary of with
     the scale name as key. In this case, the function returns a dictionary of
-    :obj:`PairCountResult` with the same keys.
+    :obj:`NormalisedCounts` with the same keys.
     """
     # drop the dictionary if there is only one scale
     if len(count_dict) == 1:
         count = tuple(count_dict.values())[0]
-        result = PairCountResult(count=count, total=total)
+        result = NormalisedCounts(count=count, total=total)
     else:
         result = {}
         for scale_key, count in count_dict.items():
-            result[scale_key] = PairCountResult(count=count, total=total)
+            result[scale_key] = NormalisedCounts(count=count, total=total)
     return result

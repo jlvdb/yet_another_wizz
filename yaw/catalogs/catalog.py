@@ -16,7 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.catalogs import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
-    from yaw.correlation.paircounts import PairCountResult
+    from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
 
 
@@ -281,7 +281,7 @@ class BaseCatalog:
         other: _Tcat = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
-    ) -> PairCountResult | dict[str, PairCountResult]:
+    ) -> NormalisedCounts | dict[str, NormalisedCounts]:
         """Count pairs between objects at a given separation and in bins of
         redshift.
 

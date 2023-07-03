@@ -23,7 +23,7 @@ from yaw.core.math import apply_slice_ndim, cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
-from yaw.correlation.paircounts import PairCountResult, TypeIndex
+from yaw.correlation.paircounts import NormalisedCounts, TypeIndex
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.axis import Axis
@@ -304,13 +304,13 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     __eq__, __neq__, __add__, __radd__, __mul__ -> patched count?
 
     Args:
-        dd (:obj:`~yaw.correlation.paircounts.PairCountResult`):
+        dd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`):
             Pair counts for a data-data correlation measurement.
-        dr (:obj:`~yaw.correlation.paircounts.PairCountResult`, optional):
+        dr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
             Pair counts for a data-random correlation measurement.
-        rd (:obj:`~yaw.correlation.paircounts.PairCountResult`, optional):
+        rd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
             Pair counts for a random-data correlation measurement.
-        rr (:obj:`~yaw.correlation.paircounts.PairCountResult`, optional):
+        rr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
             Pair counts for a random-random correlation measurement.
 
     .. Note::
@@ -318,13 +318,13 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         least one is provided.
     """
 
-    dd: PairCountResult
+    dd: NormalisedCounts
     """dd"""
-    dr: PairCountResult | None = field(default=None)
+    dr: NormalisedCounts | None = field(default=None)
     """dr"""
-    rd: PairCountResult | None = field(default=None)
+    rd: NormalisedCounts | None = field(default=None)
     """rd"""
-    rr: PairCountResult | None = field(default=None)
+    rr: NormalisedCounts | None = field(default=None)
     """rr"""
 
     def __post_init__(self) -> None:
@@ -333,7 +333,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             raise ValueError("either 'dr', 'rd' or 'rr' is required")
         # check that the pair counts are compatible
         for kind in ("dr", "rd", "rr"):
-            pairs: PairCountResult | None = getattr(self, kind)
+            pairs: NormalisedCounts | None = getattr(self, kind)
             if pairs is None:
                 continue
             try:
@@ -406,7 +406,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 item = [item]
             kwargs = {}
             for field in fields(inst):
-                pairs: PairCountResult | None = getattr(inst, field.name)
+                pairs: NormalisedCounts | None = getattr(inst, field.name)
                 if pairs is None:
                     kwargs[field.name] = None
                 else:
@@ -422,7 +422,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         ) -> CorrFunc:
             kwargs = {}
             for field in fields(inst):
-                counts: PairCountResult | None = getattr(inst, field.name)
+                counts: NormalisedCounts | None = getattr(inst, field.name)
                 if counts is not None:
                     counts = counts.patches[item]
                 kwargs[field.name] = counts
@@ -521,7 +521,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             f"{'/'.join(self.estimators)}")
         return cls()  # return estimator class instance        
 
-    def _getattr_from_cts(self, cts: Cts) -> PairCountResult | None:
+    def _getattr_from_cts(self, cts: Cts) -> NormalisedCounts | None:
         if isinstance(cts, CtsMix):
             for code in str(cts).split("_"):
                 value = getattr(self, code)
@@ -605,13 +605,13 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     @classmethod
     def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrFunc:
-        def _try_load(root: h5py.Group, name: str) -> PairCountResult | None:
+        def _try_load(root: h5py.Group, name: str) -> NormalisedCounts | None:
             try:
-                return PairCountResult.from_hdf(root[name])
+                return NormalisedCounts.from_hdf(root[name])
             except KeyError:
                 return None
 
-        dd = PairCountResult.from_hdf(source["data_data"])
+        dd = NormalisedCounts.from_hdf(source["data_data"])
         dr = _try_load(source, "data_random")
         rd = _try_load(source, "random_data")
         rr = _try_load(source, "random_random")
@@ -623,7 +623,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         group_names = dict(
             dr="data_random", rd="random_data", rr="random_random")
         for kind, name in group_names.items():
-            data: PairCountResult | None = getattr(self, kind)
+            data: NormalisedCounts | None = getattr(self, kind)
             if data is not None:
                 group = dest.create_group(name)
                 data.to_hdf(group)

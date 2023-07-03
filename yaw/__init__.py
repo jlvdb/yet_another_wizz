@@ -12,4 +12,5 @@ from yaw.correlation import CorrData, CorrFunc, autocorrelate, crosscorrelate
 from yaw.redshifts import HistData, RedshiftData
 from yaw.randoms import UniformRandoms
 
-from yaw.deprecated import CorrelationFunction, CorrelationData, HistogramData
+from yaw.deprecated import (
+    CorrelationData, CorrelationFunction, HistogramData, PairCountResult)

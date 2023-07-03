@@ -21,7 +21,7 @@ from yaw.core.parallel import ParallelHelper
 from yaw.core.utils import (
     LimitTracker, job_progress_bar, long_num_format)
 from yaw.correlation.paircounts import (
-    PairCountResult, PatchedCount, PatchedTotal, pack_results)
+    NormalisedCounts, PatchedCount, PatchedTotal, pack_results)
 from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -369,7 +369,7 @@ class ScipyCatalog(BaseCatalog):
         other: ScipyCatalog | None = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False
-    ) -> PairCountResult | dict[str, PairCountResult]:
+    ) -> NormalisedCounts | dict[str, NormalisedCounts]:
         super().correlate(config, binned, other, linkage)
 
         auto = other is None
