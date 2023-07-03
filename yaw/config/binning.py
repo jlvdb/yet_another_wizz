@@ -112,7 +112,7 @@ class AutoBinningConfig(BaseBinningConfig):
 
     zbins: NDArray[np.float_]
     method: str = field(
-        default=DEFAULT.Config.binning.method,
+        default=DEFAULT.Configuration.binning.method,
         metadata=Parameter(
             choices=OPTIONS.binning,
             help="redshift binning method, 'logspace' means equal size in "

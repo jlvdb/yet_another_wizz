@@ -16,7 +16,7 @@ from numpy.typing import NDArray
 from treecorr import Catalog, NNCorrelation
 
 from yaw.catalogs import BaseCatalog
-from yaw.config import Config, ResamplingConfig
+from yaw.config import Configuration, ResamplingConfig
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.core.logging import TimedLog
 from yaw.correlation.paircounts import (
@@ -318,7 +318,7 @@ class TreecorrCatalog(BaseCatalog):
 
     def correlate(
         self,
-        config: Config,
+        config: Configuration,
         binned: bool,
         other: TreecorrCatalog = None,
         linkage: PatchLinkage | None = None,
@@ -409,7 +409,7 @@ class TreecorrCatalog(BaseCatalog):
 
     def true_redshifts(
         self,
-        config: Config,
+        config: Configuration,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
     ) -> HistData:

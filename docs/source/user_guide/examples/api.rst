@@ -51,13 +51,13 @@ catalog using the ``patches`` parameter:
 Measuring correlations
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Next we construct a central :class:`~yaw.config.Config` object that sets the
-minimal required parameters, the physical scales (in kpc)and the redshift
+Next we construct a central :class:`~yaw.config.Configuration` object that sets
+the minimal required parameters, the physical scales (in kpc)and the redshift
 binning that we want to use for the correlation measurements:
 
 .. code-block:: python
 
-    >>> config = yaw.Config.create(rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
+    >>> config = yaw.Configuration.create(rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
 
 Then we measure the correlation amplitudes using the
 :func:`~yaw.correlation.crosscorrelate` and

@@ -13,7 +13,7 @@ from yaw.core.cosmology import r_kpc_to_angle
 
 if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
-    from yaw.config import Config
+    from yaw.config import Configuration
 
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class PatchLinkage:
     @classmethod
     def from_setup(
         cls,
-        config: Config,
+        config: Configuration,
         catalog: BaseCatalog
     ) -> PatchLinkage:
         """Generate a new patch linkage.
@@ -61,7 +61,7 @@ class PatchLinkage:
         size of the patches).
 
         Args:
-            config (`~yaw.Config`):
+            config (`~yaw.Configuration`):
                 Configuration object that defines the scales and cosmology
                 needed to compute the maximum angular scale.
             catalog (:obj:`BaseCatalog`):

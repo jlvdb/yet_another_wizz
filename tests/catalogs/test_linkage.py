@@ -4,7 +4,7 @@ from pytest import fixture
 
 from yaw.catalogs import PatchLinkage
 from yaw.catalogs.linkage import LINK_ZMIN
-from yaw.config import Config
+from yaw.config import Configuration
 from yaw.core.coordinates import CoordSky, DistSky
 
 
@@ -47,7 +47,7 @@ class MockCatalog:
 
 @fixture
 def config():
-    return Config.create(
+    return Configuration.create(
         rmin=0.0000001, rmax=0.000001,  # some non-zero small value
         zbins=[0.01, 0.1])
 
@@ -162,17 +162,17 @@ class TestPatchLinkage:
             matrix_mask_nocross)
 
     def test_query_radius(self, catalog):
-        config = Config.create(
+        config = Configuration.create(
             rmin=1, rmax=8980,  # should barely exclude the four longest pairs
             zbins=[LINK_ZMIN, 0.1], crosspatch=False)
         assert len(PatchLinkage.from_setup(config, catalog)) == 20
         # distance between patches 0 and 5: approx. sqrt(20), with patch radius
         # 1 -> maximum query radius = 0.1561 rad to create overlap
-        config = Config.create(
+        config = Configuration.create(
             rmin=1, rmax=8980,  # should barely exclude the four longest pairs
             zbins=[LINK_ZMIN, 0.1])
         assert len(PatchLinkage.from_setup(config, catalog)) == 32
-        config = Config.create(
+        config = Configuration.create(
             rmin=1, rmax=8990,  # should be just enough to include all
             zbins=[LINK_ZMIN, 0.1])
         assert len(PatchLinkage.from_setup(config, catalog)) == 36

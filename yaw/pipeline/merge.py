@@ -12,7 +12,8 @@ import pandas as pd
 from collections.abc import Sequence
 
 from yaw.config import (
-    Config, ManualBinningConfig, ScalesConfig, default as DEFAULT, OPTIONS)
+    Configuration, ManualBinningConfig, ScalesConfig,
+    default as DEFAULT, OPTIONS)
 from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrFunc
 from yaw.redshifts import HistData
@@ -41,7 +42,7 @@ def all_equal(iterable: Iterable) -> bool:
 def merge_config(
     projects: Sequence[YawDirectory],
     merge_binning: bool = True
-) -> Config:
+) -> Configuration:
     if len(projects) == 0:
         raise ValueError("'projects' is an empty sequence")
 
@@ -86,7 +87,7 @@ def merge_config(
     else:
         bin_config = config.binning  # all identical
 
-    config = Config(
+    config = Configuration(
         scales=ScalesConfig(
             rmin=[r for r, _ in common],
             rmax=[r for _, r in common],
@@ -327,7 +328,7 @@ class MergedDirectory(YawDirectory):
     def to_dict(self) -> dict[str, Any]:
         # strip default values from config
         configuration = compress_config(
-            self._config.to_dict(), DEFAULT.Config.__dict__)
+            self._config.to_dict(), DEFAULT.Configuration.__dict__)
         setup = dict(
             configuration=configuration,
             sources=[str(fpath) for fpath in self._sources],

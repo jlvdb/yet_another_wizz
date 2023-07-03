@@ -15,7 +15,7 @@ from yaw.core.utils import long_num_format
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
     from yaw.catalogs import PatchLinkage
-    from yaw.config import Config, ResamplingConfig
+    from yaw.config import Configuration, ResamplingConfig
     from yaw.correlation.paircounts import PairCountResult
     from yaw.redshifts import HistData
 
@@ -276,7 +276,7 @@ class BaseCatalog:
     @abstractmethod
     def correlate(
         self,
-        config: Config,
+        config: Configuration,
         binned: bool,
         other: _Tcat = None,
         linkage: PatchLinkage | None = None,
@@ -293,7 +293,7 @@ class BaseCatalog:
         configuration and the mid of the current redshift bin.
 
         Args:
-            config (:obj:`yaw.Config`):
+            config (:obj:`yaw.Configuration`):
                 Configuration object that defines measurement scales, redshift
                 binning, cosmological model, and various backend specific
                 parameters.
@@ -334,7 +334,7 @@ class BaseCatalog:
     @abstractmethod
     def true_redshifts(
         self,
-        config: Config,
+        config: Configuration,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
     ) -> HistData:
@@ -343,7 +343,7 @@ class BaseCatalog:
         the provided configuration.
 
         Args:
-            config (:obj:`~yaw.config.Config`):
+            config (:obj:`~yaw.config.Configuration`):
                 Defines the bin edges used for the histogram.
             sampling_config (:obj:`~yaw.config.ResamplingConfig`, optional):
                 Specifies the spatial resampling for error estimates.

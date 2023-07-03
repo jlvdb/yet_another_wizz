@@ -32,7 +32,7 @@ class Backend:
     rbin_slop = 0.01
 
 
-class Config:
+class Configuration:
     scales = Scales
     binning = AutoBinning
     backend = Backend

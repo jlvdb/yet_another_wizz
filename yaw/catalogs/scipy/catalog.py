@@ -12,7 +12,7 @@ import pandas as pd
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy.patches import (
     PatchCatalog, patch_id_from_path, create_patches, assign_patches)
-from yaw.config import Config, ResamplingConfig
+from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
 from yaw.core.cosmology import Scale
@@ -364,7 +364,7 @@ class ScipyCatalog(BaseCatalog):
 
     def correlate(
         self,
-        config: Config,
+        config: Configuration,
         binned: bool,
         other: ScipyCatalog | None = None,
         linkage: PatchLinkage | None = None,
@@ -443,7 +443,7 @@ class ScipyCatalog(BaseCatalog):
 
     def true_redshifts(
         self,
-        config: Config,
+        config: Configuration,
         sampling_config: ResamplingConfig | None = None,
         progress: bool = False
     ) -> HistData:

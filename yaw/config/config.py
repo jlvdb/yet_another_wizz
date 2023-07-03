@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Config(DictRepresentation):
+class Configuration(DictRepresentation):
     """The central configration for correlation measurements.
 
     Bundles the configuration of measurement scales, redshift binning, and
@@ -46,7 +46,7 @@ class Config(DictRepresentation):
 
         To access e.g. the lower measurement scale limit, use
 
-        >>> Config.scales.rmin
+        >>> Configuration.scales.rmin
         ...
 
         which accesses the :obj:`ScalesConfig.rmin` attribute.
@@ -72,7 +72,7 @@ class Config(DictRepresentation):
     backend: BackendConfig = field(default_factory=BackendConfig)
     """The backend-specific configuration."""
     cosmology: TypeCosmology | str | None = field(
-        default=DEFAULT.Config.cosmology,
+        default=DEFAULT.Configuration.cosmology,
         metadata=Parameter(
             type=str, choices=OPTIONS.cosmology,
             help="cosmological model used for distance calculations",
@@ -98,23 +98,23 @@ class Config(DictRepresentation):
     def create(
         cls,
         *,
-        cosmology: TypeCosmology | str | None = DEFAULT.Config.cosmology,
+        cosmology: TypeCosmology | str | None = DEFAULT.Configuration.cosmology,
         # ScalesConfig
         rmin: ArrayLike,
         rmax: ArrayLike,
-        rweight: float | None = DEFAULT.Config.scales.rweight,
-        rbin_num: int = DEFAULT.Config.scales.rbin_num,
+        rweight: float | None = DEFAULT.Configuration.scales.rweight,
+        rbin_num: int = DEFAULT.Configuration.scales.rbin_num,
         # AutoBinningConfig / ManualBinningConfig
         zmin: ArrayLike = None,
         zmax: ArrayLike = None,
-        zbin_num: int | None = DEFAULT.Config.binning.zbin_num,
-        method: str = DEFAULT.Config.binning.method,
+        zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
+        method: str = DEFAULT.Configuration.binning.method,
         zbins: NDArray[np.float_] | None = None,
         # BackendConfig
-        thread_num: int | None = DEFAULT.Config.backend.thread_num,
-        crosspatch: bool = DEFAULT.Config.backend.crosspatch,
-        rbin_slop: float = DEFAULT.Config.backend.rbin_slop
-    ) -> Config:
+        thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
+        crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
+        rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop
+    ) -> Configuration:
         """Create a new configuration object.
 
         Except for the ``cosmology`` parameter, all other parameters are passed
@@ -164,7 +164,7 @@ class Config(DictRepresentation):
                 TreeCorr 'rbin_slop' parameter
     
         Returns:
-            :obj:`Config`
+            :obj:`Configuration`
         """
         cosmology = utils.parse_cosmology(cosmology)
         scales = ScalesConfig(
@@ -197,7 +197,7 @@ class Config(DictRepresentation):
         thread_num: int | None = DEFAULT.NotSet,
         crosspatch: bool | None = DEFAULT.NotSet,
         rbin_slop: float | None = DEFAULT.NotSet
-    ) -> Config:
+    ) -> Configuration:
         """Create a copy of the current configuration with updated parameter
         values.
 
@@ -283,10 +283,10 @@ class Config(DictRepresentation):
         cls,
         the_dict: dict[str, Any],
         **kwargs
-    ) -> Config:
+    ) -> Configuration:
         config = {k: v for k, v in the_dict.items()}
         cosmology = utils.parse_cosmology(config.pop(
-            "cosmology", DEFAULT.Config.cosmology))
+            "cosmology", DEFAULT.Configuration.cosmology))
         # parse the required subgroups
         try:
             scales = ScalesConfig.from_dict(config.pop("scales"))
@@ -327,7 +327,7 @@ class Config(DictRepresentation):
         return values
 
     @classmethod
-    def from_yaml(cls, path: str) -> Config:
+    def from_yaml(cls, path: str) -> Configuration:
         """from_yaml"""
         logger.info(f"reading configuration file '{path}'")
         with open(path) as f:

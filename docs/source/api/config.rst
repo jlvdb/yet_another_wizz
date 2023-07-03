@@ -19,7 +19,7 @@ yaw.config
     :toctree: config
     :template: custom-class-template.rst
 
-    Config
+    Configuration
     ScalesConfig
     AutoBinningConfig
     ManualBinningConfig

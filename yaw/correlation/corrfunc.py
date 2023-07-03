@@ -30,7 +30,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import IntervalIndex
     from yaw.catalogs import BaseCatalog
-    from yaw.config import Config
+    from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
 
 
@@ -711,7 +711,7 @@ def _check_patch_centers(catalogues: Sequence[BaseCatalog]) -> None:
 
 
 def autocorrelate(
-    config: Config,
+    config: Configuration,
     data: BaseCatalog,
     random: BaseCatalog,
     *,
@@ -725,7 +725,7 @@ def autocorrelate(
     object redshifts configured.
 
     Args:
-        config (:obj:`~yaw.Config`):
+        config (:obj:`~yaw.Configuration`):
             Provides all major run parameters.
         data (:obj:`~yaw.catalogs.BaseCatalog`):
             The data sample.
@@ -778,7 +778,7 @@ def autocorrelate(
 
 
 def crosscorrelate(
-    config: Config,
+    config: Configuration,
     reference: BaseCatalog,
     unknown: BaseCatalog,
     *,
@@ -794,7 +794,7 @@ def crosscorrelate(
     (reference) catalogue.
 
     Args:
-        config (:obj:`~yaw.Config`):
+        config (:obj:`~yaw.Configuration`):
             Provides all major run parameters.
         reference (:obj:`yaw.catalogs.BaseCatalog`):
             The reference sample.

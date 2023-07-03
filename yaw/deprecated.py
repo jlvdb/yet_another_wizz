@@ -2,18 +2,8 @@ from __future__ import annotations
 
 from deprecated import deprecated
 
-from yaw.config import Config
 from yaw.correlation import CorrData, CorrFunc
 from yaw.redshifts import HistData
-
-
-@deprecated(reason="renamed to yaw.Config", action="module", version="2.3.2")
-class Configuration(Config):
-    """
-    .. deprecated:: 2.3.2
-        Renamed to :meth:`yaw.Config`.
-    """
-    pass
 
 
 @deprecated(reason="renamed to yaw.CorrData", action="module", version="2.3.2")

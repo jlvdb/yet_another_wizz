@@ -14,7 +14,7 @@ from yaw.redshifts import RedshiftData
 from yaw.pipeline.data import MissingCatalogError
 
 if TYPE_CHECKING: ## pragma: no cover
-    from yaw.config import Config
+    from yaw.config import Configuration
     from yaw.pipeline.project import ProjectDirectory, ProjectState
 
 
@@ -31,7 +31,7 @@ _Tcd = dict[str, CorrData]
 
 
 def _cf_as_dict(
-    config: Config,
+    config: Configuration,
     cfs: CorrFunc | _Tcf
 ) -> _Tcf:
     if not isinstance(cfs, dict):
