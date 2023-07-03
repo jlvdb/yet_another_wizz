@@ -247,6 +247,7 @@ class Config(DictRepresentation):
         log: bool = True,
         legend: bool = True
     ) -> Figure:
+        """plot_scales"""
         import matplotlib.pyplot as plt
 
         fig, ax_scale = plt.subplots(1, 1)
@@ -327,12 +328,14 @@ class Config(DictRepresentation):
 
     @classmethod
     def from_yaml(cls, path: str) -> Config:
+        """from_yaml"""
         logger.info(f"reading configuration file '{path}'")
         with open(path) as f:
             config = yaml.safe_load(f.read())
         return cls.from_dict(config)
 
     def to_yaml(self, path: str) -> None:
+        """to_yaml"""
         logger.info(f"writing configuration file '{path}'")
         string = yaml.dump(self.to_dict())
         with open(path, "w") as f:

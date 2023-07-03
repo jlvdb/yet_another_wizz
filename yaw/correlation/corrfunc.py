@@ -304,13 +304,13 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     __eq__, __neq__, __add__, __radd__, __mul__ -> patched count?
 
     Args:
-        dd (:obj:`~yaw.paircounts.PairCountResult`):
+        dd (:obj:`~yaw.correlation.paircounts.PairCountResult`):
             Pair counts for a data-data correlation measurement.
-        dr (:obj:`~yaw.paircounts.PairCountResult`, optional):
+        dr (:obj:`~yaw.correlation.paircounts.PairCountResult`, optional):
             Pair counts for a data-random correlation measurement.
-        rd (:obj:`~yaw.paircounts.PairCountResult`, optional):
+        rd (:obj:`~yaw.correlation.paircounts.PairCountResult`, optional):
             Pair counts for a random-data correlation measurement.
-        rr (:obj:`~yaw.paircounts.PairCountResult`, optional):
+        rr (:obj:`~yaw.correlation.paircounts.PairCountResult`, optional):
             Pair counts for a random-random correlation measurement.
 
     .. Note::
@@ -319,9 +319,13 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     """
 
     dd: PairCountResult
+    """dd"""
     dr: PairCountResult | None = field(default=None)
+    """dr"""
     rd: PairCountResult | None = field(default=None)
+    """rd"""
     rr: PairCountResult | None = field(default=None)
+    """rr"""
 
     def __post_init__(self) -> None:
         # check if any random pairs are required
