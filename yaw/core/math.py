@@ -187,7 +187,9 @@ def shift_histogram(
     A: float = 1.0,
     dx: float = 0.0
 ) -> NDArray:
-    return A * rebin(bins+dx, bins, counts)
+    bins_old = bins.astype(np.float_)
+    bins_new = bins_old + dx
+    return A * _rebin(bins_new, bins_old, counts.astype(np.float_))
 
 
 def round_to(value: int, to: int) -> int:

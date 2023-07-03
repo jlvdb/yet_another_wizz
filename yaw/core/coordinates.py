@@ -104,7 +104,6 @@ class Coord3D(Coordinate):
         r_d3 = np.sqrt(x*x + y*y + z*z)
         # transform
         ra = np.arccos(x / r_d2) * sgn(y) % (2.0*np.pi)
-        isnan = np.isnan(ra)
         ra[np.isnan(ra)] = 0.0
         dec = np.arcsin(self.z / r_d3)
         return CoordSky(ra, dec)
