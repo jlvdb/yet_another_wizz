@@ -174,6 +174,7 @@ class TreecorrCatalog(BaseCatalog):
 
     @classmethod
     def from_treecorr(cls, cat: Catalog) -> TreecorrCatalog:
+        """Create a new instace from a :obj:`treecorr.Catalog`."""
         new = cls.__new__(cls)
         new._catalog = cat
         new._make_patches()
@@ -186,6 +187,7 @@ class TreecorrCatalog(BaseCatalog):
             c.get_patches(low_mem=low_mem)
 
     def to_treecorr(self) -> Catalog:
+        """Get the internal :obj:`treecorr.Catalog` instance."""
         return self._catalog
 
     def __len__(self) -> int:
@@ -290,6 +292,21 @@ class TreecorrCatalog(BaseCatalog):
         z_bins: NDArray[np.float_],
         allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, TreecorrCatalog | EmptyCatalog]]:
+        """Iterate the catalogue in bins of redshift.
+
+        Args:
+            z_bins (:obj:`NDArray`):
+                Edges of the redshift bins.
+            allow_no_redshift (:obj:`bool`):
+                If true and the data has no redshifts, the iterator yields the
+                whole catalogue at each iteration step.
+
+        Yields:
+            (tuple): tuple containing:
+                - **intv** (:obj:`pandas.Interval`): the selection for this bin.
+                - **cat** (:obj:`TreecorrCatalog`): instance containing the data
+                  for this bin.
+        """
         if not allow_no_redshift and not self.has_redshifts():
             raise ValueError("no redshifts for iteration provdided")
         if allow_no_redshift:
