@@ -24,17 +24,17 @@ class ResamplingConfig(DictRepresentation):
     for different data products that use the same patches.
 
     Args:
-        method (str):
+        method (:obj:`str`):
             Resampling method to use, see
             :obj:`~yaw.config.options.Options.method`.
-        crosspath (str):
+        crosspath (:obj:`str`):
             Whether to use cross-patch pair count measurements.
-        n_boot (int):
+        n_boot (:obj:`int`):
             Number of samples to generate for the ``bootstrap`` method.
-        global_norm (bool):
+        global_norm (:obj:`bool`):
             Whether to normalise paircounts globally or for each sample. Usually
             not recommended.
-        seed (int):
+        seed (:obj:`int`):
             Random seed to use.
     """
 
@@ -97,7 +97,7 @@ class ResamplingConfig(DictRepresentation):
         selected resampling method.
 
         Args:
-            n_patches (int):
+            n_patches (:obj:`int`):
                 Total number of patches for which the samples are generated.
 
         .. Note::

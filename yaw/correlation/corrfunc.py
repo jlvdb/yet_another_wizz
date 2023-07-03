@@ -1,3 +1,7 @@
+"""
+Advanced arithmetic
+"""
+
 from __future__ import annotations
 
 import logging
@@ -41,8 +45,11 @@ class CorrData(SampledData):
     """Container for correlation function data.
 
     Contains the redshift binning, correlation function amplitudes, and
-    resampled values (e.g. jackknife or bootstrap). The resampled values are
+    resampled amplitude (e.g. jackknife or bootstrap). The resampled values are
     used to compute error estimates and covariance/correlation matrices.
+    Provides some plotting methods for convenience.
+
+    __neq__, __eq__, __add__, __sub__ -> sampled data?
 
     Args:
         binning (:obj:`pandas.IntervalIndex`):
@@ -51,10 +58,10 @@ class CorrData(SampledData):
             The correlation function values.
         samples (:obj:`NDArray`):
             The resampled correlation function values.
-        method (str):
+        method (:obj:`str`):
             The resampling method used, see :class:`~yaw.ResamplingConfig` for
             available options.
-        info (str, optional):
+        info (:obj:`str`, optional):
             Descriptive text included in the headers of output files produced
             by :func:`CorrData.to_files`.
     """
@@ -294,6 +301,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     correlation function values using spatial resampling (see
     :class:`~yaw.ResamplingConfig` and :class:`~yaw.CorrData`).
 
+    __eq__, __neq__, __add__, __radd__, __mul__ -> patched count?
+
     Args:
         dd (:obj:`~yaw.paircounts.PairCountResult`):
             Pair counts for a data-data correlation measurement.
@@ -436,11 +445,11 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         Args:
             other (:obj:`BinnedQuantity`):
                 Object instance to compare to.
-            require (bool)
+            require (:obj:`bool`)
                 Raise a ValueError if any of the checks fail.
         
         Returns:
-            bool
+            :obj:`bool`
         """
         if self.dd.n_patches != other.dd.n_patches:
             if require:
@@ -454,7 +463,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         which pair counts are available.
         
         Returns:
-            dict: Mapping from correlation estimator name abbreviation to
+            :obj:`dict`: Mapping from correlation estimator name abbreviation to
             correlation function class.
         """
         # figure out which of dd, dr, ... are not None
@@ -541,11 +550,11 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 Specify the resampling method and its configuration.
         
         Keyword Args:
-            estimator (str, optional):
+            estimator (:obj:`str`, optional):
                 The name abbreviation for the correlation estimator to use.
                 Defaults to Landy-Szalay if RR is available, otherwise to
                 Davis-Peebles.
-            info (str, optional):
+            info (:obj:`str`, optional):
                 Descriptive text passed on to the output :obj:`CorrData`
                 object.
 
@@ -725,9 +734,9 @@ def autocorrelate(
             be correlated given the measurement scales. Ensures consistency
             when measuring multiple correlations, otherwise generated
             automatically.
-        compute_rr (bool):
+        compute_rr (:obj:`bool`):
             Whether the random-random (RR) pair counts are computed.
-        progress (bool):
+        progress (:obj:`bool`):
             Display a progress bar.
 
     Returns:
@@ -799,7 +808,7 @@ def crosscorrelate(
             be correlated given the measurement scales. Ensures consistency
             when measuring multiple correlations, otherwise generated
             automatically.
-        progress (bool):
+        progress (:obj:`bool`):
             Display a progress bar.
 
     Returns:

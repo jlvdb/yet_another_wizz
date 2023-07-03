@@ -15,12 +15,12 @@ class BackendConfig(DictRepresentation):
     """Configuration of backends used for correlation measurements.
     
     Args:
-        thread_num (int, optional):
+        thread_num (:obj:`int`, optional):
             Number of threads to use for parallel processing.
-        crosspatch (bool, optional):
+        crosspatch (:obj:`bool`, optional):
             Whether to count pairs across patch boundaries (``scipy`` backend
             only).
-        rbin_slop (int, optional):
+        rbin_slop (:obj:`int`, optional):
             `TreeCorr` ``rbin_slop`` parameter (``treecorr`` backend only).
     """
 

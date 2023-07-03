@@ -154,7 +154,7 @@ class BaseCatalog:
 
     @abstractproperty
     def ids(self) -> list[int]:
-        """Return a list of unique patch indices in the catalog"""
+        """Return a list of unique patch indices in the catalog."""
         pass
 
     @abstractmethod
@@ -297,7 +297,7 @@ class BaseCatalog:
                 Configuration object that defines measurement scales, redshift
                 binning, cosmological model, and various backend specific
                 parameters.
-            binned (bool):
+            binned (:obj:`bool`):
                 Whether to apply the redshift binning to the second catalogue
                 (see ``other``).
             other (Catalog instance, optional):
@@ -308,7 +308,7 @@ class BaseCatalog:
                 a given scales and which patch combinations can be skipped. Can
                 be used for the ``scipy`` backend to count pairs consistently
                 between multiple catalogue instances.
-            progress (bool):
+            progress (:obj:`bool`):
                 Show a progress indication, depends on backend.
 
         There are three different modes of operation that are determined by the
@@ -347,7 +347,7 @@ class BaseCatalog:
                 Defines the bin edges used for the histogram.
             sampling_config (:obj:`~yaw.config.ResamplingConfig`, optional):
                 Specifies the spatial resampling for error estimates.
-            progress (bool):
+            progress (:obj:`bool`):
                 Show a progress bar.
 
         Returns:

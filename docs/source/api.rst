@@ -8,6 +8,9 @@ This is a documentation of the most important parts of the *yet_another_wizz*
 :ref:`user guide<guide>`. The flowchart below roughly indicates the rough
 relationship between the most import data containers.
 
+A recommended entry point to the API reference are the :mod:`yaw.correlation`
+and :mod:`yaw.catalogs` module.
+
 
 .. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
     :margin: 0

@@ -29,9 +29,12 @@ def outer_triu_sum(
     k: int = 0,
     axis: int | None = None
 ) -> NDArray:
-    """
+    """...
+
     Equivalent to
-        np.triu(np.outer(a, b), k).sum(axis)
+    
+    >>> np.triu(np.outer(a, b), k).sum(axis)
+    
     but supports extra dimensions in a and b and does not construct the full
     outer product matrix.
     """

@@ -146,11 +146,11 @@ class BinnedQuantity(ABC):
         Args:
             other (:obj:`BinnedQuantity`):
                 Object instance to compare to.
-            require (bool, optional)
+            require (:obj:`bool`, optional)
                 Raise a ValueError if any of the checks fail.
         
         Returns:
-            bool
+            :obj:`bool`
         """
         if not isinstance(other, self.__class__):
             raise TypeError(
@@ -195,9 +195,9 @@ def concatenate_bin_edges(*patched: BinnedQuantity) -> IntervalIndex:
 
     The input containers are automatically sorted by the lowest edge of the
     redshift binning. Necessary condidtions for mergning are are that the patch
-    numbers are identical and that the resulting is contiguous and non-overlapping, i.e.
-    the final edge of the previous binning must be identical to the lowest edge
-    of the next binning.
+    numbers are identical and that the resulting is contiguous and
+    non-overlapping, i.e. the final edge of the previous binning must be
+    identical to the lowest edge of the next binning.
     """
     patched = sorted([p for p in patched], key=lambda p: p.edges[0])
     reference = patched[0]
@@ -247,7 +247,7 @@ class HDFSerializable(ABC):
         """Create a class instance by deserialising data from a HDF5 file.
 
         Args:
-            path (:obj:`pathlib.Path`, str):
+            path (:obj:`pathlib.Path`, :obj:`str`):
                 Group in an opened HDF5 file that contains the necessary data.
 
         Returns:
@@ -260,7 +260,7 @@ class HDFSerializable(ABC):
         """Serialise the class instance to a new HDF5 file.
 
         Args:
-            path (:obj:`pathlib.Path`, str):
+            path (:obj:`pathlib.Path`, :obj:`str`):
                 Path at which the HDF5 file is created.
         """
         with h5py.File(str(path), mode="w") as f:
@@ -283,7 +283,7 @@ class DictRepresentation(ABC):
         minimally required data.
         
         Args:
-            the_dict (dict):
+            the_dict (:obj:`dict`):
                 Dictionary containing the data.
             **kwargs: Additional data needed to construct the class instance.
         """
@@ -294,6 +294,6 @@ class DictRepresentation(ABC):
         of required data.
 
         Returns:
-            dict
+            :obj:`dict`
         """
         return asdict(self)

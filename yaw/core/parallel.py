@@ -80,6 +80,7 @@ class SharedArray:
 
 
 POOL_SHARE = dict()
+"""Global variable ..."""
 
 
 def _threadinit(

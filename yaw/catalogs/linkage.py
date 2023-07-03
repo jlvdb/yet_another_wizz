@@ -129,15 +129,15 @@ class PatchLinkage:
         """Get a list of linked patch pairs.
 
         Args:
-            auto (bool):
+            auto (:obj:`bool`):
                 For autocorrelation measurements, only visit patch pairs where
                 patch ID1 >= ID2.
-            crosspatch (bool):
+            crosspatch (:obj:`bool`):
                 If false, ignore all cross-patch pair counts and link patches
                 just with themselves.
 
         Returns:
-            list[:obj:`PatchIDs`]
+            :obj:`list[PatchIDs]`
         """
         if crosspatch:
             if auto:
@@ -177,7 +177,7 @@ class PatchLinkage:
             collection2 (:obj:`BaseCatalog`, optional):
                 Second catalog for patch linkage. If not provided, returns a
                 matrix for an autocorrelation case.
-            crosspatch (bool):
+            crosspatch (:obj:`bool`):
                 Link patches just with themselves and ignore cross-patch pairs.
 
         Returns:
@@ -218,7 +218,7 @@ class PatchLinkage:
             collection2 (:obj:`BaseCatalog`, optional):
                 Second catalog for patch linkage. If not provided, returns a
                 matrix for an autocorrelation case.
-            crosspatch (bool):
+            crosspatch (:obj:`bool`):
                 Link patches just with themselves and ignore cross-patch pairs.
 
         Returns:

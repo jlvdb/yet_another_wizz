@@ -40,7 +40,7 @@ class SphericalKDTree:
                 converted to 3D coordinates if needed.
             weights (:obj:`NDArray`, optional):
                 Individual weights for the points.
-            leafsize (int, optional):
+            leafsize (:obj:`int`, optional):
                 Size at which branches of the KDTree are considered leaf nodes
                 with no further childs.
         """
@@ -91,7 +91,7 @@ class SphericalKDTree:
                 Array with angular scales in radian with shape (2, N). The
                 scales are provided as at least one tuple of minimum and maximum
                 angular scale.
-            dist_weight_scale (float, optional):
+            dist_weight_scale (:obj:`float`, optional):
                 The power-law index for the radial weighting.
             weight_res (:obj:`NDArray`):
                 The number of logarithmic angular bins used to compute the

@@ -41,7 +41,8 @@ class Config(DictRepresentation):
         The structure and meaning of the parameters is described in more detail
         in the specialised configuration objects :obj:`ScalesConfig`,
         :obj:`AutoBinningConfig` / :obj:`ManualBinningConfig`,
-        :obj:`BackendConfig`, which are stored as class attributes.
+        :obj:`BackendConfig`, which are stored as class attributes
+        :obj:`scales`, :obj:`binning`, and :obj:`backend`.
 
         To access e.g. the lower measurement scale limit, use
 
@@ -52,6 +53,16 @@ class Config(DictRepresentation):
 
     A new instance should be constructed with the :meth:`create` method or
     as a modified variant with the :meth:`modify` method.
+
+    Args:
+        scales (:obj:`~yaw.config.ScalesConfig`):
+            The configuration of the measurement scales.
+        binning (:obj:`~yaw.config.AutoBinningConfig`, :obj:`~yaw.config.ManualBinningConfig`):
+            The redshift binning configuration.
+        backend (:obj:`~yaw.config.BackendConfig`):
+            The backend-specific configuration.
+        cosmology (:obj:`astropy.cosmology.FLRW`, :obj:`~yaw.core.cosmology.CustomCosmology`, :obj:`str`, :obj:`None`, optional)
+            The cosmological model for distance calculations.
     """
 
     scales: ScalesConfig
@@ -93,7 +104,7 @@ class Config(DictRepresentation):
         rmax: ArrayLike,
         rweight: float | None = DEFAULT.Config.scales.rweight,
         rbin_num: int = DEFAULT.Config.scales.rbin_num,
-        # AutoBinningConfig /  ManualBinningConfig
+        # AutoBinningConfig / ManualBinningConfig
         zmin: ArrayLike = None,
         zmax: ArrayLike = None,
         zbin_num: int | None = DEFAULT.Config.binning.zbin_num,
@@ -121,35 +132,35 @@ class Config(DictRepresentation):
         Otherwise, only ``rmin`` and ``rmax`` are required arguments.
 
         Keyword Args:
-            cosmology (optional):
+            cosmology (:obj:`astropy.cosmology.FLRW`, :obj:`~yaw.core.cosmology.CustomCosmology`, :obj:`str`, :obj:`None`, optional):
                 Named astropy cosmology used to compute distances. For options
                 see :obj:`~yaw.config.options.Options.cosmology`.
             rmin (:obj:`ArrayLike`):
                 (List of) lower scale limit in kpc (pyhsical).
             rmax (:obj:`ArrayLike`):
                 (List of) upper scale limit in kpc (pyhsical).
-            rweight (float, optional):
+            rweight (:obj:`float`, optional):
                 Weight galaxy pairs by their separation to power 'rweight'.
-            rbin_num (int, optional):
+            rbin_num (:obj:`int`, optional):
                 Number of bins in log r used (i.e. resolution) to compute
                 distance weights.
-            zmin (float):
+            zmin (:obj:`float`):
                 Lower redshift limit.
-            zmax (float):
+            zmax (:obj:`float`):
                 Upper redshift limit.
-            zbin_num (int, optional):
+            zbin_num (:obj:`int`, optional):
                 Number of redshift bins
-            method (str, optional):
+            method (:obj:`str`, optional):
                 Method used to generate the redshift binning. For options see
                 :obj:`~yaw.config.options.Options.binning`.
             zbins (:obj:`NDArray`, optional):
                 Manually define redshift bin edges.
-            thread_num (int, optional):
+            thread_num (:obj:`int`, optional):
                 Default number of threads to use.
-            crosspatch (bool, optional):
+            crosspatch (:obj:`bool`, optional):
                 whether to count pairs across patch boundaries (scipy backend
                 only)
-            rbin_slop (float, optional):
+            rbin_slop (:obj:`float`, optional):
                 TreeCorr 'rbin_slop' parameter
     
         Returns:

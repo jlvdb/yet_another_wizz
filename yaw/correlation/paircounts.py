@@ -58,11 +58,11 @@ def check_mergable(
     or binning axis.
     
     Args:
-        patched_arrays (Sequence[PatchedArray]):
+        patched_arrays (:obj:`Sequence[PatchedArray]`):
             Instances to merge
     
     Keyword args:
-        patches (bool):
+        patches (:obj:`bool`):
             Whether to check for merging patches or binning.
     """
     reference = patched_arrays[0]
@@ -278,6 +278,27 @@ class PatchedTotal(PatchedArray):
         *,
         auto: bool
     ) -> None:
+        """Construct a new instance from the total number of objects in the
+        first and second catalog.
+
+        Args:
+            binning (:obj:`pandas.IntervalIndex`):
+                The redshift binning applied to the data.
+            totals1 (:obj:`NDArray`):
+                The total number of objects from the first data catalogue per
+                patch and redshift bin. The array must be of shape (N, K), where
+                N is the number of spatial patches, and K is the number of
+                redshift bins.
+            totals2 (:obj:`NDArray`):
+                The total number of objects from the second data catalogue per
+                patch and redshift bin. The array must be of shape (N, K), where
+                N is the number of spatial patches, and K is the number of
+                redshift bins.
+
+        Keyword Args:
+            auto (:obj:`bool`):
+                Whether the data originates from an autocorrelation measurement.                
+        """
         self._binning = binning
         for i, totals in enumerate((totals1, totals2), 1):
             if totals.ndim != 2:
@@ -517,6 +538,21 @@ class PatchedCount(PatchedArray):
         *,
         auto: bool,
     ) -> None:
+        """Construct a new instance from an existing pair count array.
+
+        Args:
+            binning (:obj:`pandas.IntervalIndex`):
+                The redshift binning applied to the data.
+            counts (:obj:`NDArray`):
+                Internal data array containing the pair counts between spatial
+                patches in bins of redshift. The array must be 3-dimensional
+                with shape (N, N, K), where N is the number of spatial patches,
+                and K is the number of redshift bins. Same as :meth:`as_array`.
+
+        Keyword Args:
+            auto (:obj:`bool`):
+                Whether the data originates from an autocorrelation measurement.                
+        """
         if counts.ndim != 3 or counts.shape[0] != counts.shape[1]:
             raise IndexError(
                 "counts must be of shape (n_patches, n_patches, n_bins)")
@@ -543,12 +579,12 @@ class PatchedCount(PatchedArray):
             binning (:obj:`pandas.IntervalIndex`):
                 Redshift binning for the container, determines size of last data
                 array dimension.
-            n_patches (int):
+            n_patches (:obj:`int`):
                 Number of spatial patches, determines the size of the first two
                 data array dimensions.
         
         Keyword Args:
-            auto (bool):
+            auto (:obj:`bool`):
                 Whether the data originates from an autocorrelation measurement.
             dtype (:obj:`DTypeLike`, optional):
                 Data type to use for the internal data array.
@@ -612,7 +648,7 @@ class PatchedCount(PatchedArray):
         """Shorthand for :meth:`PatchedCount.counts.sum`
         
         Args:
-            axis (tuple, int, optional):
+            axis (:obj:`tuple`, :obj:`int`, optional):
                 Axis over which the internal 3-dimensional data array is summed.
             **kwargs:
                 Keyword arguments passed to :meth:`numpy.ndarry.sum`.

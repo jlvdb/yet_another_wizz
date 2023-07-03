@@ -101,6 +101,13 @@ class AutoBinningConfig(BaseBinningConfig):
     """Configuration that generates a redshift binning.
     
     To generate a redshift binning use the :meth:`generate` method.
+
+    Args:
+        zbins (:obj:`NDArray`):
+            Edges of redshift bins, must increase monotonically.
+        method (:obj:`str`):
+            Method used to create redshift binning, either of
+            :obj:`~yaw.config.options.Options.binning`.
     """
 
     zbins: NDArray[np.float_]
@@ -157,13 +164,13 @@ class AutoBinningConfig(BaseBinningConfig):
         default is a linear spacing.
 
         Args:
-            zmin (float):
+            zmin (:obj:`float`):
                 Minimum redshift, lowest redshift edge.
-            zmax (float):
+            zmax (:obj:`float`):
                 Maximum redshift, highest redshift edge.
-            zbin_num (int, optional):
+            zbin_num (:obj:`int`, optional):
                 Number of redshift bins to generate.
-            method (str, optional):
+            method (:obj:`str`, optional):
                 Method used to create redshift binning, for a list of valid
                 options and their description see
                 :obj:`~yaw.config.options.Options.binning`.
@@ -194,7 +201,7 @@ class AutoBinningConfig(BaseBinningConfig):
         minimally required data.
         
         Args:
-            the_dict (dict):
+            the_dict (:obj:`dict`):
                 Dictionary containing the data.
             cosmology (:obj:`astropy.cosmology.FLRW`, :obj:`~yaw.core.cosmology.CustomCosmology`, optional):
                 Cosmological model used for distance calculations. For a custom

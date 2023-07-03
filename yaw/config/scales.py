@@ -36,15 +36,15 @@ class ScalesConfig(DictRepresentation):
     can be controlled by setting the number of bins.
 
     Args:
-        rmin (float, Sequence[float]):
+        rmin (:obj:`float`, :obj:`Sequence[float]`):
             Single or multiple lower scale limits in kpc (angular diameter
             distance).
-        rmax (float, Sequence[float]):
+        rmax (:obj:`float`, :obj:`Sequence[float]`):
             Single or multiple upper scale limits in kpc (angular diameter
             distance).
-        rweight (float, optional):
+        rweight (:obj:`float`, optional):
             Power-law exponent used to weight pairs by their separation.
-        rbin_num (int, optional):
+        rbin_num (:obj:`int`, optional):
             Number of radial logarithmic bin used to approximate the weighting
             by separation.
     """

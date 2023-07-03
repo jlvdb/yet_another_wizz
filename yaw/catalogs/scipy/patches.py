@@ -43,16 +43,12 @@ class PatchCatalog:
     restoring from disk. Data is temporarily saved to a .feather file, making
     it easy to pass patches to new threads and processes, which can, load the
     data back into memory if necessary.
-
-    Attr:
-        cachefile (str, None):
-            The patch to the cached .feather data file if caching is enabled.
-        id (int):
-            Unique index of the patch.
     """
 
     id = 0
+    """Unique index of the patch."""
     cachefile = None
+    """The patch to the cached .feather data file if caching is enabled."""
     _data = pd.DataFrame()
     _len = 0
     _total = None
@@ -76,13 +72,13 @@ class PatchCatalog:
         cache file is created and the data is dropped from memory.     
 
         Args:
-            id (int):
+            id (:obj:`int`):
                 Unique index of the patch.
             data (:obj:`pandas.DataFrame`):
                 Data frame with columns ``ra``, ``dec`` (by default assumed to
                 be in degrees) and optionally ``weights``, ``redshift`` if
                 either data is available.
-            cachefile (str, optional):
+            cachefile (:obj:`str`, optional):
                 If provided, the data is cached as .feather file at this path.
             center (:obj:`yaw.core.coordiante.Coordiante`, optional):
                 Center coordinates of the patch. Computed automatically if not
@@ -90,7 +86,7 @@ class PatchCatalog:
             radius (:obj:`yaw.core.coordiante.Distance`, optional):
                 The angular size of the patch. Computed automatically if not
                 provided.
-            degrees (bool):
+            degrees (:obj:`bool`):
                 Whether the input coordinates ``ra``, ``dec`` are in degrees.
         """
         self.id = id
@@ -171,7 +167,7 @@ class PatchCatalog:
         recomputing these quantities.
 
         Args:
-            cachefile (str):
+            cachefile (:obj:`str`):
                 Path to the cach file (.feather)
             center (:obj:`yaw.core.coordiante.Coordiante`, optional):
                 Center coordinates of the patch. Computed automatically if not
@@ -327,14 +323,14 @@ class PatchCatalog:
         Args:
             z_bins (:obj:`NDArray`):
                 Edges of the redshift bins.
-            allow_no_redshift (bool):
+            allow_no_redshift (:obj:`bool`):
                 If true and the data has no redshifts, the iterator yields the
                 whole patch at each iteration step.
 
         Yields:
             (tuple): tuple containing:
                 - **intv** (:obj:`pandas.Interval`): the selection for this bin.
-                - **cat** ():obj:`PatchCatalog`): instance containing the data
+                - **cat** (:obj:`PatchCatalog`): instance containing the data
                   for this bin.
         """
         if not allow_no_redshift and not self.has_redshifts():

@@ -47,7 +47,7 @@ class NewCatalog:
         """Create a new catalogue factory.
 
         Args:
-            backend (str):
+            backend (:obj:`str`):
                 Specify the backend for which the catalog instances should be
                 produced for. For availble options see
                 :attr:`~yaw.config.options.Options.backend`.
@@ -87,13 +87,13 @@ class NewCatalog:
         Args:
             data (:obj:`pandas.Dataframe`):
                 Holds the catalog data.
-            ra_name (str):
+            ra_name (:obj:`str`):
                 Name of the column with right ascension data in degrees.
-            dec_name (str):
+            dec_name (:obj:`str`):
                 Name of the column with declination data in degress.
         
         Keyword Args:
-            patch_name (str, optional):
+            patch_name (:obj:`str`, optional):
                 Name of the column that specifies the patch index, i.e.
                 assigning each object to a spatial patch. Index starts counting
                 from 0 (see :ref:`patches`).
@@ -101,18 +101,18 @@ class NewCatalog:
                 Assign objects to existing patch centers based on their
                 coordinates. Must be either a different catalog instance or a
                 vector of coordinates.
-            n_patches (int, optional):
+            n_patches (:obj:`int`, optional):
                 Assign objects to a given number of patches, generated using
                 k-means clustering.
-            redshift_name (str, optional):
+            redshift_name (:obj:`str`, optional):
                 Name of the column with point-redshift estimates.
-            weight_name (str, optional):
+            weight_name (:obj:`str`, optional):
                 Name of the column with object weights.
-            cache_directory (str, optional):
+            cache_directory (:obj:`str`, optional):
                 Path to directory used to cache patch data, must exists (see
                 :ref:`caching`). If provided, patch data is automatically
                 unloaded from memory.
-            progress (bool, optional):
+            progress (:obj:`bool`, optional):
                 Display a progress bar while creating patches.
 
         .. Note::
@@ -165,33 +165,33 @@ class NewCatalog:
         column names.
 
         Args:
-            filepath (str):
+            filepath (:obj:`str`):
                 Path to the input data file.
-            patches (str, int, :obj:`~yaw.catalogs.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`):
+            patches (:obj:`str`, :obj:`int`, :obj:`~yaw.catalogs.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`):
                 Specifies the construction of patches. If `str`, patch indices
                 are read from the file. If `int`, generates this number of
                 patches. Otherwise assign objects based on existing patch
                 centers from a catalog instance or a coordinate vector.
-            ra (str):
+            ra (:obj:`str`):
                 Name of the column with right ascension data in degrees.
-            dec (str):
+            dec (:obj:`str`):
                 Name of the column with declination data in degress.
         
         Keyword Args:
-            redshift (str, optional):
+            redshift (:obj:`str`, optional):
                 Name of the column with point-redshift estimates.
-            weight (str, optional):
+            weight (:obj:`str`, optional):
                 Name of the column with object weights.
-            sparse (int, optional):
+            sparse (:obj:`int`, optional):
                 Load every N-th row of the input data.
-            cache_directory (str, optional):
+            cache_directory (:obj:`str`, optional):
                 Path to directory used to cache patch data, must exists (see
                 :ref:`caching`). If provided, patch data is automatically
                 unloaded from memory.
-            file_ext (str, optional):
+            file_ext (:obj:`str`, optional):
                 Hint for the input file type, if a uncommon file extension is
                 used.
-            progress (bool, optional):
+            progress (:obj:`bool`, optional):
                 Display a progress bar while creating patches.
 
         Returns:
@@ -232,9 +232,9 @@ class NewCatalog:
         Restore the catalogue from its cache directory.
 
         Args:
-            cache_directory (str):
+            cache_directory (:obj:`str`):
                 Path to the cache directory.
-            progress (bool, optional):
+            progress (:obj:`bool`, optional):
                 Display a progress bar while restoring patches.
 
         Returns:

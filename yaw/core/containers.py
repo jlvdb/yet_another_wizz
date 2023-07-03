@@ -90,7 +90,7 @@ class PatchCorrelationData:
             Total number of objects after binning by redshift in first patch.
         totals1 (:obj:`NDArray`):
             Total number of objects after binning by redshift in second patch.
-        counts (dict):
+        counts (:obj:`dict`):
             Dictionary listing the number of counted pairs after binning by
             redshift. Each item represents results from a different scale.
     """
@@ -108,12 +108,14 @@ class SampledValue(Generic[_Tscalar]):
     """Container to hold a scalar value with an empirically estimated
     uncertainty from resampling.
 
+    Supports comparison of the values and samples with ``==`` and ``!=``.
+
     Args:
         value:
             Numerical, scalar value.
         samples (:obj:`NDArray`):
             Samples of ``value`` obtained from resampling methods.
-        method (str):
+        method (:obj:`str`):
             Resampling method used to obtain the data samples, see
             :class:`~yaw.ResamplingConfig` for available options.
     """
@@ -181,12 +183,12 @@ class SampledData(BinnedQuantity):
 
     Args:
         binning (:obj:`pandas.IntervalIndex`):
-            The redshift bin edges used for this correlation function.
+            The redshift binning applied to the data.
         data (:obj:`NDArray`):
             The data values, one for each redshift bin.
         samples (:obj:`NDArray`):
             The resampled data values (e.g. jackknife or bootstrap samples).
-        method (str):
+        method (:obj:`str`):
             The resampling method used, see :class:`~yaw.ResamplingConfig` for
             available options.
 
@@ -209,7 +211,7 @@ class SampledData(BinnedQuantity):
     """
 
     binning: IntervalIndex
-    """The redshift bin edges used for this correlation function."""
+    """The redshift bin intervals."""
     data: NDArray
     """The data values, one for each redshift bin."""
     samples: NDArray
@@ -313,11 +315,11 @@ class SampledData(BinnedQuantity):
         Args:
             other (:obj:`BinnedQuantity`):
                 Object instance to compare to.
-            require (bool, optional)
+            require (:obj:`bool`, optional)
                 Raise a ValueError if any of the checks fail.
         
         Returns:
-            bool
+            :obj:`bool`
         """
         if not super().is_compatible(other, require):
             return False
