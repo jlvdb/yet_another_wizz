@@ -3,7 +3,7 @@ import numpy.testing as npt
 import pandas as pd
 from pytest import fixture, raises
 
-from yaw.correlation import corrfunc
+from yaw.correlation import corrfuncs
 
 
 @fixture
@@ -45,7 +45,7 @@ def stats_bootstrap(binning):
 @fixture
 def correlation_data(test_data_samples):
     binning, data, samples = test_data_samples
-    return corrfunc.CorrData(
+    return corrfuncs.CorrData(
         binning, data, samples, method="jackknife")
 
 
@@ -56,14 +56,14 @@ class TestCorrData:
         binning, data, samples = test_data_samples
         # jackknife
         err, cov, cor = stats_jackknife
-        cd = corrfunc.CorrData(
+        cd = corrfuncs.CorrData(
             binning, data, samples, method="jackknife")
         npt.assert_allclose(cd.error, err)
         npt.assert_allclose(cd.covariance, cov)
         npt.assert_allclose(cd.get_correlation().to_numpy(), cor)
         # bootstrap
         err, cov, cor = stats_bootstrap
-        cd = corrfunc.CorrData(
+        cd = corrfuncs.CorrData(
             binning, data, samples, method="bootstrap")
         npt.assert_allclose(cd.error, err)
         npt.assert_allclose(cd.covariance, cov)

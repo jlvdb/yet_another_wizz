@@ -13,6 +13,6 @@ For the conversion of the correlation functions to a redshift estimate refer to
 the :mod:`yaw.redshifts` module.
 """
 
-from yaw.correlation.corrfunc import (
+from yaw.correlation.corrfuncs import (
     CorrData, CorrFunc, autocorrelate, crosscorrelate,
     add_corrfuncs, global_covariance)
