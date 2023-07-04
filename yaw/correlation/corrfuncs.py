@@ -488,7 +488,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def _check_and_select_estimator(
         self,
         estimator: str | None
-    ) -> CorrelationEstimator:
+    ) -> type[CorrelationEstimator]:
         options = self.estimators
         if estimator is None:
             for shortname in ["LS", "DP", "PH"]:  # preferred hierarchy
@@ -519,7 +519,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         logger.debug(
             f"selecting estimator '{cls.short}' from "
             f"{'/'.join(self.estimators)}")
-        return cls()  # return estimator class instance        
+        return cls
 
     def _getattr_from_cts(self, cts: Cts) -> NormalisedCounts | None:
         if isinstance(cts, CtsMix):
@@ -594,8 +594,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 if "NoneType" not in e.args[0]:
                     raise
         # evaluate the correlation estimator
-        data = est_fun(**required_data, **optional_data)
-        samples = est_fun(**required_samples, **optional_samples)
+        data = est_fun.eval(**required_data, **optional_data)
+        samples = est_fun.eval(**required_samples, **optional_samples)
         return CorrData(
             binning=self.get_binning(),
             data=data,

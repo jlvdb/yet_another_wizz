@@ -1,10 +1,10 @@
 """This module implements the correlation estimators and a way to symbolically
 represent paircounts (e.g. data-data counts are represented by :obj:`CtsDD`).
 
-The latter is used in :obj:`yaw.CorrFunc` to determine which correlation
-estimator can be computed for a possibly incomplete set of pair counts (e.g.
-only data-data and random-random). Their key property is that they can be
-compared, e.g.
+The latter is used in :obj:`~yaw.correlation.CorrFunc` to determine which
+correlation estimator can be computed for a possibly incomplete set of pair
+counts (e.g. only data-data and random-random). Their key property is that they
+can be compared, e.g.
 
 >>> CtsDR() == CtsRR()  # random-data is random-random?
 False
@@ -23,7 +23,7 @@ True
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractclassmethod, abstractproperty
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -121,24 +121,17 @@ def cts_from_code(code: str) -> Cts:
 
 
 class CorrelationEstimator(ABC):
-    short: str
-    """Get a short form representation of the estimator name.
 
-    >>> LandySzalay.short
-    'LS'
-    """
+    name: str
+    """Full name of the estimator."""
+    short: str
+    """Get a short form representation of the estimator name."""
     requires: list[Cts]
     """Get a symbolic list of pair counts required to evaluate the estimator.
-
-    >>> LandySzalay.short
-    [<CtsDD>, <CtsDR>, <CtsRR>]
     """
     optional: list[Cts]
     """Get a symbolic list of optional pair counts that may be used to evaluate
     the estimator.
-
-    >>> LandySzalay.short
-    [<CtsRD>]
     """
 
     variants: list[CorrelationEstimator] = []
@@ -149,107 +142,107 @@ class CorrelationEstimator(ABC):
         super().__init_subclass__(**kwargs)
         cls.variants.append(cls)
 
-    def _warn_enum_zero(self, counts: NDArray):
+    @classmethod
+    def _warn_enum_zero(cls, counts: NDArray):
         """Raise a warning if any value in the expression enumerator is zero"""
         if np.any(counts == 0.0):
             logger.warn(
-                f"estimator {self.short} encontered zeros in enumerator")
+                f"estimator {cls.short} encontered zeros in enumerator")
 
-    def name(self) -> str:
-        """Get the full name of the estimator."""
-        return self.__class__.__name__
-
-    @abstractmethod
-    def __call__(
+    @abstractclassmethod
+    def eval(
         self,
         *,
         dd: NDArray,
         dr: NDArray,
         rr: NDArray,
         rd: NDArray | None = None
-    ) -> NDArray: pass
+    ) -> NDArray:
+        """Method that implements the estimator.
+        
+        Should call :meth:`_warn_enum_zero` to raise warnings on zero-division.
+        """
+        NotImplemented
 
 
 class PeeblesHauser(CorrelationEstimator):
-    """Implementation of the Peebles-Hauser correlation estimator.
-
-    Instances are callable and evaluate :math:`DD / RR - 1`:
-
-    Args:
-        dd (:obj:`NDArray`):
-            Data-data pair counts (normalised).
-        rr (:obj:`NDArray`):
-            Random-random pair counts (normalised).
-
-    Returns:
-        :obj:`NDArray`
+    """Implementation of the Peebles-Hauser correlation estimator
+    :math:`\\frac{DD}{RR} - 1`.
     """
-    short: str = "PH"
+    name = "PeeblesHauser"
+    short = "PH"
     requires = [CtsDD(), CtsRR()]
     optional = []
 
+    @classmethod
     def __call__(
         self,
         *,
         dd: NDArray,
-        rr: NDArray
+        rr: NDArray,
+        **kwargs
     ) -> NDArray:
+        """Evaluate the estimator with the given pair counts.
+
+        Args:
+            dd (:obj:`NDArray`):
+                Data-data pair counts (normalised).
+            rr (:obj:`NDArray`):
+                Random-random pair counts (normalised).
+
+        Returns:
+            :obj:`NDArray`
+        """
         self._warn_enum_zero(rr)
         return dd / rr - 1.0
 
 
 class DavisPeebles(CorrelationEstimator):
-    """Implementation of the Davis-Peebles correlation estimator.
+    """Implementation of the Davis-Peebles correlation estimator
+    :math:`\\frac{DD}{DR} - 1`.
 
-    Instances are callable and evaluate :math:`DD / DR - 1`:
-
-    Args:
-        dd (:obj:`NDArray`):
-            Data-data pair counts (normalised).
-        dr_rd (:obj:`NDArray`):
-            Either data-random or random-data pair counts (normalised).
-
-    Returns:
-        :obj:`NDArray`
+    .. Note::
+        Accepts both :math:`DR` and :math:`RD` for the denominator.
     """
+    name = "DavisPeebles"
     short = "DP"
     requires = [CtsDD(), CtsMix()]
     optional = []
 
-    def __call__(
+    @classmethod
+    def eval(
         self,
         *,
         dd: NDArray,
-        dr_rd: NDArray
+        dr_rd: NDArray,
+        **kwargs
     ) -> NDArray:
+        """Evaluate the estimator with the given pair counts.
+
+        Args:
+            dd (:obj:`NDArray`):
+                Data-data pair counts (normalised).
+            dr_rd (:obj:`NDArray`):
+                Either data-random or random-data pair counts (normalised).
+
+        Returns:
+            :obj:`NDArray`
+        """
         self._warn_enum_zero(dr_rd)
         return dd / dr_rd - 1.0
 
 
 class Hamilton(CorrelationEstimator):
-    """Implementation of the Hamilton correlation estimator.
-
-    Instances are callable and evaluate :math:`(DD * RR) / (DR * RD) - 1`:
-
-    Args:
-        dd (:obj:`NDArray`):
-            Data-data pair counts (normalised).
-        dr (:obj:`NDArray`):
-            Data-random pair counts (normalised).
-        rd (:obj:`NDArray`, optional):
-            Random-data pair counts (normalised). If not provided, use ``dr``
-            instead.
-        rr (:obj:`NDArray`):
-            Random-random pair counts (normalised).
-
-    Returns:
-        :obj:`NDArray`
+    """Implementation of the Hamilton correlation estimator
+    :math:`\\frac{DD \\times RR}{DR \\times RD} - 1`.
     """
+    name = "Hamilton"
     short = "HM"
     requires = [CtsDD(), CtsDR(), CtsRR()]
     optional = [CtsRD()]
 
-    def __call__(
+    @classmethod
+    def eval(
         self,
         *,
         dd: NDArray,
@@ -257,6 +250,22 @@ class Hamilton(CorrelationEstimator):
         rr: NDArray,
         rd: NDArray | None = None
     ) -> NDArray:
+        """Evaluate the estimator with the given pair counts.
+
+        Args:
+            dd (:obj:`NDArray`):
+                Data-data pair counts (normalised).
+            dr (:obj:`NDArray`):
+                Data-random pair counts (normalised).
+            rd (:obj:`NDArray`, optional):
+                Random-data pair counts (normalised). If not provided, use
+                ``dr`` instead.
+            rr (:obj:`NDArray`):
+                Random-random pair counts (normalised).
+
+        Returns:
+            :obj:`NDArray`
+        """
         rd = dr if rd is None else rd
         enum = dr * rd
         self._warn_enum_zero(enum)
@@ -264,29 +273,16 @@ class Hamilton(CorrelationEstimator):
 
 
 class LandySzalay(CorrelationEstimator):
-    """Implementation of the Peebles-Hauser correlation estimator.
-
-    Instances are callable and evaluate :math:`(DD - (DR + RD)) / RR + 1`:
-
-    Args:
-        dd (:obj:`NDArray`):
-            Data-data pair counts (normalised).
-        dr (:obj:`NDArray`):
-            Data-random pair counts (normalised).
-        rd (:obj:`NDArray`, optional):
-            Random-data pair counts (normalised). If not provided, use ``dr``
-            instead.
-        rr (:obj:`NDArray`):
-            Random-random pair counts (normalised).
-
-    Returns:
-        :obj:`NDArray`
+    """Implementation of the Peebles-Hauser correlation estimator
+    :math:`\\frac{DD - (DR + RD)}{RR} + 1`.
     """
+    name = "LandySzalay"
     short = "LS"
     requires = [CtsDD(), CtsDR(), CtsRR()]
     optional = [CtsRD()]
 
-    def __call__(
+    @classmethod
+    def eval(
         self,
         *,
         dd: NDArray,
@@ -294,6 +290,22 @@ class LandySzalay(CorrelationEstimator):
         rr: NDArray,
         rd: NDArray | None = None
     ) -> NDArray:
+        """Evaluate the estimator with the given pair counts.
+
+        Args:
+            dd (:obj:`NDArray`):
+                Data-data pair counts (normalised).
+            dr (:obj:`NDArray`):
+                Data-random pair counts (normalised).
+            rd (:obj:`NDArray`, optional):
+                Random-data pair counts (normalised). If not provided, use
+                ``dr`` instead.
+            rr (:obj:`NDArray`):
+                Random-random pair counts (normalised).
+
+        Returns:
+            :obj:`NDArray`
+        """
         rd = dr if rd is None else rd
         self._warn_enum_zero(rr)
         return (dd - (dr + rd) + rr) / rr
