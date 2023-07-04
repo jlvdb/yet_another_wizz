@@ -118,6 +118,7 @@ def cov_from_samples(
     rowvar: bool = False,
     kind: str = "full"  # full, diag, var
 ) -> NDArray:
+    """Document options for kind."""
     ax_samples = 1 if rowvar else 0
     ax_observ = 0 if rowvar else 1
     # if many samples are provided, concatenate them

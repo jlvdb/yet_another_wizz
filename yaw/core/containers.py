@@ -307,8 +307,9 @@ class SampledData(BinnedQuantity):
         return self.binning
 
     def is_compatible(self, other: SampledData, require: bool = False) -> bool:
-        """Check whether this instance is compatible with another instance by
-        ensuring that both objects are instances of the same class, that the
+        """Check whether this instance is compatible with another instance.
+        
+        Ensures that both objects are instances of the same class, that the
         redshift binning is identical, that the number of samples agree, and
         that the resampling method is identical.
 

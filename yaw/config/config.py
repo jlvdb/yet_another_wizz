@@ -23,6 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
     from yaw.catalogs import BaseCatalog
+    from yaw.core.utils import TypePathStr
 
 
 logger = logging.getLogger(__name__)
@@ -247,7 +248,8 @@ class Configuration(DictRepresentation):
         log: bool = True,
         legend: bool = True
     ) -> Figure:
-        """plot_scales"""
+        """Plot the configured correlation scales at different redshifts in
+        comparison to the size of patches in a data catalogue."""
         import matplotlib.pyplot as plt
 
         fig, ax_scale = plt.subplots(1, 1)
@@ -327,16 +329,29 @@ class Configuration(DictRepresentation):
         return values
 
     @classmethod
-    def from_yaml(cls, path: str) -> Configuration:
-        """from_yaml"""
+    def from_yaml(cls, path: TypePathStr) -> Configuration:
+        """Create a new instance by loading the configuration from a YAML file.
+        
+        Args:
+            path (:obj:`pathlib.Path`, :obj:`str`):
+                Path to the YAML file containing the configuration.
+
+        Returns:
+            :obj:`Configuration`                
+        """
         logger.info(f"reading configuration file '{path}'")
-        with open(path) as f:
+        with open(str(path)) as f:
             config = yaml.safe_load(f.read())
         return cls.from_dict(config)
 
-    def to_yaml(self, path: str) -> None:
-        """to_yaml"""
+    def to_yaml(self, path: TypePathStr) -> None:
+        """Store the configuration as YAML file.
+        
+        Args:
+            path (:obj:`pathlib.Path`, :obj:`str`):
+                Path to which the YAML file is written.
+        """
         logger.info(f"writing configuration file '{path}'")
         string = yaml.dump(self.to_dict())
-        with open(path, "w") as f:
+        with open(str(path), "w") as f:
             f.write(string)
