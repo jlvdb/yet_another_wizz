@@ -1,3 +1,19 @@
+"""This module implements a special containers that compute and describe
+redshift distributions. These containers provide methods for error and
+covariance estimation, plotting and computing mean redshifts.
+
+True redshift distributions can be expressed through the :obj:`HistData` class
+and can be computed from the :meth:`~yaw.catalogs.BaseCatalog.true_redshifts`
+method of :obj:`~yaw.catalogs.BaseCatalog`.
+
+Clustering redshift estimates can be expressed through the :obj:`RedshiftData`
+class. Its different constructor methods, :meth:`~RedshiftData.from_corrdata`
+and :meth:`~RedshiftData.from_corrfuncs`, provide easy interfaces to compute the
+clustering redshifts and to mitigate the evolving galaxy bias, if the
+corresponding autocorrelation functions (e.g. of the reference sample) are
+known.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -27,13 +43,54 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, repr=False, eq=False)
 class RedshiftData(CorrData):
-    """Container object for redshift estimates.
+    """Container class object for redshift estimates.
+
+    Contains the redshift binning, estimated fraction of galaxies at the given
+    redshift (**not** a density), and resampled fractions (e.g. from jackknife
+    or bootstrap). The resampled values are used to compute error estimates and
+    covariance/correlation matrices. Provides some plotting methods for
+    convenience.
+
+    This container holds data in the form of
+    :math:`\\frac{w_\\rm{sp}(z)}{\\sqrt{\\Delta z \, w_\\rm{ss}(z) \, w_\\rm{pp}(z)}}`,
+    where :math:`w_\\rm{sp}` is the crosscorrelation function, and
+    :math:`w_\\rm{ss}` and :math:`w_\\rm{pp}` are autocorrelation functions that
+    account for the evolving galaxy bias. If no autocorrelation is provided, the
+    data is still scaled by :math:`1/\\Delta z` compared to the crosscorrelation
+    data in :obj:`~yaw.correlation.CorrData`.
+
+    .. Note::
+        This container should be constructed from a crosscorrelation measurement
+        with one of the preferred methods :meth:`from_corrdata` or
+        :meth:`from_corrfuncs`. These additionally allow galaxy bias mitigation
+        by specifying any additionally measured autocorrelation functions.
+
+    The comparison, addition and subtraction and indexing rules are inherited
+    from :obj:`~yaw.core.containers.SampledData`, check the examples there.
+
+    Args:
+        binning (:obj:`pandas.IntervalIndex`):
+            The redshift bin edges used for this correlation function.
+        data (:obj:`NDArray`):
+            The correlation function values.
+        samples (:obj:`NDArray`):
+            The resampled correlation function values.
+        method (:obj:`str`):
+            The resampling method used, see :class:`~yaw.ResamplingConfig` for
+            available options.
+        info (:obj:`str`, optional):
+            Descriptive text included in the headers of output files produced
+            by :func:`CorrData.to_files`.
     """
 
     @classmethod
     @deprecated(
         reason="renamed to RedshiftData.from_corrdata", version="2.3.2")
     def from_correlation_data(cls, *args, **kwargs):
+        """
+        .. deprecated:: 2.3.2
+            Renamed to :meth:`from_corrdata`.
+        """
         return cls.from_corrdata(*args, **kwargs)
 
     @classmethod
@@ -46,6 +103,10 @@ class RedshiftData(CorrData):
     ) -> RedshiftData:
         """Compute redshift estimate from readily sampled function data.
 
+        The required argument is a crosscorrelation measurement, additional
+        parameters can specify sample autocorrelation measurements that are used
+        to mitigate the evolving galaxy bias.
+
         Args:
             cross_corr (:obj:`CorrData`):
                 Data from the sampled cross-correlation function.
@@ -55,6 +116,9 @@ class RedshiftData(CorrData):
             unk_corr (:obj:`CorrData`, optional):
                 Data from the sampled unknown sample autocorrelation function.
                 Used to mitigate unknown bias evolution.
+
+        Returns:
+            :obj:`RedshiftData`                
         """
         logger.debug(
             "computing clustering redshifts from correlation function samples")
@@ -113,6 +177,10 @@ class RedshiftData(CorrData):
     @deprecated(
         reason="renamed to RedshiftData.from_corrfuncs", version="2.3.2")
     def from_correlation_functions(cls, *args, **kwargs):
+        """
+        .. deprecated:: 2.3.2
+            Renamed to :meth:`from_corrfuncs`.
+        """
         return cls.from_corrfuncs(*args, **kwargs)
 
     @classmethod
@@ -128,7 +196,11 @@ class RedshiftData(CorrData):
         config: ResamplingConfig | None = None,
         info: str | None = None
     ) -> RedshiftData:
-        """Sample correlation functions to compute redshift estimate.
+        """Sample correlation functions to compute a redshift estimate.
+
+        The required argument is a crosscorrelation measurement, additional
+        parameters can specify sample autocorrelation measurements that are used
+        to mitigate the evolving galaxy bias.
 
         Args:
             cross_corr (:obj:`CorrFunc`):
@@ -139,6 +211,9 @@ class RedshiftData(CorrData):
             unk_corr (:obj:`CorrFunc`, optional):
                 The measured unknown sample autocorrelation function. Used to
                 mitigate unknown bias evolution.
+
+        Returns:
+            :obj:`RedshiftData`
         """
         if config is None:
             config = ResamplingConfig()
@@ -190,6 +265,24 @@ class RedshiftData(CorrData):
         return f"# n(z) estimate covariance matrix ({self.n_bins}x{self.n_bins})"
 
     def normalised(self, to: CorrData | None = None) -> RedshiftData:
+        """Obtain a normalised copy of the data.
+
+        Either attempts to normalise the data by integration along the redshift
+        axis or by fitting it to a provided reference data container (e.g. a
+        known redshift distribution in a :obj:`HistData` container).
+
+        .. Note::
+            The fit does not use the uncertainties but weights the data points
+            inversely to their amplitude.
+
+        Args:
+            to (:obj:`CorrData`, optional):
+                Reference data to which the stored values are normalised by
+                fitting.
+        
+        Returns:
+            :obj:`RedshiftData`
+        """
         if to is None:
             norm = np.nansum(self.dz * self.data)
         else:
@@ -208,12 +301,39 @@ class RedshiftData(CorrData):
             info=self.info)
 
     def mean(self):
+        """Attempts to compute a mean redshift.
+        
+        .. Warning::
+            This should be just considered an estimate since the redshift
+            estimate is not a true probability density, due to residual negative
+            correlation amplitudes.
+
+        Returns:
+            :obj:`~yaw.core.SampledValue`:
+                Mean redshift for the redshift data and its samples in a data
+                container.
+        """
         norm = np.nansum(self.data)
         mean = np.nansum(self.data * self.mids) / norm
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=self.method)
 
     def rebin(self, bins: NDArray) -> RedshiftData:
+        """Attempts recomute the data for a different redshift binning.
+
+        .. Warning::
+            The result may be inaccurate since the redshift estimate is not a
+            true probability density, due to residual negative correlation
+            amplitudes.
+
+        Args:
+            bins (:obj:`NDArray`):
+                Edges of the new redshift bins. May exceed or cover just a
+                fraction of the original redshift range.            
+
+        Returns:
+            :obj:`RedshiftData`:
+        """
         old_bins = self.edges
         # shift main values
         data = rebin(bins, old_bins, self.data)
@@ -235,6 +355,28 @@ class RedshiftData(CorrData):
         *,
         amplitude: float | SampledValue = 1.0
     ) -> RedshiftData:
+        """Attempts shift the data along the redshift axis.
+
+        The shifting is performed by recomputing the redshift estimate with its
+        original redshift bins which are shifted by some amount.
+
+        .. Warning::
+            The result may be inaccurate since the redshift estimate is not a
+            true probability density, due to residual negative correlation
+            amplitudes.
+
+        Args:
+            dz (:obj:`SampledValue` or :obj:`float`):
+                The amplitude of the shift along the redshift axis. If the input
+                provides samples of the shift, each redshift estimate sample is
+                shifted individually to obtain a more accurate error estimate.
+            amplitude (:obj:`SampledValue` or :obj:`float`):
+                An optional ampltude factor applied to the redshift estimate.
+                Same rules as for the ``dz`` parameter.
+
+        Returns:
+            :obj:`RedshiftData`:
+        """
         if isinstance(amplitude, SampledValue):
             A_samples = amplitude.samples
             amplitude = amplitude.value
@@ -265,8 +407,32 @@ class RedshiftData(CorrData):
 
 @dataclass(frozen=True, repr=False, eq=False)
 class HistData(RedshiftData):
+    """Container for histogram data.
+    
+    Contains the redshift binning, histogram counts, and resampled counts (e.g.
+    from jackknife or bootstrap). The resampled values are used to compute error
+    estimates and covariance/correlation matrices. Provides some plotting
+    methods for convenience.
+
+    Args:
+        binning (:obj:`pandas.IntervalIndex`):
+            The redshift bin edges used for this correlation function.
+        data (:obj:`NDArray`):
+            The correlation function values.
+        samples (:obj:`NDArray`):
+            The resampled correlation function values.
+        method (:obj:`str`):
+            The resampling method used, see :class:`~yaw.ResamplingConfig` for
+            available options.
+        info (:obj:`str`, optional):
+            Descriptive text included in the headers of output files produced
+            by :func:`CorrData.to_files`.
+        density (:obj:`bool`):
+            Whether the data is normalised, i.e. a density estimate.
+    """
 
     density: bool = field(default=False)
+    """Whether the data is normalised, i.e. a density estimate."""
 
     @property
     def _dat_desc(self) -> str:
@@ -298,7 +464,15 @@ class HistData(RedshiftData):
             method=new.method,
             density=density)
 
-    def normalised(self, *args, **kwargs) -> RedshiftData:
+    def normalised(self, *args, **kwargs) -> HistData:
+        """Obtain a normalised copy of the data.
+
+        Normalises the data by integration along the redshift axis. This sets
+        the containers :obj:`density` flag to ``True``.
+        
+        Returns:
+            :obj:`HistData`
+        """
         if self.density:  # guard from repeatedly altering the data
             return self
         zmin, zmax = self.edges[[0, -1]]
@@ -314,7 +488,14 @@ class HistData(RedshiftData):
             info=self.info,
             density=True)
 
-    def mean(self):
+    def mean(self) -> SampledValue:
+        """Compute the mean redshift.
+
+        Returns:
+            :obj:`~yaw.core.SampledValue`:
+                Mean redshift for the redshift data and its samples in a data
+                container.
+        """
         normed = self.normalised()
         norm = np.nansum(normed.data)
         mean = np.nansum(normed.data * normed.mids) / norm
@@ -322,6 +503,20 @@ class HistData(RedshiftData):
         return SampledValue(value=mean, samples=samples, method=normed.method)
 
     def rebin(self, bins: NDArray) -> HistData:
+        """Recomute the data for a different redshift binning.
+
+        .. Warning::
+            The result may be inaccurate since the result is interpolated
+            step-wise.
+
+        Args:
+            bins (:obj:`NDArray`):
+                Edges of the new redshift bins. May exceed or cover just a
+                fraction of the original redshift range.            
+
+        Returns:
+            :obj:`HistData`:
+        """
         result = super().rebin(bins)
         object.__setattr__(self, "density", self.density)
         return result
@@ -332,6 +527,27 @@ class HistData(RedshiftData):
         *,
         amplitude: float | SampledValue = 1.0
     ) -> HistData:
+        """Shifts the data along the redshift axis.
+
+        The shifting is performed by recomputing the histogram with its original
+        redshift bins which are shifted by some amount.
+
+        .. Warning::
+            The result may be inaccurate since the result is interpolated
+            step-wise.
+
+        Args:
+            dz (:obj:`SampledValue` or :obj:`float`):
+                The amplitude of the shift along the redshift axis. If the input
+                provides samples of the shift, each redshift estimate sample is
+                shifted individually to obtain a more accurate error estimate.
+            amplitude (:obj:`SampledValue` or :obj:`float`):
+                An optional ampltude factor applied to the redshift estimate.
+                Same rules as for the ``dz`` parameter.
+
+        Returns:
+            :obj:`HistData`:
+        """
         result = super().shift(dz, amplitude=amplitude)
         if amplitude == 1.0:
             object.__setattr__(self, "density", self.density)
