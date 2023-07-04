@@ -1,15 +1,13 @@
 """This module implements containers for storing pair counts
 (:obj:`PatchedCount`) and the total number of objects (:obj:`PatchedTotal`) for
 pair count normalisation. The data is stored per spatial patch and in bins of
-redshift.
-
-The containers implement methods to compute total value (summing over all
-patches) and samples needed for error estimations after evaluating the
+redshift. The containers implement methods to compute total value (summing over
+all patches) and samples needed for error estimations after evaluating the
 correlation estimator (e.g. jackknife or bootstrap resampling).
 
 Finally, :obj:`NormalisedCounts` implements normalised pair counts and holds both
 a :obj:`PatchedCount` and :obj:`PatchedTotal` container. Its
-:meth:~NormalisedCounts.sample` method computes the ratio of
+:meth:`NormalisedCounts.sample` method computes the ratio of
 counts-to-total-objects and samples thereof.
 """
 
@@ -257,7 +255,8 @@ class PatchedTotal(PatchedArray):
     :meth:`sample_sum` methods.
 
     The container supports comparison of the data elements and the redshift
-    binning with ``==`` and ``!=``.
+    binning with ``==`` and ``!=``. The indexing rules are the same as for
+    :obj:`PatchedCount`.
     """
 
     totals1: NDArray
@@ -491,6 +490,11 @@ class PatchedCount(PatchedArray):
     :func:`yaw.correlation.add_corrfuncs`). Any sequence of :obj:`PatchedCount`
     can be summed together with the built-in python function ``sum()``.
 
+    Finally, the container supports indexing of and iteration over redshift bins
+    and spatial patches using the special accessor attributes :obj:`bins` (see
+    also :obj:`~yaw.core.containers.SampledData`) and :obj:`patches`. Some
+    examples are listed below.
+
     .. rubric:: Examples
 
     Create a redshift binning:
@@ -525,6 +529,11 @@ class PatchedCount(PatchedArray):
     PatchedCount(n_bins=2, z='0.100...0.300', shape=(5, 5, 2))
     >>> count1 * 2.0 == count2
     True
+
+    Select a subset of all redshift bins or all spatial patches:
+
+    .. Note::
+        TODO: Provide an example.
     """
 
     counts: NDArray
@@ -900,9 +909,8 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
     Both input containers must have the same binning and the same number of
     spatial patches. The container supports the same arithmetic as
     :obj:`PatchedCount` (see the listed examples), i.e. comparison, addition,
-    and multiplication by a scalar. The resulting pair counts of addition and
-    multiplication are always normalised by the number of objects stored in
-    :obj:`total`.
+    multiplication by a scalar, as well as indexing. The resulting pair counts
+    are always normalised by the number of objects stored in :obj:`total`.
 
     Args:
         count (:obj:`PatchedCount`):

@@ -128,8 +128,7 @@ class NewCatalog:
         iterating the Catalog instance.
 
         .. Note::
-    
-            ``TODO:`` add example.
+            TODO: Provide an example.
         """
         return self.catalog(
             data,

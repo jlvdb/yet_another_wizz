@@ -198,16 +198,16 @@ class SampledData(BinnedQuantity):
     applied to the ``data`` and ``samples`` attribtes.
 
     .. Note::
-        Provide an example.
+        TODO: Provide an example.
 
     Furthermore, the container supports indexing and iteration over the redshift
-    bins using the :meth:`SampledData.bin` attribute. This attribute yields
+    bins using the :obj:`SampledData.bins` attribute. This attribute yields
     instances of :obj:`SampledData` containing a single bin when iterating.
     Slicing and indexing follows the same rules as the underlying ``data``
-    :obj:`NDArray``.
+    :obj:`NDArray`.
 
     .. Note::
-        Provide an example.
+        TODO: Provide an example.
     """
 
     binning: IntervalIndex

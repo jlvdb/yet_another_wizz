@@ -273,7 +273,7 @@ class Hamilton(CorrelationEstimator):
 
 
 class LandySzalay(CorrelationEstimator):
-    """Implementation of the Peebles-Hauser correlation estimator
+    """Implementation of the Landy-Szalay correlation estimator
     :math:`\\frac{DD - (DR + RD)}{RR} + 1`.
     """
     name = "LandySzalay"

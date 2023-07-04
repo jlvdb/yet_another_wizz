@@ -1,5 +1,6 @@
-"""
-Advanced arithmetic
+"""Implements the two primary data containers for correlation function data,
+:obj:`CorrFunc` which stores the pair counts and :obj:`CorrData` which stores
+the (resampled) values of the correlation function in bins of redshift.
 """
 
 from __future__ import annotations
@@ -42,14 +43,15 @@ _Tdata = TypeVar("_Tdata", bound="CorrData")
 
 @dataclass(frozen=True, repr=False, eq=False)
 class CorrData(SampledData):
-    """Container for correlation function data.
+    """Container class for sampled correlation function data.
 
     Contains the redshift binning, correlation function amplitudes, and
-    resampled amplitude (e.g. jackknife or bootstrap). The resampled values are
+    resampled amplitudes (e.g. jackknife or bootstrap). The resampled values are
     used to compute error estimates and covariance/correlation matrices.
     Provides some plotting methods for convenience.
 
-    __neq__, __eq__, __add__, __sub__ -> sampled data?
+    The comparison, addition and subtraction and indexing rules are inherited
+    from :obj:`~yaw.core.containers.SampledData`, check the examples there.
 
     Args:
         binning (:obj:`pandas.IntervalIndex`):
@@ -67,6 +69,7 @@ class CorrData(SampledData):
     """
 
     info: str | None = None
+    """Optional descriptive text for the contained data."""
 
     def __post_init__(self) -> None:
         with LogCustomWarning(
@@ -76,6 +79,23 @@ class CorrData(SampledData):
 
     @classmethod
     def from_files(cls: Type[_Tdata], path_prefix: TypePathStr) -> _Tdata:
+        """Create a new instance by loading the data from ASCII files.
+
+        The data is restored from a set of three input files produced by
+        :meth:`to_files`.
+        
+        .. Note::
+            These file have the same names but different file extension,
+            therefore only provide the base name without any extension to
+            specifiy the input files.
+
+        Args:
+            path_prefix (:obj:`str`):
+                The base name of the input files without any file extension.
+        
+        Returns:
+            :obj:`CorrData`
+        """
         name = cls.__name__.lower()[:-4]
         logger.debug(f"reading {name} data from '{path_prefix}.*'")
         # load data and errors
@@ -117,21 +137,47 @@ class CorrData(SampledData):
 
     @property
     def _dat_desc(self) -> str:
+        """Description included in the data file."""
         return (
             "# correlation function estimate with symmetric 68% percentile "
             "confidence")
 
     @property
     def _smp_desc(self) -> str:
+        """Description included in the samples file."""
         return f"# {self.n_samples} {self.method} correlation function samples"
 
     @property
     def _cov_desc(self) -> str:
+        """Description included in the covariance file."""
         return (
             f"# correlation function estimate covariance matrix "
             f"({self.n_bins}x{self.n_bins})")
 
     def to_files(self, path_prefix: TypePathStr) -> None:
+        """Store the data in a set of ASCII files on disk.
+
+        These files can be loaded with the :meth:`from_files` method. There are
+        three files with the same name but different file extension.
+
+        .. rubric:: Files
+
+        ``[path_prefix].dat``: Contains the redshift bin edges, the data values
+        and their standard error. Additionally there is information about the
+        error estimate and the :obj:`info` attribute.
+        
+        ``[path_prefix].smp``: Contains one row for each redshift bin. The first
+        two columns list the lower and upper edge of the redshift bin, the
+        remaining columns list the values of the samples, i.e. there are ``N+2``
+        columns. Additionally contains the :obj:`info` attribute.
+        
+        ``[path_prefix].cov``: Contains the covariance matrix and additionally
+        the :obj:`info` attribute.
+
+        Args:
+            path_prefix (:obj:`str`):
+                The base name of the output files without any file extension.
+        """
         name = self.__class__.__name__.lower()[:-4]
         logger.info(f"writing {name} data to '{path_prefix}.*'")
         PREC = 10
@@ -230,6 +276,35 @@ class CorrData(SampledData):
         zero_line: bool = False,
         scale_by_dz: bool = False
     ) -> Axis:  # pragma: no cover
+        """Create a plot of the correlation data as a function of redshift.
+
+        Create a new axis or plot to an existing one, add x-axis offsets, if
+        plotting multiple instances, or specify if the values should be
+        represented as points with errorbars (default) or as line plot with
+        shaded area to represent uncertainties.
+
+        Args:
+            color:
+                Valid :mod:`matplotlib` color used for the error bars or the
+                line and the shaded uncertainty area.
+            label (:obj:`str`, optional):
+                Plot label for the legend.
+            error_bars (:obj:`bool`, optional):
+                Whether to plot error bars (the default) or a line plot with
+                shaded area.
+            ax (plot axis, optional):
+                Optional :mod:`matplotlib` axis to plot into.
+            xoffset (:obj:`int`, optional):
+                Shift to apply to the x-axis (redshift) values.
+            plot_kwargs (:obj:`dict`, optional):
+                Parameters passed to the :func:`errobar` or :func:`plot`
+                plotting functions.
+            zero_lilne (:obj:`bool`, optional):
+                Wether to draw a thin black line that indicates ``y=0``.
+            scale_by_dz (:obj:`bool`, optional):
+                Whether to multiply the y-values by the redshift bin width
+                :obj:`dz`.
+        """
         x = self.mids + xoffset
         y = self.data
         yerr = self.error
@@ -248,6 +323,19 @@ class CorrData(SampledData):
         cmap: str = "RdBu_r",
         ax: Axis | None = None
     ) -> Axis:
+        """Plot the correlation matrix of the data.
+
+        Create a new axis or plot to an existing one.
+
+        Args:
+            redshift (:obj:`bool`, optional):
+                Whether to map the matrix onto redshifts or as regular matrix
+                plot (the default).
+            cmap (:obj:`str`, optional):
+                Name of a :mod:`matplotlib` colormap to use.
+            ax (plot axis, optional):
+                Optional :mod:`matplotlib` axis to plot into.
+        """
         from matplotlib import pyplot as plt
 
         if ax is None:
@@ -265,6 +353,8 @@ class CorrData(SampledData):
 
 
 def check_mergable(cfs: Sequence[CorrFunc | None]) -> None:
+    """Helper function that checks if a set of :obj:`CorrFunc` have the same
+    kinds of pair counts."""
     reference = cfs[0]
     for kind in ("dd", "dr", "rd", "rr"):
         ref_pcounts = getattr(reference, kind)
@@ -279,6 +369,32 @@ def global_covariance(
     method: str | None = None,
     kind: str = "full"
 ) -> NDArray:
+    """Compute a joint covariance from a set of resampled data.
+
+    Typically applied to a set of :obj:`CorrData`,
+    :obj:`~yaw.redshifts.RedshiftData`, or :obj:`~yaw.redshifts.HistData`
+    containers. The joint covariance is computed by concatenating the samples
+    along the redshift binning axis.
+
+    .. Warning::
+        The input containers must have the same number of samples, and use the
+        same resampling method. They also should be of the same type.
+
+    Args:
+        data (sequence of :obj:`SampledData`):
+            The input containers, should be of the same type.
+        method (:obj:`str`, optional):
+            Specify the sampling method to use. All other containers must follow
+            this convention.
+        kind (:obj:`str`, optional):
+            The method to compute the covariance matrix, see
+            :func:`yaw.core.math.cov_from_samples`.
+
+    Returns:
+        :obj:`NDArray`:
+            Jointly estimated covariance. Dimension matches the sum of all
+            redshift bins in the input containers.
+    """
     if len(data) == 0:
         raise ValueError("'data' must be a sequence with at least one item")
     if method is None:
@@ -293,39 +409,45 @@ def global_covariance(
 class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     """Container object for measured correlation pair counts.
 
-    Container returned by correlation by functions that compute correlations
-    between data catalogs. There are four kinds of pair counts, data-data (DD),
-    data-random (DR), random-data (RD), and random-random (RR).
-
-    Provides methods to read and write data to disk and compute the actual
-    correlation function values using spatial resampling (see
-    :class:`~yaw.ResamplingConfig` and :class:`~yaw.CorrData`).
-
-    __eq__, __neq__, __add__, __radd__, __mul__ -> patched count?
-
-    Args:
-        dd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`):
-            Pair counts for a data-data correlation measurement.
-        dr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
-            Pair counts for a data-random correlation measurement.
-        rd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
-            Pair counts for a random-data correlation measurement.
-        rr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
-            Pair counts for a random-random correlation measurement.
+    Container returned by :meth:`~yaw.catalogs.BaseCatalog.correlate` that
+    computes the correlations between data catalogs. The correlation function
+    can be computed from four kinds of pair counts, data-data (DD), data-random
+    (DR), random-data (RD), and random-random (RR).
 
     .. Note::
         DD is always required, but DR, RD, and RR are optional as long as at
         least one is provided.
+
+    Provides methods to read and write data to disk and compute the actual
+    correlation function values (see :class:`~yaw.CorrData`) using spatial
+    resampling (see :class:`~yaw.ResamplingConfig`).
+
+    The container supports comparison with ``==`` and ``!=`` on the pair count
+    level. The supported arithmetic operations between two correlation
+    functions, addition and subtraction, are applied between all internally
+    stored pair counts data. The same applies to rescaling of the counts by a
+    scalar, see :obj:`~yaw.correlation.paircounts.PatchedCount` for more
+    details.
+
+    Args:
+        dd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`):
+            Pair counts from a data-data count measurement.
+        dr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
+            Pair counts from a data-random count measurement.
+        rd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
+            Pair counts from a random-data count measurement.
+        rr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
+            Pair counts from a random-random count measurement.
     """
 
     dd: NormalisedCounts
-    """dd"""
+    """Pair counts for a data-data correlation measurement"""
     dr: NormalisedCounts | None = field(default=None)
-    """dr"""
+    """Pair counts from a data-random count measurement."""
     rd: NormalisedCounts | None = field(default=None)
-    """rd"""
+    """Pair counts from a random-data count measurement."""
     rr: NormalisedCounts | None = field(default=None)
-    """rr"""
+    """Pair counts from a random-random count measurement."""
 
     def __post_init__(self) -> None:
         # check if any random pairs are required
@@ -442,8 +564,9 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         other: CorrFunc,
         require: bool = True
     ) -> bool:
-        """Check whether this instance is compatible with another instance by
-        ensuring that the redshift binning and the number of patches are
+        """Check whether this instance is compatible with another instance.
+         
+        Ensures that the redshift binning and the number of patches are
         identical.
         
         Args:
@@ -670,6 +793,9 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 def _create_dummy_counts(
     counts: Any | dict[str, Any]
 ) -> dict[str, None]:
+    """Duplicate a the return values of
+    :meth:`yaw.catalogs.BaseCatalog.correlate`, but replace the :obj:`CorrFunc`
+    instances by :obj:`None`."""
     if isinstance(counts, dict):
         dummy = {scale_key: None for scale_key in counts}
     else:
@@ -681,6 +807,31 @@ def add_corrfuncs(
     corrfuncs: Sequence[CorrFunc],
     weights: Sequence[np.number] | None = None
 ) -> CorrFunc:
+    """Add correlation functions that are measured at different scales.
+    
+    The correlation functions are added by summing together their pair counts.
+    They can be weighted prior to summation by effectively scaling their pair
+    counts with a set of scalar weights, one for each input correlation
+    function.
+    
+    .. Note::
+        The actual scales are not checked, but the number of patches and the
+        redshift binning of the inputs must be identical. 
+
+    This operation is effectively equivalent to:
+
+    >>> corrfunc1 * weight1 + corrfunc2 * weight2  # + ...
+
+    Args:
+        corrfuncs (sequence of :obj:`CorrFunc`):
+            A list of correlation functions to add.
+        weights (sequence of :obj:`int` or :obj:`float`, optional):
+            An optional list of weights, one for each correlation function.
+
+    Returns:
+        :obj:`CorrFunc`:
+            The combined correlation function after summing the pairs.
+    """
     if weights is None:
         weights = [1.0] * len(corrfuncs)
     else:
@@ -699,6 +850,8 @@ class PatchError(Exception):
 
 
 def _check_patch_centers(catalogues: Sequence[BaseCatalog]) -> None:
+    """Check whether the patch centers of a set of data catalogues are seperated
+    by no more than the radius of the patches."""
     refcat = catalogues[0]
     for cat in catalogues[1:]:
         if refcat.n_patches != cat.n_patches:
@@ -719,35 +872,41 @@ def autocorrelate(
     compute_rr: bool = True,
     progress: bool = False
 ) -> CorrFunc | dict[str, CorrFunc]:
-    """Compute autocorrelation function.
+    """Compute an angular autocorrelation function in bins of redshift.
 
-    Compute the angular autocorrelation amplitude in bins of redshift. Requires
-    object redshifts configured.
+    The correlation is measured on fixed physical scales that are converted to
+    angles for each redshift bin. All parameters (binning, scales, etc.) are
+    bundled in the input configuration, see :mod:`yaw.config`.
+
+    .. Note::
+        Both the data and random catalogue require redshift point estimates.
 
     Args:
         config (:obj:`~yaw.Configuration`):
-            Provides all major run parameters.
+            Provides all major run parameters, such as scales, binning, and for
+            the correlation measurement backend.
         data (:obj:`~yaw.catalogs.BaseCatalog`):
-            The data sample.
+            The data sample catalogue.
         random (:obj:`~yaw.catalogs.BaseCatalog`):
-            Random catalog for the data sample, must have redshifts configured.
+            Random catalogue for the data sample.
 
     Keyword Args:
         linkage (:obj:`~yaw.catalogs.PatchLinkage`, optional):
             Provide a linkage object that determines which spatial patches must
             be correlated given the measurement scales. Ensures consistency
-            when measuring multiple correlations, otherwise generated
-            automatically.
+            when measuring correlations repeatedly for a fixed set of input
+            catalogues. Generated automatically by default.
         compute_rr (:obj:`bool`):
             Whether the random-random (RR) pair counts are computed.
         progress (:obj:`bool`):
             Display a progress bar.
 
     Returns:
-        Container that holds the measured pair counts.
-
-        - :obj:`CorrFunc`: If running a single correlation scale.
-        - :obj:`dict`: Otherwise a dictionary of correlation functions.
+        :obj:`CorrFunc` or :obj:`dict[str, CorrFunc]`:
+            Container that holds the measured pair counts, or a dictionary of
+            containers if multiple scales are configured. Dictionary keys have a
+            ``kpcXXtXX`` pattern, where ``XX`` are the lower and upper scale
+            limit as integers, in kpc.
     """
     _check_patch_centers([data, random])
     scales = config.scales.as_array()
@@ -787,11 +946,22 @@ def crosscorrelate(
     linkage: PatchLinkage | None = None,
     progress: bool = False
 ) -> CorrFunc | dict[str, CorrFunc]:
-    """Compute crosscorrelation function.
+    """Compute an angular crosscorrelation function in bins of redshift.
 
-    Compute the angular crosscorrelation amplitude in bins of redshift between
-    two data catalogue. Requires object redshifts configured in the first
-    (reference) catalogue.
+    The correlation is measured on fixed physical scales that are converted to
+    angles for each redshift bin. All parameters (binning, scales, etc.) are
+    bundled in the input configuration, see :mod:`yaw.config`.
+
+    At least one random catalogue (either for the reference or the unknown
+    sample) must be provided, which will either trigger counting the DR
+    (reference-random) or RD (random-unknown) pair counts. If both random
+    catalogues are provided, the random-random pairs (RR) are counted as well,
+    this is equivalent to enabling the ``compute_rr`` parameter in
+    :func:`autocorrelate`.
+
+    .. Note::
+        The reference catalogue requires redshift point estimates. If the
+        reference random cataloge is provided, it also requires redshifts.
 
     Args:
         config (:obj:`~yaw.Configuration`):
@@ -816,16 +986,11 @@ def crosscorrelate(
             Display a progress bar.
 
     Returns:
-        Container that holds the measured pair counts.
-
-        - :obj:`CorrFunc`: If running a single correlation scale.
-        - :obj:`dict`: Otherwise a dictionary of correlation functions.
-
-    .. Note::
-        Both random catalogs are optional, but one is required. This determines
-        which crosscorrelation pairs are counted. If both randoms are provided,
-        data-data (DD), data-random (DR), random-data (RD) and random-random
-        (RR) pairs are counted.
+        :obj:`CorrFunc` or :obj:`dict[str, CorrFunc]`:
+            Container that holds the measured pair counts, or a dictionary of
+            containers if multiple scales are configured. Dictionary keys have a
+            ``kpcXXtXX`` pattern, where ``XX`` are the lower and upper scale
+            limit as integers, in kpc.
     """
     compute_dr = unk_rand is not None
     compute_rd = ref_rand is not None
