@@ -24,7 +24,6 @@ and :mod:`yaw.catalogs` module.
         api/config
         api/core
         api/correlation
-        api/fitting
         api/randoms
         api/redshifts
 
