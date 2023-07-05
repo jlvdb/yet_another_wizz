@@ -21,7 +21,6 @@ yaw.correlation
     autocorrelate
     crosscorrelate
     add_corrfuncs
-    global_covariance
 
 
 .. rubric:: Classes

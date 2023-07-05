@@ -1,3 +1,7 @@
+"""This module implements some functions for self-documentation and generation
+of default configuration files.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -12,7 +16,26 @@ if TYPE_CHECKING:  # pragma: no cover
 
 @dataclass(frozen=True)
 class Parameter(Mapping):
-    """NOTE: data attributes are exposed with key prefix 'yaw_'."""
+    """Class to implement automatic generation of parameter descriptions.
+
+    This class provides the metadata needed to generate a new commandline
+    argument for python's :mod:`argparse` module. Each constructor argument
+    corresponds to one argument in the :func:`add_argument` method.
+
+    Many examples can be found in the :mod:`yaw.config` module, e.g.:
+
+    .. code-block:: python
+        cosmology: TypeCosmology | str | None = field(
+            default=DEFAULT.Configuration.cosmology,
+            metadata=Parameter(
+                type=str, choices=OPTIONS.cosmology,
+                help="cosmological model used for distance calculations",
+                default_text="(see astropy.cosmology, default: %(default)s)"))
+
+    .. Note::
+        The ``default_text`` parameter has to be provided separately and will be
+        appended to the ``help``text when generating the full help text.
+    """
 
     help: str
     type: type | None = field(default=None)
@@ -45,6 +68,7 @@ class Parameter(Mapping):
 
     @classmethod
     def from_field(cls, field: Field) -> Parameter:
+        """Create a new instance from a :obj:`dataclassField`."""
         kwargs = {}
         for key, value in field.metadata.items():
             if key.startswith("yaw_"):
@@ -55,9 +79,11 @@ class Parameter(Mapping):
         return cls(**kwargs)
 
     def is_flag(self) -> bool:
+        """Indicates if argument is a flag with ``action="store_true/false``."""
         return self.type is bool
 
     def get_kwargs(self) -> dict[str, Any]:
+        """Build the list of keyword arguments for :meth:`add_argument`."""
         kwargs = asdict(self)
         kwargs.pop("parser_id")
         default = kwargs.pop("default_text")
@@ -70,6 +96,11 @@ def get_doc_args(
     dclass: object | type,
     indicate_opt: bool = True
 ) -> list[tuple[str, str | None]]:
+    """Generate a section with default values for a YAML configuration file.
+    
+    Entries are added for those dataclass fields that contain a Parameter
+    instance in the ``metadata`` field.
+    """
     lines = []
     argfields = fields(dclass)
     if len(argfields) > 0:
@@ -101,6 +132,12 @@ def populate_parser(
     default_parser: ArgumentParser,
     extra_parsers: Mapping[str, ArgumentParser] | None = None
 ) -> None:
+    """Populate a parser instance or argument group with arguments from a
+    dataclass.
+    
+    Arguments are added for those dataclass fields that contain a Parameter
+    instance in the ``metadata`` field.
+    """
     for field in fields(dclass):
         try:
             parameter = Parameter.from_field(field)

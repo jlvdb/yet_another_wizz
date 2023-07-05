@@ -20,7 +20,6 @@ from yaw.config import ResamplingConfig, OPTIONS
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData
 from yaw.core.logging import LogCustomWarning, TimedLog
-from yaw.core.math import apply_slice_ndim, cov_from_samples
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
@@ -362,47 +361,6 @@ def check_mergable(cfs: Sequence[CorrFunc | None]) -> None:
             pcounts = getattr(cf, kind)
             if type(ref_pcounts) != type(pcounts):
                 raise ValueError(f"cannot merge, '{kind}' incompatible")
-
-
-def global_covariance(
-    data: Sequence[SampledData],
-    method: str | None = None,
-    kind: str = "full"
-) -> NDArray:
-    """Compute a joint covariance from a set of resampled data.
-
-    Typically applied to a set of :obj:`CorrData`,
-    :obj:`~yaw.redshifts.RedshiftData`, or :obj:`~yaw.redshifts.HistData`
-    containers. The joint covariance is computed by concatenating the samples
-    along the redshift binning axis.
-
-    .. Warning::
-        The input containers must have the same number of samples, and use the
-        same resampling method. They also should be of the same type.
-
-    Args:
-        data (sequence of :obj:`SampledData`):
-            The input containers, should be of the same type.
-        method (:obj:`str`, optional):
-            Specify the sampling method to use. All other containers must follow
-            this convention.
-        kind (:obj:`str`, optional):
-            The method to compute the covariance matrix, see
-            :func:`yaw.core.math.cov_from_samples`.
-
-    Returns:
-        :obj:`NDArray`:
-            Jointly estimated covariance. Dimension matches the sum of all
-            redshift bins in the input containers.
-    """
-    if len(data) == 0:
-        raise ValueError("'data' must be a sequence with at least one item")
-    if method is None:
-        method = data[0].method
-    for d in data[1:]:
-        if d.method != method:
-            raise ValueError("resampling method of data items is inconsistent")
-    return cov_from_samples([d.samples for d in data], method=method, kind=kind)
 
 
 @dataclass(frozen=True)
@@ -882,7 +840,7 @@ def autocorrelate(
         Both the data and random catalogue require redshift point estimates.
 
     Args:
-        config (:obj:`~yaw.Configuration`):
+        config (:obj:`~yaw.config.Configuration`):
             Provides all major run parameters, such as scales, binning, and for
             the correlation measurement backend.
         data (:obj:`~yaw.catalogs.BaseCatalog`):
@@ -906,7 +864,7 @@ def autocorrelate(
             Container that holds the measured pair counts, or a dictionary of
             containers if multiple scales are configured. Dictionary keys have a
             ``kpcXXtXX`` pattern, where ``XX`` are the lower and upper scale
-            limit as integers, in kpc.
+            limit as integers, in kpc (see :obj:`yaw.core.cosmology.Scale`).
     """
     _check_patch_centers([data, random])
     scales = config.scales.as_array()
@@ -964,7 +922,7 @@ def crosscorrelate(
         reference random cataloge is provided, it also requires redshifts.
 
     Args:
-        config (:obj:`~yaw.Configuration`):
+        config (:obj:`~yaw.config.Configuration`):
             Provides all major run parameters.
         reference (:obj:`yaw.catalogs.BaseCatalog`):
             The reference sample.
@@ -990,7 +948,7 @@ def crosscorrelate(
             Container that holds the measured pair counts, or a dictionary of
             containers if multiple scales are configured. Dictionary keys have a
             ``kpcXXtXX`` pattern, where ``XX`` are the lower and upper scale
-            limit as integers, in kpc.
+            limit as integers, in kpc (see :obj:`yaw.core.cosmology.Scale`).
     """
     compute_dr = unk_rand is not None
     compute_rd = ref_rand is not None

@@ -14,5 +14,4 @@ the :mod:`yaw.redshifts` module.
 """
 
 from yaw.correlation.corrfuncs import (
-    CorrData, CorrFunc, autocorrelate, crosscorrelate,
-    add_corrfuncs, global_covariance)
+    CorrData, CorrFunc, autocorrelate, crosscorrelate, add_corrfuncs)

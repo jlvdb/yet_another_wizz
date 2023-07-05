@@ -1,3 +1,12 @@
+"""This module defines a few containers used throughout other modules.
+
+Most importantly, they implement two containers for data with attached samples
+(e.g. jackknife or bootstrap). Scalar values are implemented in
+:obj:`SampledValue`, data that has been computed from redshift bins in
+:obj:`SampledData`, which also serves as base class for most other containers
+with redshift binning.
+"""
+
 from __future__ import annotations
 
 import warnings

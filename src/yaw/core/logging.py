@@ -1,3 +1,6 @@
+"""This module implements functions and wrappers for handling logs and warnings.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -8,6 +11,7 @@ from typing import Callable
 
 
 class LogCustomWarning:
+    """Context wrapper that temporarily redirects warnings to a logger."""
 
     def __init__(
         self,
@@ -15,6 +19,17 @@ class LogCustomWarning:
         alt_message: str | None = None,
         ignore: bool = True
     ):
+        """Instead of showing the warning through the :func:`warnings.warn`
+        machinery, write the message as warning to the provided logger.
+
+        Args:
+            logger (:obj:`logging.Logger`):
+                The logger instance to which the warning is redirected.
+            alt_message (:obj:`str`, optional):
+                Replace the original message text with this value instead.
+            ignore (:obj:`bool`, optional):
+                Do not show warning with :func:`warnings.warn` (the default).
+        """
         self._logger = logger
         self._message = alt_message
         self._ignore = ignore
@@ -38,6 +53,17 @@ class LogCustomWarning:
 
 
 class TimedLog:
+    """Context wrapper that measures the elapsed time and emits a log message on
+    exit.
+    
+    Emits a log in the format ``{message} - done {elapsed time}``.
+
+    Args:
+        logging_callback (Callable):
+            Function that processes the log message on context wrapper exit.
+        msg (:obj:`str`, optional):
+            The log message body.
+    """
 
     def __init__(
         self,

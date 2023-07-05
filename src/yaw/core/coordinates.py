@@ -1,9 +1,14 @@
+"""This module defines simple containers for coordiantes and distances. There
+are currently two flavours, 3-dim Euclidean coordinates and distances, as well
+as angular coordinates and distances in radian.
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from collections.abc import Iterator, Sequence
 from functools import total_ordering
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
 
@@ -13,51 +18,98 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
 
-class Coordinate(Sequence, ABC):
+class Coordinate(ABC):
+    """Base class for a vector of coordinates."""
 
     @abstractmethod
     def __init__(self, coords: dict[str, ArrayLike]) -> None: pass
 
     @abstractclassmethod
-    def from_array(cls, array) -> Coordinate: pass
+    def from_array(cls, array) -> Coordinate:
+        pass
 
     @abstractclassmethod
-    def from_coords(cls, coords: Sequence[Coordinate]) -> Coordinate: pass
+    def from_coords(cls, coords: Sequence[Coordinate]) -> Coordinate:
+        """Concatenate a sequence of coordinates into a new vector of
+        coordates."""
+        pass
 
     def __repr__(self) -> str: pass
 
     @abstractproperty
-    def dim(self) -> tuple[str]: pass
+    def dim(self) -> tuple[str]:
+        """A list of names of coordinates in the coordinate system."""
+        pass
 
     @property
     def ndim(self) -> int:
+        """The number of coordinates in the coordinate system."""
         return len(self.dim)
 
     @abstractproperty
-    def values(self) -> NDArray[np.float_]: pass
+    def values(self) -> NDArray[np.float_]:
+        """The coordinate values cast into a numpy array with shape
+        `(N, ndim)` or `(ndim,)` if there is only a single entry."""
+        pass
 
     @abstractmethod
-    def mean(self) -> Coordinate: pass
+    def mean(self) -> Coordinate:
+        """The mean coordinate (mean over all dimensions)."""
+        pass
 
     @abstractmethod
-    def to_3d(self) -> Coord3D: pass
+    def to_3d(self) -> Coord3D:
+        """Get the coordinates as 3-dim Euclidean coordiante :obj:`Coord3D`."""
+        pass
 
     @abstractmethod
-    def to_sky(self) -> CoordSky: pass
+    def to_sky(self) -> CoordSky:
+        """Get the coordinates as angular coordiante :obj:`CoordSky` in radian.
+
+        .. Warning::
+            During conversion, points loose their radial information. After
+            back-transformation to :obj:`Coord3D` they lie on the unit sphere.
+        """
+        pass
 
     @abstractmethod
-    def distance(self) -> Distance: pass
+    def distance(self, other: Coordinate) -> Distance: pass
 
 
 class Coord3D(Coordinate):
+    """A representation of a vector of 3-dim Euclidean coordiantes (x, y, z)."""
+
+    x: NDArray
+    """The `x`-coordiante(s)."""
+    y: NDArray
+    """The `y`-coordiante(s)."""
+    z: NDArray
+    """The `z`-coordiante(s)."""
 
     def __init__(self, x: ArrayLike, y: ArrayLike, z: ArrayLike) -> None:
+        """Create a new coordinate vector.
+
+        Args:
+            x (:obj:`float`, :obj:`NDArray`):
+                The `x`-coordiante(s).
+            y (:obj:`float`, :obj:`NDArray`):
+                The `y`-coordiante(s).
+            z (:obj:`float`, :obj:`NDArray`):
+                The `z`-coordiante(s).
+
+        .. Note::
+            The coordinate vector has a length, supports numpy-style indexing
+            and iteration over the elements (always returning new coordinate
+            vector instances).
+        """
         self.x = np.atleast_1d(x).astype(np.float_)
         self.y = np.atleast_1d(y).astype(np.float_)
         self.z = np.atleast_1d(z).astype(np.float_)
 
     @classmethod
     def from_array(cls, array) -> Coord3D:
+        """Create a new coordinate vector from an array of tuples of
+        (`x`, `y`, `z`)."""
         x, y, z = np.transpose(array)
         return cls(x, y, z)
 
@@ -108,7 +160,19 @@ class Coord3D(Coordinate):
         dec = np.arcsin(self.z / r_d3)
         return CoordSky(ra, dec)
 
-    def distance(self, other: Coord3D) -> Dist3D:
+    def distance(self, other: Coordinate) -> Dist3D:
+        """Compute the Euclidean distance between two coordinate vectors.
+        
+        Coordinates are automatically converted before distance calculation.
+
+        Args:
+            other (:obj:`Coordinate`):
+                Second coordinate vector.
+        
+        Returns:
+            :obj:`Dist3D`:
+                Euclidean distance between points in this and the other vector.
+        """
         c1 = self.to_3d()
         c2 = other.to_3d()
         return Dist3D(np.sqrt(
@@ -118,13 +182,38 @@ class Coord3D(Coordinate):
 
 
 class CoordSky(Coordinate):
+    """A representation of a vector of angular coordinates in radian.
+    
+    Angles follow the astronomical convention of R.A./Dec., i.e. declination
+    values are in the range of [:math:`-\\pi`, :math:`\\pi`].
+    """
+
+    ra: NDArray
+    """The right ascension coordinate(s)."""
+    dec: NDArray
+    """The declination coordinate(s)."""
 
     def __init__(self, ra: ArrayLike, dec: ArrayLike) -> None:
+        """Create a new coordinate vector.
+
+        Args:
+            ra (:obj:`float`, :obj:`NDArray`):
+                The right ascension coordinate(s).
+            dec (:obj:`float`, :obj:`NDArray`):
+                The declination coordinate(s).
+
+        .. Note::
+            The coordinate vector has a length, supports numpy-style indexing
+            and iteration over the elements (always returning new coordinate
+            vector instances).
+        """
         self.ra = np.atleast_1d(ra).astype(np.float_)
         self.dec = np.atleast_1d(dec).astype(np.float_)
 
     @classmethod
     def from_array(cls, array):
+        """Create a new coordinate vector from an array of tuples of
+        (`ra`, `dec`)."""
         ra, dec = np.transpose(array)
         return cls(ra, dec)
 
@@ -169,7 +258,21 @@ class CoordSky(Coordinate):
     def to_sky(self) -> CoordSky:
         return self
 
-    def distance(self, other: CoordSky) -> DistSky:
+    def distance(self, other: Coordinate) -> DistSky:
+        """Compute the angular distance in radian between two coordinate
+        vectors.
+
+        Coordinates are automatically converted before distance calculation.
+
+        Args:
+            other (:obj:`Coordinate`):
+                Second coordinate vector.
+        
+        Returns:
+            :obj:`DistSky`:
+                Angular distance in radian between points in this and the other
+                vector.
+        """
         # lazy shortcut
         self_3D = self.to_3d()
         other_3D = other.to_3d()
@@ -177,14 +280,34 @@ class CoordSky(Coordinate):
         return dist.to_sky()
 
 
+_Tdist = TypeVar("_Tdist", bound="Distance")
+
+
 @total_ordering
-class Distance(ABC, Sequence):
+class Distance(ABC):
+    """Base class for a vector of distances."""
 
     def __init__(self, distance: ArrayLike) -> None:
+        """Constructs a new vector of distances.
+
+        Args:
+            distance (:obj:`float`, :obj:`NDArray`):
+                Distance values.
+
+        .. Note::
+            The coordinate vector has a length, supports numpy-style indexing
+            and iteration over the elements (always returning new coordinate
+            vector instances).
+
+            Additionally, distances implement element-wise addition and
+            subtraction, as well as the comparison operators.
+        """
         self._values = np.atleast_1d(distance).astype(np.float_)
 
     @classmethod
-    def from_dists(cls, dists: Sequence[Distance]) -> Distance:
+    def from_dists(cls: _Tdist, dists: Sequence[_Tdist]) -> _Tdist:
+        """Concatenate a sequence of distances into a new vector of distances.
+        """
         return cls(np.concatenate([dist._values for dist in dists], axis=0))
 
     def __len__(self) -> int:
@@ -198,7 +321,9 @@ class Distance(ABC, Sequence):
             yield self[i]
 
     @property
-    def values(self) -> NDArray[np.float_]:
+    def values(self) -> NDArray[np.float_] | float:
+        """The distances cast into a numpy array with shape `(N,)` or a scalar
+        if there is only a single distance."""
         return np.squeeze(self._values)
 
     def __repr__(self) -> str:
@@ -214,25 +339,34 @@ class Distance(ABC, Sequence):
         return self.values < other.values
 
     @abstractmethod
-    def __add__(self, other: Distance) -> Distance: pass
+    def __add__(self: _Tdist, other: _Tdist) -> _Tdist: pass
 
     @abstractmethod
-    def __sub__(self, other: Distance) -> Distance: pass
+    def __sub__(self:_Tdist, other: _Tdist) -> _Tdist: pass
 
-    def min(self) -> Distance:
+    def min(self) -> _Tdist:
+        """Compute the minimum value and return it as new `Distance`
+        instance."""
         return self.__class__(self.values.min())
 
-    def max(self) -> Distance:
+    def max(self) -> _Tdist:
+        """Compute the maximum value and return it as new `Distance`
+        instance."""
         return self.__class__(self.values.max())
 
     @abstractmethod
-    def to_3d(self) -> Dist3D: pass
+    def to_3d(self) -> Dist3D:
+        """Convert the distance to the Euclidean distance."""
+        pass
 
     @abstractmethod
-    def to_sky(self) -> DistSky: pass
+    def to_sky(self) -> DistSky:
+        """Convert the distance to an angular separation in radian."""
+        pass
 
 
 class Dist3D(Distance):
+    """Implements a vector of Euclidean distances."""
 
     def __add__(self, other: Dist3D) -> DistSky:
         dist_sky = self.to_sky() + other.to_sky()
@@ -252,6 +386,7 @@ class Dist3D(Distance):
 
 
 class DistSky(Distance):
+    """Implements a vector of angular distances in radian."""
 
     def __add__(self, other: DistSky) -> DistSky:
         return DistSky(self.values + other.values)

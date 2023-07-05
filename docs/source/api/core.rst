@@ -9,10 +9,19 @@ yaw.core
 .. toctree::
     :maxdepth: 1
 
+    core.abc
     core.coordinates
     core.cosmology
     core.math
     core.parallel
+
+
+.. rubric:: Functions
+
+.. autosummary::
+    :toctree: correlation
+
+    global_covariance
 
 
 .. rubric:: Classes

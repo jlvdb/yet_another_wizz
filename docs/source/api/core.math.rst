@@ -16,6 +16,5 @@ yaw.core.math
     cov_from_samples
     outer_triu_sum
     rebin
-    round_to
     sgn
     shift_histogram

@@ -1,3 +1,7 @@
+"""This module implements some abstract base classes that define the interfaces
+for high level containers in other modules.
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty

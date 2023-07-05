@@ -45,6 +45,25 @@ class Options:
         return available
 
     @property
+    def kind(self) -> tuple[str]:
+        """Lists the currently implemented methods for covariance calculation.
+
+        .. rubric:: Values
+
+        ``full``: Compute all matrix elements of the covariance.
+        
+        ``diag``: Compute only the main diagonal and the primary off-diagonals
+        of the covariance matrix. This option applies, if the covariance is
+        computed from a concatenated set of data samples, which have a
+        crosscorrelation of interest. For example if concatenating the samples
+        obtained from multiple redshift bins, the primary off-diagonals contain
+        the covariance at the same redshift between different bins.
+
+        ``var``: Compute the variance, i.e. only the diagonal elements.
+        """
+        return ("full", "diag", "var")
+
+    @property
     def merge(self) -> tuple[str]:
         """Lists the available modes to merge correlation measurements.
 
