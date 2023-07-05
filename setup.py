@@ -4,7 +4,7 @@ import numpy as np
 
 ext_module_math = Extension(
     "yaw.core._math",
-    ["yaw/core/math.c"],
+    ["src/yaw/core/math.c"],
     include_dirs = [np.get_include()])
 
 

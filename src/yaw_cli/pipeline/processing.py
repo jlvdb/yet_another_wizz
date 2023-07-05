@@ -11,11 +11,11 @@ from yaw.core.utils import format_float_fixed_width as fmt_num
 from yaw.correlation import CorrData, CorrFunc
 from yaw.redshifts import RedshiftData
 
-from yaw.pipeline.data import MissingCatalogError
+from yaw_cli.pipeline.data import MissingCatalogError
 
 if TYPE_CHECKING: ## pragma: no cover
     from yaw.config import Configuration
-    from yaw.pipeline.project import ProjectDirectory, ProjectState
+    from yaw_cli.pipeline.project import ProjectDirectory, ProjectState
 
 
 logger = logging.getLogger(__name__)
@@ -233,7 +233,7 @@ class PostProcessor:
         plot_dir = self.project.estimate_path
         try:
             import matplotlib.pyplot as plt
-            from yaw.pipeline.plot import Plotter
+            from yaw_cli.pipeline.plot import Plotter
             logger.info(
                 f"creating check-plots in '{plot_dir}'")
         except ImportError:

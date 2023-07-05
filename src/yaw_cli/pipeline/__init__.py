@@ -4,7 +4,7 @@ Coverage of the implementation details has low priority and may be added at a
 later time.
 """
 
-from yaw.pipeline import tasks
-from yaw.pipeline.plot import Plotter
-from yaw.pipeline.project import ProjectDirectory
-from yaw.pipeline.merge import MergedDirectory, open_yaw_directory
+from yaw_cli.pipeline import tasks
+from yaw_cli.pipeline.plot import Plotter
+from yaw_cli.pipeline.project import ProjectDirectory
+from yaw_cli.pipeline.merge import MergedDirectory, open_yaw_directory

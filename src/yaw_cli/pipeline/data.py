@@ -14,7 +14,7 @@ from yaw.core.abc import DictRepresentation
 from yaw.core.coordinates import Coordinate, CoordSky
 from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
 
-from yaw.pipeline.directories import CacheDirectory
+from yaw_cli.pipeline.directories import CacheDirectory
 
 if TYPE_CHECKING:
     from yaw.catalogs import BaseCatalog

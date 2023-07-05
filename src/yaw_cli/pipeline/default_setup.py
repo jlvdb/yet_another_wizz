@@ -5,7 +5,7 @@ import textwrap
 from yaw import config
 from yaw.core.docs import get_doc_args
 
-from yaw.pipeline import tasks
+from yaw_cli.pipeline import tasks
 
 
 WIDTH = 100

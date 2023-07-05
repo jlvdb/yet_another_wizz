@@ -14,12 +14,12 @@ from yaw.core.abc import DictRepresentation
 from yaw.core.docs import Parameter
 from yaw.correlation.estimators import CorrelationEstimator
 
-from yaw.pipeline.processing import DataProcessor
-from yaw.pipeline.logger import print_yaw_message
+from yaw_cli.pipeline.processing import DataProcessor
+from yaw_cli.pipeline.logger import print_yaw_message
 
 if TYPE_CHECKING:  # pragma: no cover
     from argparse import Namespace
-    from yaw.pipeline.project import ProjectDirectory
+    from yaw_cli.pipeline.project import ProjectDirectory
 
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath("../.."))
+sys.path.insert(0, os.path.abspath("../../src"))
 import yaw
 
 project = "yet_another_wizz"
@@ -112,7 +112,7 @@ if not os.path.exists(path):
 path = "user_guide/cmd/default_setup.yaml"
 if not os.path.exists(path):
     print(f"generating '{path}'")
-    from yaw.pipeline.default_setup import setup_default
+    from yaw_cli.pipeline.default_setup import setup_default
 
     with open(path, "w") as f:
         f.write(setup_default)

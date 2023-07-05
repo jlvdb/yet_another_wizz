@@ -18,13 +18,13 @@ from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrFunc
 from yaw.redshifts import HistData
 
-from yaw.pipeline.project import (
+from yaw_cli.pipeline.project import (
     ProjectDirectory, ProjectState, YawDirectory, compress_config)
-from yaw.pipeline.tasks import MergedTask, Task, TaskError, TaskManager
+from yaw_cli.pipeline.tasks import MergedTask, Task, TaskError, TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
-    from yaw.pipeline.project import YawDirectory
+    from yaw_cli.pipeline.project import YawDirectory
 
 
 logger = logging.getLogger(__name__)

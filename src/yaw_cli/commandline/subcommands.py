@@ -10,13 +10,13 @@ from yaw import config as yaw_config
 from yaw.config import Configuration, DEFAULT, OPTIONS
 from yaw.core.docs import populate_parser
 
-from yaw.pipeline import tasks as yaw_tasks
-from yaw.pipeline.merge import MergedDirectory, open_yaw_directory
-from yaw.pipeline.project import (
+from yaw_cli.pipeline import tasks as yaw_tasks
+from yaw_cli.pipeline.merge import MergedDirectory, open_yaw_directory
+from yaw_cli.pipeline.project import (
     ProjectDirectory, load_config_from_setup, load_setup_as_dict)
 
-from yaw.commandline import utils
-from yaw.commandline.main import Commandline
+from yaw_cli.commandline import utils
+from yaw_cli.commandline.main import Commandline
 
 
 logger = logging.getLogger(__name__)

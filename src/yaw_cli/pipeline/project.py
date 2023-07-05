@@ -18,15 +18,15 @@ from yaw.config.utils import parse_section_error
 from yaw.core.abc import DictRepresentation
 from yaw.core.utils import TypePathStr
 
-from yaw.pipeline.data import InputManager
-from yaw.pipeline.directories import (
+from yaw_cli.pipeline.data import InputManager
+from yaw_cli.pipeline.directories import (
     CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
-from yaw.pipeline.logger import get_logger
-from yaw.pipeline.processing import DataProcessor, PostProcessor
-from yaw.pipeline.tasks import TaskManager
+from yaw_cli.pipeline.logger import get_logger
+from yaw_cli.pipeline.processing import DataProcessor, PostProcessor
+from yaw_cli.pipeline.tasks import TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.pipeline.data import Input
+    from yaw_cli.pipeline.data import Input
 
 
 logger = logging.getLogger(__name__)

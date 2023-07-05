@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from yaw.correlation import CorrData
 from yaw.redshifts import RedshiftData
 
-from yaw.pipeline.project import ProjectDirectory
+from yaw_cli.pipeline.project import ProjectDirectory
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray

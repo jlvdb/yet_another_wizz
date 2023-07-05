@@ -18,7 +18,7 @@ class DumpConfigAction(Action):
             const=const, required=required, help=help)
 
     def __call__(self, parser, namespace, values, option_string):
-        from yaw.pipeline.default_setup import setup_default
+        from yaw_cli.pipeline.default_setup import setup_default
         print(setup_default)
         parser.exit()
 

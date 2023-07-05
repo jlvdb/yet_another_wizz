@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Any
 
 from yaw import __version__
 
-from yaw.pipeline.data import BinnedInput, Input
-from yaw.pipeline.logger import Colors, init_logger, print_yaw_message
+from yaw_cli.pipeline.data import BinnedInput, Input
+from yaw_cli.pipeline.logger import Colors, init_logger, print_yaw_message
 
-from yaw.commandline import utils
+from yaw_cli.commandline import utils
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.commandline.subcommands import SubCommand
+    from yaw_cli.commandline.subcommands import SubCommand
 
 
 class _Commandline:
