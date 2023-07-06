@@ -18,7 +18,7 @@ Author: Jan Luca van den Busch
         (Ruhr-Universität Bochum, Astronomisches Institut)
 """
 
-__version__ = "2.3.2"
+__version__ = "2.4"
 
 import logging as _logging
 
