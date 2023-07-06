@@ -151,7 +151,7 @@ class CorrelationEstimator(ABC):
 
     @abstractclassmethod
     def eval(
-        self,
+        cls,
         *,
         dd: NDArray,
         dr: NDArray,
@@ -175,8 +175,8 @@ class PeeblesHauser(CorrelationEstimator):
     optional = []
 
     @classmethod
-    def __call__(
-        self,
+    def eval(
+        cls,
         *,
         dd: NDArray,
         rr: NDArray,
@@ -193,7 +193,7 @@ class PeeblesHauser(CorrelationEstimator):
         Returns:
             :obj:`NDArray`
         """
-        self._warn_enum_zero(rr)
+        cls._warn_enum_zero(rr)
         return dd / rr - 1.0
 
 
@@ -211,7 +211,7 @@ class DavisPeebles(CorrelationEstimator):
 
     @classmethod
     def eval(
-        self,
+        cls,
         *,
         dd: NDArray,
         dr_rd: NDArray,
@@ -228,7 +228,7 @@ class DavisPeebles(CorrelationEstimator):
         Returns:
             :obj:`NDArray`
         """
-        self._warn_enum_zero(dr_rd)
+        cls._warn_enum_zero(dr_rd)
         return dd / dr_rd - 1.0
 
 
@@ -243,7 +243,7 @@ class Hamilton(CorrelationEstimator):
 
     @classmethod
     def eval(
-        self,
+        cls,
         *,
         dd: NDArray,
         dr: NDArray,
@@ -268,7 +268,7 @@ class Hamilton(CorrelationEstimator):
         """
         rd = dr if rd is None else rd
         enum = dr * rd
-        self._warn_enum_zero(enum)
+        cls._warn_enum_zero(enum)
         return (dd * rr) / enum - 1.0
 
 
@@ -283,7 +283,7 @@ class LandySzalay(CorrelationEstimator):
 
     @classmethod
     def eval(
-        self,
+        cls,
         *,
         dd: NDArray,
         dr: NDArray,
@@ -307,5 +307,5 @@ class LandySzalay(CorrelationEstimator):
             :obj:`NDArray`
         """
         rd = dr if rd is None else rd
-        self._warn_enum_zero(rr)
+        cls._warn_enum_zero(rr)
         return (dd - (dr + rd) + rr) / rr
