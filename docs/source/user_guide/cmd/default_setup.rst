@@ -8,6 +8,7 @@ Default setup file
 
 
 .. dropdown:: ``$ yaw run --dump``
+    :open:
 
     .. literalinclude:: default_setup.yaml
         :language: yaml

@@ -12,7 +12,7 @@ These are implemented in the coordinate classes
 
 .. code-block:: python
 
-    >>> from yaw import coordinates
+    >>> from yaw.core import coordinates
 
 
 Coordinate objects

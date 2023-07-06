@@ -1,7 +1,7 @@
 yaw.randoms
 ===========
 
-.. currentmodule:: yaw.randoms
+.. automodule:: yaw.randoms
 
 
 .. rubric:: Classes

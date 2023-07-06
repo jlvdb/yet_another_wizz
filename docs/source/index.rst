@@ -1,8 +1,5 @@
 .. title:: Documentation of yet_another_wizz
 
-.. Warning::
-    This is still a beta release. Future versions may include breaking changes.
-
 .. grid::
     :gutter: 2 3 4 4
     :margin: 0 auto auto auto

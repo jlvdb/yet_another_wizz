@@ -1,7 +1,7 @@
 yaw.catalogs.scipy
 ==================
 
-.. currentmodule:: yaw.catalogs.scipy
+.. automodule:: yaw.catalogs.scipy
 
 
 .. rubric:: Classes
@@ -10,6 +10,6 @@ yaw.catalogs.scipy
     :toctree: catalogs.scipy
     :template: custom-class-template.rst
 
-    PatchCatalog
     ScipyCatalog
+    PatchCatalog
     SphericalKDTree

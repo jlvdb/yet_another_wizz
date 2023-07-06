@@ -8,7 +8,7 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath("../.."))
+sys.path.insert(0, os.path.abspath("../../src"))
 import yaw
 
 project = "yet_another_wizz"
@@ -54,9 +54,9 @@ html_favicon = "_static/icon.ico"
 html_theme_options = {
     "github_url": "https://github.com/jlvdb/yet_another_wizz",
     "collapse_navigation": True,
-    "navigation_depth": 2,
-    "show_nav_level": 2,
-    "show_toc_level": 2,
+    "navigation_depth": 3,
+    "show_nav_level": 3,
+    "show_toc_level": 3,
     "navbar_align": "content",
     "secondary_sidebar_items": ["page-toc"],
     "logo": {
@@ -64,7 +64,8 @@ html_theme_options = {
         "image_dark": "_static/logo-dark.svg",
     },
     "pygment_light_style": "xcode",
-    "pygment_dark_style": "github-dark"
+    "pygment_dark_style": "github-dark",
+    "announcement": "<p>Stable release now available on <a href='https://pypi.org/project/yet_another_wizz/'>PyPI</a>!</p>"
 }
 html_sidebars = {
     "**": [
@@ -112,7 +113,7 @@ if not os.path.exists(path):
 path = "user_guide/cmd/default_setup.yaml"
 if not os.path.exists(path):
     print(f"generating '{path}'")
-    from yaw.pipeline.default_setup import setup_default
+    from yaw_cli.pipeline.default_setup import setup_default
 
     with open(path, "w") as f:
         f.write(setup_default)

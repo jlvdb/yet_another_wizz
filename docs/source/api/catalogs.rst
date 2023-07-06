@@ -1,15 +1,16 @@
 yaw.catalogs
 ============
 
-.. currentmodule:: yaw.catalogs
+.. automodule:: yaw.catalogs
 
 
-.. rubric:: Attributes
+.. rubric:: Submodules
 
-.. autosummary::
-    :toctree: catalogs
+.. toctree::
+    :maxdepth: 1
 
-    BACKEND_OPTIONS
+    catalogs.scipy
+    catalogs.treecorr
 
 
 .. rubric:: Classes
@@ -18,6 +19,6 @@ yaw.catalogs
     :toctree: catalogs
     :template: custom-class-template.rst
 
-    BaseCatalog
     NewCatalog
+    BaseCatalog
     PatchLinkage

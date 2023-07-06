@@ -1,7 +1,16 @@
 yaw.correlation
 ===============
 
-.. currentmodule:: yaw.correlation
+.. automodule:: yaw.correlation
+
+
+.. rubric:: Submodules
+
+.. toctree::
+    :maxdepth: 1
+
+    correlation.estimators
+    correlation.paircounts
 
 
 .. rubric:: Functions
@@ -9,8 +18,9 @@ yaw.correlation
 .. autosummary::
     :toctree: correlation
 
-    crosscorrelate
     autocorrelate
+    crosscorrelate
+    add_corrfuncs
 
 
 .. rubric:: Classes
@@ -19,8 +29,5 @@ yaw.correlation
     :toctree: correlation
     :template: custom-class-template.rst
 
-    CorrelationFunction
-    CorrelationData
-    RedshiftData
-    HistogramData
-    SampledValue
+    CorrFunc
+    CorrData

@@ -1,15 +1,16 @@
 yaw.config
 ==========
 
-.. currentmodule:: yaw.config
+.. automodule:: yaw.config
 
 
-.. rubric:: Attributes
+.. rubric:: Submodules
 
-.. autosummary::
-    :toctree: config
+.. toctree::
+    :maxdepth: 1
 
-    METHOD_OPTIONS
+    config.default
+    config.options
 
 
 .. rubric:: Classes
@@ -18,9 +19,9 @@ yaw.config
     :toctree: config
     :template: custom-class-template.rst
 
-    ScalesConfig
-    ManualBinningConfig
-    AutoBinningConfig
-    BackendConfig
     Configuration
+    ScalesConfig
+    AutoBinningConfig
+    ManualBinningConfig
+    BackendConfig
     ResamplingConfig

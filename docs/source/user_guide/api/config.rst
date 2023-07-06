@@ -16,8 +16,7 @@ method, which is a keyword-only function. A minimum example is:
 
 .. code-block:: python
 
-    >>> config = Configuration.create(
-    ...     rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
+    >>> config = Configuration.create(rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
 
 The configuration object is hierarchical and holds the parameters in its
 attributes. The structure matches the layout of the YAML configuration file used
@@ -101,12 +100,12 @@ The former creates a :class:`~yaw.config.ManualBinningConfig` object, the latter
 constructs a :class:`~yaw.config.AutoBinningConfig` class. The case shown above
 corresponds to the default binning, which are 30 bins, linearly spaced in
 redshift. Other spacings can be selected using the method parameter, see also
-:const:`~yaw.cosmology.BINNING_OPTIONS`.
+:const:`~yaw.config.options.Options.binning`.
 
 .. Note::
 
     Either ``zmin`` and ``zmax`` or ``zbins`` are required to construct a valid
-    redshift binning, otherwise a :exc:`~yaw.config.ConfigurationError` is
+    redshift binning, otherwise a :exc:`~yaw.config.ConfigError` is
     raised.
 
 
@@ -115,7 +114,7 @@ redshift. Other spacings can be selected using the method parameter, see also
 
 This section maps to the :class:`~yaw.config.BackendConfig` class, which are
 parameters for the backend used to compute correlations (see
-:const:`~yaw.catalogs.BACKEND_OPTIONS` and the section on
+:const:`~yaw.config.options.Options.backend` and the section on
 :ref:`data catalogs<api_catalogs>`). The most important parameter here is the
 ``thread_num`` parameter, which specifies the number of parallel threads to use.
 The ``crosspatch`` parameter specifies, whether the backend counts pairs beyond
@@ -130,7 +129,7 @@ effect on clustring redshifts. In the configuration it is specifed through the
 ``cosmology`` parameter, the current default is ``cosmology=Planck15``.
 
 If you need use a model, a number of
-:const:`named models<yaw.cosmology.COSMOLOGY_OPTIONS>` from the
+:const:`named models<yaw.options.Options.OPTIONS.cosmology>` from the
 :mod:`astropy.cosmology` module are available. If you need a custom cosmological
 model, make sure to implemented it as subclass of
 :class:`yaw.cosmology.CustomCosmology` and overwrite the methods that

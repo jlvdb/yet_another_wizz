@@ -57,8 +57,7 @@ binning that we want to use for the correlation measurements:
 
 .. code-block:: python
 
-    >>> config = yaw.Configuration.create(
-    ...     rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
+    >>> config = yaw.Configuration.create(rmin=100, rmax=1000, zmin=0.07, zmax=1.42)
 
 Then we measure the correlation amplitudes using the
 :func:`~yaw.correlation.crosscorrelate` and
@@ -70,11 +69,11 @@ for the reference sample galaxy bias:
     >>> w_sp = yaw.crosscorrelate(config, reference, unknown, ref_rand=randoms)
     >>> w_ss = yaw.autocorrelate(config, reference, randoms, compute_rr=True)
     >>> w_ss
-    CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=True, n_patches=32)
+    CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=True, n_patches=32)
 
 By inspecting the result we can see that this produced a
-:class:`~yaw.correlation.CorrelationFunction` object with the desired binning
-and pair counts data-data, data-random and random-random.
+:class:`~yaw.correlation.CorrFunc` object with the desired binning and pair
+counts data-data, data-random and random-random.
 
 
 Getting the clustering redshifts
@@ -112,7 +111,7 @@ Finally we can save those outputs to disk and reload them as needed, e.g.:
 
     >>> w_ss.to_file("w_ss.hdf5")
     >>> w_ss.from_file("w_ss.hdf5")
-    CorrelationFunction(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=True, n_patches=32)
+    CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=True, n_patches=32)
 
 .. code-block:: python
 
