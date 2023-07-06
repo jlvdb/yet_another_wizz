@@ -65,7 +65,7 @@ html_theme_options = {
     },
     "pygment_light_style": "xcode",
     "pygment_dark_style": "github-dark",
-    "announcement": "<p>Stable release available on <a href='https://pypi.org/project/yet_another_wizz/'>PyPI</a> now!</p>"
+    "announcement": "<p>Stable release now available on <a href='https://pypi.org/project/yet_another_wizz/'>PyPI</a>!</p>"
 }
 html_sidebars = {
     "**": [
