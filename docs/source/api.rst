@@ -12,7 +12,7 @@ A recommended entry point to the API reference are the :mod:`yaw.correlation`
 and :mod:`yaw.catalogs` module.
 
 
-.. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
+.. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Expand table of contents
     :margin: 0
     :color: muted
     :class-title: h5
@@ -24,6 +24,7 @@ and :mod:`yaw.catalogs` module.
         api/config
         api/core
         api/correlation
+        api/examples
         api/randoms
         api/redshifts
 
