@@ -1,3 +1,7 @@
+"""This module implements a simple class to generate uniform randoms on a
+rectangular footprint.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -20,6 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 class UniformRandoms:
+    """Generator for uniform randoms on a rectangular footprint.
+
+    Generates points uniform in right ascension and declination. Additional
+    features can be cloned by sampling values from an external data catalogue
+    (e.g. spectroscopic or photometric redshifts).
+
+    Internally uses cylindrical coordinates :math:`(x, y)`, which are an equal
+    area projection. Point are generated in cylindrical coordinates and
+    transformed back to spherical coordinates :math:`(\\alpha, \\delta)`:
+
+    :math:`\\alpha \\leftrightarrow x \\quad \\sin{\\delta} \\leftrightarrow y`
+    """
 
     def __init__(
         self,
@@ -29,6 +45,20 @@ class UniformRandoms:
         dec_max: float,
         seed: int = 12345
     ) -> None:
+        """Create a new generator for a the given footprint.
+
+        Args:
+            ra_min (:obj:`float`):
+                Minimum right ascenion to generate, in degrees.
+            ra_max (:obj:`float`):
+                Maximum right ascenion to generate, in degrees.
+            dec_min (:obj:`float`):
+                Minimum declination to generate, in degrees.
+            dec_max (:obj:`float`):
+                Maximum declination to generate, in degrees.
+            seed (:obj:`int`, optional):
+                Seed to use for the random generator.
+        """
         self.x_min, self.y_min = self.sky2cylinder(ra_min, dec_min)
         self.x_max, self.y_max = self.sky2cylinder(ra_max, dec_max)
         self.rng = np.random.SeedSequence(seed)
@@ -39,6 +69,16 @@ class UniformRandoms:
         cat: BaseCatalog,
         seed: int = 12345
     ) -> UniformRandoms:
+        """Create a new generator with a rectangular footprint obtained from the
+        coordinate range of a given data catalogue.
+
+        Args:
+            cat (:obj:`yaw.catalogs.BaseCatalog`):
+                Catalog instance from which the right ascension and declination
+                range is computed.
+            seed (:obj:`int`, optional):
+                Seed to use for the random generator.
+        """
         return cls(
             np.rad2deg(cat.ra.min()),
             np.rad2deg(cat.ra.max()),
@@ -51,6 +91,19 @@ class UniformRandoms:
         ra: float | NDArray[np.float_],
         dec: float | NDArray[np.float_]
     ) -> NDArray:
+        """Conversion from spherical to cylindrical coordinates.
+
+        Args:
+            ra (:obj:`float`, :obj:`NDArray`):
+                Right ascension(s) to convert to cylindrical coordinates.
+            dec (:obj:`float`, :obj:`NDArray`):
+                Right ascension(s) to convert to cylindrical coordinates.
+        
+        Returns:
+            :obj:`NDArray`:
+                Array with of points in cylindrical coordinates of shape
+                `(N, 2)`.
+        """
         x = np.deg2rad(ra)
         y = np.sin(np.deg2rad(dec))
         return np.transpose([x, y])
@@ -60,6 +113,18 @@ class UniformRandoms:
         x: float | NDArray[np.float_],
         y: float | NDArray[np.float_]
     ) -> float | NDArray[np.float_]:
+        """Conversion from cylindrical to spherical coordinates.
+
+        Args:
+            x (:obj:`float`, :obj:`NDArray`):
+                `x`-coordinate(s) to convert to spherical coordinates.
+            y (:obj:`float`, :obj:`NDArray`):
+                `y`-coordinate(s) to convert to spherical coordinates.
+        
+        Returns:
+            :obj:`NDArray`:
+                Array with of points in spherical coordinates of shape `(N, 2)`.
+        """
         ra = np.rad2deg(x)
         dec = np.rad2deg(np.arcsin(y))
         return np.transpose([ra, dec])
@@ -71,7 +136,36 @@ class UniformRandoms:
         draw_from: dict[str, NDArray] | None = None,
         n_threads: int = 1
     ) -> DataFrame:
+        """Generate new random points.
 
+        Generate a specified number of points, additionally draw extra data
+        features form a list of input values. Results are returned in a data
+        frame.
+
+        Args:
+            size (:obj:`int`):
+                Number of random points to generate.
+            name (:obj:`tuple[str, str]`, optional):
+                Name of the right ascension and declination columns in the
+                output data frame. Default is ``ra`` and ``dec``.
+            draw_from (:obj:`dict[str, NDArray]`, optional):
+                Dictionary of data arrays. If provided, a random sample (with
+                repetition) is drawn from these arrays and assigned to the
+                output data frame. The dictionary keys are used to name the
+                columns in the output.
+            n_threads (:obj:`int`, optional):
+                Generate data in parallel using subprocesses, default is
+                parallel processing disabled.
+                
+                .. deprecated:: 2.3.2
+                    No performance gain observed. May be removed in a future
+                    version.
+        
+        Returns:
+            :obj:`pandas.DataFrame`:
+                Data frame with uniform random coordinates and optionally
+                additional features draw from input data.
+        """
         # seeds for threads
         if size <= 100 * n_threads:  # there is some kind of floor
             n_threads = 1
