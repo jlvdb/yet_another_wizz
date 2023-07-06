@@ -68,6 +68,51 @@ class RedshiftData(CorrData):
     The comparison, addition and subtraction and indexing rules are inherited
     from :obj:`~yaw.core.containers.SampledData`, check the examples there.
 
+    .. rubric:: Examples
+
+    Create a redshift estimate from a crosscorrelation function and correct for
+    the evolving bias of the reference sample using its autocorrelation
+    function:
+    
+    >>> from yaw.examples import w_sp  # crosscorrelation
+    >>> from yaw.examples import w_ss  # reference sample autocorrelation
+    >>> nz = yaw.yaw.RedshiftData.from_corrfuncs(w_sp, ref_corr=w_ss)
+    RedshiftData(n_bins=30, z='0.070...1.420', n_samples=64, method='jackknife')
+
+    Use a different estimator when sampling the autocorrelation function, e.g.
+    the Peebles-Hauser estimator:
+
+    >>> nz = yaw.RedshiftData.from_corrfuncs(w_sp, ref_corr=w_ss, ref_est="PH")
+    RedshiftData(n_bins=30, z='0.070...1.420', n_samples=64, method='jackknife')
+
+    View the data for a subset of the redshift bins:
+
+    >>> nz.bins[5:9].data
+    array([2.5234212 , 1.96617211, 1.05342   , 0.67866257])
+
+    View the same subset as series:
+
+    >>> nz.bins[5:9].get_data()
+    (0.295, 0.34]    2.523421
+    (0.34, 0.385]    1.966172
+    (0.385, 0.43]    1.053420
+    (0.43, 0.475]    0.678663
+    dtype: float64
+
+    Get the redshift bin centers for these bins:
+
+    >>> nz.bins[5:9].mids
+    array([0.3175, 0.3625, 0.4075, 0.4525])
+
+    Plot the redshift distribution, indicating a zero-line
+
+    >>> nz.plot(zero_line=True)
+    <Axes: >
+
+    .. figure:: ../../_static/ncc_example.png
+        :width: 400
+        :alt: example clustering redshfit estimate
+
     Args:
         binning (:obj:`pandas.IntervalIndex`):
             The redshift bin edges used for this correlation function.

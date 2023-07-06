@@ -50,7 +50,35 @@ class CorrData(SampledData):
     Provides some plotting methods for convenience.
 
     The comparison, addition and subtraction and indexing rules are inherited
-    from :obj:`~yaw.core.containers.SampledData`, check the examples there.
+    from :obj:`~yaw.core.containers.SampledData`, see some examples below.
+
+    .. rubric:: Examples
+
+    Create a new instance by sampling a correlation function:
+
+    >>> from yaw.examples import w_sp
+    >>> data = w_sp.sample()  # uses the default ResamplingConfig
+    >>> data
+    CorrData(n_bins=30, z='0.070...1.420', n_samples=64, method='jackknife')
+
+    View the data for a subset of the redshift bins:
+
+    >>> data.bins[5:9].data
+    array([0.10158809, 0.08079947, 0.03876175, 0.02715336])
+
+    View the same subset as series:
+
+    >>> data.bins[5:9].get_data()
+    (0.295, 0.34]    0.101588
+    (0.34, 0.385]    0.080799
+    (0.385, 0.43]    0.038762
+    (0.43, 0.475]    0.027153
+    dtype: float64
+
+    Get the redshift bin centers for these bins:
+
+    >>> data.bins[5:9].mids
+    array([0.3175, 0.3625, 0.4075, 0.4525])
 
     Args:
         binning (:obj:`pandas.IntervalIndex`):
@@ -384,8 +412,48 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     level. The supported arithmetic operations between two correlation
     functions, addition and subtraction, are applied between all internally
     stored pair counts data. The same applies to rescaling of the counts by a
-    scalar, see :obj:`~yaw.correlation.paircounts.PatchedCount` for more
-    details.
+    scalar, see some examples below.
+
+    .. rubric:: Examples
+
+    Create a new instance by sampling a correlation function:
+
+    >>> from yaw.examples import w_sp
+    >>> dd, dr = w_sp.dd, w_sp.dr  # get example data-data and data-rand counts
+    >>> corr = yaw.CorrFunc(dd=dd, dr=dr)
+    >>> corr
+    CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=64)
+
+    Access the pair counts:
+
+    >>> corr.dd
+    NormalisedCounts(n_bins=30, z='0.070...1.420', n_patches=64)
+
+    Check if it is an autocorrelation function measurement:
+
+    >>> corr.auto
+    False
+
+    Check which pair counts are available to compute the correlation function:
+
+    >>> corr.estimators
+    {'DP': yaw.correlation.estimators.DavisPeebles}
+
+    Sample the correlation function
+
+    >>> corr.sample()  # uses the default ResamplingConfig
+    CorrData(n_bins=30, z='0.070...1.420', n_samples=64, method='jackknife')
+
+    Note how the indicated shape changes when a patch subset is selected:
+    
+    >>> corr.patches[:10]
+    CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=10)
+
+    Note how the indicated redshift range and shape change when a bin subset is
+    selected:
+
+    >>> corr.bins[:3]
+    CorrFunc(n_bins=3, z='0.070...0.205', dd=True, dr=True, rd=False, rr=False, n_patches=64)
 
     Args:
         dd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`):
@@ -476,6 +544,11 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             if counts is not None:
                 kwargs[kind] = counts * other
         return self.__class__(**kwargs)
+
+    @property
+    def auto(self) -> bool:
+        """Whether the stored data are from an autocorrelation measurement."""
+        return self.dd.auto
 
     @property
     def bins(self) -> Indexer[TypeIndex, CorrFunc]:

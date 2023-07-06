@@ -119,6 +119,17 @@ class SampledValue(Generic[_Tscalar]):
 
     Supports comparison of the values and samples with ``==`` and ``!=``.
 
+    .. rubric:: Examples
+
+    Create a value container with 100 assumed jackknife samples that scatter
+    around zero with a standard deviation of 0.1:
+    
+    >>> from numpy.random import normal
+    >>> samples = normal(loc=0.0, scale=0.01, size=101)
+    >>> value = yaw.core.SampledValue(0.0, samples, method="jackknife")
+    >>> value
+    SampledValue(value=0, error=0.963, n_samples=100, method='jackknife')
+
     Args:
         value:
             Numerical, scalar value.
@@ -206,17 +217,50 @@ class SampledData(BinnedQuantity):
     operands are compatible (same binning and same sampling). The operands are
     applied to the ``data`` and ``samples`` attribtes.
 
-    .. Note::
-        TODO: Provide an example.
-
     Furthermore, the container supports indexing and iteration over the redshift
     bins using the :obj:`SampledData.bins` attribute. This attribute yields
     instances of :obj:`SampledData` containing a single bin when iterating.
     Slicing and indexing follows the same rules as the underlying ``data``
-    :obj:`NDArray`.
+    :obj:`NDArray`. Refer to :obj:`~yaw.correlation.CorrData` for some indexing
+    and iteration examples.
 
-    .. Note::
-        TODO: Provide an example.
+    .. rubric:: Examples
+
+    Create a redshift binning:
+    
+    >>> import pandas as pd
+    >>> bins = pd.IntervalIndex.from_breaks([0.1, 0.2, 0.3])
+    >>> bins
+    IntervalIndex([(0.1, 0.2], (0.2, 0.3]], dtype='interval[float64, right]')
+
+    Create some sample data for the bins with value 1 and five assumed jackknife
+    samples normal-distributed around 1.
+
+    >>> import numpy as np
+    >>> n_bins, n_samples = len(bins), 5
+    >>> data = np.ones(n_bins)
+    >>> samples = np.random.normal(1.0, size=(n_samples, n_bins))
+    
+    Create the container:
+
+    >>> values = yaw.core.SampledData(bins, data, samples, method="jackknife")
+    >>> values
+    SampledData(n_bins=2, z='0.100...0.300', n_samples=10, method='jackknife')
+
+    Add the container to itself and verify that the values are doubled:
+
+    >>> summed = values + values
+    >>> summed.data
+    array([2., 2.])
+
+    The same applies to the samples:
+
+    >>> summed.samples / values.samples
+    array([[2., 2.],
+           [2., 2.],
+           [2., 2.],
+           [2., 2.],
+           [2., 2.]])
     """
 
     binning: IntervalIndex

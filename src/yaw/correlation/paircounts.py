@@ -257,6 +257,33 @@ class PatchedTotal(PatchedArray):
     The container supports comparison of the data elements and the redshift
     binning with ``==`` and ``!=``. The indexing rules are the same as for
     :obj:`PatchedCount`.
+
+    .. rubric:: Examples
+
+    Select a subset of all redshift bins or all spatial patches:
+
+    >>> from yaw.examples import patched_total
+    >>> patched_total
+    PatchedTotal(n_bins=30, z='0.070...1.420', shape=(64, 64, 30))
+
+    Note how the indicated shape changes when a patch subset is selected:
+    
+    >>> patched_total.patches[:10]
+    PatchedTotal(n_bins=30, z='0.070...1.420', shape=(10, 10, 30))
+
+    Note how the indicated redshift range and shape change when a bin subset is
+    selected:
+
+    >>> patched_total.bins[:3]
+    PatchedTotal(n_bins=3, z='0.070...0.205', shape=(64, 64, 3))
+
+    An example of iteration over bins, which yields instances with a single
+    redshift bin:
+
+    >>> for zbin in patched_total.bins:
+    ...     print(zbin)
+    ...     break  # just show the first item
+    PatchedTotal(n_bins=1, z='0.070...0.115', shape=(64, 64, 1))
     """
 
     totals1: NDArray
@@ -532,8 +559,28 @@ class PatchedCount(PatchedArray):
 
     Select a subset of all redshift bins or all spatial patches:
 
-    .. Note::
-        TODO: Provide an example.
+    >>> from yaw.examples import patched_count
+    >>> patched_count
+    PatchedCount(n_bins=30, z='0.070...1.420', shape=(64, 64, 30))
+
+    Note how the indicated shape changes when a patch subset is selected:
+    
+    >>> patched_count.patches[:10]
+    PatchedCount(n_bins=30, z='0.070...1.420', shape=(10, 10, 30))
+
+    Note how the indicated redshift range and shape change when a bin subset is
+    selected:
+
+    >>> patched_count.bins[:3]
+    PatchedCount(n_bins=3, z='0.070...0.205', shape=(64, 64, 3))
+
+    An example of iteration over bins, which yields instances with a single
+    redshift bin:
+
+    >>> for zbin in patched_count.bins:
+    ...     print(zbin)
+    ...     break  # just show the first item
+    PatchedCount(n_bins=1, z='0.070...0.115', shape=(64, 64, 1))
     """
 
     counts: NDArray
@@ -969,6 +1016,11 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     def __mul__(self, other: np.number) -> NormalisedCounts:
         return self.__class__(self.count * other, self.total)
+
+    @property
+    def auto(self) -> bool:
+        """Whether the stored data are from an autocorrelation measurement."""
+        return self.count.auto
 
     @property
     def bins(self) -> Indexer[TypeIndex, NormalisedCounts]:

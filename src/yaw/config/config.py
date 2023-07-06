@@ -130,7 +130,9 @@ class Configuration(DictRepresentation):
             (optional) are ignored. Otherwise, at least ``zmin``, ``zmax`` are
             required and a binning will be generated automatically.
 
-        Otherwise, only ``rmin`` and ``rmax`` are required arguments.
+        Otherwise, only ``rmin`` and ``rmax`` are required arguments, e.g.:
+
+        >>> yaw.Configuration.create(rmin=100, rmax=1000, zmin=0.1, zmax=1.0)
 
         Keyword Args:
             cosmology (:obj:`astropy.cosmology.FLRW`, :obj:`~yaw.core.cosmology.CustomCosmology`, :obj:`str`, :obj:`None`, optional):
