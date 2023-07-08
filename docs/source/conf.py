@@ -7,12 +7,16 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 import os
-try:  # user has installed the package
-    import yaw
-except ImportError:  # user just wants to build the docs
-    import sys
-    sys.path.insert(0, os.path.abspath("../../src"))
-    import yaw
+try:
+    try:  # user has installed the package
+        import yaw
+    except ImportError:  # try local package location
+        import sys
+        sys.path.insert(0, os.path.abspath("../../src"))
+        import yaw
+except ImportError as e:
+    if "core._math" in e.args[0]:
+        raise RuntimeError("yet_another_wizz must be compiled") from e
 
 project = "yet_another_wizz"
 copyright = "2023, Jan Luca van den Busch"
