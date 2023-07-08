@@ -7,9 +7,12 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 import os
-import sys
-sys.path.insert(0, os.path.abspath("../../src"))
-import yaw
+try:  # user has installed the package
+    import yaw
+except ImportError:  # user just wants to build the docs
+    import sys
+    sys.path.insert(0, os.path.abspath("../../src"))
+    import yaw
 
 project = "yet_another_wizz"
 copyright = "2023, Jan Luca van den Busch"
