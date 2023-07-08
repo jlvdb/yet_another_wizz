@@ -80,10 +80,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install -U pip
-          python -m pip install -U numpy setuptools
-          pwd
-          ls -l
-          python -m pip install -U -r requirements.txt
+          pip install -U numpy setuptools
+          pip install -U .
 
       - name: Download wheels
         uses: actions/download-artifact@v3
