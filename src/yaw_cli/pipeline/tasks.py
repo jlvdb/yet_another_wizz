@@ -6,19 +6,20 @@ import logging
 from abc import abstractclassmethod, abstractmethod
 from collections import deque
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, field, fields, asdict, MISSING
+from dataclasses import MISSING, asdict, dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
-from yaw.config import ResamplingConfig, default as DEFAULT, OPTIONS
+from yaw.config import OPTIONS, ResamplingConfig
+from yaw.config import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 from yaw.core.docs import Parameter
 from yaw.correlation.estimators import CorrelationEstimator
-
-from yaw_cli.pipeline.processing import DataProcessor
 from yaw_cli.pipeline.logger import print_yaw_message
+from yaw_cli.pipeline.processing import DataProcessor
 
 if TYPE_CHECKING:  # pragma: no cover
     from argparse import Namespace
+
     from yaw_cli.pipeline.project import ProjectDirectory
 
 
@@ -32,7 +33,6 @@ class TaskError(Exception):
 
 
 class UndefinedTaskError(TaskError):
-
     def __init__(self, task: str) -> None:
         msg = f"got undefined task with name '{task}', options are: "
         msg += ", ".join(f"'{name}'" for name in Task._tasks)
@@ -40,7 +40,6 @@ class UndefinedTaskError(TaskError):
 
 
 class TaskArgumentError(TaskError):
-
     def __init__(self, argument, taskname, options=None) -> None:
         msg = f"encountered unknown argument '{argument}' in task '{taskname}'"
         msg += ", options are:"
@@ -125,9 +124,9 @@ class MergedTask(Task):
 
 
 class RepeatableTask(Task):
-
     @abstractmethod
-    def get_identifier(self) -> Any: raise NotImplementedError
+    def get_identifier(self) -> Any:
+        raise NotImplementedError
 
     def __eq__(self, other: Task) -> bool:
         if super().__eq__(other) and hasattr(other, "get_identifier"):
@@ -145,13 +144,14 @@ def get_task(name: str) -> Task:
 
 @dataclass(frozen=True)
 class TaskCrosscorr(Task):
-
     rr: bool = field(
         default=False,
         metadata=Parameter(
             type=bool,
             help="compute random-random pair counts, even if both randoms are "
-                "available"))
+            "available",
+        ),
+    )
 
     @classmethod
     def get_name(cls) -> str:
@@ -164,30 +164,25 @@ class TaskCrosscorr(Task):
 
 @dataclass(frozen=True)
 class TaskAutocorr(Task):
-
     rr: bool = field(
         default=True,
-        metadata=Parameter(
-            type=bool,
-            help="do not compute random-random pair counts"))
+        metadata=Parameter(type=bool, help="do not compute random-random pair counts"),
+    )
 
 
 @dataclass(frozen=True)
 class TaskAutocorrReference(TaskAutocorr):
-
     @classmethod
     def get_name(cls) -> str:
         return "auto_ref"
 
     @classmethod
     def get_help(cls) -> str:
-        return (
-            "compute the reference sample autocorrelation for bias mitigation")
+        return "compute the reference sample autocorrelation for bias mitigation"
 
 
 @dataclass(frozen=True)
 class TaskAutocorrUnknown(TaskAutocorr):
-
     @classmethod
     def get_name(cls) -> str:
         return "auto_unk"
@@ -199,7 +194,6 @@ class TaskAutocorrUnknown(TaskAutocorr):
 
 @dataclass(frozen=True)
 class TaskTrueRedshifts(Task):
-
     @classmethod
     def get_name(cls) -> str:
         return "ztrue"
@@ -208,7 +202,8 @@ class TaskTrueRedshifts(Task):
     def get_help(cls) -> str:
         return (
             "compute true redshift distributions for unknown data (requires "
-            "point estimate)")
+            "point estimate)"
+        )
 
     def __call__(self, project: ProjectDirectory) -> Any:
         super().__call__(project)
@@ -217,7 +212,6 @@ class TaskTrueRedshifts(Task):
 
 @dataclass(frozen=True)
 class TaskDropCache(Task):
-
     @classmethod
     def get_name(cls) -> str:
         return "drop_cache"
@@ -229,74 +223,96 @@ class TaskDropCache(Task):
 
 @dataclass(frozen=True)
 class TaskEstimateCorr(MergedTask, RepeatableTask):
-
     tag: str = field(
         default="fid",
         metadata=Parameter(
             type=str,
             help="unique identifier for different configurations",
-            default_text="(default: %(default)s)"))
+            default_text="(default: %(default)s)",
+        ),
+    )
     bias_ref: bool = field(
         default=True,
         metadata=Parameter(
             type=bool,
             help="whether to mitigate the reference sample bias using its "
-                 "autocorrelation function (if available)"))
+            "autocorrelation function (if available)",
+        ),
+    )
     bias_unk: bool = field(
         default=True,
         metadata=Parameter(
             type=bool,
             help="whether to mitigate the unknown sample bias using its "
-                 "autocorrelation functions (if available)"))
+            "autocorrelation functions (if available)",
+        ),
+    )
 
     est_cross: str | None = field(
         default=None,
         metadata=Parameter(
-            type=str, choices=ESTIMATORS,
+            type=str,
+            choices=ESTIMATORS,
             help="correlation estimator for crosscorrelations",
             default_text="(default: LS or DP)",
-            parser_id="estimators"))
+            parser_id="estimators",
+        ),
+    )
     est_auto: str | None = field(
         default=None,
         metadata=Parameter(
-            type=str, choices=ESTIMATORS,
+            type=str,
+            choices=ESTIMATORS,
             help="correlation estimator for autocorrelations",
             default_text="(default: LS or DP)",
-            parser_id="estimators"))
+            parser_id="estimators",
+        ),
+    )
 
     method: str = field(
         default=DEFAULT.Resampling.method,
         metadata=Parameter(
-            type=str, choices=OPTIONS.method,
+            type=str,
+            choices=OPTIONS.method,
             help="resampling method for covariance estimates",
             default_text="(default: %(default)s)",
-            parser_id="sampling"))
+            parser_id="sampling",
+        ),
+    )
     crosspatch: bool = field(
         default=DEFAULT.Resampling.crosspatch,
         metadata=Parameter(
             type=bool,
             help="whether to include cross-patch pair counts when resampling",
-            parser_id="sampling"))
+            parser_id="sampling",
+        ),
+    )
     n_boot: int = field(
         default=DEFAULT.Resampling.n_boot,
         metadata=Parameter(
             type=int,
             help="number of bootstrap samples",
             default_text="(default: %(default)s)",
-            parser_id="sampling"))
+            parser_id="sampling",
+        ),
+    )
     global_norm: bool = field(
         default=DEFAULT.Resampling.global_norm,
         metadata=Parameter(
             type=bool,
             help="normalise pair counts globally instead of patch-wise",
-            parser_id="sampling"))
+            parser_id="sampling",
+        ),
+    )
     seed: int = field(
         default=DEFAULT.Resampling.seed,
         metadata=Parameter(
             type=int,
             help="random seed for bootstrap sample generation",
             default_text="(default: %(default)s)",
-            parser_id="sampling"))
+            parser_id="sampling",
+        ),
+    )
 
     @classmethod
     def get_name(cls) -> str:
@@ -306,7 +322,8 @@ class TaskEstimateCorr(MergedTask, RepeatableTask):
     def get_help(cls) -> str:
         return (
             "compute clustering redshift estimates for the unknown data, task "
-            "can be added repeatedly if different a 'tag' is used")
+            "can be added repeatedly if different a 'tag' is used"
+        )
 
     def get_identifier(self) -> str:
         return self.tag
@@ -318,12 +335,12 @@ class TaskEstimateCorr(MergedTask, RepeatableTask):
             crosspatch=self.crosspatch,
             n_boot=self.n_boot,
             global_norm=self.global_norm,
-            seed=self.seed)
+            seed=self.seed,
+        )
 
 
 @dataclass(frozen=True)
 class TaskPlot(MergedTask, Task):
-
     @classmethod
     def get_name(cls) -> str:
         return "plot"
@@ -334,7 +351,6 @@ class TaskPlot(MergedTask, Task):
 
 
 class TaskManager(Sequence):
-
     def __init__(self, project: ProjectDirectory) -> None:
         self._engine = DataProcessor(project)
         self._history: list[Task] = []
@@ -342,9 +358,7 @@ class TaskManager(Sequence):
 
     @classmethod
     def from_history_list(
-        cls,
-        task_list: Sequence[dict[str, Any] | str],
-        project: ProjectDirectory
+        cls, task_list: Sequence[dict[str, Any] | str], project: ProjectDirectory
     ) -> TaskManager:
         new = cls(project)
         for task in task_list:
@@ -355,7 +369,8 @@ class TaskManager(Sequence):
             else:
                 raise TaskError(
                     "serialisation format must be 'str(name)' or "
-                    "{str(name): dict(**args)}'")
+                    "{str(name): dict(**args)}'"
+                )
             task_inst = get_task(name).from_dict(arg_dict)
             new._insert_task(task_inst, new._history)
         return new
@@ -409,8 +424,7 @@ class TaskManager(Sequence):
 
     def _insert_task(self, task: Task, task_list: list[Task]) -> None:
         if not isinstance(task, Task):
-            raise TypeError(
-                f"'task' must be of type {Task}, got {type(task)}")
+            raise TypeError(f"'task' must be of type {Task}, got {type(task)}")
         try:
             task_list.remove(task)
         except ValueError:
@@ -418,8 +432,7 @@ class TaskManager(Sequence):
         bisect.insort(task_list, task)
 
     def schedule(self, task: Task) -> None:
-        t_args = ", ".join(
-            f"{k}={repr(v)}" for k, v in asdict(task).items())
+        t_args = ", ".join(f"{k}={repr(v)}" for k, v in asdict(task).items())
         if len(t_args) == 0:
             t_args = "---"
         logger.debug(f"'{task.get_name()}' arguments: {t_args}")
@@ -436,11 +449,7 @@ class TaskManager(Sequence):
     def clear(self) -> None:
         self._queue.clear()
 
-    def process(
-        self,
-        progress: bool = False,
-        threads: int | None = None
-    ) -> None:
+    def process(self, progress: bool = False, threads: int | None = None) -> None:
         kwargs = self._get_run_args(self._queue)
         try:
             self._engine.set_run_context(progress=progress, threads=threads)
@@ -453,10 +462,7 @@ class TaskManager(Sequence):
             self._insert_task(task, self._history)
 
     def run(
-        self,
-        task: Task,
-        progress: bool = False,
-        threads: int | None = None
+        self, task: Task, progress: bool = False, threads: int | None = None
     ) -> None:
         # log task
         logger.info(f"running task '{task.get_name()}'")
@@ -474,8 +480,7 @@ class TaskManager(Sequence):
             self._queue = queue
 
     def _get_run_args(
-        self,
-        task_list: list[Task]
+        self, task_list: list[Task]
     ) -> dict[str, Task | list[RepeatableTask]]:
         tasks = {}
         for task in task_list:
@@ -534,8 +539,10 @@ class TaskManager(Sequence):
         if do_zcc and engine._w_ss is not None:
             for zcc_task in zcc:
                 engine.sample_auto_ref(
-                    tag=zcc_task.tag, config=zcc_task.config,
-                    estimator=zcc_task.est_auto)
+                    tag=zcc_task.tag,
+                    config=zcc_task.config,
+                    estimator=zcc_task.est_auto,
+                )
                 engine.write_auto_ref(zcc_task.tag)
                 zcc_processed = True
 
@@ -572,18 +579,21 @@ class TaskManager(Sequence):
                             engine.sample_auto_unk(
                                 tag=zcc_task.tag,
                                 config=zcc_task.config,
-                                estimator=zcc_task.est_auto)
+                                estimator=zcc_task.est_auto,
+                            )
                             engine.write_auto_unk(tag=zcc_task.tag)
                             zcc_processed = True
                         if engine._w_sp is not None:
                             engine.sample_cross(
                                 tag=zcc_task.tag,
                                 config=zcc_task.config,
-                                estimator=zcc_task.est_cross)
+                                estimator=zcc_task.est_cross,
+                            )
                             engine.write_nz_cc(
                                 tag=zcc_task.tag,
                                 bias_ref=zcc_task.bias_ref,
-                                bias_unk=zcc_task.bias_unk)
+                                bias_unk=zcc_task.bias_unk,
+                            )
                             zcc_processed = True
 
                 if do_true:
@@ -594,7 +604,7 @@ class TaskManager(Sequence):
 
         if drop_cache:
             engine.drop_cache()
-        
+
         if plot:
             print_yaw_message("plotting data")
             engine.plot()

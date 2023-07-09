@@ -7,7 +7,6 @@ from __future__ import annotations
 
 
 class Options:
-
     @property
     def backend(self) -> tuple[str]:
         """Lists the names of the currently available backends for correlation
@@ -25,9 +24,9 @@ class Options:
 
         ``comoving``: Generate a binning with equal width in radial comoving
         distance.
-        
+
         ``linear``: Generate a binning with equal width in redshift.
-        
+
         ``logspace``: Generate a binning with equal width in logarithmic
         redshift :math:`\\log(1+z)`.
         """
@@ -36,7 +35,7 @@ class Options:
     @property
     def cosmology(self) -> tuple[str]:
         """Lists the availble named cosmologies in :obj:`astropy`.
-        
+
         On top of these comological models, custom cosmologies can be defined by
         subclassing :obj:`yaw.core.cosmology.CustomCosmology`.
         """
@@ -51,7 +50,7 @@ class Options:
         .. rubric:: Values
 
         ``full``: Compute all matrix elements of the covariance.
-        
+
         ``diag``: Compute only the main diagonal and the primary off-diagonals
         of the covariance matrix. This option applies, if the covariance is
         computed from a concatenated set of data samples, which have a
@@ -72,7 +71,7 @@ class Options:
         ``patches``: Merge measurements by concatenating spatial patches, i.e.
         extending the area over which measurements are taken. This may miss out
         some correlation signal between the two measurements.
-        
+
         ``redshift``: Merge measurements by concatenating redshift bins, i.e.
         extending the redshift range.
         """
@@ -89,7 +88,7 @@ class Options:
 
         ``jackknife``: Use jackknife resampling (generate samples and leave out
         one patch at a time).
-        
+
         ``bootstrap``: Use bootstrap resampling (generate samples by randomly
         drawing patches with replacement).
         """

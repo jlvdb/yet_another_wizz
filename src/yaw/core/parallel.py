@@ -49,11 +49,17 @@ class SharedArray:
     def _get_mp_type(dtype: DTypeLike | str) -> str:
         type_map = {
             "|b1": "b",  # no bool correspondance, but same number of bytes
-            "i1": "h", "u1": "H",
-            "i2": "i", "u2": "I",
-            "i4": "l", "u4": "L",
-            "i8": "q", "u8": "Q",
-            "f4": "f", "f8": "d"}
+            "i1": "h",
+            "u1": "H",
+            "i2": "i",
+            "u2": "I",
+            "i4": "l",
+            "u4": "L",
+            "i8": "q",
+            "u8": "Q",
+            "f4": "f",
+            "f8": "d",
+        }
         if isinstance(dtype, str):
             dtype = np.dtype(dtype)
         try:
@@ -70,13 +76,9 @@ class SharedArray:
         object.__delattr__(self, "array")
 
     @classmethod
-    def empty(
-        cls,
-        shape: tuple[int],
-        dtype: DTypeLike | str
-    ) -> SharedArray:
+    def empty(cls, shape: tuple[int], dtype: DTypeLike | str) -> SharedArray:
         """Create an new class instance with uninitialised memory.
-        
+
         Args:
             shape (:obj:`tuple[int]`):
                 Shape of the array.
@@ -84,13 +86,13 @@ class SharedArray:
                 Numpy-style data type of the array.
 
         Returns:
-            :obj:`SharedArray`                
+            :obj:`SharedArray`
         """
         mtype = cls._get_mp_type(dtype)
         size = int(np.prod(shape))
         new = cls(
-            multiprocessing.RawArray(mtype, size),
-            shape=shape, dtype=np.dtype(dtype))
+            multiprocessing.RawArray(mtype, size), shape=shape, dtype=np.dtype(dtype)
+        )
         return new
 
     @classmethod
@@ -102,7 +104,7 @@ class SharedArray:
                 Input array, used to initialise the shared memory.
 
         Returns:
-            :obj:`SharedArray`                
+            :obj:`SharedArray`
         """
         new = cls.empty(array.shape, array.dtype)
         try:
@@ -115,14 +117,14 @@ class SharedArray:
 
     def to_numpy(self, copy: bool = False) -> NDArray:
         """Reconstruct the original numpy array from shared memory.
-        
+
         Args:
             copy (:obj:`bool`):
                 Whether to copy the array values instead of wrapping the shared
                 memory (zero-copy).
 
         Returns:
-            :obj:`NDArray`                
+            :obj:`NDArray`
         """
         arr = np.frombuffer(self.array, dtype=self.dtype).reshape(self.shape)
         if copy:
@@ -139,7 +141,7 @@ processes."""
 def _threadinit(
     shares_dict: dict[str, SharedArray],
     initializer: Callable | None = None,
-    initargs: Iterable | None = None
+    initargs: Iterable | None = None,
 ) -> None:
     """Initialiser function used to send shared arrays to processes."""
     POOL_SHARE.update(shares_dict)
@@ -179,10 +181,7 @@ class ParallelHelper(Generic[_T]):
     """
 
     def __init__(
-        self,
-        function: Callable[..., _T],
-        n_items: int,
-        num_threads: int | None = None
+        self, function: Callable[..., _T], n_items: int, num_threads: int | None = None
     ) -> None:
         """Create a new instane.
 
@@ -232,11 +231,11 @@ class ParallelHelper(Generic[_T]):
 
     def add_shared_array(self, key: str, array: NDArray | SharedArray) -> None:
         """Add a new shared array as function argument.
-        
+
         .. Note::
             The array will be treated as constant, i.e. the same array is
             applied at each function call.
-        
+
         Args:
             key (:obj:`str`):
                 Identifier name at which the array is registered in the new
@@ -258,21 +257,17 @@ class ParallelHelper(Generic[_T]):
     def add_iterable(self, iterable: Collection) -> None:
         """Add the next function argument which will be iterated at each
         function call.
-        
+
         Must be an iterable with :meth:`n_jobs` items.
         """
         if len(iterable) != self._n_items:
-            raise ValueError(
-                f"length of iterable argument must be {self._n_items}")
+            raise ValueError(f"length of iterable argument must be {self._n_items}")
         self.args.append(iterable)
 
     def _init_pool(
-        self,
-        initializer: Callable | None = None,
-        initargs: Iterable | None = None
+        self, initializer: Callable | None = None, initargs: Iterable | None = None
     ) -> multiprocessing.Pool:
-        """Initialises the worker processes for the :obj:`multiprocessing.Pool`.
-        """
+        """Initialises the worker processes for the :obj:`multiprocessing.Pool`."""
         all_initargs = [self.shares]
         if initializer is not None:
             all_initargs.append(initializer)
@@ -282,17 +277,13 @@ class ParallelHelper(Generic[_T]):
                 all_initargs.append(None)
             else:
                 raise TypeError("'initargs' must be an iterable")
-        logger.debug(
-            f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
+        logger.debug(f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
         return multiprocessing.Pool(
-            initializer=_threadinit,
-            initargs=all_initargs,
-            processes=self._num_threads)
+            initializer=_threadinit, initargs=all_initargs, processes=self._num_threads
+        )
 
     def result(
-        self,
-        initializer: Callable | None = None,
-        initargs: Iterable | None = None
+        self, initializer: Callable | None = None, initargs: Iterable | None = None
     ) -> list[_T]:
         """Apply the accumulated arguments to a function in a pool of processes.
 
@@ -303,7 +294,7 @@ class ParallelHelper(Generic[_T]):
                 Custom initialiser function to call when creating the pool.
             initargs (Iterable, optional):
                 Arguments applied to the initialiser function.
-        
+
         Returns:
             :obj:`list`:
                 List containing the return values from all function calls.
@@ -316,7 +307,7 @@ class ParallelHelper(Generic[_T]):
         self,
         initializer: Callable | None = None,
         initargs: Iterable | None = None,
-        ordered: bool = True
+        ordered: bool = True,
     ) -> Iterator[_T]:
         """Apply the accumulated arguments to a function in a pool of processes.
 
@@ -327,7 +318,7 @@ class ParallelHelper(Generic[_T]):
                 Custom initialiser function to call when creating the pool.
             initargs (Iterable, optional):
                 Arguments applied to the initialiser function.
-        
+
         Yields:
             :obj:`list`:
                 Iterator over the return values.

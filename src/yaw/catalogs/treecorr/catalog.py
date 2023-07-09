@@ -5,6 +5,7 @@ import os
 import sys
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Dict, NoReturn, Tuple
+
 try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:  # pragma: no cover
@@ -17,14 +18,19 @@ from treecorr import Catalog, NNCorrelation
 
 from yaw.catalogs import BaseCatalog
 from yaw.config import Configuration, ResamplingConfig
-from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.logging import TimedLog
 from yaw.correlation.paircounts import (
-    NormalisedCounts, PatchedCount, PatchedTotal, pack_results)
+    NormalisedCounts,
+    PatchedCount,
+    PatchedTotal,
+    pack_results,
+)
 from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, Interval
+
     from yaw.catalogs import PatchLinkage
 
 
@@ -32,32 +38,32 @@ TypeNNResult: TypeAlias = Dict[Tuple[int, int], NNCorrelation]  # supports py3.8
 
 
 def _iter_bin_masks(
-    data: NDArray,
-    bins: NDArray,
-    closed: str = "left"
+    data: NDArray, bins: NDArray, closed: str = "left"
 ) -> Iterator[tuple[Interval, NDArray[np.bool_]]]:
     """Split data into bins and return an iterator that yields the boolean masks
     that select the data of the current bin out of the input data array."""
     if closed not in ("left", "right"):
         raise ValueError("'closed' must be either of 'left', 'right'")
     intervals = pd.IntervalIndex.from_breaks(bins, closed=closed)
-    bin_ids = np.digitize(data, bins, right=(closed=="right"))
+    bin_ids = np.digitize(data, bins, right=(closed == "right"))
     for i, interval in enumerate(intervals, 1):
         yield interval, (bin_ids == i)
 
 
 def take_subset(
-    cat: TreecorrCatalog,
-    items: NDArray[np.bool_] | NDArray[np.int_] | slice
+    cat: TreecorrCatalog, items: NDArray[np.bool_] | NDArray[np.int_] | slice
 ) -> TreecorrCatalog | EmptyCatalog:
     """Construct a new TreecorrCatalog with a subset of its entries."""
     ra = cat.ra[items]
     if len(ra) == 0:
         return EmptyCatalog(n_patches=cat.n_patches)
     kwargs = dict(
-        ra=ra, ra_units="radian",
-        dec=cat.dec[items], dec_units="radian",
-        patch=cat.patch[items])
+        ra=ra,
+        ra_units="radian",
+        dec=cat.dec[items],
+        dec_units="radian",
+        patch=cat.patch[items],
+    )
     if cat.has_redshifts():
         kwargs["r"] = cat.redshifts[items]
     if cat.has_weights():
@@ -86,7 +92,7 @@ class TreecorrCatalog(BaseCatalog):
     pair counting.
 
     .. Note::
-    
+
         The current implementation is not very efficient, because the internal
         fields of the underlying :obj:`treecorr.Catalog` must be rebuilt every
         time the catalog is iterated in redshift bins for the pair counting.
@@ -110,7 +116,7 @@ class TreecorrCatalog(BaseCatalog):
         redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> None:
         # construct the underlying TreeCorr catalogue
         kwargs = dict()
@@ -118,7 +124,8 @@ class TreecorrCatalog(BaseCatalog):
             kwargs["save_patch_dir"] = cache_directory
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
-                    f"patch directory does not exist: '{cache_directory}'")
+                    f"patch directory does not exist: '{cache_directory}'"
+                )
             self._logger.info(f"using cache directory '{cache_directory}'")
 
         if n_patches is not None:
@@ -139,26 +146,26 @@ class TreecorrCatalog(BaseCatalog):
         else:
             raise ValueError(
                 "either of 'patch_name', 'patch_centers', or 'n_patches' "
-                "must be provided")
+                "must be provided"
+            )
 
         with TimedLog(self._logger.info, log_msg):
             self._catalog = Catalog(
-                ra=data[ra_name], ra_units="degrees",
-                dec=data[dec_name], dec_units="degrees",
+                ra=data[ra_name],
+                ra_units="degrees",
+                dec=data[dec_name],
+                dec_units="degrees",
                 r=None if redshift_name is None else data[redshift_name],
                 w=None if weight_name is None else data[weight_name],
-                **kwargs)
+                **kwargs,
+            )
             self._make_patches()
 
         if cache_directory is not None:
             self.unload()
 
     @classmethod
-    def from_cache(
-        cls,
-        cache_directory: str,
-        progress: bool = False
-    ) -> NoReturn:
+    def from_cache(cls, cache_directory: str, progress: bool = False) -> NoReturn:
         """
         Raises:
             NotImplementedError
@@ -167,10 +174,9 @@ class TreecorrCatalog(BaseCatalog):
 
             Currently this backend does not support restoration from cache.
         """
-        #super().from_cache(cache_directory)
-        #self._make_patches()
-        raise NotImplementedError(
-            "restoring from cache is currently not supported")
+        # super().from_cache(cache_directory)
+        # self._make_patches()
+        raise NotImplementedError("restoring from cache is currently not supported")
 
     @classmethod
     def from_treecorr(cls, cat: Catalog) -> TreecorrCatalog:
@@ -288,9 +294,7 @@ class TreecorrCatalog(BaseCatalog):
         return DistSky.from_dists(radii)
 
     def iter_bins(
-        self,
-        z_bins: NDArray[np.float_],
-        allow_no_redshift: bool = False
+        self, z_bins: NDArray[np.float_], allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, TreecorrCatalog | EmptyCatalog]]:
         """Iterate the catalogue in bins of redshift.
 
@@ -322,7 +326,7 @@ class TreecorrCatalog(BaseCatalog):
         binned: bool,
         other: TreecorrCatalog = None,
         linkage: PatchLinkage | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> NormalisedCounts | dict[str, NormalisedCounts]:
         super().correlate(config, binned, other, linkage)
 
@@ -332,10 +336,10 @@ class TreecorrCatalog(BaseCatalog):
         nncorr_config = dict(
             sep_units="radian",
             metric="Arc",
-            nbins=(
-                1 if config.scales.rweight is None else config.scales.rbin_num),
+            nbins=(1 if config.scales.rweight is None else config.scales.rbin_num),
             bin_slop=config.backend.rbin_slop,
-            num_threads=config.backend.get_threads())
+            num_threads=config.backend.get_threads(),
+        )
 
         # bin the catalogues if necessary
         cats1 = self.iter_bins(config.binning.zbins)
@@ -355,11 +359,13 @@ class TreecorrCatalog(BaseCatalog):
         totals2 = np.zeros((n_patches, n_bins))
         count_dict = {
             str(scale): PatchedCount.zeros(binning, n_patches, auto=auto)
-            for scale in config.scales}
+            for scale in config.scales
+        }
 
         # iterate the bins and compute the correlation
         self._logger.debug(
-            f"running treecorr on {config.backend.get_threads()} threads")
+            f"running treecorr on {config.backend.get_threads()} threads"
+        )
         for i, ((intv, bincat1), (_, bincat2)) in enumerate(zip(cats1, cats2)):
             if progress:
                 _prog_msg = f"processing bin {i+1} / {n_bins}\r"
@@ -367,8 +373,8 @@ class TreecorrCatalog(BaseCatalog):
                 sys.stderr.flush()
 
             angles = [
-                scale.to_radian(intv.mid, config.cosmology)
-                for scale in config.scales]
+                scale.to_radian(intv.mid, config.cosmology) for scale in config.scales
+            ]
             # extract the total number of objects per patch
             totals1[:, i] = bincat1.get_totals()
             if bincat2 is None:
@@ -377,19 +383,18 @@ class TreecorrCatalog(BaseCatalog):
                 totals2[:, i] = bincat2.get_totals()
 
             # trivial case: no data in redshift interval, no counts to update
-            if (
-                isinstance(bincat1, EmptyCatalog) or
-                isinstance(bincat2, EmptyCatalog)
-            ):
+            if isinstance(bincat1, EmptyCatalog) or isinstance(bincat2, EmptyCatalog):
                 continue
 
             for scale, (ang_min, ang_max) in zip(config.scales, angles):
                 # run the correlation measurement
                 correlation = NNCorrelation(
-                    min_sep=ang_min, max_sep=ang_max, **nncorr_config)
+                    min_sep=ang_min, max_sep=ang_max, **nncorr_config
+                )
                 correlation.process(
                     bincat1.to_treecorr(),
-                    None if bincat2 is None else bincat2.to_treecorr())
+                    None if bincat2 is None else bincat2.to_treecorr(),
+                )
 
                 # extract the pair counts
                 scale_counts = count_dict[str(scale)]
@@ -401,17 +406,15 @@ class TreecorrCatalog(BaseCatalog):
             sys.stderr.write((" " * len(_prog_msg)) + "\r")  # clear line
 
         total = PatchedTotal(  # not scale-dependent
-            binning=binning,
-            totals1=totals1,
-            totals2=totals2,
-            auto=auto)
+            binning=binning, totals1=totals1, totals2=totals2, auto=auto
+        )
         return pack_results(count_dict, total)
 
     def true_redshifts(
         self,
         config: Configuration,
         sampling_config: ResamplingConfig | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> HistData:
         if sampling_config is None:
             sampling_config = ResamplingConfig()  # default values
@@ -422,8 +425,7 @@ class TreecorrCatalog(BaseCatalog):
         # compute the reshift histogram in each patch
         hist_counts = []
         for patch in iter(self):
-            counts, bins = np.histogram(
-                patch.r, config.binning.zbins, weights=patch.w)
+            counts, bins = np.histogram(patch.r, config.binning.zbins, weights=patch.w)
             hist_counts.append(counts)
         hist_counts = np.array(hist_counts)
 
@@ -436,4 +438,5 @@ class TreecorrCatalog(BaseCatalog):
             binning=binning,
             data=nz_data,
             samples=nz_samp,
-            method=sampling_config.method)
+            method=sampling_config.method,
+        )

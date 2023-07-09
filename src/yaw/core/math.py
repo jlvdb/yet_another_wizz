@@ -13,6 +13,7 @@ from ._math import _rebin
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike
+
     from yaw.core.containers import SampledData
 
 
@@ -22,25 +23,22 @@ _Tarr = TypeVar("_Tarr", bound=NDArray)
 def array_equal(arr1: NDArray, arr2: NDArray) -> bool:
     """Check if the shape and array elements of two numpy array are equal."""
     return (
-        isinstance(arr1, np.ndarray) and
-        isinstance(arr2, np.ndarray) and
-        arr1.shape == arr2.shape and
-        (arr1 == arr2).all())
+        isinstance(arr1, np.ndarray)
+        and isinstance(arr2, np.ndarray)
+        and arr1.shape == arr2.shape
+        and (arr1 == arr2).all()
+    )
 
 
 def outer_triu_sum(
-    a: ArrayLike,
-    b: ArrayLike,
-    *,
-    k: int = 0,
-    axis: int | None = None
+    a: ArrayLike, b: ArrayLike, *, k: int = 0, axis: int | None = None
 ) -> NDArray:
     """Compute the sum over the upper triangle of the outer product.
 
     Shapes of input array must be identical. Equivalent to
-    
+
     >>> np.triu(np.outer(a, b), k).sum(axis)
-    
+
     but supports extra dimensions in a and b and does not construct the full
     outer product matrix in memory.
 
@@ -67,25 +65,23 @@ def outer_triu_sum(
     # sum all elements
     if axis is None:
         result = np.zeros_like(a[0], dtype=dtype)
-        for i in range(min(N, N-k)):
-            result += (a[i] * b[max(0, i+k):]).sum(axis=0)
+        for i in range(min(N, N - k)):
+            result += (a[i] * b[max(0, i + k) :]).sum(axis=0)
     # sum row-wise
     elif axis == 1:
         result = np.zeros_like(b, dtype=dtype)
-        for i in range(min(N, N-k)):
-            result[i] = (a[i] * b[max(0, i+k):]).sum(axis=0)
+        for i in range(min(N, N - k)):
+            result[i] = (a[i] * b[max(0, i + k) :]).sum(axis=0)
     # sum column-wise
     elif axis == 0:
         result = np.zeros_like(a, dtype=dtype)
         for i in range(max(0, k), N):
-            result[i] = (a[:min(N, max(0, i-k+1))] * b[i]).sum(axis=0)
+            result[i] = (a[: min(N, max(0, i - k + 1))] * b[i]).sum(axis=0)
     return result[()]
 
 
 def apply_bool_mask_ndim(
-    array: _Tarr,
-    mask: NDArray[np.bool_],
-    axis: int | Sequence[int] | None = None
+    array: _Tarr, mask: NDArray[np.bool_], axis: int | Sequence[int] | None = None
 ) -> _Tarr:
     """Apply a boolean mask (``mask``) to one or many axes of a numpy array."""
     if axis is None:
@@ -98,15 +94,14 @@ def apply_bool_mask_ndim(
             raise IndexError(
                 f"boolean index did not match indexed array along dimension "
                 f"{ax}; dimension is {result.shape[ax]} but corresponding "
-                f"boolean dimension is {len(mask)}")
+                f"boolean dimension is {len(mask)}"
+            )
         result = np.compress(mask, result, axis=ax)
     return result
 
 
 def apply_slice_ndim(
-    array: _Tarr,
-    item: int | slice | Sequence,
-    axis: int | Sequence[int] | None = None
+    array: _Tarr, item: int | slice | Sequence, axis: int | Sequence[int] | None = None
 ) -> _Tarr:
     """Apply an integer subset or slice (``item``) to one or many axes of a
     numpy array."""
@@ -139,10 +134,10 @@ def cov_from_samples(
     samples: NDArray | Sequence[NDArray],
     method: str,
     rowvar: bool = False,
-    kind: str = "full"  # full, diag, var
+    kind: str = "full",  # full, diag, var
 ) -> NDArray:
     """Compute a joint covariance from a sequence of data samples.
-    
+
     These samples can be jackknife or bootstrap samples (etc.). If more than one
     set of samples is provided, the samples are concatenated along the second
     axis (default) or along the first axis if ``rowvar=True``.
@@ -207,9 +202,7 @@ def cov_from_samples(
 
 
 def global_covariance(
-    data: Sequence[SampledData],
-    method: str | None = None,
-    kind: str = "full"
+    data: Sequence[SampledData], method: str | None = None, kind: str = "full"
 ) -> NDArray:
     """Compute a joint covariance from a set of resampled data.
 
@@ -257,7 +250,7 @@ def corr_from_cov(covariance: NDArray) -> NDArray:
 def rebin(
     bins_new: NDArray[np.float_],
     bins_old: NDArray[np.float_],
-    counts_old: NDArray[np.float_]
+    counts_old: NDArray[np.float_],
 ) -> NDArray[np.float_]:
     """Recompute compute histogram counts for a new binning.
 
@@ -272,10 +265,10 @@ def rebin(
             The bin edges from which the original counts were computed.
         counts_old (:obj:`NDArray`):
             The original histogram counts.
- 
+
     Returns:
         :obj:`NDArray`:
-            The histogram counts for the new binning.            
+            The histogram counts for the new binning.
 
     .. Note::
         Implemented as C extension.
@@ -283,15 +276,12 @@ def rebin(
     return _rebin(
         bins_new.astype(np.float_),
         bins_old.astype(np.float_),
-        counts_old.astype(np.float_))
+        counts_old.astype(np.float_),
+    )
 
 
 def shift_histogram(
-    bins: NDArray,
-    counts: NDArray,
-    *,
-    A: float = 1.0,
-    dx: float = 0.0
+    bins: NDArray, counts: NDArray, *, A: float = 1.0, dx: float = 0.0
 ) -> NDArray:
     """Shift a histogram by a fixed value.
 
@@ -310,10 +300,10 @@ def shift_histogram(
             Scalar amplitude used to rescale the new histgram counts.
         dx (:obj:`float`, optional):
             Amount by which the histogram (i.e. the bin edges) are shifted.
- 
+
     Returns:
         :obj:`NDArray`:
-            The shifted histogram counts.            
+            The shifted histogram counts.
     """
     bins_old = bins.astype(np.float_)
     bins_new = bins_old + dx

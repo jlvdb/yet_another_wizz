@@ -12,7 +12,6 @@ import numpy as np
 import tqdm
 from numpy.typing import NDArray
 
-
 try:
     from itertools import pairwise as iter_pairwise
 except ImportError:
@@ -24,8 +23,7 @@ Tjob = TypeVar("Tjob")
 
 
 def job_progress_bar(
-    iterable: Iterable[Tjob],
-    total: int | None = None
+    iterable: Iterable[Tjob], total: int | None = None
 ) -> Iterable[Tjob]:
     """Configure and return a tqdm progress bar with custom format."""
     config = dict(delay=0.5, leave=False, smoothing=0.1, unit="jobs")

@@ -13,52 +13,63 @@ def test_sgn():
 
 @fixture
 def data_sky_ra_sky():
-    return np.deg2rad([
-        [-90., 0.],
-        [  0., 0.],
-        [ 90., 0.],
-        [180., 0.],
-        [270., 0.],
-        [360., 0.],
-        [450., 0.]])
+    return np.deg2rad(
+        [
+            [-90.0, 0.0],
+            [0.0, 0.0],
+            [90.0, 0.0],
+            [180.0, 0.0],
+            [270.0, 0.0],
+            [360.0, 0.0],
+            [450.0, 0.0],
+        ]
+    )
 
 
 @fixture
 def data_sky_ra_3d():
-    return np.array([
-        [ 0., -1.,  0.],
-        [ 1.,  0.,  0.],
-        [ 0.,  1.,  0.],
-        [-1.,  0.,  0.],
-        [ 0., -1.,  0.],
-        [ 1.,  0.,  0.],
-        [ 0.,  1.,  0.]])
+    return np.array(
+        [
+            [0.0, -1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]
+    )
 
 
 @fixture
 def data_sky_dec_sky():
-    return np.deg2rad([
-        [-90.,  90.],
-        [  0.,  90.],
-        [ 90.,  90.],
-        [-90., -90.],
-        [  0., -90.],
-        [ 90., -90.]])
+    return np.deg2rad(
+        [
+            [-90.0, 90.0],
+            [0.0, 90.0],
+            [90.0, 90.0],
+            [-90.0, -90.0],
+            [0.0, -90.0],
+            [90.0, -90.0],
+        ]
+    )
 
 
 @fixture
 def data_sky_dec_3d():
-    return  np.array([
-        [0., 0.,  1.],
-        [0., 0.,  1.],
-        [0., 0.,  1.],
-        [0., 0., -1.],
-        [0., 0., -1.],
-        [0., 0., -1.]])
+    return np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+        ]
+    )
 
 
 class TestCoordSky:
-
     def test_values(self, data_sky_ra_sky):
         # array of coordinates
         ra, dec = data_sky_ra_sky.T
@@ -108,8 +119,8 @@ class TestCoordSky:
         assert mean.dec == 0.0
 
     def test_conversion(
-            self, data_sky_ra_sky, data_sky_ra_3d,
-            data_sky_dec_sky, data_sky_dec_3d):
+        self, data_sky_ra_sky, data_sky_ra_3d, data_sky_dec_sky, data_sky_dec_3d
+    ):
         # along constant RA
         ra, dec = data_sky_ra_sky.T
         x, y, z = data_sky_ra_3d.T
@@ -140,66 +151,57 @@ class TestCoordSky:
 
     def test_distance(self):
         # measure across pole
-        a = np.deg2rad([ 90, 45])
+        a = np.deg2rad([90, 45])
         b = np.deg2rad([270, 45])
         npt.assert_allclose(
             coordinates.CoordSky(*a).distance(coordinates.CoordSky(*b)).values,
-            np.pi/2)
+            np.pi / 2,
+        )
         # test RA periodicity
         a = np.deg2rad([-90, -45])
-        b = np.deg2rad([270,  45])
+        b = np.deg2rad([270, 45])
         npt.assert_allclose(
             coordinates.CoordSky(*a).distance(coordinates.CoordSky(*b)).values,
-            np.pi/2)
+            np.pi / 2,
+        )
         # test poles
         a = np.deg2rad([0, -90])
         b = np.deg2rad([10, 90])
         npt.assert_allclose(
-            coordinates.CoordSky(*a).distance(coordinates.CoordSky(*b)).values,
-            np.pi)
+            coordinates.CoordSky(*a).distance(coordinates.CoordSky(*b)).values, np.pi
+        )
         # test array
-        a = coordinates.CoordSky([0.0, 0.0], [0.0, np.pi/2])
+        a = coordinates.CoordSky([0.0, 0.0], [0.0, np.pi / 2])
         b = coordinates.CoordSky([0.0, 0.0], [0.0, 0.0])
-        npt.assert_allclose(a.distance(b).values, [0.0, np.pi/2])
-        a = coordinates.CoordSky([0.0, 0.0], [0.0, np.pi/2])
+        npt.assert_allclose(a.distance(b).values, [0.0, np.pi / 2])
+        a = coordinates.CoordSky([0.0, 0.0], [0.0, np.pi / 2])
         b = coordinates.CoordSky(0.0, 0.0)
-        npt.assert_allclose(a.distance(b).values, [0.0, np.pi/2])
+        npt.assert_allclose(a.distance(b).values, [0.0, np.pi / 2])
 
 
 @fixture
 def data_3d_ra_3d():
-    return np.array([
-        [ 1.,  0.,  0.],
-        [ 0.,  1.,  0.],
-        [-1.,  0.,  0.],
-        [ 0., -1.,  0.]])
+    return np.array(
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]
+    )
 
 
 @fixture
 def data_3d_ra_sky():
-    return np.deg2rad([
-        [  0., 0.],
-        [ 90., 0.],
-        [180., 0.],
-        [270., 0.]])
+    return np.deg2rad([[0.0, 0.0], [90.0, 0.0], [180.0, 0.0], [270.0, 0.0]])
 
 
 @fixture
 def data_3d_dec_3d():
-    return np.array([
-        [0., 0.,  1.],
-        [0., 0., -1.]])
+    return np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
 
 
 @fixture
 def data_3d_dec_sky():
-    return np.deg2rad([
-        [0.,  90.],
-        [0., -90.]])
+    return np.deg2rad([[0.0, 90.0], [0.0, -90.0]])
 
 
 class TestCoord3D:
-
     def test_values(self, data_3d_ra_3d):
         # array of coordinates
         x, y, z = data_3d_ra_3d.T
@@ -254,8 +256,8 @@ class TestCoord3D:
         assert mean.z == 0.0
 
     def test_conversion(
-            self, data_3d_ra_3d, data_3d_ra_sky,
-            data_3d_dec_3d, data_3d_dec_sky):
+        self, data_3d_ra_3d, data_3d_ra_sky, data_3d_dec_3d, data_3d_dec_sky
+    ):
         # along constant RA
         x, y, z = data_3d_ra_3d.T
         ra, dec = data_3d_ra_sky.T
@@ -286,7 +288,6 @@ class TestCoord3D:
 
 
 class TestDist3D:
-
     def test_values(self):
         # single value
         assert coordinates.Dist3D(1).values == 1.0
@@ -317,21 +318,21 @@ class TestDist3D:
         assert coordinates.Dist3D(2.0) >= coordinates.Dist3D(1.0)
         assert coordinates.Dist3D(2.0) > coordinates.Dist3D(1.0)
         # test array
-        assert np.all(
-            coordinates.Dist3D([0.0, 1.0]) == coordinates.Dist3D([0.0, 1.0]))
+        assert np.all(coordinates.Dist3D([0.0, 1.0]) == coordinates.Dist3D([0.0, 1.0]))
 
     def test_add_sub(self):
         dist_90deg = coordinates.Dist3D(np.sqrt(2.0))  # don't add linearly
         # sum to 180 degrees
         assert dist_90deg + dist_90deg == coordinates.Dist3D(2.0)
         # subtract value of itself
-        assert (
-            coordinates.Dist3D(1.0) - coordinates.Dist3D(1.0) ==
-            coordinates.Dist3D(0.0))
+        assert coordinates.Dist3D(1.0) - coordinates.Dist3D(1.0) == coordinates.Dist3D(
+            0.0
+        )
         # negative separation
         npt.assert_allclose(
             (coordinates.Dist3D(0.0) - coordinates.Dist3D(1.0)).values,
-            coordinates.Dist3D(-1.0).values)
+            coordinates.Dist3D(-1.0).values,
+        )
         # wrap around unit sphere
         assert coordinates.Dist3D(2.0) + dist_90deg == dist_90deg
 
@@ -340,11 +341,15 @@ class TestDist3D:
         # test at 90 degree separation -> sqrt(2)
         npt.assert_allclose(
             coordinates.Dist3D(np.sqrt(2.0)).to_sky().values,
-            coordinates.DistSky(np.pi/2).values, atol=1e-15)
+            coordinates.DistSky(np.pi / 2).values,
+            atol=1e-15,
+        )
         # test at 180 degree separation -> 2
         npt.assert_allclose(
             coordinates.Dist3D(2.0).to_sky().values,
-            coordinates.DistSky(np.pi).values, atol=1e-15)
+            coordinates.DistSky(np.pi).values,
+            atol=1e-15,
+        )
         # points apart > unit sphere radius
         with raises(ValueError):
             coordinates.Dist3D(2.000001).to_sky()
@@ -353,7 +358,7 @@ class TestDist3D:
         assert coordinates.Dist3D(0.0) == coordinates.Dist3D(0.0).to_3d()
 
     def test_min_max(self):
-        dists = [0., -1., 1.]
+        dists = [0.0, -1.0, 1.0]
         dists = coordinates.Dist3D(dists)
         assert dists.min() == coordinates.Dist3D(-1.0)
         assert dists.max() == coordinates.Dist3D(1.0)
@@ -373,16 +378,22 @@ class TestDistSky:
         # see also TestDist3D.test_to_sky
         assert coordinates.DistSky(0.0).to_3d() == coordinates.Dist3D(0.0)
         npt.assert_allclose(
-            coordinates.DistSky(np.pi/2).to_3d().values,
-            coordinates.Dist3D(np.sqrt(2.0)).values, atol=1e-15)
+            coordinates.DistSky(np.pi / 2).to_3d().values,
+            coordinates.Dist3D(np.sqrt(2.0)).values,
+            atol=1e-15,
+        )
         # test at 180 degree separation -> 2
         npt.assert_allclose(
             coordinates.DistSky(np.pi).to_3d().values,
-            coordinates.Dist3D(2.0).values, atol=1e-15)
+            coordinates.Dist3D(2.0).values,
+            atol=1e-15,
+        )
         # wrap around
         npt.assert_allclose(
-            coordinates.DistSky(1.5*np.pi).to_3d().values,
-            coordinates.Dist3D(np.sqrt(2.0)).values, atol=1e-15)
+            coordinates.DistSky(1.5 * np.pi).to_3d().values,
+            coordinates.Dist3D(np.sqrt(2.0)).values,
+            atol=1e-15,
+        )
 
         # trivial case
         assert coordinates.DistSky(0.0) == coordinates.DistSky(0.0).to_sky()

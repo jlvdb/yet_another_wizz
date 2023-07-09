@@ -7,13 +7,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from deprecated import deprecated
 
+from yaw.config import default as DEFAULT
+from yaw.config.utils import ConfigError
 from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import Scale
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
-
-from yaw.config.utils import ConfigError
-from yaw.config import default as DEFAULT
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -27,7 +26,7 @@ class ScalesConfig(DictRepresentation):
     :math:`r_{\\rm min} \leq r < r_{\\rm max}` angular diameter distance in kpc.
     When measuring correlations, this scale is coverted to angles at the current
     redshift.
-    
+
     Additionally, pairs can be weighted by their separation
     :math:`r^\\alpha` if a power-law exponent is provided through ``rweight``.
     The weighting is applied logarithmically spaced bins of separation (based
@@ -51,28 +50,40 @@ class ScalesConfig(DictRepresentation):
 
     rmin: Sequence[float] | float = field(
         metadata=Parameter(
-            type=float, nargs="*", required=True,
-            help="(list of) lower scale limit in kpc (pyhsical)"))
+            type=float,
+            nargs="*",
+            required=True,
+            help="(list of) lower scale limit in kpc (pyhsical)",
+        )
+    )
     """Lower scale limit(s) in kpc (angular diameter distance)."""
     rmax: Sequence[float] | float = field(
         metadata=Parameter(
-            type=float, nargs="*", required=True,
-            help="(list of) upper scale limit in kpc (pyhsical)"))
+            type=float,
+            nargs="*",
+            required=True,
+            help="(list of) upper scale limit in kpc (pyhsical)",
+        )
+    )
     """Upper scale limit(s) in kpc (angular diameter distance)."""
     rweight: float | None = field(
         default=DEFAULT.Scales.rweight,
         metadata=Parameter(
             type=float,
             help="weight galaxy pairs by their separation to power 'rweight'",
-            default_text="(default: no weighting applied)"))
+            default_text="(default: no weighting applied)",
+        ),
+    )
     """Power-law exponent used to weight pairs by their separation."""
     rbin_num: int = field(
         default=DEFAULT.Scales.rbin_num,
         metadata=Parameter(
             type=int,
             help="number of bins in log r used (i.e. resolution) to compute "
-                 "distance weights",
-            default_text="(default: %(default)s)"))
+            "distance weights",
+            default_text="(default: %(default)s)",
+        ),
+    )
     """Number of radial logarithmic bin used to approximate the weighting by
     separation."""
 
@@ -80,13 +91,13 @@ class ScalesConfig(DictRepresentation):
         msg_scale_error = f"scales violates 'rmin' < 'rmax'"
         # validation, set to basic python types
         scalars = (float, int, np.number)
-        if (
-            isinstance(self.rmin, (Sequence, np.ndarray)) and
-            isinstance(self.rmax, (Sequence, np.ndarray))
+        if isinstance(self.rmin, (Sequence, np.ndarray)) and isinstance(
+            self.rmax, (Sequence, np.ndarray)
         ):
             if len(self.rmin) != len(self.rmax):
                 raise ConfigError(
-                    "number of elements in 'rmin' and 'rmax' do not match")
+                    "number of elements in 'rmin' and 'rmax' do not match"
+                )
             # for clean YAML conversion
             for rmin, rmax in zip(self.rmin, self.rmax):
                 if rmin >= rmax:
@@ -106,8 +117,7 @@ class ScalesConfig(DictRepresentation):
             if self.rmin >= self.rmax:
                 raise ConfigError(msg_scale_error)
         else:
-            raise ConfigError(
-                "'rmin' and 'rmax' must be both sequences or float")
+            raise ConfigError("'rmin' and 'rmax' must be both sequences or float")
 
     def __eq__(self, other: ScalesConfig) -> bool:
         if not array_equal(self.as_array(), other.as_array()):
@@ -130,8 +140,7 @@ class ScalesConfig(DictRepresentation):
         """Obtain the scales cuts as array of shape (2, N)"""
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
 
-    @deprecated(
-        "use [str(scale) for scale in ScalesConfig] instead", version="2.3.1")
+    @deprecated("use [str(scale) for scale in ScalesConfig] instead", version="2.3.1")
     def dict_keys(self) -> list[str]:
         """Get the scale cuts formatted as a list of strings.
 

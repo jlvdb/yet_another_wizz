@@ -15,7 +15,7 @@ def test_outer_triu(axis):
     a = np.arange(1, N + 1)
     a2 = np.repeat(a, repeat).reshape((*a.shape, repeat))
     for k in range(-N, N):
-        got = math.outer_triu_sum(a2, a2+1, k=k, axis=axis)
-        require = ref(a, a+1, k=k, axis=axis)
+        got = math.outer_triu_sum(a2, a2 + 1, k=k, axis=axis)
+        require = ref(a, a + 1, k=k, axis=axis)
         require = np.repeat(require, repeat).reshape((*require.shape, repeat))
         npt.assert_equal(got, require)

@@ -10,7 +10,6 @@ from pathlib import Path
 
 import yaw
 
-
 _path = Path(__file__).parent
 
 w_sp = yaw.CorrFunc.from_file(_path / "cross_1.hdf")

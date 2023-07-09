@@ -26,7 +26,7 @@ def test_data_samples(binning):
 
 @fixture
 def stats_jackknife(binning):
-    var = 24.
+    var = 24.0
     err = np.full(len(binning), np.sqrt(var))
     cov = np.full((len(binning), len(binning)), var)
     cor = np.ones_like(cov)
@@ -35,7 +35,7 @@ def stats_jackknife(binning):
 
 @fixture
 def stats_bootstrap(binning):
-    var = 4.+2./3.
+    var = 4.0 + 2.0 / 3.0
     err = np.full(len(binning), np.sqrt(var))
     cov = np.full((len(binning), len(binning)), var)
     cor = np.ones_like(cov)
@@ -45,26 +45,21 @@ def stats_bootstrap(binning):
 @fixture
 def correlation_data(test_data_samples):
     binning, data, samples = test_data_samples
-    return corrfuncs.CorrData(
-        binning, data, samples, method="jackknife")
+    return corrfuncs.CorrData(binning, data, samples, method="jackknife")
 
 
 class TestCorrData:
-
-    def test_stats(
-            self, test_data_samples, stats_jackknife, stats_bootstrap):
+    def test_stats(self, test_data_samples, stats_jackknife, stats_bootstrap):
         binning, data, samples = test_data_samples
         # jackknife
         err, cov, cor = stats_jackknife
-        cd = corrfuncs.CorrData(
-            binning, data, samples, method="jackknife")
+        cd = corrfuncs.CorrData(binning, data, samples, method="jackknife")
         npt.assert_allclose(cd.error, err)
         npt.assert_allclose(cd.covariance, cov)
         npt.assert_allclose(cd.get_correlation().to_numpy(), cor)
         # bootstrap
         err, cov, cor = stats_bootstrap
-        cd = corrfuncs.CorrData(
-            binning, data, samples, method="bootstrap")
+        cd = corrfuncs.CorrData(binning, data, samples, method="bootstrap")
         npt.assert_allclose(cd.error, err)
         npt.assert_allclose(cd.covariance, cov)
         npt.assert_allclose(cd.get_correlation().to_numpy(), cor)

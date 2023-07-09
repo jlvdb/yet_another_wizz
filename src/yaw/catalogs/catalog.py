@@ -14,6 +14,7 @@ from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
+
     from yaw.catalogs import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
     from yaw.correlation.paircounts import NormalisedCounts
@@ -51,7 +52,8 @@ class BaseCatalog:
             raise BackendError(
                 f"subclasses of 'BaseCatalog' must follow naming convention "
                 f"'[Backend name]Catalog for registration (e.g. ScipyCatalog "
-                f"-> 'scipy')")
+                f"-> 'scipy')"
+            )
         backend = cls.__name__.strip("Catalog").lower()
         cls._backends[backend] = cls
 
@@ -68,10 +70,10 @@ class BaseCatalog:
         redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> None:
         """Build a catalogue from in-memory data.
-        
+
         Catalogs should be instantiated through the factory class, see
         :meth:`yaw.catalogs.NewCatalog.from_dataframe`."""
         pass
@@ -90,10 +92,10 @@ class BaseCatalog:
         cache_directory: str | None = None,
         file_ext: str | None = None,
         progress: bool = False,
-        **kwargs
+        **kwargs,
     ) -> BaseCatalog:
         """Build a catalogue from data file.
-        
+
         Catalogs should be instantiated through the factory class, see
         :meth:`yaw.catalogs.NewCatalog.from_file`."""
         columns = [c for c in [ra, dec, redshift, weight] if c is not None]
@@ -110,7 +112,8 @@ class BaseCatalog:
             raise TypeError(
                 "'patches' must be either of type 'str' (col. name), 'int' "
                 "(number of patches), or 'Catalog' or 'Coordinate' (specify "
-                "centers)")
+                "centers)"
+            )
 
         cls._logger.info(f"reading catalog file '{filepath}'")
         data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
@@ -118,20 +121,20 @@ class BaseCatalog:
             cls._logger.debug(f"sparse sampling data {sparse}x")
             data = data[::sparse]
         return cls(
-            data, ra, dec, **patch_kwarg,
+            data,
+            ra,
+            dec,
+            **patch_kwarg,
             redshift_name=redshift,
             weight_name=weight,
             cache_directory=cache_directory,
-            progress=progress)
+            progress=progress,
+        )
 
     @abstractclassmethod
-    def from_cache(
-        cls,
-        cache_directory: str,
-        progress: bool = False
-    ) -> BaseCatalog:
+    def from_cache(cls, cache_directory: str, progress: bool = False) -> BaseCatalog:
         """Restore the catalogue from its cache directory.
-        
+
         Catalogs should be instantiated through the factory class, see
         :meth:`yaw.catalogs.NewCatalog.from_cache`."""
         cls._logger.info(f"restoring from cache directory '{cache_directory}'")
@@ -142,15 +145,18 @@ class BaseCatalog:
             loaded=self.is_loaded(),
             nobjects=len(self),
             npatches=self.n_patches,
-            redshifts=self.has_redshifts())
+            redshifts=self.has_redshifts(),
+        )
         arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"{name}({arg_str})"
 
     @abstractmethod
-    def __len__(self) -> int: pass
+    def __len__(self) -> int:
+        pass
 
     @abstractmethod
-    def __getitem__(self, item: int) -> Any: pass
+    def __getitem__(self, item: int) -> Any:
+        pass
 
     @abstractproperty
     def ids(self) -> list[int]:
@@ -163,12 +169,13 @@ class BaseCatalog:
         pass
 
     @abstractmethod
-    def __iter__(self) -> Iterator: pass
+    def __iter__(self) -> Iterator:
+        pass
 
     @abstractmethod
     def is_loaded(self) -> bool:
         """Indicates whether the catalog data is loaded.
-        
+
         Always ``True`` if no cache is used. If the catalog is unloaded, data
         will be read from cache every time data is accessed."""
         pass
@@ -200,7 +207,7 @@ class BaseCatalog:
     @property
     def pos(self) -> CoordSky:
         """Get a vector of the object sky positions in radians.
-        
+
         Returns:
             :obj:`yaw.core.coordinates.CoordSky`
         """
@@ -254,7 +261,7 @@ class BaseCatalog:
     @abstractproperty
     def centers(self) -> CoordSky:
         """Get a vector of sky coordinates of the patch centers in radians.
-        
+
         Returns:
             :obj:`yaw.core.coordinates.CoordSky`
         """
@@ -267,7 +274,7 @@ class BaseCatalog:
 
         The radius of the patch is defined as the maximum angular distance of
         any object from the patch center.
-                
+
         Returns:
             :obj:`yaw.core.coordinates.DistSky`
         """
@@ -280,7 +287,7 @@ class BaseCatalog:
         binned: bool,
         other: _Tcat = None,
         linkage: PatchLinkage | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> NormalisedCounts | dict[str, NormalisedCounts]:
         """Count pairs between objects at a given separation and in bins of
         redshift.
@@ -321,7 +328,7 @@ class BaseCatalog:
            cataluges.
         3. If a second catalogue is provided and ``binned=False``, the redshift
            binning is not applied to the second catalogue, otherwise above.
-        
+
         The catalogue from the calling instance of :meth:`correlate` has always
         redshift binning applied.
         """
@@ -329,14 +336,15 @@ class BaseCatalog:
         n2 = long_num_format(len(self) if other is None else len(other))
         self._logger.debug(
             f"correlating with {'' if binned else 'un'}binned catalog "
-            f"({n1}x{n2}) in {config.binning.zbin_num} redshift bins")
+            f"({n1}x{n2}) in {config.binning.zbin_num} redshift bins"
+        )
 
     @abstractmethod
     def true_redshifts(
         self,
         config: Configuration,
         sampling_config: ResamplingConfig | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> HistData:
         """
         Compute a histogram of the object redshifts from the binning defined in

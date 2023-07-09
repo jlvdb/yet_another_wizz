@@ -15,12 +15,12 @@ def test_default_cosmology():
 def test_r_kpc_to_angle():
     require = np.array([0.00037711, 0.00377109])
     result = cosmology.r_kpc_to_angle(
-        [500, 5000], 5.0, cosmology.get_default_cosmology())
+        [500, 5000], 5.0, cosmology.get_default_cosmology()
+    )
     npt.assert_almost_equal(result, require)
 
 
 class TestBinFactory:
-
     @mark.skip
     def test_init(self):
         pass

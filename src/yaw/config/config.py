@@ -7,21 +7,25 @@ from typing import TYPE_CHECKING, Any, get_args
 import numpy as np
 import yaml
 
-from yaw.core.abc import DictRepresentation
-from yaw.core.docs import Parameter
-from yaw.core.cosmology import (
-    TypeCosmology, get_default_cosmology, r_kpc_to_angle)
-
-from yaw.config import default as DEFAULT, OPTIONS, utils
+from yaw.config import OPTIONS
+from yaw.config import default as DEFAULT
+from yaw.config import utils
 from yaw.config.backend import BackendConfig
 from yaw.config.binning import (
-    AutoBinningConfig, ManualBinningConfig, make_binning_config,
-    warn_binning_args_ignored)
+    AutoBinningConfig,
+    ManualBinningConfig,
+    make_binning_config,
+    warn_binning_args_ignored,
+)
 from yaw.config.scales import ScalesConfig
+from yaw.core.abc import DictRepresentation
+from yaw.core.cosmology import TypeCosmology, get_default_cosmology, r_kpc_to_angle
+from yaw.core.docs import Parameter
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
+
     from yaw.catalogs import BaseCatalog
     from yaw.core.utils import TypePathStr
 
@@ -75,9 +79,12 @@ class Configuration(DictRepresentation):
     cosmology: TypeCosmology | str | None = field(
         default=DEFAULT.Configuration.cosmology,
         metadata=Parameter(
-            type=str, choices=OPTIONS.cosmology,
+            type=str,
+            choices=OPTIONS.cosmology,
             help="cosmological model used for distance calculations",
-            default_text="(see astropy.cosmology, default: %(default)s)"))
+            default_text="(see astropy.cosmology, default: %(default)s)",
+        ),
+    )
     """The cosmological model for distance calculations."""
 
     def __post_init__(self) -> None:
@@ -88,8 +95,7 @@ class Configuration(DictRepresentation):
             cosmology = utils.yaml_to_cosmology(self.cosmology)
         elif not isinstance(self.cosmology, get_args(TypeCosmology)):
             which = ", ".join(get_args(TypeCosmology))
-            raise utils.ConfigError(
-                f"'cosmology' must be instance of: {which}")
+            raise utils.ConfigError(f"'cosmology' must be instance of: {which}")
         else:
             cosmology = self.cosmology
         cosmology = utils.parse_cosmology(self.cosmology)
@@ -114,7 +120,7 @@ class Configuration(DictRepresentation):
         # BackendConfig
         thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
         crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
-        rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop
+        rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop,
     ) -> Configuration:
         """Create a new configuration object.
 
@@ -165,21 +171,24 @@ class Configuration(DictRepresentation):
                 only)
             rbin_slop (:obj:`float`, optional):
                 TreeCorr 'rbin_slop' parameter
-    
+
         Returns:
             :obj:`Configuration`
         """
         cosmology = utils.parse_cosmology(cosmology)
-        scales = ScalesConfig(
-            rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
+        scales = ScalesConfig(rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
         binning = make_binning_config(
-            cosmology=cosmology, zmin=zmin, zmax=zmax, zbin_num=zbin_num,
-            method=method, zbins=zbins)
+            cosmology=cosmology,
+            zmin=zmin,
+            zmax=zmax,
+            zbin_num=zbin_num,
+            method=method,
+            zbins=zbins,
+        )
         backend = BackendConfig(
-            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop)
-        return cls(
-            scales=scales, binning=binning,
-            backend=backend, cosmology=cosmology)
+            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
+        )
+        return cls(scales=scales, binning=binning, backend=backend, cosmology=cosmology)
 
     def modify(
         self,
@@ -199,7 +208,7 @@ class Configuration(DictRepresentation):
         # BackendConfig
         thread_num: int | None = DEFAULT.NotSet,
         crosspatch: bool | None = DEFAULT.NotSet,
-        rbin_slop: float | None = DEFAULT.NotSet
+        rbin_slop: float | None = DEFAULT.NotSet,
     ) -> Configuration:
         """Create a copy of the current configuration with updated parameter
         values.
@@ -245,10 +254,7 @@ class Configuration(DictRepresentation):
         return self.__class__.from_dict(config)
 
     def plot_scales(
-        self,
-        catalog: BaseCatalog,
-        log: bool = True,
-        legend: bool = True
+        self, catalog: BaseCatalog, log: bool = True, legend: bool = True
     ) -> Figure:
         """Plot the configured correlation scales at different redshifts in
         comparison to the size of patches in a data catalogue."""
@@ -257,12 +263,20 @@ class Configuration(DictRepresentation):
         fig, ax_scale = plt.subplots(1, 1)
         # plot scale of annulus
         for r_min, r_max in self.scales.as_array():
-            ang_min, ang_max = np.transpose([
-                r_kpc_to_angle([r_min, r_max], z, self.cosmology)
-                for z in self.binning.zbins])
+            ang_min, ang_max = np.transpose(
+                [
+                    r_kpc_to_angle([r_min, r_max], z, self.cosmology)
+                    for z in self.binning.zbins
+                ]
+            )
             ax_scale.fill_between(
-                self.binning.zbins, ang_min, ang_max, step="post", alpha=0.3,
-                label=rf"${r_min:.0f} < r \leq {r_max:.0f}$ kpc")
+                self.binning.zbins,
+                ang_min,
+                ang_max,
+                step="post",
+                alpha=0.3,
+                label=rf"${r_min:.0f} < r \leq {r_max:.0f}$ kpc",
+            )
         if legend:
             ax_scale.legend(loc="lower right")
         # plot patch sizes
@@ -271,10 +285,11 @@ class Configuration(DictRepresentation):
         if log:
             ax_patch.set_yscale("log")
             bins = np.logspace(
-                np.log10(bins[0]), np.log10(bins[-1]), len(bins), base=10.0)
+                np.log10(bins[0]), np.log10(bins[-1]), len(bins), base=10.0
+            )
         ax_patch.hist(
-            catalog.radii, bins,
-            orientation="horizontal", color="k", alpha=0.5)
+            catalog.radii, bins, orientation="horizontal", color="k", alpha=0.5
+        )
         # decorate
         ax_scale.set_xlim(self.binning.zmin, self.binning.zmax)
         ax_scale.set_ylabel("Radius / rad")
@@ -283,14 +298,11 @@ class Configuration(DictRepresentation):
         return fig
 
     @classmethod
-    def from_dict(
-        cls,
-        the_dict: dict[str, Any],
-        **kwargs
-    ) -> Configuration:
+    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> Configuration:
         config = {k: v for k, v in the_dict.items()}
-        cosmology = utils.parse_cosmology(config.pop(
-            "cosmology", DEFAULT.Configuration.cosmology))
+        cosmology = utils.parse_cosmology(
+            config.pop("cosmology", DEFAULT.Configuration.cosmology)
+        )
         # parse the required subgroups
         try:
             scales = ScalesConfig.from_dict(config.pop("scales"))
@@ -302,7 +314,8 @@ class Configuration(DictRepresentation):
                 binning = ManualBinningConfig(binning_conf["zbins"])
             else:
                 binning = AutoBinningConfig.generate(
-                    cosmology=cosmology, **binning_conf)
+                    cosmology=cosmology, **binning_conf
+                )
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "binning")
         # parse the optional subgroups
@@ -316,9 +329,7 @@ class Configuration(DictRepresentation):
         if len(config) > 0:
             key = next(iter(config.keys()))
             raise utils.ConfigError(f"encountered unknown section '{key}'")
-        return cls(
-            scales=scales, binning=binning,
-            backend=backend, cosmology=cosmology)
+        return cls(scales=scales, binning=binning, backend=backend, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
         values = dict()
@@ -333,13 +344,13 @@ class Configuration(DictRepresentation):
     @classmethod
     def from_yaml(cls, path: TypePathStr) -> Configuration:
         """Create a new instance by loading the configuration from a YAML file.
-        
+
         Args:
             path (:obj:`pathlib.Path`, :obj:`str`):
                 Path to the YAML file containing the configuration.
 
         Returns:
-            :obj:`Configuration`                
+            :obj:`Configuration`
         """
         logger.info(f"reading configuration file '{path}'")
         with open(str(path)) as f:
@@ -348,7 +359,7 @@ class Configuration(DictRepresentation):
 
     def to_yaml(self, path: TypePathStr) -> None:
         """Store the configuration as YAML file.
-        
+
         Args:
             path (:obj:`pathlib.Path`, :obj:`str`):
                 Path to which the YAML file is written.

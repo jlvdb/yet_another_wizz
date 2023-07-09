@@ -22,7 +22,8 @@ class Coordinate(ABC):
     """Base class for a vector of coordinates."""
 
     @abstractmethod
-    def __init__(self, coords: dict[str, ArrayLike]) -> None: pass
+    def __init__(self, coords: dict[str, ArrayLike]) -> None:
+        pass
 
     @abstractclassmethod
     def from_array(cls, array) -> Coordinate:
@@ -34,7 +35,8 @@ class Coordinate(ABC):
         coordates."""
         pass
 
-    def __repr__(self) -> str: pass
+    def __repr__(self) -> str:
+        pass
 
     @abstractproperty
     def dim(self) -> tuple[str]:
@@ -73,7 +75,8 @@ class Coordinate(ABC):
         pass
 
     @abstractmethod
-    def distance(self, other: Coordinate) -> Distance: pass
+    def distance(self, other: Coordinate) -> Distance:
+        pass
 
 
 class Coord3D(Coordinate):
@@ -152,38 +155,37 @@ class Coord3D(Coordinate):
         x = self.x
         y = self.y
         z = self.z
-        r_d2 = np.sqrt(x*x + y*y)
-        r_d3 = np.sqrt(x*x + y*y + z*z)
+        r_d2 = np.sqrt(x * x + y * y)
+        r_d3 = np.sqrt(x * x + y * y + z * z)
         # transform
-        ra = np.arccos(x / r_d2) * sgn(y) % (2.0*np.pi)
+        ra = np.arccos(x / r_d2) * sgn(y) % (2.0 * np.pi)
         ra[np.isnan(ra)] = 0.0
         dec = np.arcsin(self.z / r_d3)
         return CoordSky(ra, dec)
 
     def distance(self, other: Coordinate) -> Dist3D:
         """Compute the Euclidean distance between two coordinate vectors.
-        
+
         Coordinates are automatically converted before distance calculation.
 
         Args:
             other (:obj:`Coordinate`):
                 Second coordinate vector.
-        
+
         Returns:
             :obj:`Dist3D`:
                 Euclidean distance between points in this and the other vector.
         """
         c1 = self.to_3d()
         c2 = other.to_3d()
-        return Dist3D(np.sqrt(
-            (c1.x - c2.x)**2 +
-            (c1.y - c2.y)**2 +
-            (c1.z - c2.z)**2))
+        return Dist3D(
+            np.sqrt((c1.x - c2.x) ** 2 + (c1.y - c2.y) ** 2 + (c1.z - c2.z) ** 2)
+        )
 
 
 class CoordSky(Coordinate):
     """A representation of a vector of angular coordinates in radian.
-    
+
     Angles follow the astronomical convention of R.A./Dec., i.e. declination
     values are in the range of [:math:`-\\pi`, :math:`\\pi`].
     """
@@ -251,9 +253,8 @@ class CoordSky(Coordinate):
     def to_3d(self) -> Coord3D:
         cos_dec = np.cos(self.dec)
         return Coord3D(
-            x=np.cos(self.ra) * cos_dec,
-            y=np.sin(self.ra) * cos_dec,
-            z=np.sin(self.dec))
+            x=np.cos(self.ra) * cos_dec, y=np.sin(self.ra) * cos_dec, z=np.sin(self.dec)
+        )
 
     def to_sky(self) -> CoordSky:
         return self
@@ -267,7 +268,7 @@ class CoordSky(Coordinate):
         Args:
             other (:obj:`Coordinate`):
                 Second coordinate vector.
-        
+
         Returns:
             :obj:`DistSky`:
                 Angular distance in radian between points in this and the other
@@ -306,8 +307,7 @@ class Distance(ABC):
 
     @classmethod
     def from_dists(cls: _Tdist, dists: Sequence[_Tdist]) -> _Tdist:
-        """Concatenate a sequence of distances into a new vector of distances.
-        """
+        """Concatenate a sequence of distances into a new vector of distances."""
         return cls(np.concatenate([dist._values for dist in dists], axis=0))
 
     def __len__(self) -> int:
@@ -339,10 +339,12 @@ class Distance(ABC):
         return self.values < other.values
 
     @abstractmethod
-    def __add__(self: _Tdist, other: _Tdist) -> _Tdist: pass
+    def __add__(self: _Tdist, other: _Tdist) -> _Tdist:
+        pass
 
     @abstractmethod
-    def __sub__(self:_Tdist, other: _Tdist) -> _Tdist: pass
+    def __sub__(self: _Tdist, other: _Tdist) -> _Tdist:
+        pass
 
     def min(self) -> _Tdist:
         """Compute the minimum value and return it as new `Distance`

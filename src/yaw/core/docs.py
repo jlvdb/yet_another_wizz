@@ -75,7 +75,8 @@ class Parameter(Mapping):
                 kwargs[key[4:]] = value
         if len(kwargs) == 0:
             raise TypeError(
-                f"cannot convert field with name '{field.name}' to Parameter")
+                f"cannot convert field with name '{field.name}' to Parameter"
+            )
         return cls(**kwargs)
 
     def is_flag(self) -> bool:
@@ -93,11 +94,10 @@ class Parameter(Mapping):
 
 
 def get_doc_args(
-    dclass: object | type,
-    indicate_opt: bool = True
+    dclass: object | type, indicate_opt: bool = True
 ) -> list[tuple[str, str | None]]:
     """Generate a section with default values for a YAML configuration file.
-    
+
     Entries are added for those dataclass fields that contain a Parameter
     instance in the ``metadata`` field.
     """
@@ -130,11 +130,11 @@ def get_doc_args(
 def populate_parser(
     dclass: object | type,
     default_parser: ArgumentParser,
-    extra_parsers: Mapping[str, ArgumentParser] | None = None
+    extra_parsers: Mapping[str, ArgumentParser] | None = None,
 ) -> None:
     """Populate a parser instance or argument group with arguments from a
     dataclass.
-    
+
     Arguments are added for those dataclass fields that contain a Parameter
     instance in the ``metadata`` field.
     """
@@ -149,15 +149,19 @@ def populate_parser(
             parser = default_parser
         else:
             parser = extra_parsers[parameter.parser_id]
-        
+
         if parameter.is_flag():
             if field.default == True:
                 parser.add_argument(
-                    f"--no-{name}", dest=field.name,
-                    action="store_false", help=parameter.help)
+                    f"--no-{name}",
+                    dest=field.name,
+                    action="store_false",
+                    help=parameter.help,
+                )
             else:
                 parser.add_argument(
-                    f"--{name}", action="store_true", help=parameter.help)
+                    f"--{name}", action="store_true", help=parameter.help
+                )
 
         else:
             kwargs = parameter.get_kwargs()

@@ -59,7 +59,7 @@ def patch_matrix_auto(patch_totals):
     counted only half.
     """
     t1, t2 = patch_totals
-    return np.triu(np.outer(t1, t2)) - 0.5*np.diag(t1*t2)
+    return np.triu(np.outer(t1, t2)) - 0.5 * np.diag(t1 * t2)
 
 
 @fixture
@@ -144,14 +144,12 @@ def test_data_samples(binning):
 
 
 class TestSampledData:
-
     def test_init(self, test_data_samples):
         binning, data, samples = test_data_samples
         sd = paircounts.SampledData(binning, data, samples, method="jackknife")
         # binning and data mismatch
         with raises(ValueError, match="unexpected *"):
-            paircounts.SampledData(
-                binning, data[1:], samples, method="jackknife")
+            paircounts.SampledData(binning, data[1:], samples, method="jackknife")
         # wrong sample shape
         with raises(ValueError, match="number of bins*"):
             samples1 = samples[:, :1]
@@ -181,14 +179,11 @@ class TestSampledData:
         with raises(TypeError):
             sd.is_compatible(1)
         # different binning
-        binning2 = pd.IntervalIndex.from_breaks(
-            np.linspace(1.0, 2.0, len(binning)+1))
-        sd2 = paircounts.SampledData(
-            binning2, data, samples, method="jackknife")
+        binning2 = pd.IntervalIndex.from_breaks(np.linspace(1.0, 2.0, len(binning) + 1))
+        sd2 = paircounts.SampledData(binning2, data, samples, method="jackknife")
         assert not sd.is_compatible(sd2)
         # different number of samples
-        sd2 = paircounts.SampledData(
-            binning, data, samples[:-1], method="jackknife")
+        sd2 = paircounts.SampledData(binning, data, samples[:-1], method="jackknife")
         assert not sd.is_compatible(sd2)
         # different method
         sd2 = paircounts.SampledData(binning, data, samples, method="bootstrap")
@@ -206,8 +201,7 @@ class TestSampledData:
 
 def test_binning_hdf(tmp_hdf5):
     closed = "left"
-    binning = pd.IntervalIndex.from_breaks(
-        np.linspace(0.0, 1.0, 11), closed=closed)
+    binning = pd.IntervalIndex.from_breaks(np.linspace(0.0, 1.0, 11), closed=closed)
     paircounts.binning_to_hdf(binning, dest=tmp_hdf5)
     assert "binning" in tmp_hdf5
     restored = paircounts.binning_from_hdf(tmp_hdf5)
@@ -223,7 +217,8 @@ def patched_totals_full(binning, patch_totals):
         binning,
         add_zbin_dimension(t1, n_bins),
         add_zbin_dimension(t2, n_bins),
-        auto=False)
+        auto=False,
+    )
 
 
 @fixture
@@ -234,10 +229,11 @@ def patched_totals_auto(binning, patch_totals):
         binning,
         add_zbin_dimension(t1, n_bins),
         add_zbin_dimension(t2, n_bins),
-        auto=True)
+        auto=True,
+    )
+
 
 class TestPatchedTotal:
-
     def test_init(self, binning, patch_totals, patched_totals_full):
         n_bins = len(binning)
         t1, t2 = patch_totals
@@ -251,15 +247,19 @@ class TestPatchedTotal:
             paircounts.PatchedTotal(binning, t1, t2, auto=False)
         with raises(ValueError, match="binning"):
             paircounts.PatchedTotal(
-                binning, add_zbin_dimension(t1, 1),
-                add_zbin_dimension(t2, 1), auto=False)
+                binning,
+                add_zbin_dimension(t1, 1),
+                add_zbin_dimension(t2, 1),
+                auto=False,
+            )
         # patches don't match
         with raises(ValueError, match="patches"):
             return paircounts.PatchedTotal(
                 binning,
                 add_zbin_dimension(t1[1:], n_bins),
                 add_zbin_dimension(t2, n_bins),
-                auto=True)
+                auto=True,
+            )
         # just call once
         repr(pt)
 
@@ -272,9 +272,12 @@ class TestPatchedTotal:
         npt.assert_equal(pt.as_array(), full_matrix)
 
     def test_jackknife(
-            self,
-            patched_totals_full, expect_matrix_full,
-            patched_totals_auto, expect_matrix_auto):
+        self,
+        patched_totals_full,
+        expect_matrix_full,
+        patched_totals_auto,
+        expect_matrix_auto,
+    ):
         # results for crosspatch on/off must be identical
         for crosspatch in (False, True):
             config = ResamplingConfig(method="jackknife", crosspatch=crosspatch)
@@ -305,22 +308,23 @@ def patched_counts_from_matrix(binning, matrix, auto):
 
 
 class TestPatchedCount:
-
     def test_init(self, binning, patch_matrix_full):
         n_bins = len(binning)
         matrix = add_zbin_dimension(patch_matrix_full, n_bins)
-        counts = paircounts.PatchedCount(
-            binning, matrix, auto=False)
+        counts = paircounts.PatchedCount(binning, matrix, auto=False)
         # wrong shape
         with raises(ValueError):
             counts = paircounts.PatchedCount(
-                binning, matrix[:, :, :-1], auto=False)  # missing bin
+                binning, matrix[:, :, :-1], auto=False
+            )  # missing bin
         with raises(IndexError):
             counts = paircounts.PatchedCount(
-                binning, matrix[:, :-1], auto=False)  # not square
+                binning, matrix[:, :-1], auto=False
+            )  # not square
         with raises(IndexError):
             counts = paircounts.PatchedCount(
-                binning, matrix[:-1], auto=False)  # not square
+                binning, matrix[:-1], auto=False
+            )  # not square
         # just call once
         repr(counts)
 
@@ -338,15 +342,14 @@ class TestPatchedCount:
         npt.assert_equal(counts.values(), np.atleast_2d(value))
         # check wrong assignments
         with raises(ValueError):  # extra element
-            counts.set_measurement(key, [1.0] * (n_bins+1))
+            counts.set_measurement(key, [1.0] * (n_bins + 1))
         with raises(TypeError):  # wrong key type
             counts.set_measurement(1, [1.0] * n_bins)
         with raises(IndexError):  # wrong key shape
             counts.set_measurement((1,), [1.0] * n_bins)
 
     def test_array(self, binning, patch_matrix_full):
-        counts = patched_counts_from_matrix(
-            binning, patch_matrix_full, auto=False)
+        counts = patched_counts_from_matrix(binning, patch_matrix_full, auto=False)
         n_bins = counts.n_bins
         # expand matrix with extra bins dimension
         full_matrix = add_zbin_dimension(patch_matrix_full, n_bins)
@@ -354,15 +357,20 @@ class TestPatchedCount:
         npt.assert_equal(counts.as_array(), full_matrix)
 
     def test_jackknife(
-            self, binning,
-            patch_matrix_full, expect_matrix_full,
-            patch_diag_full, expect_diag_full,
-            patch_matrix_auto, expect_matrix_auto,
-            patch_diag_auto, expect_diag_auto):
+        self,
+        binning,
+        patch_matrix_full,
+        expect_matrix_full,
+        patch_diag_full,
+        expect_diag_full,
+        patch_matrix_auto,
+        expect_matrix_auto,
+        patch_diag_auto,
+        expect_diag_auto,
+    ):
         # case: cross-patch, cross-correlation
         config = ResamplingConfig(method="jackknife", crosspatch=True)
-        counts = patched_counts_from_matrix(
-            binning, patch_matrix_full, auto=False)
+        counts = patched_counts_from_matrix(binning, patch_matrix_full, auto=False)
         result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_matrix_full
@@ -371,8 +379,7 @@ class TestPatchedCount:
 
         # case: diagonal, cross-correlation
         config = ResamplingConfig(method="jackknife", crosspatch=False)
-        counts = patched_counts_from_matrix(
-            binning, patch_diag_full, auto=False)
+        counts = patched_counts_from_matrix(binning, patch_diag_full, auto=False)
         result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_diag_full
@@ -381,8 +388,7 @@ class TestPatchedCount:
 
         # case: cross-patch, autocorrelation
         config = ResamplingConfig(method="jackknife", crosspatch=True)
-        counts = patched_counts_from_matrix(
-            binning, patch_matrix_auto, auto=True)
+        counts = patched_counts_from_matrix(binning, patch_matrix_auto, auto=True)
         result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_matrix_auto
@@ -391,8 +397,7 @@ class TestPatchedCount:
 
         # case: diagonal, autocorrelation
         config = ResamplingConfig(method="jackknife", crosspatch=False)
-        counts = patched_counts_from_matrix(
-            binning, patch_diag_auto, auto=True)
+        counts = patched_counts_from_matrix(binning, patch_diag_auto, auto=True)
         result = counts.sample_sum(config)
         # compare to expected results, take only first bin
         data, jack, boot = expect_diag_auto
@@ -400,8 +405,7 @@ class TestPatchedCount:
         npt.assert_equal(result.samples[:, 0], jack)
 
     def test_bootstrap(self, binning, patch_matrix_full):
-        counts = patched_counts_from_matrix(
-            binning, patch_matrix_full, auto=False)
+        counts = patched_counts_from_matrix(binning, patch_matrix_full, auto=False)
         with raises(NotImplementedError):
             counts.sample_sum(ResamplingConfig(method="bootstrap"))
 
@@ -410,26 +414,29 @@ class TestPatchedCount:
 def pair_count_result(patched_totals_full, patch_matrix_full):
     totals = patched_totals_full
     counts = patched_counts_from_matrix(
-        totals.get_binning(), patch_matrix_full, auto=False)
+        totals.get_binning(), patch_matrix_full, auto=False
+    )
     return paircounts.NormalisedCounts(total=totals, count=counts)
 
 
 class TestNormalisedCounts:
-
     def test_init(self, patched_totals_full, patch_matrix_full):
         totals = patched_totals_full
         counts = patched_counts_from_matrix(
-            totals.get_binning(), patch_matrix_full, auto=False)
+            totals.get_binning(), patch_matrix_full, auto=False
+        )
         res = paircounts.NormalisedCounts(total=totals, count=counts)
         # wrong number of bins
         with raises(ValueError, match="bins"):
             counts = patched_counts_from_matrix(
-                totals.get_binning()[:-1], patch_matrix_full, auto=False)
+                totals.get_binning()[:-1], patch_matrix_full, auto=False
+            )
             paircounts.NormalisedCounts(total=totals, count=counts)
         # wrong number of patches
         with raises(ValueError, match="patches"):
             counts = patched_counts_from_matrix(
-                totals.get_binning(), patch_matrix_full[:-1, :-1], auto=False)
+                totals.get_binning(), patch_matrix_full[:-1, :-1], auto=False
+            )
             paircounts.NormalisedCounts(total=totals, count=counts)
         # just call once
         repr(res)
@@ -449,13 +456,10 @@ class TestNormalisedCounts:
         restored = paircounts.NormalisedCounts.from_hdf(tmp_hdf5)
         assert restored.n_bins == pair_count_result.n_bins
         assert restored.n_patches == pair_count_result.n_patches
-        pdt.assert_index_equal(
-            restored.get_binning(), pair_count_result.get_binning())
+        pdt.assert_index_equal(restored.get_binning(), pair_count_result.get_binning())
         # compare total
-        npt.assert_equal(
-            restored.total.totals1, pair_count_result.total.totals1)
-        npt.assert_equal(
-            restored.total.totals2, pair_count_result.total.totals2)
+        npt.assert_equal(restored.total.totals1, pair_count_result.total.totals1)
+        npt.assert_equal(restored.total.totals2, pair_count_result.total.totals2)
         assert restored.total.auto == pair_count_result.total.auto
         # compare count
         for binA, binB in zip(

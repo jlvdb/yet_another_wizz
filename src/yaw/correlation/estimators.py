@@ -43,15 +43,16 @@ class Cts(ABC):
     """Base class to symbolically represent pair counts."""
 
     @abstractproperty
-    def _hash(self) -> int: 
+    def _hash(self) -> int:
         """Used for comparison.
-        
+
         Equivalent pair counts types should have the same hash value, see
         :obj:`CtsMix`."""
         pass
 
     @abstractproperty
-    def _str(self) -> str: pass
+    def _str(self) -> str:
+        pass
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}>"
@@ -72,47 +73,52 @@ class Cts(ABC):
 
 class CtsDD(Cts):
     """Symbolic representation of data-data paircounts."""
+
     _str = "dd"
     _hash = 1
 
 
 class CtsDR(Cts):
     """Symbolic representation of data-random paircounts."""
+
     _str = "dr"
     _hash = 2
 
 
 class CtsRD(Cts):
     """Symbolic representation of random-data paircounts."""
+
     _str = "rd"
     _hash = 2
 
 
 class CtsMix(Cts):
     """Symbolic representation of either data-random or random-data paircounts.
-    
+
     >>> CtsDR() == CtsMix()
     True
     >>> CtsRD() == CtsMix()
     True
     """
+
     _str = "dr_rd"
     _hash = 2
 
 
 class CtsRR(Cts):
     """Symbolic representation of random-random paircounts."""
+
     _str = "rr"
     _hash = 3
 
 
 def cts_from_code(code: str) -> Cts:
     """Instantiate the correct :obj:`Cts` subclass from a string.
-    
+
     Valid options are ``dd``, ``dr``, ``rd``, ``rr``, e.g.:
 
     >>> cts_from_code("dr")
-    <CtsDR>    
+    <CtsDR>
     """
     codes = dict(dd=CtsDD, dr=CtsDR, rd=CtsRD, rr=CtsRR)
     if code not in codes:
@@ -121,7 +127,6 @@ def cts_from_code(code: str) -> Cts:
 
 
 class CorrelationEstimator(ABC):
-
     name: str
     """Full name of the estimator."""
     short: str
@@ -146,20 +151,14 @@ class CorrelationEstimator(ABC):
     def _warn_enum_zero(cls, counts: NDArray):
         """Raise a warning if any value in the expression enumerator is zero"""
         if np.any(counts == 0.0):
-            logger.warn(
-                f"estimator {cls.short} encontered zeros in enumerator")
+            logger.warn(f"estimator {cls.short} encontered zeros in enumerator")
 
     @abstractclassmethod
     def eval(
-        cls,
-        *,
-        dd: NDArray,
-        dr: NDArray,
-        rr: NDArray,
-        rd: NDArray | None = None
+        cls, *, dd: NDArray, dr: NDArray, rr: NDArray, rd: NDArray | None = None
     ) -> NDArray:
         """Method that implements the estimator.
-        
+
         Should call :meth:`_warn_enum_zero` to raise warnings on zero-division.
         """
         NotImplemented
@@ -169,19 +168,14 @@ class PeeblesHauser(CorrelationEstimator):
     """Implementation of the Peebles-Hauser correlation estimator
     :math:`\\frac{DD}{RR} - 1`.
     """
+
     name = "PeeblesHauser"
     short = "PH"
     requires = [CtsDD(), CtsRR()]
     optional = []
 
     @classmethod
-    def eval(
-        cls,
-        *,
-        dd: NDArray,
-        rr: NDArray,
-        **kwargs
-    ) -> NDArray:
+    def eval(cls, *, dd: NDArray, rr: NDArray, **kwargs) -> NDArray:
         """Evaluate the estimator with the given pair counts.
 
         Args:
@@ -204,19 +198,14 @@ class DavisPeebles(CorrelationEstimator):
     .. Note::
         Accepts both :math:`DR` and :math:`RD` for the denominator.
     """
+
     name = "DavisPeebles"
     short = "DP"
     requires = [CtsDD(), CtsMix()]
     optional = []
 
     @classmethod
-    def eval(
-        cls,
-        *,
-        dd: NDArray,
-        dr_rd: NDArray,
-        **kwargs
-    ) -> NDArray:
+    def eval(cls, *, dd: NDArray, dr_rd: NDArray, **kwargs) -> NDArray:
         """Evaluate the estimator with the given pair counts.
 
         Args:
@@ -236,6 +225,7 @@ class Hamilton(CorrelationEstimator):
     """Implementation of the Hamilton correlation estimator
     :math:`\\frac{DD \\times RR}{DR \\times RD} - 1`.
     """
+
     name = "Hamilton"
     short = "HM"
     requires = [CtsDD(), CtsDR(), CtsRR()]
@@ -243,12 +233,7 @@ class Hamilton(CorrelationEstimator):
 
     @classmethod
     def eval(
-        cls,
-        *,
-        dd: NDArray,
-        dr: NDArray,
-        rr: NDArray,
-        rd: NDArray | None = None
+        cls, *, dd: NDArray, dr: NDArray, rr: NDArray, rd: NDArray | None = None
     ) -> NDArray:
         """Evaluate the estimator with the given pair counts.
 
@@ -276,6 +261,7 @@ class LandySzalay(CorrelationEstimator):
     """Implementation of the Landy-Szalay correlation estimator
     :math:`\\frac{DD - (DR + RD)}{RR} + 1`.
     """
+
     name = "LandySzalay"
     short = "LS"
     requires = [CtsDD(), CtsDR(), CtsRR()]
@@ -283,12 +269,7 @@ class LandySzalay(CorrelationEstimator):
 
     @classmethod
     def eval(
-        cls,
-        *,
-        dd: NDArray,
-        dr: NDArray,
-        rr: NDArray,
-        rd: NDArray | None = None
+        cls, *, dd: NDArray, dr: NDArray, rr: NDArray, rd: NDArray | None = None
     ) -> NDArray:
         """Evaluate the estimator with the given pair counts.
 

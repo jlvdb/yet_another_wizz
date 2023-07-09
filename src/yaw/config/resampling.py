@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from yaw.core.abc import DictRepresentation
-
-from yaw.config import default as DEFAULT, OPTIONS
+from yaw.config import OPTIONS
+from yaw.config import default as DEFAULT
 from yaw.config.utils import ConfigError
+from yaw.core.abc import DictRepresentation
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -50,21 +50,22 @@ class ResamplingConfig(DictRepresentation):
     seed: int = DEFAULT.Resampling.seed
     """Random seed to use."""
     _resampling_idx: NDArray[np.int_] | None = field(
-        default=None, init=False, repr=False)
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         if self.method not in OPTIONS.method:
             opts = ", ".join(f"'{s}'" for s in OPTIONS.method)
             raise ConfigError(
-                f"invalid resampling method '{self.method}', "
-                f"must either of {opts}")
+                f"invalid resampling method '{self.method}', " f"must either of {opts}"
+            )
 
     @property
     def n_patches(self) -> int | None:
         """The number of spatial patches for which this configuratin is valid.
-        
+
         Available only after generating samples with :meth:`get_samples`.
-        
+
         Returns:
             int if samples have been generated, else None.
         """
@@ -89,8 +90,8 @@ class ResamplingConfig(DictRepresentation):
         For N patches, draw N realisations by leaving out one of the N patches.
         """
         N = n_patches
-        idx = np.delete(np.tile(np.arange(0, N), N), np.s_[::N+1])
-        return idx.reshape((N, N-1))
+        idx = np.delete(np.tile(np.arange(0, N), N), np.s_[:: N + 1])
+        return idx.reshape((N, N - 1))
 
     def get_samples(self, n_patches: int) -> NDArray[np.int_]:
         """Generate a list of patch indices that produces samples for the
@@ -120,7 +121,8 @@ class ResamplingConfig(DictRepresentation):
         elif n_patches != self.n_patches:
             raise ValueError(
                 f"'n_patches' does not match, expected {self.n_patches}, but "
-                f"got {n_patches}")
+                f"got {n_patches}"
+            )
         return self._resampling_idx
 
     def reset(self) -> None:

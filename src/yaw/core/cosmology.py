@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
+
 try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:  # pragma: no cover
@@ -18,7 +19,6 @@ from astropy.cosmology import FLRW, Planck15, available
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
-
 
 
 def get_default_cosmology() -> FLRW:
@@ -74,13 +74,11 @@ TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
 
 
 def r_kpc_to_angle(
-    r_kpc: NDArray[np.float_] | Sequence[float],
-    z: float,
-    cosmology: TypeCosmology
+    r_kpc: NDArray[np.float_] | Sequence[float], z: float, cosmology: TypeCosmology
 ) -> NDArray[np.float_]:
     """Convert from a physical separation in kpc to angles in radian at a given
     redshift.
-    
+
     Args:
         r_kpc (:obj:`NDArray`, number):
             Physical separation in kpc.
@@ -100,7 +98,7 @@ def r_kpc_to_angle(
 @dataclass(frozen=True)
 class Scale:
     """Class that represents a range of physical scales in kpc.
-    
+
     The range is defined by a lower and an upper scale limit. An instance can be
     converted to a string representation that is used as dictionary key in some
     places of ``yaw``.
@@ -108,7 +106,7 @@ class Scale:
     .. rubric:: Examples
 
     Get the center points:
-    
+
     >>> scale = Scale(100, 1000)
     >>> scale.mid, scale.mid_log
     (550.0, 316.22776601683796)
@@ -144,13 +142,9 @@ class Scale:
     def __str__(self) -> str:
         return f"kpc{self.rmin:.0f}t{self.rmax:.0f}"
 
-    def to_radian(
-        self,
-        z: float,
-        cosmology: TypeCosmology
-    ) -> NDArray[np.float_]:
+    def to_radian(self, z: float, cosmology: TypeCosmology) -> NDArray[np.float_]:
         """Get the separation in radian at a given redshift.
-        
+
         Args:
             z (:obj:`float`):
                 Redshift at which conversion happens.
@@ -172,7 +166,7 @@ class BinFactory:
         zmin: float,
         zmax: float,
         nbins: int,
-        cosmology: TypeCosmology | None = None
+        cosmology: TypeCosmology | None = None,
     ):
         """Create a new bin generator.
 
@@ -204,7 +198,8 @@ class BinFactory:
         cbinning = np.linspace(
             self.cosmology.comoving_distance(self.zmin).value,
             self.cosmology.comoving_distance(self.zmax).value,
-            self.nbins + 1)
+            self.nbins + 1,
+        )
         # construct a spline mapping from comoving distance to redshift
         zarray = np.linspace(0, 10.0, 5000)
         carray = self.cosmology.comoving_distance(zarray).value
@@ -214,13 +209,14 @@ class BinFactory:
         """Generate a binning with equal width in logarithmic redshift
         :math:`\\log(1+z)`."""
         logbinning = np.linspace(
-            np.log(1.0 + self.zmin), np.log(1.0 + self.zmax), self.nbins + 1)
+            np.log(1.0 + self.zmin), np.log(1.0 + self.zmax), self.nbins + 1
+        )
         return np.exp(logbinning) - 1.0
 
     @staticmethod
     def check(zbins: NDArray[np.float_]) -> None:
         """Check if a list of bin edges in monotonicaly increasing.
-        
+
         Raises a :exc:`ValueError` if the condition is not met.
 
         Args:

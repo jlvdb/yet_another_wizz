@@ -4,16 +4,15 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from yaw.config import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 from yaw.core.docs import Parameter
-
-from yaw.config import default as DEFAULT
 
 
 @dataclass(frozen=True)
 class BackendConfig(DictRepresentation):
     """Configuration of backends used for correlation measurements.
-    
+
     Args:
         thread_num (:obj:`int`, optional):
             Number of threads to use for parallel processing.
@@ -30,7 +29,9 @@ class BackendConfig(DictRepresentation):
         metadata=Parameter(
             type=int,
             help="default number of threads to use",
-            default_text="(default: all)"))
+            default_text="(default: all)",
+        ),
+    )
     """Number of threads to use for parallel processing."""
     # scipy
     crosspatch: bool = field(
@@ -38,7 +39,9 @@ class BackendConfig(DictRepresentation):
         metadata=Parameter(
             type=bool,
             help="whether to count pairs across patch boundaries (scipy "
-                 "backend only)"))
+            "backend only)",
+        ),
+    )
     """Whether to count pairs across patch boundaries (``scipy`` backend only).
     """
     # treecorr
@@ -48,7 +51,9 @@ class BackendConfig(DictRepresentation):
             type=float,
             help="TreeCorr 'rbin_slop' parameter",
             default_text="(default: %(default)s), without 'rweight' this just "
-                         "a single radial bin, otherwise 'rbin_num'"))
+            "a single radial bin, otherwise 'rbin_num'",
+        ),
+    )
     """`TreeCorr` ``rbin_slop`` parameter (``treecorr`` backend only)."""
 
     def __post_init__(self) -> None:
@@ -57,7 +62,7 @@ class BackendConfig(DictRepresentation):
 
     def get_threads(self, max=None) -> int:
         """Get the number of threads for parallel processing.
-        
+
         The value is capped at the number of logical cores available.
         """
         if self.thread_num is None:
