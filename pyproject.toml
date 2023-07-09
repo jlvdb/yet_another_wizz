@@ -46,12 +46,15 @@ docs = [
     "sphinx-copybutton",
     "pydata-sphinx-theme",
 ]
-dev = [
+test = [
     "typing_extensions",
     "more_itertools",
-    "yet_another_wizz[docs]",
     "pytest",
     "coverage",
+]
+dev = [
+    "yet_another_wizz[docs]",
+    "yet_another_wizz[test]",
     "ipykernel",
 ]
 
