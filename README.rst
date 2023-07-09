@@ -1,6 +1,8 @@
 yet_another_wizz
 ================
 
+.. image:: https://codecov.io/gh/jlvdb/yet_another_wizz/branch/main/graph/badge.svg
+    :target: https://codecov.io/gh/jlvdb/yet_another_wizz
 
 *yet_another_wizz* is a python package to efficiently compute cross-correlation
 redshifts, also know as clustering redshifts and is hosted on github:
