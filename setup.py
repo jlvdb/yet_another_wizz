@@ -9,6 +9,9 @@ ext_module_math = Extension(
 
 
 if __name__ == "__main__":
-    setup(ext_modules=[
-        ext_module_math,
-    ])
+    setup(
+        ext_modules=[
+            ext_module_math,
+        ],
+        url="https://github.com/jlvdb/yet_another_wizz.git"
+    )

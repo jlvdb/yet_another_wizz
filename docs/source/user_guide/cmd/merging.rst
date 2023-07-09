@@ -9,7 +9,7 @@ Merging project directories
     This is a stub, more content coming soon.
 
 
-.. dropdown:: ``$ yaw merge --help``
+.. dropdown:: ``$ yaw_cli merge --help``
 
     .. literalinclude:: yaw_help_merge.txt
         :language: none

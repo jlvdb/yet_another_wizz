@@ -23,8 +23,8 @@ Using command line tools
 """"""""""""""""""""""""
 
 For the command line tools, the cache path can be configured using
-``yaw init --cache-path`` or the ``cachepath`` value in the ``data`` section of
-the YAML configuration. The default location is to use the project directory
+``yaw_cli init --cache-path`` or the ``cachepath`` value in the ``data`` section
+of the YAML configuration. The default location is to use the project directory
 itself.
 
 Caching is disabled by default and must be enabled per catalog by setting 

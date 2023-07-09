@@ -131,4 +131,4 @@ for sub in (
     path = f"user_guide/cmd/yaw_help_{sub}.txt"
     if not os.path.exists(path):
         print(f"generating '{path}'")
-        os.system(f"yaw {sub} --help > {path}")
+        os.system(f"yaw_cli {sub} --help > {path}")

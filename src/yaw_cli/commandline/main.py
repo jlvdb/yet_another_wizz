@@ -22,6 +22,7 @@ class _Commandline:
         self._subcommands: dict[str, SubCommand] = {}
         # add parser
         self.parser = argparse.ArgumentParser(
+            prog="yaw_cli",
             description="yet_another_wizz: modular clustering redshift pipeline.",
             epilog="Thank you for using yet_another_wizz. Please consider citing 'A&A 642, A200 (2020)' when publishing results obtained with this code.")
         self.parser.add_argument(

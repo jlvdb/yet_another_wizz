@@ -1,6 +1,73 @@
 [build-system]
-requires = ["setuptools", "numpy"]
+requires = ["setuptools>=61.0", "numpy"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "yet_another_wizz"
+dynamic = ["version"]
+authors = [
+    {name = "Jan Luca van den Busch", email = "jlvdb@astro.ruhr-uni-bochum.de"},
+]
+description = "Implementation of the Schmidt et al. (2013) clustering redshift method and wrapper scripts to produce cross-correlation (CC) redshifts."
+readme = "README.rst"
+license = {text = "GPL-3.0-or-later"}
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
+]
+requires-python = ">=3.8"
+dependencies = [
+    "typing_extensions;python_version<'3.10'",
+    "more_itertools;python_version<'3.10'",
+    "deprecated",
+    "numpy",
+    "pyarrow",
+    "tqdm",
+    "h5py",
+    "pandas",
+    "astropandas>=1.2.1",
+    "scipy",
+    "astropy",
+    "treecorr>=4.3",
+    "emcee",
+    "matplotlib",
+]
+
+[project.scripts]
+yaw_cli = "yaw_cli:__main__"
+
+[project.optional-dependencies]
+plot = ["matplotlib"]
+docs = [
+    "sphinx",
+    "sphinx-design",
+    "sphinx-copybutton",
+    "pydata-sphinx-theme",
+]
+dev = [
+    "typing_extensions",
+    "more_itertools",
+    "yet_another_wizz[docs]",
+    "pytest",
+    "coverage",
+    "ipykernel",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "yaw.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+yaw = [
+    "examples/*.hdf",
+    "examples/*.dat",
+    "examples/*.cov",
+    "examples/*.smp",
+]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

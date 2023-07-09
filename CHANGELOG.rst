@@ -2,8 +2,20 @@ Change log
 ==========
 
 
+Version 2.5
+-----------
+
+Added support for python 3.8.
+
+- Converted the ``bin/yaw`` script to an empty point of the ``yaw_cli`` package,
+  which can be evoked as ``python -m yaw_cli`` or simply ``yaw_cli``.
+- Removed the ``paircounts_remove_zeros.py`` script.
+- Switched to the GPLv3 license.
+- Switched to ``pyproject.toml`` and improved metadata for PyPI.
+
+
 Version 2.4
--------------
+-----------
 
 First stable release.
 

@@ -7,7 +7,7 @@ Default setup file
     This is a stub, more content coming soon.
 
 
-.. dropdown:: ``$ yaw run --dump``
+.. dropdown:: ``$ yaw_cli run --dump``
     :open:
 
     .. literalinclude:: default_setup.yaml

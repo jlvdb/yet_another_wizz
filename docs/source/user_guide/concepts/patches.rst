@@ -22,7 +22,7 @@ One way to construct patches is to use the built-in k-means clustering
 algorithm, which will split the data into roughly similar Voroni cells
 (depending on the data footprint and masking). This can be achieved by supplying
 the ``npatches`` parameter at catalog construction or using the corresponding
-``yaw init --n-patches`` / ``n_patches`` in the ``data`` section of the YAML
+``yaw_cli init --n-patches`` / ``n_patches`` in the ``data`` section of the YAML
 configuration.
 
 Considerations

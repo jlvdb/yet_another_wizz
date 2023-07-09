@@ -6,11 +6,11 @@ Command line tools
     This is a stub, more content coming soon.
 
 The *yet_another_wizz* package can be used from a single command line tool
-called ``yaw``. This tool provides subcommands for every major task. A first
+called ``yaw_cli``. This tool provides subcommands for every major task. A first
 overview of its features can be obtained from the built-in help tool:
 
 .. literalinclude:: cmd/yaw_help_.txt
-    :caption: ``$ yaw --help``
+    :caption: ``$ yaw_cli --help``
     :language: none
 
 

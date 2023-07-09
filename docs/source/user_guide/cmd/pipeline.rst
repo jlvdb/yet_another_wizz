@@ -9,7 +9,7 @@ Batch processing
     This is a stub, more content coming soon.
 
 
-.. dropdown:: ``$ yaw run --help``
+.. dropdown:: ``$ yaw_cli run --help``
 
     .. literalinclude:: yaw_help_run.txt
         :language: none
