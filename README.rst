@@ -2,8 +2,8 @@ yet_another_wizz
 ================
 
 .. image:: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml/badge.svg
-   :target: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml
-.. image:: https://codecov.io/gh/jlvdb/yet_another_wizz/branch/main/graph/badge.svg
+    :target: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml
+.. image:: https://codecov.io/gh/jlvdb/yet_another_wizz/branch/main/graph/badge.svg?token=PC41ME2AR8 
     :target: https://codecov.io/gh/jlvdb/yet_another_wizz
 .. image:: https://readthedocs.org/projects/yet-another-wizz/badge/?version=latest
     :target: https://yet-another-wizz.readthedocs.io/en/latest/?badge=latest
