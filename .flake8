@@ -1,0 +1,8 @@
+[flake8]
+max-line-length = 88
+max-doc-length = 80
+extend-ignore = E203 E501 W505
+per-file-ignores =
+    src/yaw_cli/pipeline/default_setup.py: E501
+    src/yaw_cli/commandline/main.py: E501
+    src/yaw/__init__.py: E402

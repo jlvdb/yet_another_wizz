@@ -5,8 +5,8 @@ redshift. The containers implement methods to compute total value (summing over
 all patches) and samples needed for error estimations after evaluating the
 correlation estimator (e.g. jackknife or bootstrap resampling).
 
-Finally, :obj:`NormalisedCounts` implements normalised pair counts and holds both
-a :obj:`PatchedCount` and :obj:`PatchedTotal` container. Its
+Finally, :obj:`NormalisedCounts` implements normalised pair counts and holds
+both a :obj:`PatchedCount` and :obj:`PatchedTotal` container. Its
 :meth:`NormalisedCounts.sample` method computes the ratio of
 counts-to-total-objects and samples thereof.
 """
