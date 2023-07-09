@@ -1,6 +1,12 @@
 # run tests, generate coverage report and upload to codecov
 name: tests
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - '**'
 jobs:
   run:
     runs-on: ubuntu-latest
