@@ -118,7 +118,7 @@ setup_default += format_line("rand: null", "random catalog for data sample, omit
 
 # tasks
 setup_default += "\n"
-setup_default += wrap_comment("The section below is entirely optional and used to specify tasks to execute when using the 'yaw run' command. The list is generated and updated automatically when running 'yaw' subcommands. Tasks can be provided as single list entry, e.g.")
+setup_default += wrap_comment("The section below is entirely optional and used to specify tasks to execute when using the 'yaw_cli run' command. The list is generated and updated automatically when running 'yaw_cli' subcommands. Tasks can be provided as single list entry, e.g.")
 setup_default += f"{COMM_SEP}  - cross\n{COMM_SEP}  - zcc\n"
 setup_default += wrap_comment("to get a basic cluster redshift estimate or with the optional parameters listed below (all values optional, defaults listed).")
 setup_default += "tasks:\n"

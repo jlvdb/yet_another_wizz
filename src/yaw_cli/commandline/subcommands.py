@@ -63,8 +63,8 @@ class CommandInit(SubCommand):
             help="project directory, must not exist")
         parser.add_argument(
             "-s", "--setup", type=utils.Path_exists, metavar="<file>",
-            help="optionl setup YAML file (e.g. from 'yaw run -d') with base "
-                 "configuration that is overwritten by arguments below")
+            help="optionl setup YAML file (e.g. from 'yaw_cli run -d') with "
+                 "base configuration that is overwritten by arguments below")
 
         group_other = parser.add_argument_group(
             title="additional arguments")

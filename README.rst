@@ -28,8 +28,8 @@ The yet_another_wizz package can be installed directly with pip::
 
     pip install yet_another_wizz
 
-This will install the python package ``yaw``, as well as the ``yaw`` executable
-command line tool.
+This will install the python package ``yaw``, as well as the ``yaw_cli``
+executable command line tool.
 
 
 Usage
@@ -37,7 +37,7 @@ Usage
 
 There are two main ways to use yet_another_wizz,
 
-- the ``yaw`` commmand line tool and
+- the ``yaw_cli`` commmand line tool and
 - the python package ``yaw`` directly.
 
 Most people will probably get started with the command line tool, which should

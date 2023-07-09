@@ -11,7 +11,7 @@ are organised automatically.
 Creating a new project
 ^^^^^^^^^^^^^^^^^^^^^^
 
-We start by creating a new project called ``output`` with the ``yaw init``
+We start by creating a new project called ``output`` with the ``yaw_cli init``
 :ref:`command<yaw_init>` and set the minimum required configuration parameters.
 We also define the input reference sample and random catalog and list the
 required column names.
@@ -23,7 +23,7 @@ using a k-means clustering algorithm.
 
 .. code-block:: bash
 
-    $ yaw init output \
+    $ yaw_cli init output \
         --rmin 100 --rmax 1000 \
         --zmin 0.07 --zmax 1.42 \
         --ref-path reference.fits \
@@ -46,22 +46,22 @@ Measuring correlations
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Next we want to measure the crosscorrelation of the reference sample with the
-unknown catalog, which we specify when running the ``yaw cross``
+unknown catalog, which we specify when running the ``yaw_cli cross``
 :ref:`command<yaw_cross>`. Note that we can in principle provide as many input
 files with ``--unk-path`` as we would like (e.g. tomographic bins).
 
 In the same way we measure the autocorrelation function of the reference sample
-to mitigate its galaxy bias evolution. In our case, the ``yaw auto``
+to mitigate its galaxy bias evolution. In our case, the ``yaw_cli auto``
 :ref:`command<yaw_auto>` takes no further inputs since most run parameters are
 already configured at this point.
 
 .. code-block:: bash
 
-    $ yaw cross output \
+    $ yaw_cli cross output \
         --unk-path unknown.fits \
         --unk-ra ra \
         --unk-dec dec
-    $ yaw auto output
+    $ yaw_cli auto output
 
 .. Note::
 
@@ -76,13 +76,14 @@ Getting the clustering redshifts
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Finally we transform the pair count into correlation functions and obtain the
-clustering redshift estimate with the ``yaw zcc`` :ref:`command<yaw_zcc>`. We
-also create a simple check plot with the ``yaw plot`` :ref:`command<yaw_plot>`.
+clustering redshift estimate with the ``yaw_cli zcc`` :ref:`command<yaw_zcc>`.
+We also create a simple check plot with the
+``yaw_cli plot`` :ref:`command<yaw_plot>`.
 
 .. code-block:: bash
 
-    $ yaw zcc output
-    $ yaw plot output
+    $ yaw_cli zcc output
+    $ yaw_cli plot output
 
 That is all. The project directory should now contain a number of files, the
 most important ones are:

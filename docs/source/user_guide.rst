@@ -5,7 +5,8 @@ User guide
 
 This guide provides an overview about the project. It explains the installation,
 features and main concepts, and gives an introduction to using the command line
-interface and the underlying ``yaw`` :ref:`python package<api>` with examples.
+interface  ``yaw_cli`` and the underlying ``yaw`` :ref:`python package<api>`
+with examples.
 
 
 .. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
