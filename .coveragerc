@@ -2,5 +2,6 @@
 source =
     src/yaw
 omit =
-    tests/*
+    setup.py
     src/yaw_cli
+    tests/*
