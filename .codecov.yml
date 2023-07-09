@@ -12,8 +12,10 @@ coverage:
         enabled: yes
         target: 100%
         threshold: 1%
-        branches: null
-
+        branches:
+          - master
+        paths: 
+          - "src/yaw"
     patch:
       default:
         target: 100%
