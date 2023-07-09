@@ -4,7 +4,7 @@ import itertools
 import os
 import sys
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Dict, NoReturn, Tuple
 try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:  # pragma: no cover
@@ -28,7 +28,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import PatchLinkage
 
 
-TypeNNResult: TypeAlias = dict[tuple[int, int], NNCorrelation]
+TypeNNResult: TypeAlias = Dict[Tuple[int, int], NNCorrelation]  # supports py3.8
 
 
 def _iter_bin_masks(
