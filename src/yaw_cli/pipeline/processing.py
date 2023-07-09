@@ -12,7 +12,7 @@ from yaw.correlation import CorrData, CorrFunc
 from yaw.redshifts import RedshiftData
 from yaw_cli.pipeline.data import MissingCatalogError
 
-if TYPE_CHECKING:  ## pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     from yaw.config import Configuration
     from yaw_cli.pipeline.project import ProjectDirectory, ProjectState
 

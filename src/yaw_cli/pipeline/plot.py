@@ -4,10 +4,8 @@ import logging
 from typing import TYPE_CHECKING
 
 import matplotlib
-import numpy as np
-
-matplotlib.use("agg")
 import matplotlib.pyplot as plt
+import numpy as np
 
 from yaw.correlation import CorrData
 from yaw.redshifts import RedshiftData
@@ -18,6 +16,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
     from numpy.typing import NDArray
 
+
+matplotlib.pyplot.switch_backend("Agg")
 
 logger = logging.getLogger(__name__)
 

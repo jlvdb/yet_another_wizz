@@ -25,8 +25,6 @@ from yaw_cli.pipeline.tasks import MergedTask, Task, TaskError, TaskManager
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-    from yaw_cli.pipeline.project import YawDirectory
-
 
 logger = logging.getLogger(__name__)
 

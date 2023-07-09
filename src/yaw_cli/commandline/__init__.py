@@ -5,3 +5,5 @@ later time.
 
 from yaw_cli.commandline import subcommands  # register subcommands
 from yaw_cli.commandline.main import Commandline
+
+__all__ = ["subcommands", "Commandline"]

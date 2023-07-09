@@ -5,7 +5,6 @@ import logging
 import sys
 from abc import ABC, abstractclassmethod
 
-from yaw import __version__
 from yaw import config as yaw_config
 from yaw.config import DEFAULT, OPTIONS, Configuration
 from yaw.core.docs import populate_parser
