@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.testing as npt
 import pandas as pd
-from pytest import fixture, raises
+from pytest import fixture
 
 from yaw.correlation import corrfuncs
 

@@ -3,6 +3,16 @@ objects. Each of the ``*Config`` objects has a corresponding class holding just
 the default values, as listed below.
 """
 
+__all__ = [
+    "NotSet",
+    "Scales",
+    "AutoBinning",
+    "Backend",
+    "Configuration",
+    "Resampling",
+    "backend",
+]
+
 
 class _NotSet_meta(type):
     def __repr__(self) -> str:

@@ -6,6 +6,13 @@ import astropy.cosmology
 
 from yaw.core.cosmology import TypeCosmology, get_default_cosmology
 
+__all__ = [
+    "cosmology_to_yaml",
+    "yaml_to_cosmology",
+    "parse_cosmology",
+    "parse_section_error",
+]
+
 
 class ConfigError(Exception):
     pass

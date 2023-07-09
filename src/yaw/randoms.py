@@ -20,6 +20,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from yaw.catalogs import BaseCatalog
 
+__all__ = ["UniformRandoms"]
+
 
 logger = logging.getLogger(__name__)
 

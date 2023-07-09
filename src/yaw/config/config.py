@@ -29,6 +29,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
     from yaw.core.utils import TypePathStr
 
+__all__ = ["Configuration"]
+
 
 logger = logging.getLogger(__name__)
 

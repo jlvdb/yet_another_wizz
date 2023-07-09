@@ -9,6 +9,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from yaw.core.coordinates import Coordinate
 
+__all__ = ["NewCatalog"]
+
 
 class NewCatalog:
     """Factory class for data catalogues implemented by the backends.

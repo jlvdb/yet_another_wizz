@@ -20,3 +20,5 @@ from yaw.correlation.corrfuncs import (
     autocorrelate,
     crosscorrelate,
 )
+
+__all__ = ["CorrData", "CorrFunc", "add_corrfuncs", "autocorrelate", "crosscorrelate"]

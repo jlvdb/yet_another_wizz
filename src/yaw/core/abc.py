@@ -19,6 +19,14 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.core.containers import Indexer
     from yaw.core.utils import TypePathStr
 
+__all__ = [
+    "PatchedQuantity",
+    "BinnedQuantity",
+    "concatenate_bin_edges",
+    "HDFSerializable",
+    "DictRepresentation",
+]
+
 
 _Tpatched = TypeVar("_Tpatched", bound="PatchedQuantity")
 

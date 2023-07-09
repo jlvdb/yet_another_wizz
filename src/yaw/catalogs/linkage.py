@@ -15,6 +15,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
 
+__all__ = ["PatchLinkage"]
+
 
 logger = logging.getLogger(__name__)
 

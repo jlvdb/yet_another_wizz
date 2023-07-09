@@ -33,6 +33,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from yaw.catalogs import PatchLinkage
 
+__all__ = ["EmptyCatalog", "TreecorrCatalog"]
+
 
 TypeNNResult: TypeAlias = Dict[Tuple[int, int], NNCorrelation]  # supports py3.8
 

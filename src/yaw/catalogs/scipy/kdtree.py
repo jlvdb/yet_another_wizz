@@ -10,6 +10,8 @@ from yaw.core.coordinates import Coordinate, DistSky
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
+__all__ = ["SphericalKDTree"]
+
 
 class InvalidScalesError(Exception):
     pass

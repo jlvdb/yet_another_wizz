@@ -5,6 +5,8 @@ configuration parameters. An instance of this class can be accessed directly as
 
 from __future__ import annotations
 
+__all__ = ["OPTIONS"]
+
 
 class Options:
     @property

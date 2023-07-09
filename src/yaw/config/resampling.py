@@ -13,6 +13,8 @@ from yaw.core.abc import DictRepresentation
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
+__all__ = ["ResamplingConfig"]
+
 
 @dataclass(frozen=True)
 class ResamplingConfig(DictRepresentation):

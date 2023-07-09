@@ -17,6 +17,8 @@ from yaw.core.math import sgn
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
+__all__ = ["Coord3D", "CoordSky", "Dist3D", "DistSky"]
+
 
 class Coordinate(ABC):
     """Base class for a vector of coordinates."""

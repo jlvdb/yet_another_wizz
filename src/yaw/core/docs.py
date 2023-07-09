@@ -13,6 +13,8 @@ import yaml
 if TYPE_CHECKING:  # pragma: no cover
     from argparse import ArgumentParser
 
+__all__ = ["Parameter", "get_doc_args", "populate_parser"]
+
 
 @dataclass(frozen=True)
 class Parameter(Mapping):

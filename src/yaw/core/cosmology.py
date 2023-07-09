@@ -20,6 +20,14 @@ from astropy.cosmology import FLRW, Planck15, available
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
+__all__ = [
+    "get_default_cosmology",
+    "CustomCosmology",
+    "r_kpc_to_angle",
+    "Scale",
+    "BinFactory",
+]
+
 
 def get_default_cosmology() -> FLRW:
     """Get the default cosmology (Planck Collaboration et al. 2015)."""

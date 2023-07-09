@@ -39,9 +39,10 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
 
+__all__ = ["CorrData", "CorrFunc", "add_corrfuncs", "autocorrelate", "crosscorrelate"]
+
 
 logger = logging.getLogger(__name__)
-
 
 _Tdata = TypeVar("_Tdata", bound="CorrData")
 

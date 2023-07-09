@@ -37,6 +37,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from yaw.core.cosmology import TypeCosmology
 
+__all__ = ["ScipyCatalog"]
+
 
 def _count_pairs_thread(
     patch1: PatchCatalog,

@@ -20,6 +20,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
 
+__all__ = ["BaseCatalog"]
+
 
 _Tcat = TypeVar("_Tcat", bound="BaseCatalog")
 

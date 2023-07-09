@@ -16,6 +16,19 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from yaw.core.containers import SampledData
 
+__all__ = [
+    "array_equal",
+    "outer_triu_sum",
+    "apply_bool_mask_ndim",
+    "apply_slice_ndim",
+    "sgn",
+    "cov_from_samples",
+    "global_covariance",
+    "corr_from_cov",
+    "rebin",
+    "shift_histogram",
+]
+
 
 _Tarr = TypeVar("_Tarr", bound=NDArray)
 

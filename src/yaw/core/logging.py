@@ -9,6 +9,8 @@ from datetime import timedelta
 from timeit import default_timer
 from typing import Callable
 
+__all__ = ["LogCustomWarning", "TimedLog"]
+
 
 class LogCustomWarning:
     """Context wrapper that temporarily redirects warnings to a logger."""

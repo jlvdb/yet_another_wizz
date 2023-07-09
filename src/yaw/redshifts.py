@@ -38,6 +38,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from yaw.correlation import CorrFunc
 
+__all__ = ["RedshiftData", "HistData"]
+
 
 logger = logging.getLogger(__name__)
 

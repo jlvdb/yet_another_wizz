@@ -6,6 +6,8 @@ from yaw.correlation import CorrData, CorrFunc
 from yaw.correlation.paircounts import NormalisedCounts
 from yaw.redshifts import HistData
 
+__all__ = ["CorrelationData", "CorrelationFunction", "HistogramData", "PairCountResult"]
+
 
 @deprecated(reason="renamed to yaw.CorrData", action="module", version="2.3.2")
 class CorrelationData(CorrData):

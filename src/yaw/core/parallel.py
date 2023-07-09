@@ -16,6 +16,8 @@ import numpy as np
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import DTypeLike, NDArray
 
+__all__ = ["SharedArray", "ParallelHelper"]
+
 
 logger = logging.getLogger(__name__)
 

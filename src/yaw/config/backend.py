@@ -8,6 +8,8 @@ from yaw.config import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 from yaw.core.docs import Parameter
 
+__all__ = ["BackendConfig"]
+
 
 @dataclass(frozen=True)
 class BackendConfig(DictRepresentation):

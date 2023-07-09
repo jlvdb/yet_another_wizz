@@ -31,3 +31,14 @@ from yaw.config.config import Configuration
 from yaw.config.options import OPTIONS
 from yaw.config.resampling import ResamplingConfig
 from yaw.config.scales import ScalesConfig
+
+__all__ = [
+    "DEFAULT",
+    "BackendConfig",
+    "AutoBinningConfig",
+    "ManualBinningConfig",
+    "Configuration",
+    "OPTIONS",
+    "ResamplingConfig",
+    "ScalesConfig",
+]

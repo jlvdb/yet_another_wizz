@@ -25,6 +25,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame, IntervalIndex, Series
 
+__all__ = ["Indexer", "PatchIDs", "PatchCorrelationData", "SampledValue", "SampledData"]
+
 
 _TK = TypeVar("_TK")
 _TV = TypeVar("_TV")

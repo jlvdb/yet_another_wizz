@@ -45,9 +45,10 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import DTypeLike, NDArray
     from pandas import IntervalIndex
 
+__all__ = ["PatchedTotal", "PatchedCount", "NormalisedCounts"]
+
 
 logger = logging.getLogger(__name__)
-
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 """default compression settings for :obj:`h5py.Dataset`."""

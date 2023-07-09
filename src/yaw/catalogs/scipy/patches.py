@@ -15,6 +15,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval
 
+__all__ = ["PatchCatalog"]
+
 
 class NotAPatchFileError(Exception):
     pass

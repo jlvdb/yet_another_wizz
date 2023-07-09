@@ -17,6 +17,8 @@ from yaw.core.math import array_equal
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
+__all__ = ["AutoBinningConfig", "ManualBinningConfig", "make_binning_config"]
+
 
 logger = logging.getLogger(__name__)
 
