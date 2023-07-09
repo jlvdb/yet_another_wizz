@@ -1,3 +1,4 @@
+# run tests, generate coverage report and upload to codecov
 name: tests
 on: [push, pull_request]
 jobs:
@@ -16,6 +17,11 @@ jobs:
           pip install -U numpy setuptools
           pip install -U .[test]
 
-      - name: Generate Report
+      - name: Run tests and generate Report
         run: |
-          pytest
+          pytest --cov=./
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
