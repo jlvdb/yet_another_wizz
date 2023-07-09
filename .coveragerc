@@ -1,0 +1,6 @@
+[run]
+source =
+    src/yaw
+omit =
+    tests/*
+    src/yaw_cli
