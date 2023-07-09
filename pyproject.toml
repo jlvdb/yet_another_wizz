@@ -49,8 +49,9 @@ docs = [
 test = [
     "typing_extensions",
     "more_itertools",
-    "pytest",
     "coverage",
+    "pytest",
+    "pytest-cov",
 ]
 dev = [
     "yet_another_wizz[docs]",
