@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any
 
 from yaw.config import default as DEFAULT
 from yaw.core.abc import DictRepresentation

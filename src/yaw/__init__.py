@@ -21,6 +21,8 @@ Author: Jan Luca van den Busch
 
 import logging as _logging
 
+_logging.getLogger(__name__).addHandler(_logging.NullHandler())  # noqa
+
 from yaw.catalogs import NewCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.cosmology import Scale
@@ -34,8 +36,6 @@ from yaw.deprecated import (
 )
 from yaw.randoms import UniformRandoms
 from yaw.redshifts import HistData, RedshiftData
-
-_logging.getLogger(__name__).addHandler(_logging.NullHandler())
 
 __version__ = "2.5"
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import itertools
 import os
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np

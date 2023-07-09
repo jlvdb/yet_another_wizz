@@ -280,14 +280,14 @@ class PatchedTotal(PatchedArray):
     totals1: NDArray
     """The total number of objects from the first data catalogue per patch and
     redshift bin.
-    
+
     The array is of shape (N, K), where N is the number of spatial patches, and
     K is the number of redshift bins.
     """
     totals2: NDArray
     """The total number of objects from the second data catalogue per patch and
     redshift bin.
-    
+
     The array is of shape (N, K), where N is the number of spatial patches, and
     K is the number of redshift bins.
     """
@@ -579,7 +579,7 @@ class PatchedCount(PatchedArray):
     counts: NDArray
     """Internal data array containing the pair counts between spatial patches in
     bins of redshift.
-    
+
     The array is 3-dimensional with shape (N, N, K), where N is the number of
     spatial patches, and K is the number of redshift bins. Same as
     :meth:`as_array`.

@@ -14,6 +14,7 @@ from yaw.catalogs.catalog import BaseCatalog
 from yaw.catalogs.factory import NewCatalog
 from yaw.catalogs.linkage import PatchLinkage
 
-from yaw.catalogs import scipy, treecorr  # isort: skip
+# isort: split
+from yaw.catalogs import scipy, treecorr  # noqa
 
 __all__ = ["BaseCatalog", "NewCatalog", "PatchLinkage"]

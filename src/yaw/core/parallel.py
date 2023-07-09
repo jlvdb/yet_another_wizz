@@ -112,10 +112,10 @@ class SharedArray:
         try:
             buffer = new.to_numpy()
             np.copyto(buffer, array)
+            return new
         except Exception:
             del new
             raise
-        return new
 
     def to_numpy(self, copy: bool = False) -> NDArray:
         """Reconstruct the original numpy array from shared memory.

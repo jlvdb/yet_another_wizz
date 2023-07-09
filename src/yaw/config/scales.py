@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from deprecated import deprecated
@@ -25,9 +25,9 @@ class ScalesConfig(DictRepresentation):
     """Configuration of scales used for correlation measurements.
 
     Correlation functions are measured on one or many intervals
-    :math:`r_{\\rm min} \leq r < r_{\\rm max}` angular diameter distance in kpc.
-    When measuring correlations, this scale is coverted to angles at the current
-    redshift.
+    :math:`r_{\\rm min} \\leq r < r_{\\rm max}` angular diameter distance in
+    kpc. When measuring correlations, this scale is coverted to angles at the
+    current redshift.
 
     Additionally, pairs can be weighted by their separation
     :math:`r^\\alpha` if a power-law exponent is provided through ``rweight``.
@@ -90,7 +90,7 @@ class ScalesConfig(DictRepresentation):
     separation."""
 
     def __post_init__(self) -> None:
-        msg_scale_error = f"scales violates 'rmin' < 'rmax'"
+        msg_scale_error = "scales violates 'rmin' < 'rmax'"
         # validation, set to basic python types
         scalars = (float, int, np.number)
         if isinstance(self.rmin, (Sequence, np.ndarray)) and isinstance(

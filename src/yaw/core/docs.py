@@ -61,9 +61,9 @@ class Parameter(Mapping):
         return 5
 
     def __iter__(self) -> Iterator[str]:
-        for field in fields(self):
-            if field.init:
-                yield f"yaw_{field.name}"
+        for cfield in fields(self):
+            if cfield.init:
+                yield f"yaw_{cfield.name}"
 
     def __getitem__(self, key: str) -> Any:
         return asdict(self)[key[4:]]
@@ -106,17 +106,17 @@ def get_doc_args(
     lines = []
     argfields = fields(dclass)
     if len(argfields) > 0:
-        for field in argfields:
+        for cfield in argfields:
             try:  # omit parameter if not shipped with parameter information
-                param = Parameter.from_field(field)
+                param = Parameter.from_field(cfield)
                 # format the value as 'key: value'
-                if field.default is not MISSING:
-                    default = field.default
+                if cfield.default is not MISSING:
+                    default = cfield.default
                     optional = True
                 else:
                     default = None
                     optional = False
-                value = yaml.dump({field.name.strip("_"): default}).strip()
+                value = yaml.dump({cfield.name.strip("_"): default}).strip()
                 # format the optional comment
                 comment = param.help
                 if indicate_opt and optional:
@@ -140,12 +140,12 @@ def populate_parser(
     Arguments are added for those dataclass fields that contain a Parameter
     instance in the ``metadata`` field.
     """
-    for field in fields(dclass):
+    for cfield in fields(dclass):
         try:
-            parameter = Parameter.from_field(field)
+            parameter = Parameter.from_field(cfield)
         except TypeError:
             continue
-        name = field.name.strip("_").replace("_", "-")
+        name = cfield.name.strip("_").replace("_", "-")
 
         if parameter.parser_id == "default":
             parser = default_parser
@@ -153,10 +153,10 @@ def populate_parser(
             parser = extra_parsers[parameter.parser_id]
 
         if parameter.is_flag():
-            if field.default == True:
+            if cfield.default is True:
                 parser.add_argument(
                     f"--no-{name}",
-                    dest=field.name,
+                    dest=cfield.name,
                     action="store_false",
                     help=parameter.help,
                 )
@@ -167,6 +167,6 @@ def populate_parser(
 
         else:
             kwargs = parameter.get_kwargs()
-            if field.default is not MISSING:
-                kwargs["default"] = field.default
+            if cfield.default is not MISSING:
+                kwargs["default"] = cfield.default
             parser.add_argument(f"--{name}", **kwargs)

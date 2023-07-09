@@ -12,11 +12,6 @@ import numpy as np
 import tqdm
 from numpy.typing import NDArray
 
-try:
-    from itertools import pairwise as iter_pairwise
-except ImportError:
-    from more_itertools import pairwise as iter_pairwise
-
 __all__ = [
     "job_progress_bar",
     "LimitTracker",

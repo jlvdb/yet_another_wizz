@@ -135,7 +135,7 @@ class TreecorrCatalog(BaseCatalog):
             log_msg = f"creating {n_patches} patches"
         elif patch_name is not None:
             kwargs["patch"] = data[patch_name]
-            log_msg = f"splitting data into predefined patches"
+            log_msg = "splitting data into predefined patches"
         elif isinstance(patch_centers, BaseCatalog):
             kwargs["patch_centers"] = patch_centers.centers.to_3d().values
             n_patches = patch_centers.n_patches

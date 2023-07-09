@@ -52,9 +52,9 @@ class BaseCatalog:
         super().__init_subclass__(**kwargs)
         if not cls.__name__.endswith("Catalog"):
             raise BackendError(
-                f"subclasses of 'BaseCatalog' must follow naming convention "
-                f"'[Backend name]Catalog for registration (e.g. ScipyCatalog "
-                f"-> 'scipy')"
+                "subclasses of 'BaseCatalog' must follow naming convention "
+                "'[Backend name]Catalog for registration (e.g. ScipyCatalog "
+                "-> 'scipy')"
             )
         backend = cls.__name__.strip("Catalog").lower()
         cls._backends[backend] = cls

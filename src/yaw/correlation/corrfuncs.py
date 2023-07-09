@@ -511,8 +511,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __eq__(self, other) -> bool:
         if not isinstance(other, self.__class__):
             return False
-        for field in fields(self):
-            kind = field.name
+        for cfield in fields(self):
+            kind = cfield.name
             if getattr(self, kind) != getattr(other, kind):
                 return False
         return True
@@ -523,8 +523,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __add__(self, other: CorrFunc) -> CorrFunc:
         # check that the pair counts are set consistently
         kinds = []
-        for field in fields(self):
-            kind = field.name
+        for cfield in fields(self):
+            kind = cfield.name
             self_set = getattr(self, kind) is not None
             other_set = getattr(other, kind) is not None
             if (self_set and not other_set) or (not self_set and other_set):
@@ -544,8 +544,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __mul__(self, other: np.number) -> CorrFunc:
         # check that the pair counts are set consistently
         kwargs = {}
-        for field in fields(self):
-            kind = field.name
+        for cfield in fields(self):
+            kind = cfield.name
             counts = getattr(self, kind)
             if counts is not None:
                 kwargs[kind] = counts * other
@@ -562,12 +562,12 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             if isinstance(item, int):
                 item = [item]
             kwargs = {}
-            for field in fields(inst):
-                pairs: NormalisedCounts | None = getattr(inst, field.name)
+            for cfield in fields(inst):
+                pairs: NormalisedCounts | None = getattr(inst, cfield.name)
                 if pairs is None:
-                    kwargs[field.name] = None
+                    kwargs[cfield.name] = None
                 else:
-                    kwargs[field.name] = pairs.bins[item]
+                    kwargs[cfield.name] = pairs.bins[item]
             return CorrFunc(**kwargs)
 
         return Indexer(self, builder)
@@ -576,11 +576,11 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def patches(self) -> Indexer[TypeIndex, CorrFunc]:
         def builder(inst: CorrFunc, item: TypeIndex) -> CorrFunc:
             kwargs = {}
-            for field in fields(inst):
-                counts: NormalisedCounts | None = getattr(inst, field.name)
+            for cfield in fields(inst):
+                counts: NormalisedCounts | None = getattr(inst, cfield.name)
                 if counts is not None:
                     counts = counts.patches[item]
-                kwargs[field.name] = counts
+                kwargs[cfield.name] = counts
             return CorrFunc(**kwargs)
 
         return Indexer(self, builder)
@@ -938,12 +938,12 @@ def autocorrelate(
         linkage = PatchLinkage.from_setup(config, random)
     kwargs = dict(linkage=linkage, progress=progress)
     logger.debug("scheduling DD, DR" + (", RR" if compute_rr else ""))
-    with TimedLog(logger.info, f"counting data-data pairs"):
+    with TimedLog(logger.info, "counting data-data pairs"):
         DD = data.correlate(config, binned=True, **kwargs)
-    with TimedLog(logger.info, f"counting data-rand pairs"):
+    with TimedLog(logger.info, "counting data-rand pairs"):
         DR = data.correlate(config, binned=True, other=random, **kwargs)
     if compute_rr:
-        with TimedLog(logger.info, f"counting rand-rand pairs"):
+        with TimedLog(logger.info, "counting rand-rand pairs"):
             RR = random.correlate(config, binned=True, **kwargs)
     else:
         RR = _create_dummy_counts(DD)
@@ -1038,20 +1038,20 @@ def crosscorrelate(
         + (", RR" if compute_rr else "")
     )
     kwargs = dict(linkage=linkage, progress=progress)
-    with TimedLog(logger.info, f"counting data-data pairs"):
+    with TimedLog(logger.info, "counting data-data pairs"):
         DD = reference.correlate(config, binned=False, other=unknown, **kwargs)
     if compute_dr:
-        with TimedLog(logger.info, f"counting data-rand pairs"):
+        with TimedLog(logger.info, "counting data-rand pairs"):
             DR = reference.correlate(config, binned=False, other=unk_rand, **kwargs)
     else:
         DR = _create_dummy_counts(DD)
     if compute_rd:
-        with TimedLog(logger.info, f"counting rand-data pairs"):
+        with TimedLog(logger.info, "counting rand-data pairs"):
             RD = ref_rand.correlate(config, binned=False, other=unknown, **kwargs)
     else:
         RD = _create_dummy_counts(DD)
     if compute_rr:
-        with TimedLog(logger.info, f"counting rand-rand pairs"):
+        with TimedLog(logger.info, "counting rand-rand pairs"):
             RR = ref_rand.correlate(config, binned=False, other=unk_rand, **kwargs)
     else:
         RR = _create_dummy_counts(DD)

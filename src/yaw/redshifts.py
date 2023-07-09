@@ -55,7 +55,7 @@ class RedshiftData(CorrData):
     convenience.
 
     This container holds data in the form of
-    :math:`\\frac{w_\\rm{sp}(z)}{\\sqrt{\\Delta z \, w_\\rm{ss}(z) \, w_\\rm{pp}(z)}}`,
+    :math:`\\frac{w_\\rm{sp}(z)}{\\sqrt{\\Delta z \\, w_\\rm{ss}(z) \\, w_\\rm{pp}(z)}}`,
     where :math:`w_\\rm{sp}` is the crosscorrelation function, and
     :math:`w_\\rm{ss}` and :math:`w_\\rm{pp}` are autocorrelation functions that
     account for the evolving galaxy bias. If no autocorrelation is provided, the
