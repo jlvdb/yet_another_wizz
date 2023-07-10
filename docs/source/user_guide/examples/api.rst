@@ -85,7 +85,7 @@ container:
 
 .. code-block:: python
 
-    >>> n_cc = yaw.RedshiftData.from_correlation_functions(w_sp, w_ss)
+    >>> n_cc = yaw.RedshiftData.from_corrfuncs(w_sp, w_ss)
     >>> n_cc
     RedshiftData(n_bins=30, z='0.070...1.420', n_samples=32, method='jackknife')
 

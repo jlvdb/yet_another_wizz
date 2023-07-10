@@ -159,7 +159,7 @@ class CorrelationEstimator(ABC):
     def _warn_enum_zero(cls, counts: NDArray):
         """Raise a warning if any value in the expression enumerator is zero"""
         if np.any(counts == 0.0):
-            logger.warn(f"estimator {cls.short} encontered zeros in enumerator")
+            logger.warning(f"estimator {cls.short} encontered zeros in enumerator")
 
     @abstractclassmethod
     def eval(

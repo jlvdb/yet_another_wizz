@@ -294,7 +294,7 @@ class RedshiftData(CorrData):
                 unk_data = unk_corr.sample(config, estimator=unk_est)
             else:
                 unk_data = None
-            return cls.from_correlation_data(
+            return cls.from_corrdata(
                 cross_data=cross_data, ref_data=ref_data, unk_data=unk_data, info=info
             )
 

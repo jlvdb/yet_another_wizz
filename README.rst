@@ -43,7 +43,10 @@ The yet_another_wizz package can be installed directly with pip::
 
 This will install the python library ``yaw``. There also exists a separate
 command line tool called *yet_another_wizz_cli* (``yaw_cli``) that is available
-at PyPI and `github <https://github.com/jlvdb/yet_another_wizz_cli>`_.
+at PyPI and `github <https://github.com/jlvdb/yet_another_wizz_cli>`_. To
+install it alongside the python library, type::
+
+    pip install yet_another_wizz[cli]
 
 
 Usage

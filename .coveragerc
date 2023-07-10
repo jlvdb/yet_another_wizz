@@ -1,6 +1,0 @@
-[run]
-source =
-    src/yaw
-omit =
-    setup.py
-    tests/*

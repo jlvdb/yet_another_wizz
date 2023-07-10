@@ -36,6 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cli = ["yet_another_wizz_cli>=1.2.1"]
 plot = ["matplotlib"]
 # note that yaw_cli is currently necessary to generate the joint docs
 docs = [
@@ -43,7 +44,7 @@ docs = [
     "sphinx-design",
     "sphinx-copybutton",
     "pydata-sphinx-theme",
-    "yet_another_wizz_cli>=1.2.1",
+    "yet_another_wizz[cli]",
 ]
 test = [
     "typing_extensions",
@@ -80,9 +81,13 @@ yaw = [
 ]
 
 [tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q"
-testpaths = ["tests"]
+testpaths = [
+    "tests",
+]
+addopts = [
+    "--cov=yaw",
+    "--cov-report=xml",
+]
 
 [tool.isort]
 profile = "black"

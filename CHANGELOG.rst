@@ -2,6 +2,19 @@ Change log
 ==========
 
 
+Version 2.5.2
+-------------
+
+- Added an option to install ``yaw_cli`` directly from pip with
+  ``yaw_another_wizz[cli]``.
+- Fixed deprecation warnings
+
+.. rubric:: Bug fixes
+
+- Fixed a bug that allowed loading a binning with the ``.from_dict()`` methods
+  without checking the values.
+
+
 Version 2.5.1
 -------------
 
