@@ -89,6 +89,7 @@ html_context = {
 # generate a changelog file with dropdown sections
 ver_strs = []
 ver_texts = []
+ver_text = []
 with open("../../CHANGELOG.rst") as f:
     for line in f.readlines():
         if line.startswith("Version"):

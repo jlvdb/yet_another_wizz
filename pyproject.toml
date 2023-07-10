@@ -53,9 +53,16 @@ test = [
     "pytest",
     "pytest-cov",
 ]
+style = [
+    "black",
+    "isort",
+    "flake8",
+    "pre-commit",
+]
 dev = [
     "yet_another_wizz[docs]",
     "yet_another_wizz[test]",
+    "yet_another_wizz[style]",
     "ipykernel",
 ]
 
@@ -80,3 +87,19 @@ testpaths = ["tests"]
 
 [tool.isort]
 profile = "black"
+
+[tool.black]
+include = ".pyi?$"
+exclude = """
+/(
+    .git
+    | .hg
+    | .mypy_cache
+    | .tox
+    | .venv
+    | _build
+    | buck-out
+    | build
+    | dist
+)/
+"""

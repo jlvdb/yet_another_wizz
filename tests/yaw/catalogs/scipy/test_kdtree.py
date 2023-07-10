@@ -4,8 +4,8 @@ import numpy as np
 from numpy import testing as npt
 from pytest import fixture, raises
 
-from yaw.core import coordinates
 from yaw.catalogs.scipy import kdtree
+from yaw.core import coordinates
 
 
 @fixture
@@ -17,9 +17,11 @@ def sphere_edges():
 
 @fixture
 def sphere_points_rad(sphere_edges):
+    def const_segment(x):
+        return np.full_like(base_segment, x)
+
     # draw the major great circles of the x, y, and z plain
     base_segment = np.linspace(0.0, 90.0, 91)[1:-1]  # (0, 90)
-    const_segment = lambda x: np.full_like(base_segment, x)
     # start with the trivial points
     ra, dec = sphere_edges.T
     ras = [np.rad2deg(ra)]

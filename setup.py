@@ -1,6 +1,5 @@
-from setuptools import setup, Extension
 import numpy as np
-
+from setuptools import Extension, setup
 
 ext_module_math = Extension(
     "yaw.core._math", ["src/yaw/core/math.c"], include_dirs=[np.get_include()]
