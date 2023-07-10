@@ -21,7 +21,7 @@ class LogCustomWarning:
         alt_message: str | None = None,
         ignore: bool = True,
     ):
-        """Instead of showing the warning through the :func:`warnings.warn`
+        """Instead of showing the warning through the :func:`warnings.warning`
         machinery, write the message as warning to the provided logger.
 
         Args:
@@ -30,7 +30,7 @@ class LogCustomWarning:
             alt_message (:obj:`str`, optional):
                 Replace the original message text with this value instead.
             ignore (:obj:`bool`, optional):
-                Do not show warning with :func:`warnings.warn` (the default).
+                Do not show warning with :func:`warnings.warning` (the default).
         """
         self._logger = logger
         self._message = alt_message
@@ -43,7 +43,7 @@ class LogCustomWarning:
             message = self._message
         else:
             message = f"{category.__name__}: {message}"
-        self._logger.warn(message)
+        self._logger.warning(message)
 
     def __enter__(self) -> TimedLog:
         self._old_showwarning = warnings.showwarning

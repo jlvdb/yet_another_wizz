@@ -228,7 +228,7 @@ def warn_binning_args_ignored(
     set."""
     # NOTE: NotSet is also False
     if zmin or zmax or zbin_num:
-        logger.warn("'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
+        logger.warning("'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
 
 
 def make_binning_config(
