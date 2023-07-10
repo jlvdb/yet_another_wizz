@@ -2,6 +2,16 @@ Change log
 ==========
 
 
+Version 2.5.post0
+-----------------
+
+- Added integrations, automatic unittests, linting and style checking.
+
+.. rubric:: Bug fixes
+
+- Fixed the broken entry point to ``yaw_cli``.
+
+
 Version 2.5
 -----------
 
