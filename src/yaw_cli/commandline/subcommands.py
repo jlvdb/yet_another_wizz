@@ -49,9 +49,8 @@ class CommandInit(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="initialise and configure a new a project directory",
-            description="Initialise and create a project directory with a "
-            "configuration. Specify the reference sample data and "
-            "optionally randoms.",
+            description="Initialise and create a project directory with a configuration"
+            ". Specify the reference sample data and optionally randoms.",
             wdir=False,
             threads=False,
             progress=False,
@@ -186,10 +185,9 @@ class CommandCrosscorr(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="measure angular cross-correlation functions",
-            description="Specify the unknown data sample(s) and optionally "
-            "randoms. Measure the angular cross-correlation "
-            "function amplitude with the reference sample in bins "
-            "of redshift.",
+            description="Specify the unknown data sample(s) and optionally randoms. "
+            "Measure the angular cross-correlation function amplitude with the reference "
+            "sample in bins of redshift.",
             progress=True,
             threads=True,
         )
@@ -230,10 +228,9 @@ class CommandAutocorr(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="measure angular autocorrelation functions",
-            description="Measure the angular autocorrelation function "
-            "amplitude of the reference sample. Can be applied to "
-            "the unknown sample if redshift point-estimates are "
-            "available.",
+            description="Measure the angular autocorrelation function amplitude of the "
+            "reference sample. Can be applied to the unknown sample if redshift point-"
+            "estimates are available.",
             progress=True,
             threads=True,
         )
@@ -267,9 +264,8 @@ class CommandTrueRedshifts(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help=yaw_tasks.TaskTrueRedshifts.get_help(),
-            description="Compute the redshift distributions of the unknown "
-            "data sample(s), which requires providing point-"
-            "estimate redshifts for the catalog.",
+            description="Compute the redshift distributions of the unknown data sample(s), "
+            "which requires providing point-estimate redshifts for the catalog.",
             progress=True,
             threads=True,
         )
@@ -320,11 +316,10 @@ class CommandMerge(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="merge correlation measurements from different sources",
-            description="Combine pair count data from different project "
-            "directories with compatible configuration. Supported "
-            "cases are: concatenating patches with the same "
-            "redshift binning and concatenating redshift "
-            "bins with same patches (not verified).",
+            description="Combine pair count data from different project directories with "
+            "compatible configuration. Supported cases are: concatenating patches with "
+            "the same redshift binning and concatenating redshift bins with same patches "
+            "(not verified).",
             wdir=False,
         )
         parser.add_argument(  # manual since special help text
@@ -337,9 +332,8 @@ class CommandMerge(SubCommand):
             "--mode",
             choices=OPTIONS.merge,
             required=True,
-            help="specify whether merging is performed on tomographic bins, "
-            "extending spatially from patches, or by concatenating along "
-            "the redshift axis",
+            help="specify whether merging is performed on tomographic bins, extending "
+            "spatially from patches, or by concatenating along the redshift axis",
         )
         parser.add_argument(
             "-p",
@@ -364,9 +358,9 @@ class CommandEstimateCorr(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help=yaw_tasks.TaskEstimateCorr.get_help(),
-            description="Compute clustering redshift estimates for the unknown "
-            "data sample(s), optionally mitigating galaxy bias "
-            "estimated from any measured autocorrelation function.",
+            description="Compute clustering redshift estimates for the unknown data "
+            "sample(s), optionally mitigating galaxy bias estimated from any measured "
+            "autocorrelation function.",
         )
 
         group_est = parser.add_argument_group(
@@ -425,9 +419,8 @@ class CommandRun(SubCommand):
         parser = Commandline.create_subparser(
             name=cls.get_name(),
             help="perform tasks specified in a setup file",
-            description="Read a task list and configuration from a setup file "
-            "(e.g. as generated by 'init'). Apply the tasks to the "
-            "specified data samples.",
+            description="Read a task list and configuration from a setup file (e.g. as "
+            "generated by 'init'). Apply the tasks to the specified data samples.",
             wdir=False,
             threads=True,
             progress=True,

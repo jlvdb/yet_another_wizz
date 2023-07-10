@@ -39,8 +39,7 @@ class BackendConfig(DictRepresentation):
         default=DEFAULT.Backend.crosspatch,
         metadata=Parameter(
             type=bool,
-            help="whether to count pairs across patch boundaries (scipy "
-            "backend only)",
+            help="whether to count pairs across patch boundaries (scipy backend only)",
         ),
     )
     """Whether to count pairs across patch boundaries (``scipy`` backend only).

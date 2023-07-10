@@ -148,8 +148,7 @@ class TaskCrosscorr(Task):
         default=False,
         metadata=Parameter(
             type=bool,
-            help="compute random-random pair counts, even if both randoms are "
-            "available",
+            help="compute random-random pair counts, even if both randoms are available",
         ),
     )
 
@@ -368,8 +367,7 @@ class TaskManager(Sequence):
                 name, arg_dict = task.popitem()
             else:
                 raise TaskError(
-                    "serialisation format must be 'str(name)' or "
-                    "{str(name): dict(**args)}'"
+                    "serialisation format must be 'str(name)' or {str(name): dict(**args)}'"
                 )
             task_inst = get_task(name).from_dict(arg_dict)
             new._insert_task(task_inst, new._history)

@@ -81,8 +81,7 @@ class ScalesConfig(DictRepresentation):
         default=DEFAULT.Scales.rbin_num,
         metadata=Parameter(
             type=int,
-            help="number of bins in log r used (i.e. resolution) to compute "
-            "distance weights",
+            help="number of bins in log r used (i.e. resolution) to compute distance weights",
             default_text="(default: %(default)s)",
         ),
     )
