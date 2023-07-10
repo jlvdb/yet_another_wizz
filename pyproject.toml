@@ -43,7 +43,7 @@ docs = [
     "sphinx-design",
     "sphinx-copybutton",
     "pydata-sphinx-theme",
-    "yaw_cli>=1.2",
+    "yet_another_wizz_cli>=1.2",
 ]
 test = [
     "typing_extensions",
