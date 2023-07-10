@@ -37,11 +37,13 @@ dependencies = [
 
 [project.optional-dependencies]
 plot = ["matplotlib"]
+# note that yaw_cli is currently necessary to generate the joint docs
 docs = [
     "sphinx",
     "sphinx-design",
     "sphinx-copybutton",
     "pydata-sphinx-theme",
+    "yaw_cli>=1.2",
 ]
 test = [
     "typing_extensions",

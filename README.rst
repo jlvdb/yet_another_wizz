@@ -41,8 +41,9 @@ The yet_another_wizz package can be installed directly with pip::
 
     pip install yet_another_wizz
 
-This will install the python package ``yaw``, as well as the ``yaw_cli``
-executable command line tool.
+This will install the python library ``yaw``. There also exists a separate
+command line tool called *yet_another_wizz_cli* (``yaw_cli``) that is available
+at PyPI and `github <https://github.com/jlvdb/yet_another_wizz_cli>`_.
 
 
 Usage
@@ -50,12 +51,12 @@ Usage
 
 There are two main ways to use yet_another_wizz,
 
-- the ``yaw_cli`` commmand line tool and
-- the python package ``yaw`` directly.
+- the python library ``yaw`` itself and
+- the (separate) ``yaw_cli`` commmand line tool.
 
 Most people will probably get started with the command line tool, which should
 cover all necessary tasks for a standard clustering redshift calibration. For
-custom solutions, use the python package. A basic example as well as the API
+custom solutions, use the python library. A basic example as well as the API
 reference can be found in the official documentation.
 
 
