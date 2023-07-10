@@ -25,7 +25,7 @@ jobs:
 
       - name: Run tests and generate Report
         run: |
-          pytest --cov=src/ --cov-report=xml
+          pytest --cov=./ --cov-report=xml
           ls -la
 
       - name: Upload Coverage to Codecov
