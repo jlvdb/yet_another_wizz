@@ -1,5 +1,6 @@
-yet_another_wizz
-================
+.. image:: docs/source/_static/logo-dark.svg
+    :width: 1000
+    :alt: yet_another_wizz
 
 .. image:: https://img.shields.io/pypi/v/yet_another_wizz?logo=pypi&logoColor=blue
     :target: https://pypi.org/project/yet_another_wizz/

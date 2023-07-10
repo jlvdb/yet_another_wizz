@@ -116,9 +116,14 @@ if not os.path.exists(path):
     print(f"generating '{path}'")
     with open(f"../../{os.path.basename(path)}") as r:
         with open(path, "w") as f:
-            lines = r.readlines()
-            for line in lines[2:]:
-                f.write(line)
+            header = True
+            for line in r.readlines():
+                if header:
+                    if line.startswith("*"):
+                        header = False
+                        f.write(line)
+                else:
+                    f.write(line)
 
 path = "user_guide/cmd/default_setup.yaml"
 if not os.path.exists(path):
