@@ -10,6 +10,8 @@ from yaw.core.coordinates import Coordinate, DistSky
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
+__all__ = ["SphericalKDTree"]
+
 
 class InvalidScalesError(Exception):
     pass
@@ -30,7 +32,7 @@ class SphericalKDTree:
         self,
         position: Coordinate,
         weights: NDArray[np.float_] | None = None,
-        leafsize: int = 16
+        leafsize: int = 16,
     ) -> None:
         """Build a new tree from a set of coordinates.
 
@@ -49,7 +51,7 @@ class SphericalKDTree:
         if weights is None:
             self.weights = np.ones(len(position))
         else:
-            assert(len(weights) == len(position))
+            assert len(weights) == len(position)
             self.weights = np.asarray(weights)
 
     def __len__(self) -> int:
@@ -67,7 +69,7 @@ class SphericalKDTree:
         other: SphericalKDTree,
         scales: NDArray[np.float_],
         dist_weight_scale: float | None = None,
-        weight_res: int = 50
+        weight_res: int = 50,
     ) -> NDArray:
         """Count pairs on a set of angular scales.
 
@@ -101,7 +103,7 @@ class SphericalKDTree:
             :obj:`NDArray`:
                 The pair counts for each input scale, with optional inidividual
                 point weights and radial weights applied.
-        
+
         .. Warning::
 
             For autocorrelation measurements, ``other`` must be the same
@@ -112,8 +114,7 @@ class SphericalKDTree:
         # unpack query scales
         scales = np.atleast_2d(scales)
         if scales.shape[1] != 2:
-            raise InvalidScalesError(
-                "'scales' must be composed of tuples of length 2")
+            raise InvalidScalesError("'scales' must be composed of tuples of length 2")
         if np.any(scales <= 0.0):
             raise InvalidScalesError("scales must be positive (r > 0)")
         if np.any(scales > np.pi):
@@ -122,12 +123,15 @@ class SphericalKDTree:
         # construct bins
         rlog_edges = np.linspace(log_scales.min(), log_scales.max(), weight_res)
         rlog_edges = np.array(sorted(set(rlog_edges) | set(log_scales)))
-        r_edges = 10 ** rlog_edges
+        r_edges = 10**rlog_edges
         # count pairs
         try:
             counts = self.tree.count_neighbors(
-                other.tree, DistSky(r_edges).to_3d().values,
-                weights=(self.weights, other.weights), cumulative=False)
+                other.tree,
+                DistSky(r_edges).to_3d().values,
+                weights=(self.weights, other.weights),
+                cumulative=False,
+            )
         except IndexError:
             counts = np.zeros_like(r_edges)
         counts = counts[1:]  # discard counts with 0 < R <= r_min

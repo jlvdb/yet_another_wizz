@@ -27,7 +27,7 @@ For the command line tools, the cache path can be configured using
 of the YAML configuration. The default location is to use the project directory
 itself.
 
-Caching is disabled by default and must be enabled per catalog by setting 
+Caching is disabled by default and must be enabled per catalog by setting
 ``cache: true`` in the YAML configuration for a catalog or suppling the
 command line flag ``--*-cache``, where ``*`` is either of ``ref``, ``unk``, or
 ``rand``.
@@ -41,7 +41,7 @@ to the ``cache_directory`` argument of catalog constructors
 and :meth:`NewCatalog.from_dataframe<yaw.catalogs.NewCatalog.from_dataframe>`.
 
 .. Note::
-    
+
     Currently using a cache directory has the side effect that the data is not
     held in memory after the cache data has been written. The catalog
     instance will be in the *unloaded* state, until the

@@ -70,7 +70,7 @@ static PyObject* _rebin(PyObject* self, PyObject* args) {
             overlaps_max = (zmin_n <= zmax_o) && (zmax_n > zmax_o);
 
             if (contains || overlaps_min || overlaps_max) {
-                // compute fractional bin overlap 
+                // compute fractional bin overlap
                 zmin_overlap = MAX(zmin_o, zmin_n);
                 zmax_overlap = MIN(zmax_o, zmax_n);
                 fraction = (zmax_overlap - zmin_overlap) / (zmax_o - zmin_o);

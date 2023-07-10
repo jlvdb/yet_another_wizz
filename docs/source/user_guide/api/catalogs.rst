@@ -20,4 +20,3 @@ base class :class:`~yaw.catalogs.BaseCatalog`, but more on that in the
     ...     "reference.fits", ra="ra", dec="dec", redshift="z", patches=32)
     >>> cat
     ScipyCatalog(loaded=True, nobjects=389596, npatches=32, redshifts=True)
-

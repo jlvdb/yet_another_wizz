@@ -16,26 +16,33 @@ import pandas as pd
 from deprecated import deprecated
 
 from yaw.catalogs import PatchLinkage
-from yaw.config import ResamplingConfig, OPTIONS
+from yaw.config import OPTIONS, ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData
 from yaw.core.logging import LogCustomWarning, TimedLog
-from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
+from yaw.core.utils import TypePathStr
+from yaw.core.utils import format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
-    CorrelationEstimator, CtsMix, cts_from_code, EstimatorError)
+    CorrelationEstimator,
+    CtsMix,
+    EstimatorError,
+    cts_from_code,
+)
 from yaw.correlation.paircounts import NormalisedCounts, TypeIndex
 
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.axis import Axis
     from numpy.typing import NDArray
     from pandas import IntervalIndex
+
     from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
 
+__all__ = ["CorrData", "CorrFunc", "add_corrfuncs", "autocorrelate", "crosscorrelate"]
+
 
 logger = logging.getLogger(__name__)
-
 
 _Tdata = TypeVar("_Tdata", bound="CorrData")
 
@@ -110,7 +117,7 @@ class CorrData(SampledData):
 
         The data is restored from a set of three input files produced by
         :meth:`to_files`.
-        
+
         .. Note::
             These file have the same names but different file extension,
             therefore only provide the base name without any extension to
@@ -119,7 +126,7 @@ class CorrData(SampledData):
         Args:
             path_prefix (:obj:`str`):
                 The base name of the input files without any file extension.
-        
+
         Returns:
             :obj:`CorrData`
         """
@@ -129,8 +136,7 @@ class CorrData(SampledData):
         ext = "dat"
         data_error = np.loadtxt(f"{path_prefix}.{ext}")
         # restore index
-        binning = pd.IntervalIndex.from_arrays(
-            data_error[:, 0], data_error[:, 1])
+        binning = pd.IntervalIndex.from_arrays(data_error[:, 0], data_error[:, 1])
         # load samples
         ext = "smp"
         samples = np.loadtxt(f"{path_prefix}.{ext}")
@@ -160,14 +166,16 @@ class CorrData(SampledData):
             data=data_error[:, 2],  # take data column
             samples=samples.T[2:],  # remove redshift bin columns
             method=method,
-            info=info)
+            info=info,
+        )
 
     @property
     def _dat_desc(self) -> str:
         """Description included in the data file."""
         return (
             "# correlation function estimate with symmetric 68% percentile "
-            "confidence")
+            "confidence"
+        )
 
     @property
     def _smp_desc(self) -> str:
@@ -179,7 +187,8 @@ class CorrData(SampledData):
         """Description included in the covariance file."""
         return (
             f"# correlation function estimate covariance matrix "
-            f"({self.n_bins}x{self.n_bins})")
+            f"({self.n_bins}x{self.n_bins})"
+        )
 
     def to_files(self, path_prefix: TypePathStr) -> None:
         """Store the data in a set of ASCII files on disk.
@@ -192,12 +201,12 @@ class CorrData(SampledData):
         ``[path_prefix].dat``: Contains the redshift bin edges, the data values
         and their standard error. Additionally there is information about the
         error estimate and the :obj:`info` attribute.
-        
+
         ``[path_prefix].smp``: Contains one row for each redshift bin. The first
         two columns list the lower and upper edge of the redshift bin, the
         remaining columns list the values of the samples, i.e. there are ``N+2``
         columns. Additionally contains the :obj:`info` attribute.
-        
+
         ``[path_prefix].cov``: Contains the covariance matrix and additionally
         the :obj:`info` attribute.
 
@@ -226,18 +235,15 @@ class CorrData(SampledData):
         with open(f"{path_prefix}.{ext}", "w") as f:
             write_head(f, comment(self._dat_desc), header, delim=DELIM)
             for zlow, zhigh, nz, nz_err in zip(
-                self.edges[:-1], self.edges[1:],
-                self.data, self.error
+                self.edges[:-1], self.edges[1:], self.data, self.error
             ):
-                values = [
-                    fmt_num(val, PREC) for val in (zlow, zhigh, nz, nz_err)]
+                values = [fmt_num(val, PREC) for val in (zlow, zhigh, nz, nz_err)]
                 f.write(DELIM.join(values) + "\n")
 
         # write samples
         ext = "smp"
         header = ["z_low", "z_high"]
-        header.extend(
-            f"{self.method[:4]}_{i}" for i in range(self.n_samples))
+        header.extend(f"{self.method[:4]}_{i}" for i in range(self.n_samples))
         with open(f"{path_prefix}.{ext}", "w") as f:
             write_head(f, comment(self._smp_desc), header, delim=DELIM)
             for zlow, zhigh, samples in zip(
@@ -253,7 +259,7 @@ class CorrData(SampledData):
         with open(f"{path_prefix}.{ext}", "w") as f:
             f.write(f"{comment(self._cov_desc)}\n")
             for values in self.covariance:
-                f.write(fmt_str.format(*values, prec=PREC-3))
+                f.write(fmt_str.format(*values, prec=PREC - 3))
 
     def _make_plot(
         self,
@@ -269,6 +275,7 @@ class CorrData(SampledData):
         zero_line: bool = False,
     ) -> Axis:
         from matplotlib import pyplot as plt
+
         # configure plot
         if ax is None:
             ax = plt.gca()
@@ -301,7 +308,7 @@ class CorrData(SampledData):
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
-        scale_by_dz: bool = False
+        scale_by_dz: bool = False,
     ) -> Axis:  # pragma: no cover
         """Create a plot of the correlation data as a function of redshift.
 
@@ -339,16 +346,19 @@ class CorrData(SampledData):
             y *= self.dz
             yerr *= self.dz
         return self._make_plot(
-            x, y, yerr,
-            color=color, label=label, error_bars=error_bars, ax=ax,
-            plot_kwargs=plot_kwargs, zero_line=zero_line)
+            x,
+            y,
+            yerr,
+            color=color,
+            label=label,
+            error_bars=error_bars,
+            ax=ax,
+            plot_kwargs=plot_kwargs,
+            zero_line=zero_line,
+        )
 
     def plot_corr(
-        self,
-        *,
-        redshift: bool = False,
-        cmap: str = "RdBu_r",
-        ax: Axis | None = None
+        self, *, redshift: bool = False, cmap: str = "RdBu_r", ax: Axis | None = None
     ) -> Axis:
         """Plot the correlation matrix of the data.
 
@@ -445,7 +455,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     CorrData(n_bins=30, z='0.070...1.420', n_samples=64, method='jackknife')
 
     Note how the indicated shape changes when a patch subset is selected:
-    
+
     >>> corr.patches[:10]
     CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=10)
 
@@ -488,7 +498,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 self.dd.is_compatible(pairs, require=True)
             except ValueError as e:
                 raise ValueError(
-                    f"pair counts '{kind}' and 'dd' are not compatible") from e
+                    f"pair counts '{kind}' and 'dd' are not compatible"
+                ) from e
 
     def __repr__(self) -> str:
         string = super().__repr__()[:-1]
@@ -500,8 +511,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __eq__(self, other) -> bool:
         if not isinstance(other, self.__class__):
             return False
-        for field in fields(self):
-            kind = field.name
+        for cfield in fields(self):
+            kind = cfield.name
             if getattr(self, kind) != getattr(other, kind):
                 return False
         return True
@@ -512,24 +523,19 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __add__(self, other: CorrFunc) -> CorrFunc:
         # check that the pair counts are set consistently
         kinds = []
-        for field in fields(self):
-            kind = field.name
+        for cfield in fields(self):
+            kind = cfield.name
             self_set = getattr(self, kind) is not None
             other_set = getattr(other, kind) is not None
             if (self_set and not other_set) or (not self_set and other_set):
-                raise ValueError(
-                    f"pair counts for '{kind}' not set for both operands")
+                raise ValueError(f"pair counts for '{kind}' not set for both operands")
             elif self_set and other_set:
                 kinds.append(kind)
 
-        kwargs = {
-            kind: getattr(self, kind) + getattr(other, kind) for kind in kinds}
+        kwargs = {kind: getattr(self, kind) + getattr(other, kind) for kind in kinds}
         return self.__class__(**kwargs)
 
-    def __radd__(
-        self,
-        other: CorrFunc | int | float
-    ) -> CorrFunc:
+    def __radd__(self, other: CorrFunc | int | float) -> CorrFunc:
         if other == 0:
             return self
         else:
@@ -538,8 +544,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def __mul__(self, other: np.number) -> CorrFunc:
         # check that the pair counts are set consistently
         kwargs = {}
-        for field in fields(self):
-            kind = field.name
+        for cfield in fields(self):
+            kind = cfield.name
             counts = getattr(self, kind)
             if counts is not None:
                 kwargs[kind] = counts * other
@@ -552,33 +558,29 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     @property
     def bins(self) -> Indexer[TypeIndex, CorrFunc]:
-        def builder(
-            inst: CorrFunc, item: TypeIndex
-        ) -> CorrFunc:
+        def builder(inst: CorrFunc, item: TypeIndex) -> CorrFunc:
             if isinstance(item, int):
                 item = [item]
             kwargs = {}
-            for field in fields(inst):
-                pairs: NormalisedCounts | None = getattr(inst, field.name)
+            for cfield in fields(inst):
+                pairs: NormalisedCounts | None = getattr(inst, cfield.name)
                 if pairs is None:
-                    kwargs[field.name] = None
+                    kwargs[cfield.name] = None
                 else:
-                    kwargs[field.name] = pairs.bins[item]
+                    kwargs[cfield.name] = pairs.bins[item]
             return CorrFunc(**kwargs)
 
         return Indexer(self, builder)
 
     @property
     def patches(self) -> Indexer[TypeIndex, CorrFunc]:
-        def builder(
-            inst: CorrFunc, item: TypeIndex
-        ) -> CorrFunc:
+        def builder(inst: CorrFunc, item: TypeIndex) -> CorrFunc:
             kwargs = {}
-            for field in fields(inst):
-                counts: NormalisedCounts | None = getattr(inst, field.name)
+            for cfield in fields(inst):
+                counts: NormalisedCounts | None = getattr(inst, cfield.name)
                 if counts is not None:
                     counts = counts.patches[item]
-                kwargs[field.name] = counts
+                kwargs[cfield.name] = counts
             return CorrFunc(**kwargs)
 
         return Indexer(self, builder)
@@ -590,22 +592,18 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def n_patches(self) -> int:
         return self.dd.n_patches
 
-    def is_compatible(
-        self,
-        other: CorrFunc,
-        require: bool = True
-    ) -> bool:
+    def is_compatible(self, other: CorrFunc, require: bool = True) -> bool:
         """Check whether this instance is compatible with another instance.
-         
+
         Ensures that the redshift binning and the number of patches are
         identical.
-        
+
         Args:
             other (:obj:`BinnedQuantity`):
                 Object instance to compare to.
             require (:obj:`bool`)
                 Raise a ValueError if any of the checks fail.
-        
+
         Returns:
             :obj:`bool`
         """
@@ -619,7 +617,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def estimators(self) -> dict[str, CorrelationEstimator]:
         """Get a listing of correlation estimators implemented, depending on
         which pair counts are available.
-        
+
         Returns:
             :obj:`dict`: Mapping from correlation estimator name abbreviation to
             correlation function class.
@@ -640,8 +638,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return estimators
 
     def _check_and_select_estimator(
-        self,
-        estimator: str | None
+        self, estimator: str | None
     ) -> type[CorrelationEstimator]:
         options = self.estimators
         if estimator is None:
@@ -652,9 +649,9 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         estimator = estimator.upper()
         if estimator not in options:
             try:
-                index = [
-                    e.short for e in CorrelationEstimator.variants
-                ].index(estimator)
+                index = [e.short for e in CorrelationEstimator.variants].index(
+                    estimator
+                )
                 est_class = CorrelationEstimator.variants[index]
             except ValueError as e:
                 raise ValueError(f"invalid estimator '{estimator}'") from e
@@ -671,8 +668,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         # select the correct estimator
         cls = options[estimator]
         logger.debug(
-            f"selecting estimator '{cls.short}' from "
-            f"{'/'.join(self.estimators)}")
+            f"selecting estimator '{cls.short}' from {'/'.join(self.estimators)}"
+        )
         return cls
 
     def _getattr_from_cts(self, cts: Cts) -> NormalisedCounts | None:
@@ -698,7 +695,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         config: ResamplingConfig | None = None,
         *,
         estimator: str | None = None,
-        info: str | None = None
+        info: str | None = None,
     ) -> CorrData:
         """Compute the correlation function from the stored pair counts,
         including an error estimate from spatial resampling of patches.
@@ -706,7 +703,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         Args:
             config (:obj:`~yaw.ResamplingConfig`):
                 Specify the resampling method and its configuration.
-        
+
         Keyword Args:
             estimator (:obj:`str`, optional):
                 The name abbreviation for the correlation estimator to use.
@@ -755,7 +752,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             data=data,
             samples=samples,
             method=config.method,
-            info=info)
+            info=info,
+        )
 
     @classmethod
     def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrFunc:
@@ -774,8 +772,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def to_hdf(self, dest: h5py.File | h5py.Group) -> None:
         group = dest.create_group("data_data")
         self.dd.to_hdf(group)
-        group_names = dict(
-            dr="data_random", rd="random_data", rr="random_random")
+        group_names = dict(dr="data_random", rd="random_data", rr="random_random")
         for kind, name in group_names.items():
             data: NormalisedCounts | None = getattr(self, kind)
             if data is not None:
@@ -794,10 +791,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
 
-    def concatenate_patches(
-        self,
-        *cfs: CorrFunc
-    ) -> CorrFunc:
+    def concatenate_patches(self, *cfs: CorrFunc) -> CorrFunc:
         check_mergable([self, *cfs])
         merged = {}
         for kind in ("dd", "dr", "rd", "rr"):
@@ -807,10 +801,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 merged[kind] = self_pcounts.concatenate_patches(*other_pcounts)
         return self.__class__(**merged)
 
-    def concatenate_bins(
-        self,
-        *cfs: CorrFunc
-    ) -> CorrFunc:
+    def concatenate_bins(self, *cfs: CorrFunc) -> CorrFunc:
         check_mergable([self, *cfs])
         merged = {}
         for kind in ("dd", "dr", "rd", "rr"):
@@ -821,9 +812,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return self.__class__(**merged)
 
 
-def _create_dummy_counts(
-    counts: Any | dict[str, Any]
-) -> dict[str, None]:
+def _create_dummy_counts(counts: Any | dict[str, Any]) -> dict[str, None]:
     """Duplicate a the return values of
     :meth:`yaw.catalogs.BaseCatalog.correlate`, but replace the :obj:`CorrFunc`
     instances by :obj:`None`."""
@@ -835,19 +824,18 @@ def _create_dummy_counts(
 
 
 def add_corrfuncs(
-    corrfuncs: Sequence[CorrFunc],
-    weights: Sequence[np.number] | None = None
+    corrfuncs: Sequence[CorrFunc], weights: Sequence[np.number] | None = None
 ) -> CorrFunc:
     """Add correlation functions that are measured at different scales.
-    
+
     The correlation functions are added by summing together their pair counts.
     They can be weighted prior to summation by effectively scaling their pair
     counts with a set of scalar weights, one for each input correlation
     function.
-    
+
     .. Note::
         The actual scales are not checked, but the number of patches and the
-        redshift binning of the inputs must be identical. 
+        redshift binning of the inputs must be identical.
 
     This operation is effectively equivalent to:
 
@@ -868,7 +856,8 @@ def add_corrfuncs(
     else:
         if len(corrfuncs) != len(weights):
             raise ValueError(
-                "number of weights must match number of correlation functions")
+                "number of weights must match number of correlation functions"
+            )
     # run summation, rescaling by weights
     combined = 0.0
     for corrfunc, weight in zip(corrfuncs, weights):
@@ -901,7 +890,7 @@ def autocorrelate(
     *,
     linkage: PatchLinkage | None = None,
     compute_rr: bool = True,
-    progress: bool = False
+    progress: bool = False,
 ) -> CorrFunc | dict[str, CorrFunc]:
     """Compute an angular autocorrelation function in bins of redshift.
 
@@ -943,25 +932,26 @@ def autocorrelate(
     scales = config.scales.as_array()
     logger.info(
         f"running autocorrelation ({len(scales)} scales, "
-        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)")
+        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)"
+    )
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, random)
     kwargs = dict(linkage=linkage, progress=progress)
     logger.debug("scheduling DD, DR" + (", RR" if compute_rr else ""))
-    with TimedLog(logger.info, f"counting data-data pairs"):
+    with TimedLog(logger.info, "counting data-data pairs"):
         DD = data.correlate(config, binned=True, **kwargs)
-    with TimedLog(logger.info, f"counting data-rand pairs"):
+    with TimedLog(logger.info, "counting data-rand pairs"):
         DR = data.correlate(config, binned=True, other=random, **kwargs)
     if compute_rr:
-        with TimedLog(logger.info, f"counting rand-rand pairs"):
+        with TimedLog(logger.info, "counting rand-rand pairs"):
             RR = random.correlate(config, binned=True, **kwargs)
     else:
         RR = _create_dummy_counts(DD)
 
     if isinstance(DD, dict):
         result = {
-            scale: CorrFunc(dd=DD[scale], dr=DR[scale], rr=RR[scale])
-            for scale in DD}
+            scale: CorrFunc(dd=DD[scale], dr=DR[scale], rr=RR[scale]) for scale in DD
+        }
     else:
         result = CorrFunc(dd=DD, dr=DR, rr=RR)
     return result
@@ -975,7 +965,7 @@ def crosscorrelate(
     ref_rand: BaseCatalog | None = None,
     unk_rand: BaseCatalog | None = None,
     linkage: PatchLinkage | None = None,
-    progress: bool = False
+    progress: bool = False,
 ) -> CorrFunc | dict[str, CorrFunc]:
     """Compute an angular crosscorrelation function in bins of redshift.
 
@@ -1037,40 +1027,40 @@ def crosscorrelate(
     scales = config.scales.as_array()
     logger.info(
         f"running crosscorrelation ({len(scales)} scales, "
-        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)")
+        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)"
+    )
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, unknown)
     logger.debug(
-        "scheduling DD" + (", DR" if compute_dr else "") +
-        (", RD" if compute_rd else "") + (", RR" if compute_rr else ""))
+        "scheduling DD"
+        + (", DR" if compute_dr else "")
+        + (", RD" if compute_rd else "")
+        + (", RR" if compute_rr else "")
+    )
     kwargs = dict(linkage=linkage, progress=progress)
-    with TimedLog(logger.info, f"counting data-data pairs"):
-        DD = reference.correlate(
-            config, binned=False, other=unknown, **kwargs)
+    with TimedLog(logger.info, "counting data-data pairs"):
+        DD = reference.correlate(config, binned=False, other=unknown, **kwargs)
     if compute_dr:
-        with TimedLog(logger.info, f"counting data-rand pairs"):
-            DR = reference.correlate(
-                config, binned=False, other=unk_rand, **kwargs)
+        with TimedLog(logger.info, "counting data-rand pairs"):
+            DR = reference.correlate(config, binned=False, other=unk_rand, **kwargs)
     else:
         DR = _create_dummy_counts(DD)
     if compute_rd:
-        with TimedLog(logger.info, f"counting rand-data pairs"):
-            RD = ref_rand.correlate(
-                config, binned=False, other=unknown, **kwargs)
+        with TimedLog(logger.info, "counting rand-data pairs"):
+            RD = ref_rand.correlate(config, binned=False, other=unknown, **kwargs)
     else:
         RD = _create_dummy_counts(DD)
     if compute_rr:
-        with TimedLog(logger.info, f"counting rand-rand pairs"):
-            RR = ref_rand.correlate(
-                config, binned=False, other=unk_rand, **kwargs)
+        with TimedLog(logger.info, "counting rand-rand pairs"):
+            RR = ref_rand.correlate(config, binned=False, other=unk_rand, **kwargs)
     else:
         RR = _create_dummy_counts(DD)
 
     if isinstance(DD, dict):
         result = {
-            scale: CorrFunc(
-                dd=DD[scale], dr=DR[scale], rd=RD[scale], rr=RR[scale])
-            for scale in DD}
+            scale: CorrFunc(dd=DD[scale], dr=DR[scale], rd=RD[scale], rr=RR[scale])
+            for scale in DD
+        }
     else:
         result = CorrFunc(dd=DD, dr=DR, rd=RD, rr=RR)
     return result

@@ -12,8 +12,8 @@ from yaw.catalogs import NewCatalog
 from yaw.config import default as DEFAULT
 from yaw.core.abc import DictRepresentation
 from yaw.core.coordinates import Coordinate, CoordSky
-from yaw.core.utils import TypePathStr, format_float_fixed_width as fmt_num
-
+from yaw.core.utils import TypePathStr
+from yaw.core.utils import format_float_fixed_width as fmt_num
 from yaw_cli.pipeline.directories import CacheDirectory
 
 if TYPE_CHECKING:
@@ -37,7 +37,6 @@ class MissingCatalogError(InputError):
 
 @dataclass(frozen=True)
 class Input(DictRepresentation):
-
     filepath: TypePathStr
     ra: str
     dec: str
@@ -55,24 +54,22 @@ class Input(DictRepresentation):
             raise TypeError(f"'filepath' must be of type {str} or {Path}")
 
     @classmethod
-    def from_dict(
-        cls,
-        the_dict: dict[str, str | None],
-        **kwargs
-    ) -> Input:
+    def from_dict(cls, the_dict: dict[str, str | None], **kwargs) -> Input:
         key_names = set(the_dict.keys())
         try:  # check for extra keys
             all_names = set(field.name for field in fields(cls))
             item = (key_names - all_names).pop()
-            raise  InputConfigError(f"encountered unknown argument '{item}'")
+            raise InputConfigError(f"encountered unknown argument '{item}'")
         except KeyError:
             pass
         try:  # check for missing keys
             pos_names = set(
-                field.name for field in fields(cls)
-                if isinstance(field.default, _MISSING_TYPE))
+                field.name
+                for field in fields(cls)
+                if isinstance(field.default, _MISSING_TYPE)
+            )
             item = (pos_names - key_names).pop()
-            raise  InputConfigError(f"missing argument '{item}'")
+            raise InputConfigError(f"missing argument '{item}'")
         except KeyError:
             pass
         cls._check_filepath_type(the_dict["filepath"])
@@ -94,12 +91,12 @@ class Input(DictRepresentation):
 
 
 class BinnedInput(Input):
-
     filepath: dict[int, TypePathStr]
 
     def __post_init__(self):
         object.__setattr__(
-            self, "filepath", {i: Path(fp) for i, fp in self.filepath.items()})
+            self, "filepath", {i: Path(fp) for i, fp in self.filepath.items()}
+        )
 
     def get_bin_indices(self) -> set[int]:
         return set(self.filepath.keys())
@@ -148,11 +145,7 @@ class BinnedInput(Input):
             raise TypeError(f"'filepath' must be of type {dict}")
 
     @classmethod
-    def from_dict(
-        cls,
-        filedata: dict[str, dict | str | None],
-        **kwargs
-    ) -> BinnedInput:
+    def from_dict(cls, filedata: dict[str, dict | str | None], **kwargs) -> BinnedInput:
         return super().from_dict(filedata)
 
     def _filepath_to_dict(self) -> str:
@@ -167,9 +160,7 @@ def load_input(cat_dict: dict[str, Any]) -> BinnedInput:
 
 
 def _parse_catalog_dict(
-    inputs_dict: dict[str, dict],
-    section: str,
-    binned: bool
+    inputs_dict: dict[str, dict], section: str, binned: bool
 ) -> dict[str, Input | BinnedInput]:
     _inputs_dict = {k: v for k, v in inputs_dict.items()}
     # read in the optionally existing inputs
@@ -200,25 +191,26 @@ def _parse_catalog_dict(
         key = next(iter(_inputs_dict.keys()))
         raise InputConfigError(
             f"encountered unknown catalog type '{key}', in section '{section}',"
-            " must be 'data' or 'rand'")
+            " must be 'data' or 'rand'"
+        )
 
     # extra care: make sure that the bin indices match
     if binned and parsed["data"] is not None and parsed["rand"] is not None:
         if parsed["data"].get_bin_indices() != parsed["rand"].get_bin_indices():
             raise InputConfigError(
                 f"bin indices in '{section}:data:filepath' and "
-                f" '{section}:rand:filepath' do not match")
+                f" '{section}:rand:filepath' do not match"
+            )
     return parsed
 
 
 class InputManager(DictRepresentation):
-
     def __init__(
         self,
         cachepath: TypePathStr,
         n_patches: int | None = None,
         patch_centers: Coordinate | None = None,
-        backend: str = DEFAULT.backend
+        backend: str = DEFAULT.backend,
     ) -> None:
         if not isinstance(cachepath, (str, Path)):
             raise TypeError("'cachepath' must be 'str' or 'Path'")
@@ -235,19 +227,17 @@ class InputManager(DictRepresentation):
 
     @staticmethod
     def _raise_n_patch_mismatch(
-        centers: Sequence |  None,
-        n_patches: int | None
+        centers: Sequence | None, n_patches: int | None
     ) -> None:
         if centers is not None and n_patches is not None:
             if len(centers) != n_patches:
                 raise InputConfigError(
-                    f"got {len(centers)} patch centers but {n_patches=}")
+                    f"got {len(centers)} patch centers but {n_patches=}"
+                )
 
     @classmethod
     def from_dict(
-        cls,
-        the_dict: dict[str, dict],
-        patch_centers: Coordinate | None = None
+        cls, the_dict: dict[str, dict], patch_centers: Coordinate | None = None
     ) -> InputManager:
         inputs = {k: v for k, v in the_dict.items()}
         # parse optional parameters
@@ -255,26 +245,29 @@ class InputManager(DictRepresentation):
             cachepath=inputs.pop("cachepath"),
             patch_centers=patch_centers,
             n_patches=inputs.pop("n_patches", None),
-            backend=inputs.pop("backend", DEFAULT.backend))
+            backend=inputs.pop("backend", DEFAULT.backend),
+        )
         # parse reference
         new._reference = _parse_catalog_dict(
-            inputs.pop("reference", dict()),
-            section="reference", binned=False)
+            inputs.pop("reference", dict()), section="reference", binned=False
+        )
         for kind, data in new._reference.items():
             if isinstance(data, BinnedInput):
                 raise InputConfigError(
                     "binned reference cataloge not permitted, in "
-                    f"'reference:{kind}:filepath'")
+                    f"'reference:{kind}:filepath'"
+                )
         # parse unknown
         new._unknown = _parse_catalog_dict(
-            inputs.pop("unknown", dict()),
-            section="unknown", binned=True)
+            inputs.pop("unknown", dict()), section="unknown", binned=True
+        )
         # check that there are no extra sections
         if len(inputs) > 0:
             key = next(iter(inputs.keys()))
             raise InputConfigError(
                 f"encountered unknown section '{key}', "
-                "must be 'reference' or 'unknown'")
+                "must be 'reference' or 'unknown'"
+            )
         return new
 
     def to_dict(self) -> dict[str, Any]:
@@ -286,12 +279,16 @@ class InputManager(DictRepresentation):
         # parse the input files, omit empty sections
         ref = {
             kind: inp.to_dict()
-            for kind, inp in self._reference.items() if inp is not None}
+            for kind, inp in self._reference.items()
+            if inp is not None
+        }
         if len(ref) > 0:
             inputs["reference"] = ref
         unk = {
             kind: inp.to_dict()
-            for kind, inp in self._unknown.items() if inp is not None}
+            for kind, inp in self._unknown.items()
+            if inp is not None
+        }
         if len(unk) > 0:
             inputs["unknown"] = unk
         return inputs
@@ -316,8 +313,10 @@ class InputManager(DictRepresentation):
             raise InputConfigError("patch centers undetermined")
         with open(str(fpath), "w") as f:
             write_head(
-                f, f"# {len(self._centers)} patch centers in sky coordinates",
-                ["ra", "dec"])
+                f,
+                f"# {len(self._centers)} patch centers in sky coordinates",
+                ["ra", "dec"],
+            )
             for coord in self.patch_centers:
                 ra, dec = coord.ra[0], coord.dec[0]
                 f.write(f"{fmt_num(ra, PREC)}{DELIM}{fmt_num(dec, PREC)}\n")
@@ -362,44 +361,38 @@ class InputManager(DictRepresentation):
     def _check_patch_definition(self, catalog: Input) -> None:
         if catalog.patches is None and self.external_patches:
             raise InputConfigError(
-                "'n_patches' not set and no patch index column provided")
+                "'n_patches' not set and no patch index column provided"
+            )
         elif catalog.patches is not None and not self.external_patches:
             raise InputConfigError(
-                "'n_patches' and catalog 'patches' are mutually exclusive")
+                "'n_patches' and catalog 'patches' are mutually exclusive"
+            )
 
-    def set_reference(
-        self,
-        data: Input,
-        rand: Input | None = None
-    ) -> None:
+    def set_reference(self, data: Input, rand: Input | None = None) -> None:
         logger.debug(f"registering reference data catalog '{data.filepath}'")
         self._check_patch_definition(data)
         self._reference["data"] = data
         if rand is not None:
             self._check_patch_definition(rand)
             self._reference["rand"] = rand
-    
-    def add_unknown(
-        self,
-        bin_idx: int,
-        data: Input,
-        rand: Input | None = None
-    ) -> None:
+
+    def add_unknown(self, bin_idx: int, data: Input, rand: Input | None = None) -> None:
         logger.debug(
-            f"registering unknown bin {bin_idx} data catalog "
-            f"'{data.filepath}'")
+            f"registering unknown bin {bin_idx} data catalog '{data.filepath}'"
+        )
         # make sure the bin indices will remain aligned
         if self._unknown["rand"] is not None and rand is None:
             raise ValueError(
-                "unknown randoms exist but no randoms for current bin provided")
+                "unknown randoms exist but no randoms for current bin provided"
+            )
         elif (
-            self._unknown["data"] is not None and
-            self._unknown["rand"] is None and
-            rand is not None
+            self._unknown["data"] is not None
+            and self._unknown["rand"] is None
+            and rand is not None
         ):
             raise ValueError(
-                "no previous randoms configured, cannot add randoms for "
-                "current bin")
+                "no previous randoms configured, cannot add randoms for current bin"
+            )
         # set the data
         for key, value in zip(["data", "rand"], [data, rand]):
             if value is None:
@@ -438,11 +431,7 @@ class InputManager(DictRepresentation):
         return set()
 
     def _load_catalog(
-        self,
-        sample: str,
-        kind: str,
-        bin_idx: int | None = None,
-        progress: bool = False
+        self, sample: str, kind: str, bin_idx: int | None = None, progress: bool = False
     ) -> BaseCatalog:
         # get the correct sample type
         if sample == "reference":
@@ -462,8 +451,7 @@ class InputManager(DictRepresentation):
             if kind == "rand":
                 kind = "random"
             bin_info = f" bin {bin_idx} " if bin_idx is not None else " "
-            raise MissingCatalogError(
-                f"no {sample} {kind}{bin_info}catalog specified")
+            raise MissingCatalogError(f"no {sample} {kind}{bin_info}catalog specified")
 
         # determine the correct cache path to use
         if sample == "reference":
@@ -499,22 +487,15 @@ class InputManager(DictRepresentation):
 
         return catalog
 
-    def load_reference(
-            self,
-        kind: str,
-        progress: bool = False
-    ) -> BaseCatalog:
-        logger.info(
-            f"loading reference {'random' if kind == 'rand' else kind} catalog")
+    def load_reference(self, kind: str, progress: bool = False) -> BaseCatalog:
+        logger.info(f"loading reference {'random' if kind == 'rand' else kind} catalog")
         return self._load_catalog("reference", kind, progress=progress)
 
     def load_unknown(
-        self,
-        kind: str,
-        bin_idx: int,
-        progress: bool = False
+        self, kind: str, bin_idx: int, progress: bool = False
     ) -> BaseCatalog:
         logger.info(
             f"loading unknown bin {bin_idx} "
-            f"{'random' if kind == 'rand' else kind} catalog")
+            f"{'random' if kind == 'rand' else kind} catalog"
+        )
         return self._load_catalog("unknown", kind, bin_idx, progress=progress)

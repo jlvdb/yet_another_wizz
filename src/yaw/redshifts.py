@@ -29,13 +29,16 @@ from deprecated import deprecated
 from yaw.config import ResamplingConfig
 from yaw.core.containers import SampledValue
 from yaw.core.logging import LogCustomWarning, TimedLog
-from yaw.core.math import shift_histogram, rebin
+from yaw.core.math import rebin, shift_histogram
 from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
+
     from yaw.correlation import CorrFunc
+
+__all__ = ["RedshiftData", "HistData"]
 
 
 logger = logging.getLogger(__name__)
@@ -52,7 +55,7 @@ class RedshiftData(CorrData):
     convenience.
 
     This container holds data in the form of
-    :math:`\\frac{w_\\rm{sp}(z)}{\\sqrt{\\Delta z \, w_\\rm{ss}(z) \, w_\\rm{pp}(z)}}`,
+    :math:`\\frac{w_\\rm{sp}(z)}{\\sqrt{\\Delta z \\, w_\\rm{ss}(z) \\, w_\\rm{pp}(z)}}`,
     where :math:`w_\\rm{sp}` is the crosscorrelation function, and
     :math:`w_\\rm{ss}` and :math:`w_\\rm{pp}` are autocorrelation functions that
     account for the evolving galaxy bias. If no autocorrelation is provided, the
@@ -73,7 +76,7 @@ class RedshiftData(CorrData):
     Create a redshift estimate from a crosscorrelation function and correct for
     the evolving bias of the reference sample using its autocorrelation
     function:
-    
+
     >>> from yaw.examples import w_sp  # crosscorrelation
     >>> from yaw.examples import w_ss  # reference sample autocorrelation
     >>> nz = yaw.yaw.RedshiftData.from_corrfuncs(w_sp, ref_corr=w_ss)
@@ -129,8 +132,7 @@ class RedshiftData(CorrData):
     """
 
     @classmethod
-    @deprecated(
-        reason="renamed to RedshiftData.from_corrdata", version="2.3.2")
+    @deprecated(reason="renamed to RedshiftData.from_corrdata", version="2.3.2")
     def from_correlation_data(cls, *args, **kwargs):
         """
         .. deprecated:: 2.3.2
@@ -144,7 +146,7 @@ class RedshiftData(CorrData):
         cross_data: CorrData,
         ref_data: CorrData | None = None,
         unk_data: CorrData | None = None,
-        info: str | None = None
+        info: str | None = None,
     ) -> RedshiftData:
         """Compute redshift estimate from readily sampled function data.
 
@@ -163,10 +165,9 @@ class RedshiftData(CorrData):
                 Used to mitigate unknown bias evolution.
 
         Returns:
-            :obj:`RedshiftData`                
+            :obj:`RedshiftData`
         """
-        logger.debug(
-            "computing clustering redshifts from correlation function samples")
+        logger.debug("computing clustering redshifts from correlation function samples")
         w_sp_data = cross_data.data
         w_sp_samp = cross_data.samples
         mitigate = []
@@ -179,8 +180,8 @@ class RedshiftData(CorrData):
                 ref_data.is_compatible(cross_data, require=True)
             except ValueError as e:
                 raise ValueError(
-                    "'ref_corr' correlation data is not compatible with "
-                    "'cross_data'") from e
+                    "'ref_corr' correlation data is not compatible with 'cross_data'"
+                ) from e
             w_ss_data = ref_data.data
             w_ss_samp = ref_data.samples
             mitigate.append("reference")
@@ -193,8 +194,8 @@ class RedshiftData(CorrData):
                 unk_data.is_compatible(cross_data, require=True)
             except ValueError as e:
                 raise ValueError(
-                    "'unk_data' correlation data is not compatible with "
-                    "'cross_data'") from e
+                    "'unk_data' correlation data is not compatible with " "'cross_data'"
+                ) from e
             w_pp_data = unk_data.data
             w_pp_samp = unk_data.samples
             mitigate.append("unknown")
@@ -216,11 +217,11 @@ class RedshiftData(CorrData):
             data=nz_data,
             samples=nz_samp,
             method=cross_data.method,
-            info=info)
+            info=info,
+        )
 
     @classmethod
-    @deprecated(
-        reason="renamed to RedshiftData.from_corrfuncs", version="2.3.2")
+    @deprecated(reason="renamed to RedshiftData.from_corrfuncs", version="2.3.2")
     def from_correlation_functions(cls, *args, **kwargs):
         """
         .. deprecated:: 2.3.2
@@ -239,7 +240,7 @@ class RedshiftData(CorrData):
         ref_est: str | None = None,
         unk_est: str | None = None,
         config: ResamplingConfig | None = None,
-        info: str | None = None
+        info: str | None = None,
     ) -> RedshiftData:
         """Sample correlation functions to compute a redshift estimate.
 
@@ -264,7 +265,7 @@ class RedshiftData(CorrData):
             config = ResamplingConfig()
         with TimedLog(
             logger.debug,
-            f"estimating clustering redshifts with method '{config.method}'"
+            f"estimating clustering redshifts with method '{config.method}'",
         ):
             # check compatibilty before sampling anything
             if ref_corr is not None:
@@ -273,14 +274,16 @@ class RedshiftData(CorrData):
                 except ValueError as e:
                     raise ValueError(
                         "'ref_corr' correlation function is not compatible "
-                        "with 'cross_corr'") from e
+                        "with 'cross_corr'"
+                    ) from e
             if unk_corr is not None:
                 try:
                     cross_corr.is_compatible(unk_corr, require=True)
                 except ValueError as e:
                     raise ValueError(
                         "'unk_corr' correlation function is not compatible "
-                        "with 'cross_corr'") from e
+                        "with 'cross_corr'"
+                    ) from e
             # sample pair counts and evaluate estimator
             cross_data = cross_corr.sample(config, estimator=cross_est)
             if ref_corr is not None:
@@ -292,10 +295,8 @@ class RedshiftData(CorrData):
             else:
                 unk_data = None
             return cls.from_correlation_data(
-                cross_data=cross_data,
-                ref_data=ref_data,
-                unk_data=unk_data,
-                info=info)
+                cross_data=cross_data, ref_data=ref_data, unk_data=unk_data, info=info
+            )
 
     @property
     def _dat_desc(self) -> str:
@@ -324,7 +325,7 @@ class RedshiftData(CorrData):
             to (:obj:`CorrData`, optional):
                 Reference data to which the stored values are normalised by
                 fitting.
-        
+
         Returns:
             :obj:`RedshiftData`
         """
@@ -336,18 +337,22 @@ class RedshiftData(CorrData):
             mask = np.isfinite(y_from) & np.isfinite(y_to) & (y_to > 0.0)
             norm = scipy.optimize.curve_fit(
                 lambda x, norm: y_from[mask] / norm,  # x is a dummy variable
-                xdata=to.mids[mask], ydata=y_to[mask],
-                p0=[1.0], sigma=1/y_to[mask])[0][0]
+                xdata=to.mids[mask],
+                ydata=y_to[mask],
+                p0=[1.0],
+                sigma=1 / y_to[mask],
+            )[0][0]
         return self.__class__(
             binning=self.get_binning(),
             data=self.data / norm,
             samples=self.samples / norm,
             method=self.method,
-            info=self.info)
+            info=self.info,
+        )
 
     def mean(self):
         """Attempts to compute a mean redshift.
-        
+
         .. Warning::
             This should be just considered an estimate since the redshift
             estimate is not a true probability density, due to residual negative
@@ -374,7 +379,7 @@ class RedshiftData(CorrData):
         Args:
             bins (:obj:`NDArray`):
                 Edges of the new redshift bins. May exceed or cover just a
-                fraction of the original redshift range.            
+                fraction of the original redshift range.
 
         Returns:
             :obj:`RedshiftData`:
@@ -383,7 +388,7 @@ class RedshiftData(CorrData):
         # shift main values
         data = rebin(bins, old_bins, self.data)
         # shift the value samples
-        samples = np.empty([self.n_samples, len(bins)-1], data.dtype)
+        samples = np.empty([self.n_samples, len(bins) - 1], data.dtype)
         for i, sample in enumerate(self.samples):
             samples[i] = rebin(bins, old_bins, sample)
 
@@ -392,13 +397,11 @@ class RedshiftData(CorrData):
             data=data,
             samples=samples,
             method=self.method,
-            info=self.info)
+            info=self.info,
+        )
 
     def shift(
-        self,
-        dz: float | SampledValue = 0.0,
-        *,
-        amplitude: float | SampledValue = 1.0
+        self, dz: float | SampledValue = 0.0, *, amplitude: float | SampledValue = 1.0
     ) -> RedshiftData:
         """Attempts shift the data along the redshift axis.
 
@@ -447,13 +450,14 @@ class RedshiftData(CorrData):
             data=data,
             samples=samples,
             method=self.method,
-            info=self.info)
+            info=self.info,
+        )
 
 
 @dataclass(frozen=True, repr=False, eq=False)
 class HistData(RedshiftData):
     """Container for histogram data.
-    
+
     Contains the redshift binning, histogram counts, and resampled counts (e.g.
     from jackknife or bootstrap). The resampled values are used to compute error
     estimates and covariance/correlation matrices. Provides some plotting
@@ -492,9 +496,7 @@ class HistData(RedshiftData):
     @property
     def _cov_desc(self) -> str:
         n = "normalised " if self.density else " "
-        return (
-            f"# n(z) {n}histogram covariance matrix "
-            f"({self.n_bins}x{self.n_bins})")
+        return f"# n(z) {n}histogram covariance matrix ({self.n_bins}x{self.n_bins})"
 
     @classmethod
     def from_files(cls, path_prefix: TypePathStr) -> HistData:
@@ -507,14 +509,15 @@ class HistData(RedshiftData):
             data=new.data,
             samples=new.samples,
             method=new.method,
-            density=density)
+            density=density,
+        )
 
     def normalised(self, *args, **kwargs) -> HistData:
         """Obtain a normalised copy of the data.
 
         Normalises the data by integration along the redshift axis. This sets
         the containers :obj:`density` flag to ``True``.
-        
+
         Returns:
             :obj:`HistData`
         """
@@ -531,7 +534,8 @@ class HistData(RedshiftData):
             samples=samples / norm,
             method=self.method,
             info=self.info,
-            density=True)
+            density=True,
+        )
 
     def mean(self) -> SampledValue:
         """Compute the mean redshift.
@@ -557,7 +561,7 @@ class HistData(RedshiftData):
         Args:
             bins (:obj:`NDArray`):
                 Edges of the new redshift bins. May exceed or cover just a
-                fraction of the original redshift range.            
+                fraction of the original redshift range.
 
         Returns:
             :obj:`HistData`:
@@ -567,10 +571,7 @@ class HistData(RedshiftData):
         return result
 
     def shift(
-        self,
-        dz: float | SampledValue = 0.0,
-        *,
-        amplitude: float | SampledValue = 1.0
+        self, dz: float | SampledValue = 0.0, *, amplitude: float | SampledValue = 1.0
     ) -> HistData:
         """Shifts the data along the redshift axis.
 

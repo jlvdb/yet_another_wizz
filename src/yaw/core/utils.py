@@ -12,11 +12,13 @@ import numpy as np
 import tqdm
 from numpy.typing import NDArray
 
-
-try:
-    from itertools import pairwise as iter_pairwise
-except ImportError:
-    from more_itertools import pairwise as iter_pairwise
+__all__ = [
+    "job_progress_bar",
+    "LimitTracker",
+    "long_num_format",
+    "bytes_format",
+    "format_float_fixed_width",
+]
 
 
 TypePathStr = Union[Path, str]
@@ -24,8 +26,7 @@ Tjob = TypeVar("Tjob")
 
 
 def job_progress_bar(
-    iterable: Iterable[Tjob],
-    total: int | None = None
+    iterable: Iterable[Tjob], total: int | None = None
 ) -> Iterable[Tjob]:
     """Configure and return a tqdm progress bar with custom format."""
     config = dict(delay=0.5, leave=False, smoothing=0.1, unit="jobs")

@@ -15,6 +15,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
 
+__all__ = ["PatchLinkage"]
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +35,7 @@ class PatchLinkage:
     discarded.
     """
 
-    def __init__(
-        self,
-        patch_tuples: list[PatchIDs]
-    ) -> None:
+    def __init__(self, patch_tuples: list[PatchIDs]) -> None:
         """Populate a patch linkage container.
 
         To create a new linkage, use the :meth:`from_setup` method.
@@ -48,11 +47,7 @@ class PatchLinkage:
         self.pairs = patch_tuples
 
     @classmethod
-    def from_setup(
-        cls,
-        config: Configuration,
-        catalog: BaseCatalog
-    ) -> PatchLinkage:
+    def from_setup(cls, config: Configuration, catalog: BaseCatalog) -> PatchLinkage:
         """Generate a new patch linkage.
 
         Compute a maximum angular separation for at low redshift for the scales
@@ -75,7 +70,8 @@ class PatchLinkage:
             # estimate maximum query radius at low, but non-zero redshift
             z_ref = max(LINK_ZMIN, config.binning.zmin)
             max_query_radius = r_kpc_to_angle(
-                config.scales.as_array(), z_ref, config.cosmology).max()
+                config.scales.as_array(), z_ref, config.cosmology
+            ).max()
         else:
             max_query_radius = 0.0  # only relevant for cross-patch
         max_query_radius = DistSky(max_query_radius)
@@ -94,8 +90,8 @@ class PatchLinkage:
         for id1, overlap in enumerate(overlaps):
             patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
         logger.debug(
-            f"found {len(patch_pairs)} patch links "
-            f"for {catalog.n_patches} patches")
+            f"found {len(patch_pairs)} patch links " f"for {catalog.n_patches} patches"
+        )
         return cls(patch_pairs)
 
     def __len__(self) -> int:
@@ -119,13 +115,9 @@ class PatchLinkage:
         """Get ratio of the number of linked patch pairs compared to all
         possible combinations."""
         n = self.n_patches
-        return len(self) / (n*n)
+        return len(self) / (n * n)
 
-    def get_pairs(
-        self,
-        auto: bool,
-        crosspatch: bool = True
-    ) -> list[PatchIDs]:
+    def get_pairs(self, auto: bool, crosspatch: bool = True) -> list[PatchIDs]:
         """Get a list of linked patch pairs.
 
         Args:
@@ -150,8 +142,7 @@ class PatchLinkage:
 
     @staticmethod
     def _parse_collections(
-        collection1: BaseCatalog,
-        collection2: BaseCatalog | None = None
+        collection1: BaseCatalog, collection2: BaseCatalog | None = None
     ) -> tuple[bool, BaseCatalog, BaseCatalog]:
         auto = collection2 is None
         if auto:
@@ -162,11 +153,11 @@ class PatchLinkage:
         self,
         collection1: BaseCatalog,
         collection2: BaseCatalog | None = None,
-        crosspatch: bool = True
+        crosspatch: bool = True,
     ) -> NDArray[np.bool_]:
         """Convert the list of linked patches to a boolean matrix indicating if
         two patches are linked.
-        
+
         Depending on if one or two catalogs are provided as input, the result
         resembles a cross- or autocorrelation patch linkage. This is the only
         purpose of the inputs.
@@ -189,7 +180,8 @@ class PatchLinkage:
             identical.
         """
         auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2)
+            collection1, collection2
+        )
         pairs = self.get_pairs(auto, crosspatch)
         # make a boolean matrix indicating the exisiting patch combinations
         n_patches = self.n_patches
@@ -202,10 +194,10 @@ class PatchLinkage:
         self,
         collection1: BaseCatalog,
         collection2: BaseCatalog | None = None,
-        crosspatch: bool = True
+        crosspatch: bool = True,
     ) -> tuple[list[BaseCatalog], list[BaseCatalog]]:
         """Return linked pairs of patch data ready for processing.
-        
+
         Instead of returning a list of patch index pairs, the actual patch data
         is returned in two aligned list, where item 1 form the first list is
         linked to item 1 of the second list. Depending on if one or two catalogs
@@ -231,7 +223,8 @@ class PatchLinkage:
             identical.
         """
         auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2)
+            collection1, collection2
+        )
         pairs = self.get_pairs(auto, crosspatch)
         # generate the patch lists
         patches1 = []

@@ -10,10 +10,9 @@ from yaw.config import ResamplingConfig
 from yaw.core.utils import format_float_fixed_width as fmt_num
 from yaw.correlation import CorrData, CorrFunc
 from yaw.redshifts import RedshiftData
-
 from yaw_cli.pipeline.data import MissingCatalogError
 
-if TYPE_CHECKING: ## pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     from yaw.config import Configuration
     from yaw_cli.pipeline.project import ProjectDirectory, ProjectState
 
@@ -30,21 +29,14 @@ _Tcf = dict[str, CorrFunc]
 _Tcd = dict[str, CorrData]
 
 
-def _cf_as_dict(
-    config: Configuration,
-    cfs: CorrFunc | _Tcf
-) -> _Tcf:
+def _cf_as_dict(config: Configuration, cfs: CorrFunc | _Tcf) -> _Tcf:
     if not isinstance(cfs, dict):
         cfs = {str(config.scales[0]): cfs}
     return cfs
 
 
 class PostProcessor:
-
-    def __init__(
-        self,
-        project: ProjectDirectory
-    ) -> None:
+    def __init__(self, project: ProjectDirectory) -> None:
         self.project = project
         self.set_run_context()
         self._bin_idx = None
@@ -60,9 +52,7 @@ class PostProcessor:
         self._w_pp_data: _Tcd | None = None
 
     def set_run_context(
-        self,
-        progress: bool = False,
-        threads: int | None = None
+        self, progress: bool = False, threads: int | None = None
     ) -> None:
         self.progress = progress
         if threads is None:
@@ -137,7 +127,7 @@ class PostProcessor:
         *,
         tag: str,
         config: ResamplingConfig,
-        estimator: str | None = None
+        estimator: str | None = None,
     ) -> _Tcd:
         cfs: _Tcf = getattr(self, f"_{cfs_kind}")
         data = getattr(self, f"_{cfs_kind}_data")
@@ -145,61 +135,43 @@ class PostProcessor:
             data = {}
         for scale, cf in cfs.items():
             logger.debug(f"processing pair counts for {tag=} / {scale=}")
-            data[(scale, tag)] = cf.sample(
-                config, estimator=estimator, info=cfs_kind)
+            data[(scale, tag)] = cf.sample(config, estimator=estimator, info=cfs_kind)
         setattr(self, f"_{cfs_kind}_data", data)
         return data
 
     def sample_auto_ref(
-        self,
-        *,
-        tag: str,
-        config: ResamplingConfig,
-        estimator: str | None = None
+        self, *, tag: str, config: ResamplingConfig, estimator: str | None = None
     ) -> _Tcd:
         return self._sample_corrfunc(
-            "w_ss", tag=tag, config=config, estimator=estimator)
+            "w_ss", tag=tag, config=config, estimator=estimator
+        )
 
     def sample_auto_unk(
-        self,
-        *,
-        tag: str,
-        config: ResamplingConfig,
-        estimator: str | None = None
+        self, *, tag: str, config: ResamplingConfig, estimator: str | None = None
     ) -> _Tcd:
         return self._sample_corrfunc(
-            "w_pp", tag=tag, config=config, estimator=estimator)
+            "w_pp", tag=tag, config=config, estimator=estimator
+        )
 
     def sample_cross(
-        self,
-        *,
-        tag: str,
-        config: ResamplingConfig,
-        estimator: str | None = None
+        self, *, tag: str, config: ResamplingConfig, estimator: str | None = None
     ) -> _Tcd:
         return self._sample_corrfunc(
-            "w_sp", tag=tag, config=config, estimator=estimator)
+            "w_sp", tag=tag, config=config, estimator=estimator
+        )
 
     def write_auto_ref(self, tag: str) -> None:
-        for scale_tag, est_dir in self.project.iter_estimate(
-            create=True, tag=tag
-        ):
+        for scale_tag, est_dir in self.project.iter_estimate(create=True, tag=tag):
             path = est_dir.get_auto_reference()
             self._w_ss_data[scale_tag].to_files(path)
 
     def write_auto_unk(self, tag: str) -> None:
-        for scale_tag, est_dir in self.project.iter_estimate(
-            create=True, tag=tag
-        ):
+        for scale_tag, est_dir in self.project.iter_estimate(create=True, tag=tag):
             path = est_dir.get_auto(self.get_bin_idx())
             self._w_pp_data[scale_tag].to_files(path)
 
     def write_nz_cc(
-        self,
-        tag: str,
-        *,
-        bias_ref: bool = True,
-        bias_unk: bool = True
+        self, tag: str, *, bias_ref: bool = True, bias_unk: bool = True
     ) -> None:
         def get_info(w_ii_data: dict[str, CorrData | None]) -> str:
             if len(w_ii_data) == 0:
@@ -226,16 +198,18 @@ class PostProcessor:
             est_dir = self.project.get_estimate_dir(scale, tag, create=True)
             path = est_dir.get_cross(self.get_bin_idx())
             nz_data = RedshiftData.from_correlation_data(
-                cross_data[key], ref_data[key], unk_data[key], info=info)
+                cross_data[key], ref_data[key], unk_data[key], info=info
+            )
             nz_data.to_files(path)
 
     def plot(self):
         plot_dir = self.project.estimate_path
         try:
             import matplotlib.pyplot as plt
+
             from yaw_cli.pipeline.plot import Plotter
-            logger.info(
-                f"creating check-plots in '{plot_dir}'")
+
+            logger.info(f"creating check-plots in '{plot_dir}'")
         except ImportError:
             logger.error("could not import matplotlib, plotting disabled")
             return
@@ -255,25 +229,22 @@ class PostProcessor:
         plotted |= plot_wrapper(
             method=plotter.auto_reference,
             title="Reference autocorrelation",
-            name="auto_reference.png")
+            name="auto_reference.png",
+        )
         plotted |= plot_wrapper(
             method=plotter.auto_unknown,
             title="Unknown autocorrelation",
-            name="auto_unknown.png")
+            name="auto_unknown.png",
+        )
         plotted |= plot_wrapper(
-            method=plotter.nz,
-            title="Redshift estimate",
-            name="nz_estimate.png")
+            method=plotter.nz, title="Redshift estimate", name="nz_estimate.png"
+        )
         if not plotted:
             logger.warn("there was no data to plot")
 
 
 class DataProcessor(PostProcessor):
-
-    def __init__(
-        self,
-        project: ProjectDirectory
-    ) -> None:
+    def __init__(self, project: ProjectDirectory) -> None:
         super().__init__(project)
         # warning state flags
         self._warned_patches = False
@@ -287,8 +258,7 @@ class DataProcessor(PostProcessor):
 
     def load_reference(self, skip_rand: bool = False) -> _Tbc:
         def load(kind):
-            cat = self.project.inputs.load_reference(
-                kind=kind, progress=self.progress)
+            cat = self.project.inputs.load_reference(kind=kind, progress=self.progress)
             patch_file = self.project.patch_file
             if not patch_file.exists():
                 self.project.inputs.centers_to_file(patch_file)
@@ -311,7 +281,8 @@ class DataProcessor(PostProcessor):
     def load_unknown(self, skip_rand: bool = False) -> _Tbc:
         def load(kind, idx):
             cat = self.project.inputs.load_unknown(
-                kind=kind, bin_idx=idx, progress=self.progress)
+                kind=kind, bin_idx=idx, progress=self.progress
+            )
             patch_file = self.project.patch_file
             if not patch_file.exists():
                 self.project.inputs.centers_to_file(patch_file)
@@ -334,8 +305,7 @@ class DataProcessor(PostProcessor):
 
     def compute_linkage(self) -> None:
         if self._linkage is None:
-            cats = (self._unk_rand, self._unk_data,
-                    self._ref_rand, self._ref_data)
+            cats = (self._unk_rand, self._unk_data, self._ref_rand, self._ref_data)
             for cat in cats:
                 if cat is not None:
                     break
@@ -345,17 +315,23 @@ class DataProcessor(PostProcessor):
             if self._linkage.density > 0.3 and not self._warned_linkage:
                 logger.warn(
                     "linkage density > 0.3, either patches overlap "
-                    "significantly or are small compared to scales")
+                    "significantly or are small compared to scales"
+                )
                 self._warned_linkage = True
 
     def run_auto_ref(self, *, compute_rr: bool) -> _Tcf:
         if self._ref_rand is None:
             raise MissingCatalogError(
-                "reference autocorrelation requires reference randoms")
+                "reference autocorrelation requires reference randoms"
+            )
         cfs = yaw.autocorrelate(
-            self.config, self._ref_data, self._ref_rand,
-            linkage=self._linkage, compute_rr=compute_rr,
-            progress=self.progress)
+            self.config,
+            self._ref_data,
+            self._ref_rand,
+            linkage=self._linkage,
+            compute_rr=compute_rr,
+            progress=self.progress,
+        )
         cfs = _cf_as_dict(self.config, cfs)
         for scale, counts_dir in self.project.iter_counts(create=True):
             cfs[scale].to_file(counts_dir.get_auto_reference())
@@ -366,11 +342,16 @@ class DataProcessor(PostProcessor):
         idx = self.get_bin_idx()
         if self._unk_rand is None:
             raise MissingCatalogError(
-                "unknown autocorrelation requires unknown randoms")
+                "unknown autocorrelation requires unknown randoms"
+            )
         cfs = yaw.autocorrelate(
-            self.config, self._unk_data, self._unk_rand,
-            linkage=self._linkage, compute_rr=compute_rr,
-            progress=self.progress)
+            self.config,
+            self._unk_data,
+            self._unk_rand,
+            linkage=self._linkage,
+            compute_rr=compute_rr,
+            progress=self.progress,
+        )
         cfs = _cf_as_dict(self.config, cfs)
         for scale, counts_dir in self.project.iter_counts(create=True):
             cfs[scale].to_file(counts_dir.get_auto(idx))
@@ -382,10 +363,12 @@ class DataProcessor(PostProcessor):
         if compute_rr:
             if self._ref_rand is None:
                 raise MissingCatalogError(
-                    "crosscorrelation with RR requires reference randoms")
+                    "crosscorrelation with RR requires reference randoms"
+                )
             if self._unk_rand is None:
                 raise MissingCatalogError(
-                    "crosscorrelation with RR requires unknown randoms")
+                    "crosscorrelation with RR requires unknown randoms"
+                )
             randoms = dict(ref_rand=self._ref_rand, unk_rand=self._unk_rand)
         else:
             # prefer using DR over RD if both are possible
@@ -395,11 +378,16 @@ class DataProcessor(PostProcessor):
                 randoms = dict(ref_rand=self._ref_rand)
             else:
                 raise MissingCatalogError(
-                    "crosscorrelation requires either reference or "
-                    "unknown randoms")
+                    "crosscorrelation requires either reference or unknown randoms"
+                )
         cfs = yaw.crosscorrelate(
-            self.config, self._ref_data, self._unk_data,
-            **randoms, linkage=self._linkage, progress=self.progress)
+            self.config,
+            self._ref_data,
+            self._unk_data,
+            **randoms,
+            linkage=self._linkage,
+            progress=self.progress,
+        )
         cfs = _cf_as_dict(self.config, cfs)
         for scale, counts_dir in self.project.iter_counts(create=True):
             cfs[scale].to_file(counts_dir.get_cross(idx))

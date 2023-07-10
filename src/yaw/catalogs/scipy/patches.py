@@ -8,14 +8,14 @@ import numpy as np
 import pandas as pd
 from scipy.cluster import vq
 
-from yaw.core.coordinates import (
-    Coordinate, Coord3D, CoordSky, Distance, DistSky)
-
 from yaw.catalogs.scipy.kdtree import SphericalKDTree
+from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, Distance, DistSky
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval
+
+__all__ = ["PatchCatalog"]
 
 
 class NotAPatchFileError(Exception):
@@ -31,7 +31,7 @@ def patch_id_from_path(fpath: str) -> int:
     ext = ".feather"
     if not fpath.endswith(ext):
         raise NotAPatchFileError("input must be a .feather file")
-    prefix, patch_id = fpath[:-len(ext)].rsplit("_", 1)
+    prefix, patch_id = fpath[: -len(ext)].rsplit("_", 1)
     return int(patch_id)
 
 
@@ -64,12 +64,12 @@ class PatchCatalog:
         cachefile: str | None = None,
         center: Coordinate | None = None,
         radius: Distance | None = None,
-        degrees: bool = True
+        degrees: bool = True,
     ) -> None:
         """Create a new patch from a data frame.
 
         Coordiantes are converted to radian. If a cache path is provided, a
-        cache file is created and the data is dropped from memory.     
+        cache file is created and the data is dropped from memory.
 
         Args:
             id (:obj:`int`):
@@ -97,7 +97,8 @@ class PatchCatalog:
         if not set(data.columns) <= set(["ra", "dec", "redshift", "weights"]):
             raise KeyError(
                 "'data' contains unidentified columns, optional columns are "
-                "restricted to 'redshift' and 'weights'")
+                "restricted to 'redshift' and 'weights'"
+            )
         # next line is crucial, otherwise lines below modify data inplace
         self._data = data.copy()
         if degrees:
@@ -110,9 +111,7 @@ class PatchCatalog:
         self._init(center, radius)
 
     def _init(
-        self,
-        center: Coordinate | None = None,
-        radius: Distance | None = None
+        self, center: Coordinate | None = None, radius: Distance | None = None
     ) -> None:
         self._len = len(self._data)
         self._has_z = "redshift" in self._data
@@ -159,7 +158,7 @@ class PatchCatalog:
         cls,
         cachefile: str,
         center: Coordinate | None = None,
-        radius: Distance | None = None
+        radius: Distance | None = None,
     ) -> PatchCatalog:
         """Restore the patch instance from its cache file.
 
@@ -201,17 +200,16 @@ class PatchCatalog:
 
     def load(self, use_threads: bool = True) -> None:
         """Load the data from the cache file into memory.
-        
+
         Raises a :obj:`CachingError` if no cache file is sepcified."""
         if not self.is_loaded():
             if self.cachefile is None:
                 raise CachingError("no datapath provided to load the data")
-            self._data = pd.read_feather(
-                self.cachefile, use_threads=use_threads)
+            self._data = pd.read_feather(self.cachefile, use_threads=use_threads)
 
     def unload(self) -> None:
         """Drop the data from memory.
-        
+
         Raises a :obj:`CachingError` if no cache file is sepcified."""
         if self.cachefile is None:
             raise CachingError("no datapath provided to unload the data")
@@ -236,7 +234,7 @@ class PatchCatalog:
     @property
     def ra(self) -> NDArray[np.float_]:
         """Get an array of the right ascension values in radians.
-        
+
         Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
         return self._data["ra"].to_numpy()
@@ -244,7 +242,7 @@ class PatchCatalog:
     @property
     def dec(self) -> NDArray[np.float_]:
         """Get an array of the declination values in radians.
-        
+
         Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
         return self._data["dec"].to_numpy()
@@ -252,7 +250,7 @@ class PatchCatalog:
     @property
     def pos(self) -> CoordSky:
         """Get a vector of the object sky positions in radians.
-        
+
         Raises a :obj:`CachingError` if data is not loaded.
 
         Returns:
@@ -287,14 +285,14 @@ class PatchCatalog:
     def total(self) -> float:
         """Get the sum of weights or the number of objects if weights are not
         available.
-        
+
         Available even if no data is loaded."""
         return self._total
 
     @property
     def center(self) -> CoordSky:
         """Get the patch centers in radians.
-        
+
         Available even if no data is loaded.
 
         Returns:
@@ -305,7 +303,7 @@ class PatchCatalog:
     @property
     def radius(self) -> DistSky:
         """Get the patch size in radians.
-        
+
         Available even if no data is loaded.
 
         Returns:
@@ -314,9 +312,7 @@ class PatchCatalog:
         return self._radius
 
     def iter_bins(
-        self,
-        z_bins: NDArray[np.float_],
-        allow_no_redshift: bool = False
+        self, z_bins: NDArray[np.float_], allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, PatchCatalog]]:
         """Iterate the patch in bins of redshift.
 
@@ -339,11 +335,14 @@ class PatchCatalog:
             for intv in pd.IntervalIndex.from_breaks(z_bins, closed="left"):
                 yield intv, self
         else:
-            for intv, bin_data in self._data.groupby(
-                    pd.cut(self.redshifts, z_bins)):
+            for intv, bin_data in self._data.groupby(pd.cut(self.redshifts, z_bins)):
                 yield intv, PatchCatalog(
-                    self.id, bin_data, degrees=False,
-                    center=self._center, radius=self._radius)
+                    self.id,
+                    bin_data,
+                    degrees=False,
+                    center=self._center,
+                    radius=self._radius,
+                )
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
         """Build a :obj:`SphericalKDTree` from the patch data coordiantes."""
@@ -356,10 +355,8 @@ class PatchCatalog:
 # treecorr is quite good, but might not be available. Implement a fallback using
 # the scipy.cluster module.
 
-def assign_patches(
-    centers: Coordinate,
-    position: Coordinate
-) -> NDArray[np.int_]:
+
+def assign_patches(centers: Coordinate, position: Coordinate) -> NDArray[np.int_]:
     """Assign objects based on their coordinate to a list of points based on
     proximit."""
     patches, dist = vq.vq(position.to_3d().values, centers.to_3d().values)
@@ -370,18 +367,19 @@ try:
     import treecorr
 
     def treecorr_patches(
-        position: Coordinate,
-        n_patches: int,
-        **kwargs
+        position: Coordinate, n_patches: int, **kwargs
     ) -> tuple[Coord3D, NDArray[np.int_]]:
         """Use the *k*-means clustering algorithm of :obj:`treecorr.Catalog` to
         generate spatial patches and assigning objects to those patches.
         """
         position = position.to_sky()
         cat = treecorr.Catalog(
-            ra=position.ra, ra_units="radians",
-            dec=position.dec, dec_units="radians",
-            npatch=n_patches)
+            ra=position.ra,
+            ra_units="radians",
+            dec=position.dec,
+            dec_units="radians",
+            npatch=n_patches,
+        )
         xyz = np.atleast_2d(cat.patch_centers)
         centers = Coord3D.from_array(xyz)
         if n_patches == 1:
@@ -396,19 +394,15 @@ try:
 except ImportError:
 
     def scipy_patches(
-        position: Coordinate,
-        n_patches: int,
-        n_max: int = 500_000
+        position: Coordinate, n_patches: int, n_max: int = 500_000
     ) -> tuple[Coord3D, NDArray[np.int_]]:
         """Use the *k*-means clustering algorithm of :obj:`scipy.cluster` to
         generate spatial patches and assigning objects to those patches.
         """
         position = position.to_3d()
-        subset = np.random.randint(
-            0, len(position), size=min(n_max, len(position)))
+        subset = np.random.randint(0, len(position), size=min(n_max, len(position)))
         # place on unit sphere to avoid coordinate distortions
-        centers, _ = vq.kmeans2(
-            position[subset].values, n_patches, minit="points")
+        centers, _ = vq.kmeans2(position[subset].values, n_patches, minit="points")
         centers = Coord3D.from_array(centers)
         patches = assign_patches(centers=centers, position=position)
         return centers, patches

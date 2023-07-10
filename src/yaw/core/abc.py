@@ -15,8 +15,17 @@ from numpy.typing import NDArray
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import IntervalIndex
+
     from yaw.core.containers import Indexer
     from yaw.core.utils import TypePathStr
+
+__all__ = [
+    "PatchedQuantity",
+    "BinnedQuantity",
+    "concatenate_bin_edges",
+    "HDFSerializable",
+    "DictRepresentation",
+]
 
 
 _Tpatched = TypeVar("_Tpatched", bound="PatchedQuantity")
@@ -64,7 +73,7 @@ class PatchedQuantity(ABC):
             *data:
                 Containers of same type that are appended to the patch dimension
                 of this container.
-        
+
         Returns:
             New instance of this container with combined data.
         """
@@ -137,13 +146,9 @@ class BinnedQuantity(ABC):
         """
         raise NotImplementedError
 
-    def is_compatible(
-        self: _Tbinned,
-        other: _Tbinned,
-        require: bool = False
-    ) -> bool:
+    def is_compatible(self: _Tbinned, other: _Tbinned, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
-         
+
         Ensures that both objects are instances of the same class and that the
         redshift binning is identical.
 
@@ -152,14 +157,15 @@ class BinnedQuantity(ABC):
                 Object instance to compare to.
             require (:obj:`bool`, optional)
                 Raise a ValueError if any of the checks fail.
-        
+
         Returns:
             :obj:`bool`
         """
         if not isinstance(other, self.__class__):
             raise TypeError(
                 f"object of type {type(other)} is not compatible with "
-                f"{self.__class__}")
+                f"{self.__class__}"
+            )
         if self.n_bins != other.n_bins:
             if require:
                 raise ValueError("number of bins do not agree")
@@ -187,7 +193,7 @@ class BinnedQuantity(ABC):
             *data:
                 Containers of same type that are appended to the patch dimension
                 of this container.
-        
+
         Returns:
             New instance of this container with combined data.
         """
@@ -221,10 +227,7 @@ class HDFSerializable(ABC):
     """Base class for an object that can be serialised into a HDF5 file."""
 
     @abstractclassmethod
-    def from_hdf(
-        cls: Type[_Thdf],
-        source: h5py.Group
-    ) -> _Thdf:
+    def from_hdf(cls: Type[_Thdf], source: h5py.Group) -> _Thdf:
         """Create a class instance by deserialising data from a HDF5 group.
 
         Args:
@@ -281,11 +284,11 @@ class DictRepresentation(ABC):
     def from_dict(
         cls: Type[_Tdict],
         the_dict: dict[str, Any],
-        **kwargs: dict[str, Any]  # passing additional constructor data
+        **kwargs: dict[str, Any],  # passing additional constructor data
     ) -> _Tdict:
         """Create a class instance from a dictionary representation of the
         minimally required data.
-        
+
         Args:
             the_dict (:obj:`dict`):
                 Dictionary containing the data.

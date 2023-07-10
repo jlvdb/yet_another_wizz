@@ -17,13 +17,15 @@ from typing import TYPE_CHECKING, Callable, Generic, NamedTuple, TypeVar
 import numpy as np
 import pandas as pd
 
+from yaw.config import OPTIONS
 from yaw.core.abc import BinnedQuantity, concatenate_bin_edges
 from yaw.core.math import cov_from_samples
-from yaw.config import OPTIONS
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame, IntervalIndex, Series
+
+__all__ = ["Indexer", "PatchIDs", "PatchCorrelationData", "SampledValue", "SampledData"]
 
 
 _TK = TypeVar("_TK")
@@ -103,6 +105,7 @@ class PatchCorrelationData:
             Dictionary listing the number of counted pairs after binning by
             redshift. Each item represents results from a different scale.
     """
+
     patches: PatchIDs
     totals1: NDArray
     totals2: NDArray
@@ -123,7 +126,7 @@ class SampledValue(Generic[_Tscalar]):
 
     Create a value container with 100 assumed jackknife samples that scatter
     around zero with a standard deviation of 0.1:
-    
+
     >>> from numpy.random import normal
     >>> samples = normal(loc=0.0, scale=0.01, size=101)
     >>> value = yaw.core.SampledValue(0.0, samples, method="jackknife")
@@ -175,9 +178,10 @@ class SampledValue(Generic[_Tscalar]):
             if self.samples.shape != other.samples.shape:
                 return False
             return (
-                self.method == other.method and
-                self.value == other.value and
-                np.all(self.samples == other.samples))
+                self.method == other.method
+                and self.value == other.value
+                and np.all(self.samples == other.samples)
+            )
         else:
             return False
 
@@ -227,7 +231,7 @@ class SampledData(BinnedQuantity):
     .. rubric:: Examples
 
     Create a redshift binning:
-    
+
     >>> import pandas as pd
     >>> bins = pd.IntervalIndex.from_breaks([0.1, 0.2, 0.3])
     >>> bins
@@ -240,7 +244,7 @@ class SampledData(BinnedQuantity):
     >>> n_bins, n_samples = len(bins), 5
     >>> data = np.ones(n_bins)
     >>> samples = np.random.normal(1.0, size=(n_samples, n_bins))
-    
+
     Create the container:
 
     >>> values = yaw.core.SampledData(bins, data, samples, method="jackknife")
@@ -278,8 +282,7 @@ class SampledData(BinnedQuantity):
         if self.data.shape != (self.n_bins,):
             raise ValueError("unexpected shape of 'data' array")
         if not self.samples.shape[1] == self.n_bins:
-            raise ValueError(
-                "number of bins for 'data' and 'samples' do not match")
+            raise ValueError("number of bins for 'data' and 'samples' do not match")
         if self.method not in OPTIONS.method:
             raise ValueError(f"unknown sampling method '{self.method}'")
 
@@ -297,10 +300,11 @@ class SampledData(BinnedQuantity):
             if self.samples.shape != other.samples.shape:
                 return False
             return (
-                self.method == other.method and
-                np.all(self.data == other.data) and
-                np.all(self.samples == other.samples) and
-                (self.binning == other.binning).all())
+                self.method == other.method
+                and np.all(self.data == other.data)
+                and np.all(self.samples == other.samples)
+                and (self.binning == other.binning).all()
+            )
         else:
             return False
 
@@ -311,17 +315,19 @@ class SampledData(BinnedQuantity):
         self.is_compatible(other, require=True)
         return self.__class__(
             binning=self.get_binning(),
-            data=self.data+other.data,
-            samples=self.samples+other.samples,
-            method=self.method)
+            data=self.data + other.data,
+            samples=self.samples + other.samples,
+            method=self.method,
+        )
 
     def __sub__(self, other: _Tdata) -> _Tdata:
         self.is_compatible(other, require=True)
         return self.__class__(
             binning=self.get_binning(),
-            data=self.data-other.data,
-            samples=self.samples-other.samples,
-            method=self.method)
+            data=self.data - other.data,
+            samples=self.samples - other.samples,
+            method=self.method,
+        )
 
     @property
     def bins(self: _Tdata) -> Indexer[int | slice | Sequence, _Tdata]:
@@ -350,7 +356,7 @@ class SampledData(BinnedQuantity):
     @property
     def error(self) -> NDArray:
         """The uncertainty (standard error) of the data.
-        
+
         Returns:
             :obj:`NDArray`
         """
@@ -361,7 +367,7 @@ class SampledData(BinnedQuantity):
 
     def is_compatible(self, other: SampledData, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
-        
+
         Ensures that both objects are instances of the same class, that the
         redshift binning is identical, that the number of samples agree, and
         that the resampling method is identical.
@@ -371,7 +377,7 @@ class SampledData(BinnedQuantity):
                 Object instance to compare to.
             require (:obj:`bool`, optional)
                 Raise a ValueError if any of the checks fail.
-        
+
         Returns:
             :obj:`bool`
         """
@@ -416,7 +422,7 @@ class SampledData(BinnedQuantity):
     def get_error(self) -> Series:
         """Get value error estimate (diagonal of covariance matrix) as series
         with its corresponding redshift bin intervals as index.
-        
+
         Returns:
             :obj:`pandas.Series`
         """
@@ -425,17 +431,18 @@ class SampledData(BinnedQuantity):
     def get_covariance(self) -> DataFrame:
         """Get value covariance matrix as data frame with its corresponding
         redshift bin intervals as index and column labels.
-        
+
         Returns:
             :obj:`pandas.DataFrame`
         """
         return pd.DataFrame(
-            data=self.covariance, index=self.binning, columns=self.binning)
+            data=self.covariance, index=self.binning, columns=self.binning
+        )
 
     def get_correlation(self) -> DataFrame:
         """Get value correlation matrix as data frame with its corresponding
         redshift bin intervals as index and column labels.
-        
+
         Returns:
             :obj:`pandas.DataFrame`
         """
@@ -444,5 +451,4 @@ class SampledData(BinnedQuantity):
             warnings.simplefilter("ignore")
             corr = self.covariance / np.outer(stdev, stdev)
         corr[self.covariance == 0] = 0
-        return pd.DataFrame(
-            data=corr, index=self.binning, columns=self.binning)
+        return pd.DataFrame(data=corr, index=self.binning, columns=self.binning)
