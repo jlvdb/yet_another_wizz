@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
     {name = "Jan Luca van den Busch", email = "jlvdb@astro.ruhr-uni-bochum.de"},
 ]
-description = "Implementation of the Schmidt et al. (2013) clustering redshift method and wrapper scripts to produce cross-correlation (CC) redshifts."
+description = "Implementation of the Schmidt et al. (2013) clustering redshift method."
 readme = "README.rst"
 license = {text = "GPL-3.0-or-later"}
 classifiers = [
