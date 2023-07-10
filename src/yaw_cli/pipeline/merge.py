@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -9,22 +9,21 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
-from collections.abc import Sequence
-
-from yaw.config import (
-    Configuration, ManualBinningConfig, ScalesConfig,
-    default as DEFAULT, OPTIONS)
+from yaw.config import OPTIONS, Configuration, ManualBinningConfig, ScalesConfig
+from yaw.config import default as DEFAULT
 from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrFunc
 from yaw.redshifts import HistData
-
 from yaw_cli.pipeline.project import (
-    ProjectDirectory, ProjectState, YawDirectory, compress_config)
+    ProjectDirectory,
+    ProjectState,
+    YawDirectory,
+    compress_config,
+)
 from yaw_cli.pipeline.tasks import MergedTask, Task, TaskError, TaskManager
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
-    from yaw_cli.pipeline.project import YawDirectory
 
 
 logger = logging.getLogger(__name__)
@@ -40,8 +39,7 @@ def all_equal(iterable: Iterable) -> bool:
 
 
 def merge_config(
-    projects: Sequence[YawDirectory],
-    merge_binning: bool = True
+    projects: Sequence[YawDirectory], merge_binning: bool = True
 ) -> Configuration:
     if len(projects) == 0:
         raise ValueError("'projects' is an empty sequence")
@@ -92,9 +90,11 @@ def merge_config(
             rmin=[r for r, _ in common],
             rmax=[r for _, r in common],
             rweight=config.scales.rweight,
-            rbin_num=config.scales.rbin_num),
+            rbin_num=config.scales.rbin_num,
+        ),
         binning=bin_config,
-        cosmology=config.cosmology)
+        cosmology=config.cosmology,
+    )
     return config
 
 
@@ -107,15 +107,12 @@ def get_common_bins(projects: Sequence[YawDirectory]) -> set[int]:
         MergeError("found no common bins")
     extra = set.union(*bin_sets) - common
     if len(extra) > 0:
-        logger.warn(
-            f"ignoring uncommon bins: {', '.join(str(b) for b in extra)}")
+        logger.warn(f"ignoring uncommon bins: {', '.join(str(b) for b in extra)}")
     return common
 
 
 def merge_state_attr(
-    states: Iterable[ProjectState],
-    attr: str,
-    require: bool = False
+    states: Iterable[ProjectState], attr: str, require: bool = False
 ) -> bool:
     attr_states = [getattr(state, attr) for state in states]
     attr_state = all(attr_states)
@@ -152,14 +149,15 @@ def get_merged_state(projects: Sequence[YawDirectory]) -> ProjectState:
         has_nz_ref = False
         logger.warn("ignoring uncommon reference sample redshift distributions")
     return ProjectState(
-        has_w_ss=has_w_ss, has_w_pp=has_w_pp, has_w_sp=has_w_sp,
-        has_nz_true=has_nz_true, has_nz_ref=has_nz_ref)
+        has_w_ss=has_w_ss,
+        has_w_pp=has_w_pp,
+        has_w_sp=has_w_sp,
+        has_nz_true=has_nz_true,
+        has_nz_ref=has_nz_ref,
+    )
 
 
-def merge_cfs(
-    mode: str,
-    cfs: Sequence[CorrFunc]
-) -> CorrFunc:
+def merge_cfs(mode: str, cfs: Sequence[CorrFunc]) -> CorrFunc:
     cfs_ordered = sorted(cfs, key=lambda cf: cf.edges[0])
     if mode == "redshift":
         return cfs_ordered[0].concatenate_bins(*cfs_ordered[1:])
@@ -168,16 +166,13 @@ def merge_cfs(
 
 
 def merge_hists(
-    mode: str,
-    bin_edges: NDArray[np.float_],
-    hists: Sequence[HistData]
+    mode: str, bin_edges: NDArray[np.float_], hists: Sequence[HistData]
 ) -> HistData:
     methods = [hist.method for hist in hists]
     if all_equal(methods):
         method = methods[0]
     else:
-        raise MergeError(
-            "cannot merge histograms with different resampling methods")
+        raise MergeError("cannot merge histograms with different resampling methods")
 
     densities = [hist.density for hist in hists]
     if any(densities):
@@ -188,15 +183,16 @@ def merge_hists(
         return HistData(
             binning=pd.IntervalIndex.from_breaks(bin_edges),
             data=np.concatenate([hist.data for hist in hists_ordered]),
-            samples=np.concatenate([
-                hist.samples for hist in hists_ordered], axis=1),
-            method=method)
+            samples=np.concatenate([hist.samples for hist in hists_ordered], axis=1),
+            method=method,
+        )
     else:
         return HistData(
             binning=pd.IntervalIndex.from_breaks(bin_edges),
             data=np.sum([hist.data for hist in hists], axis=0),
             samples=np.sum([hist.samples for hist in hists], axis=1),
-            method=method)
+            method=method,
+        )
 
 
 def open_yaw_directory(path: TypePathStr) -> ProjectDirectory | MergedDirectory:
@@ -207,33 +203,26 @@ def open_yaw_directory(path: TypePathStr) -> ProjectDirectory | MergedDirectory:
 
 
 class MergedManager(TaskManager):
-
     def _insert_task(self, task: MergedTask, task_list: list[Task]) -> None:
         if not isinstance(task, MergedTask):
             raise TaskError(
-                f"task '{task.get_name()}' cannot be executed after merging")
+                f"task '{task.get_name()}' cannot be executed after merging"
+            )
         return super()._insert_task(task, task_list)
 
     def schedule(self, task: MergedTask) -> None:
         return super().schedule(task)
 
     def run(
-        self,
-        task: MergedTask,
-        progress: bool = False,
-        threads: int | None = None
+        self, task: MergedTask, progress: bool = False, threads: int | None = None
     ) -> None:
         return super().run(task, progress, threads)
 
 
 class MergedDirectory(YawDirectory):
-
     @classmethod
     def from_projects(
-        cls,
-        path: TypePathStr,
-        inputs: Sequence[TypePathStr],
-        mode: str
+        cls, path: TypePathStr, inputs: Sequence[TypePathStr], mode: str
     ) -> MergedDirectory:
         logger.info(f"merging {len(inputs)} project directories")
         projects: list[YawDirectory] = []
@@ -254,33 +243,45 @@ class MergedDirectory(YawDirectory):
         setup = dict(
             configuration=config.to_dict(),
             sources=[str(path) for path in inputs],
-            tasks=[])
+            tasks=[],
+        )
         merged = cls.from_dict(setup, path)
 
         # merge and write the pair counts files
         for scale, counts_dir in merged.iter_counts(create=True):
             logmsg = f"merging {{:}} for scale '{scale}'"
-            project_counts_dir = [
-                    project.get_counts_dir(scale) for project in projects]
+            project_counts_dir = [project.get_counts_dir(scale) for project in projects]
             if merged_state.has_w_ss:
                 logger.info(logmsg.format("reference autocorrelation function"))
-                cf = merge_cfs(mode, [
-                    CorrFunc.from_file(cdir.get_auto_reference())
-                    for cdir in project_counts_dir])
+                cf = merge_cfs(
+                    mode,
+                    [
+                        CorrFunc.from_file(cdir.get_auto_reference())
+                        for cdir in project_counts_dir
+                    ],
+                )
                 cf.to_file(counts_dir.get_auto_reference())
             if merged_state.has_w_sp:
                 logger.info(logmsg.format("unknown autocorrelation functions"))
                 for bin_idx in bins:
-                    cf = merge_cfs(mode, [
-                        CorrFunc.from_file(cdir.get_cross(bin_idx))
-                        for cdir in project_counts_dir])
+                    cf = merge_cfs(
+                        mode,
+                        [
+                            CorrFunc.from_file(cdir.get_cross(bin_idx))
+                            for cdir in project_counts_dir
+                        ],
+                    )
                     cf.to_file(counts_dir.get_cross(bin_idx))
             if merged_state.has_w_pp:
                 logger.info(logmsg.format("crosscorrelation functions"))
                 for bin_idx in bins:
-                    cf = merge_cfs(mode, [
-                        CorrFunc.from_file(cdir.get_auto(bin_idx))
-                        for cdir in project_counts_dir])
+                    cf = merge_cfs(
+                        mode,
+                        [
+                            CorrFunc.from_file(cdir.get_auto(bin_idx))
+                            for cdir in project_counts_dir
+                        ],
+                    )
                     cf.to_file(counts_dir.get_auto(bin_idx))
 
         # merge the reference sample redshift distribution
@@ -289,9 +290,14 @@ class MergedDirectory(YawDirectory):
         if merged_state.has_nz_ref:
             logger.info("merging reference sample redshift distribution")
             try:
-                hist = merge_hists(mode, config.binning.zbins, [
-                    HistData.from_files(tdir.get_reference())
-                    for tdir in project_true_dir])
+                hist = merge_hists(
+                    mode,
+                    config.binning.zbins,
+                    [
+                        HistData.from_files(tdir.get_reference())
+                        for tdir in project_true_dir
+                    ],
+                )
             except MergeError as e:
                 logger.error(e.args[0] + ", skipping")
             else:
@@ -300,9 +306,14 @@ class MergedDirectory(YawDirectory):
             for bin_idx in bins:
                 logger.info("merging true redshift distributions")
                 try:
-                    hist = merge_hists(mode, config.binning.zbins, [
-                        HistData.from_files(tdir.get_unknown(bin_idx))
-                        for tdir in project_true_dir])
+                    hist = merge_hists(
+                        mode,
+                        config.binning.zbins,
+                        [
+                            HistData.from_files(tdir.get_unknown(bin_idx))
+                            for tdir in project_true_dir
+                        ],
+                    )
                 except MergeError as e:
                     logger.error(e.args[0] + ", skipping")
                 else:
@@ -328,11 +339,13 @@ class MergedDirectory(YawDirectory):
     def to_dict(self) -> dict[str, Any]:
         # strip default values from config
         configuration = compress_config(
-            self._config.to_dict(), DEFAULT.Configuration.__dict__)
+            self._config.to_dict(), DEFAULT.Configuration.__dict__
+        )
         setup = dict(
             configuration=configuration,
             sources=[str(fpath) for fpath in self._sources],
-            tasks=self._tasks.history_to_list())
+            tasks=self._tasks.history_to_list(),
+        )
         return setup
 
     def get_bin_indices(self) -> set[int]:

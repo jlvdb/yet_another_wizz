@@ -6,7 +6,10 @@ from yaw.catalogs.catalog import BackendError, BaseCatalog
 
 if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame
+
     from yaw.core.coordinates import Coordinate
+
+__all__ = ["NewCatalog"]
 
 
 class NewCatalog:
@@ -40,7 +43,7 @@ class NewCatalog:
         - The ``scipy`` backend does not preserve the order the input data, but
           instead groups objects by there spatial patch.
         - The ``treecorr`` backend does currently not support restoration from
-          cache.    
+          cache.
     """
 
     def __init__(self, backend: str = "scipy") -> None:
@@ -73,10 +76,10 @@ class NewCatalog:
         redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> BaseCatalog:
         """Build a catalogue from in-memory data.
-        
+
         Specify the names of the required and or available columns in a
         :obj:`pandas.DataFrame`. Additional parameters control the creation
         spatial patches used for error estimates. Patches can be assigned based
@@ -91,7 +94,7 @@ class NewCatalog:
                 Name of the column with right ascension data in degrees.
             dec_name (:obj:`str`):
                 Name of the column with declination data in degress.
-        
+
         Keyword Args:
             patch_name (:obj:`str`, optional):
                 Name of the column that specifies the patch index, i.e.
@@ -140,7 +143,8 @@ class NewCatalog:
             redshift_name=redshift_name,
             weight_name=weight_name,
             cache_directory=cache_directory,
-            progress=progress)
+            progress=progress,
+        )
 
     def from_file(
         self,
@@ -155,7 +159,7 @@ class NewCatalog:
         cache_directory: str | None = None,
         file_ext: str | None = None,
         progress: bool = False,
-        **kwargs
+        **kwargs,
     ) -> BaseCatalog:
         """
         Build catalogue from data file.
@@ -175,7 +179,7 @@ class NewCatalog:
                 Name of the column with right ascension data in degrees.
             dec (:obj:`str`):
                 Name of the column with declination data in degress.
-        
+
         Keyword Args:
             redshift (:obj:`str`, optional):
                 Name of the column with point-redshift estimates.
@@ -220,13 +224,10 @@ class NewCatalog:
             cache_directory=cache_directory,
             file_ext=file_ext,
             progress=progress,
-            **kwargs)
+            **kwargs,
+        )
 
-    def from_cache(
-        self,
-        cache_directory: str,
-        progress: bool = False
-    ) -> BaseCatalog:
+    def from_cache(self, cache_directory: str, progress: bool = False) -> BaseCatalog:
         """
         Restore the catalogue from its cache directory.
 

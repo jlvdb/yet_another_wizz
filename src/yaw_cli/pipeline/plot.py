@@ -3,21 +3,21 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import numpy as np
 import matplotlib
-matplotlib.use("agg")
 import matplotlib.pyplot as plt
+import numpy as np
 
 from yaw.correlation import CorrData
 from yaw.redshifts import RedshiftData
-
 from yaw_cli.pipeline.project import ProjectDirectory
 
 if TYPE_CHECKING:  # pragma: no cover
-    from numpy.typing import NDArray
-    from matplotlib.figure import Figure
     from matplotlib.axis import Axis
+    from matplotlib.figure import Figure
+    from numpy.typing import NDArray
 
+
+matplotlib.pyplot.switch_backend("Agg")
 
 logger = logging.getLogger(__name__)
 
@@ -33,33 +33,30 @@ def scale_key_to_math(scale: str) -> str:
 
 
 class Plotter:
-
     def __init__(
-        self,
-        project: ProjectDirectory,
-        dpi: int = 100,
-        scale: float = 1.0
+        self, project: ProjectDirectory, dpi: int = 100, scale: float = 1.0
     ) -> None:
         self.project = project
         self.dpi = dpi
         self.scale = scale
 
     def figsize(self, n_col: int, n_row: int) -> tuple[float, float]:
-        return (0.5 + 3.5*n_col*self.scale, 0.3 + 3*n_row*self.scale)
+        return (0.5 + 3.5 * n_col * self.scale, 0.3 + 3 * n_row * self.scale)
 
-    def mkfig(
-        self,
-        n_plots: int,
-        n_col: int = 3
-    ) -> tuple[Figure, Axis | NDArray]:
+    def mkfig(self, n_plots: int, n_col: int = 3) -> tuple[Figure, Axis | NDArray]:
         n_row, rest = divmod(n_plots, n_col)
         if n_row == 0:
             n_row, n_col = 1, rest
         elif rest > 0:
             n_row += 1
         fig, axis = plt.subplots(
-            n_row, n_col, figsize=self.figsize(n_col=n_col, n_row=n_row),
-            dpi=self.dpi, sharex=True, sharey=True)
+            n_row,
+            n_col,
+            figsize=self.figsize(n_col=n_col, n_row=n_row),
+            dpi=self.dpi,
+            sharex=True,
+            sharey=True,
+        )
         if n_plots == 1:
             return fig, axis
         axes = np.atleast_2d(axis)
@@ -84,26 +81,21 @@ class Plotter:
             ax.set_ylabel(ylabel, fontsize=self.label_fontsize)
 
     def _track_lim(
-        self,
-        lims: tuple[float, float],
-        data: NDArray
+        self, lims: tuple[float, float], data: NDArray
     ) -> tuple[float, float]:
         y_min = np.nanmin(data)
         y_max = np.nanmax(data)
         return min(lims[0], y_min), max(lims[1], y_max)
 
     def _ylim_with_lim(
-        self,
-        ax: Axis,
-        lims: tuple[float, float] | None,
-        margin: float = 0.15
+        self, ax: Axis, lims: tuple[float, float] | None, margin: float = 0.15
     ) -> None:
         if lims is not None:
             axlims = ax.get_ylim()
             ymin = max(axlims[0], lims[0])
             ymax = min(axlims[1], lims[1])
             dy = ymax - ymin
-            ax.set_ylim(ymin - margin*dy, ymax + margin*dy)
+            ax.set_ylim(ymin - margin * dy, ymax + margin * dy)
 
     def auto_reference(self, title: str | None = None) -> Figure | None:
         if not self.project.get_state().has_w_ss_cf:
@@ -171,7 +163,7 @@ class Plotter:
                     else:
                         nzt = None
                     nz_ts[bin] = nzt
-                # plot optional 
+                # plot optional
                 nz = RedshiftData.from_files(path).normalised(to=nzt)
                 label = f"{scale_key_to_math(scale)} / {tag=}"
                 nz.plot(zero_line=True, label=label, ax=ax)

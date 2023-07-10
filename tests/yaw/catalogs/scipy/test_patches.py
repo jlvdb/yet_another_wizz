@@ -26,10 +26,14 @@ def mock_data():
     for ra, dec in itertools.product(range(0, 355), range(-89, 90)):
         ra_dec.append([ra, dec])
     ra_dec = np.array(ra_dec, dtype=np.float_)
-    df = pd.DataFrame(dict(
-        ra=ra_dec[:, 0], dec=ra_dec[:, 1],
-        weights=np.ones(len(ra_dec)),
-        redshift=np.linspace(0.0, 2.0, len(ra_dec))))
+    df = pd.DataFrame(
+        dict(
+            ra=ra_dec[:, 0],
+            dec=ra_dec[:, 1],
+            weights=np.ones(len(ra_dec)),
+            redshift=np.linspace(0.0, 2.0, len(ra_dec)),
+        )
+    )
     return df
 
 
@@ -55,7 +59,6 @@ def patch_cached(mock_data, tmp_path):
 
 
 class TestPatchCatalog:
-
     def test_init(self, mock_data):
         """attributes .data"""
         patch = patches.PatchCatalog(0, mock_data, degrees=False)
@@ -75,7 +78,8 @@ class TestPatchCatalog:
         # create with rad data
         cachefile = tmp_path / f"test_rad_{patch_id}.feather"
         patch = patches.PatchCatalog(
-            patch_id, mock_data_rad, degrees=False, cachefile=cachefile)
+            patch_id, mock_data_rad, degrees=False, cachefile=cachefile
+        )
         assert cachefile.exists()
         pdt.assert_frame_equal(pd.read_feather(cachefile), patch.data)
         # reload file
@@ -86,7 +90,8 @@ class TestPatchCatalog:
         # create with degrees data
         cachefile = tmp_path / f"test_deg_{patch_id}.feather"
         patch = patches.PatchCatalog(
-            patch_id, mock_data, degrees=True, cachefile=cachefile)
+            patch_id, mock_data, degrees=True, cachefile=cachefile
+        )
         assert cachefile.exists()
         pdt.assert_frame_equal(pd.read_feather(cachefile), patch.data)
         # reload file
@@ -137,7 +142,8 @@ class TestPatchCatalog:
         npt.assert_equal(mock_patch.redshifts, mock_data["redshift"])
         # drop redshifts
         patch = patches.PatchCatalog(
-            0, mock_data.drop(columns="redshift"), degrees=True)
+            0, mock_data.drop(columns="redshift"), degrees=True
+        )
         assert not patch.has_redshifts()
         # unloaded
         with raises(patches.CachingError):
@@ -147,8 +153,7 @@ class TestPatchCatalog:
         assert mock_patch.has_weights()
         npt.assert_equal(mock_patch.weights, mock_data["weights"])
         # drop weights
-        patch = patches.PatchCatalog(
-            0, mock_data.drop(columns="weights"), degrees=True)
+        patch = patches.PatchCatalog(0, mock_data.drop(columns="weights"), degrees=True)
         assert not patch.has_weights()
         # TODO: unloaded
         with raises(patches.CachingError):
@@ -157,8 +162,7 @@ class TestPatchCatalog:
     def test_total(self, mock_data, mock_patch, patch_cached):
         assert mock_patch.total == mock_data["weights"].sum()
         # drop weights
-        patch = patches.PatchCatalog(
-            0, mock_data.drop(columns="weights"), degrees=True)
+        patch = patches.PatchCatalog(0, mock_data.drop(columns="weights"), degrees=True)
         assert len(patch) == len(mock_data)
         # unloaded
         patch_cached.total == mock_data["weights"].sum()
@@ -170,8 +174,8 @@ class TestPatchCatalog:
             assert isinstance(intv, pd.Interval)
             assert isinstance(patch, patches.PatchCatalog)
             assert patch.redshifts.min() >= intv.left == zbins[i]
-            assert patch.redshifts.max() <= intv.right == zbins[i+1]
-            assert patch.ra.max() < 2*np.pi  # cheap way to rule out degrees
+            assert patch.redshifts.max() <= intv.right == zbins[i + 1]
+            assert patch.ra.max() < 2 * np.pi  # cheap way to rule out degrees
 
         # no redshifts
         patch_noz = patches.PatchCatalog(0, mock_data.drop(columns="redshift"))

@@ -20,7 +20,7 @@ class MockCatalog:
 
     For the case of no overlap between diagonal neighbours (radius < 1.0), the
     following linkange pattern should arise (mirror for cross-correlation):
-        0 1 2 3 4 5    
+        0 1 2 3 4 5
        +-+-+-+-+-+-+
     0  |#|x| |x| | |
        +-+-+-+-+-+-+
@@ -35,11 +35,12 @@ class MockCatalog:
     5  | | | | | |#|
        +-+-+-+-+-+-+
     """
-    centers=CoordSky(
-        ra= np.deg2rad([ 0, 2, 4, 0, 2, 4]),
-        dec=np.deg2rad([-1,-1,-1, 1, 1, 1]))
-    radii=DistSky(np.deg2rad([1.00001] * 6))  # > 1 necessary
-    n_patches=6
+
+    centers = CoordSky(
+        ra=np.deg2rad([0, 2, 4, 0, 2, 4]), dec=np.deg2rad([-1, -1, -1, 1, 1, 1])
+    )
+    radii = DistSky(np.deg2rad([1.00001] * 6))  # > 1 necessary
+    n_patches = 6
 
     def __getitem__(self, patch_id):
         return patch_id
@@ -48,8 +49,8 @@ class MockCatalog:
 @fixture
 def config():
     return Configuration.create(
-        rmin=0.0000001, rmax=0.000001,  # some non-zero small value
-        zbins=[0.01, 0.1])
+        rmin=0.0000001, rmax=0.000001, zbins=[0.01, 0.1]  # some non-zero small value
+    )
 
 
 @fixture
@@ -65,28 +66,51 @@ def linkage(config, catalog):
 @fixture
 def pairs():
     return [
-        (0,0), (0,1), (0,3),
-        (1,0), (1,1), (1,2), (1,4),
-        (2,1), (2,2), (2,5),
-        (3,0), (3,3), (3,4),
-        (4,1), (4,3), (4,4), (4,5),
-        (5,2), (5,4), (5,5)]
+        (0, 0),
+        (0, 1),
+        (0, 3),
+        (1, 0),
+        (1, 1),
+        (1, 2),
+        (1, 4),
+        (2, 1),
+        (2, 2),
+        (2, 5),
+        (3, 0),
+        (3, 3),
+        (3, 4),
+        (4, 1),
+        (4, 3),
+        (4, 4),
+        (4, 5),
+        (5, 2),
+        (5, 4),
+        (5, 5),
+    ]
 
 
 @fixture
 def pairs_auto():
     return [
-        (0,0), (0,1), (0,3),
-        (1,1), (1,2), (1,4),
-        (2,2), (2,5),
-        (3,3), (3,4),
-        (4,4), (4,5),
-        (5,5)]
+        (0, 0),
+        (0, 1),
+        (0, 3),
+        (1, 1),
+        (1, 2),
+        (1, 4),
+        (2, 2),
+        (2, 5),
+        (3, 3),
+        (3, 4),
+        (4, 4),
+        (4, 5),
+        (5, 5),
+    ]
 
 
 @fixture
 def pairs_nocross():
-    return [(i,i) for i in range(6)]
+    return [(i, i) for i in range(6)]
 
 
 @fixture
@@ -101,14 +125,17 @@ def mask_auto(mask):
 
 @fixture
 def matrix():
-    return np.array([
-        [1,1,0,1,0,0],
-        [1,1,1,0,1,0],
-        [0,1,1,0,0,1],
-        [1,0,0,1,1,0],
-        [0,1,0,1,1,1],
-        [0,0,1,0,1,1]],
-        dtype="bool")
+    return np.array(
+        [
+            [1, 1, 0, 1, 0, 0],
+            [1, 1, 1, 0, 1, 0],
+            [0, 1, 1, 0, 0, 1],
+            [1, 0, 0, 1, 1, 0],
+            [0, 1, 0, 1, 1, 1],
+            [0, 0, 1, 0, 1, 1],
+        ],
+        dtype="bool",
+    )
 
 
 @fixture
@@ -122,7 +149,6 @@ def matrix_mask_nocross():
 
 
 class TestPatchLinkage:
-
     def test_from_setup(self, linkage, pairs):
         assert set(linkage.pairs) == set(pairs)
         repr(linkage)
@@ -134,47 +160,50 @@ class TestPatchLinkage:
         assert linkage.n_patches == 6
 
     def test_density(self, linkage, pairs):
-        assert linkage.density == len(pairs)/36.
+        assert linkage.density == len(pairs) / 36.0
 
     def test_get_pairs(self, linkage, pairs, pairs_auto, pairs_nocross):
         assert set(linkage.get_pairs(auto=False)) == set(pairs)
         assert set(linkage.get_pairs(auto=True)) == set(pairs_auto)
         assert set(linkage.get_pairs(auto=True, crosspatch=False)) == set(pairs_nocross)
 
-    def test_get_matrix(self, linkage, catalog, matrix, matrix_auto, matrix_mask_nocross):
+    def test_get_matrix(
+        self, linkage, catalog, matrix, matrix_auto, matrix_mask_nocross
+    ):
         # cross
-        npt.assert_equal(
-            linkage.get_matrix(catalog, catalog),
-            matrix)
+        npt.assert_equal(linkage.get_matrix(catalog, catalog), matrix)
         # auto
-        npt.assert_equal(
-            linkage.get_matrix(catalog),
-            matrix_auto)
-        npt.assert_equal(
-            linkage.get_matrix(catalog, None),
-            matrix_auto)
+        npt.assert_equal(linkage.get_matrix(catalog), matrix_auto)
+        npt.assert_equal(linkage.get_matrix(catalog, None), matrix_auto)
         # diag
         npt.assert_equal(
-            linkage.get_matrix(catalog, catalog, crosspatch=False),
-            matrix_mask_nocross)
+            linkage.get_matrix(catalog, catalog, crosspatch=False), matrix_mask_nocross
+        )
         npt.assert_equal(
-            linkage.get_matrix(catalog, None, crosspatch=False),
-            matrix_mask_nocross)
+            linkage.get_matrix(catalog, None, crosspatch=False), matrix_mask_nocross
+        )
 
     def test_query_radius(self, catalog):
         config = Configuration.create(
-            rmin=1, rmax=8980,  # should barely exclude the four longest pairs
-            zbins=[LINK_ZMIN, 0.1], crosspatch=False)
+            rmin=1,
+            rmax=8980,  # should barely exclude the four longest pairs
+            zbins=[LINK_ZMIN, 0.1],
+            crosspatch=False,
+        )
         assert len(PatchLinkage.from_setup(config, catalog)) == 20
         # distance between patches 0 and 5: approx. sqrt(20), with patch radius
         # 1 -> maximum query radius = 0.1561 rad to create overlap
         config = Configuration.create(
-            rmin=1, rmax=8980,  # should barely exclude the four longest pairs
-            zbins=[LINK_ZMIN, 0.1])
+            rmin=1,
+            rmax=8980,  # should barely exclude the four longest pairs
+            zbins=[LINK_ZMIN, 0.1],
+        )
         assert len(PatchLinkage.from_setup(config, catalog)) == 32
         config = Configuration.create(
-            rmin=1, rmax=8990,  # should be just enough to include all
-            zbins=[LINK_ZMIN, 0.1])
+            rmin=1,
+            rmax=8990,  # should be just enough to include all
+            zbins=[LINK_ZMIN, 0.1],
+        )
         assert len(PatchLinkage.from_setup(config, catalog)) == 36
 
     def test_get_patches(self, linkage, catalog, pairs, pairs_auto, pairs_nocross):

@@ -35,7 +35,7 @@
         :text-align: center
 
         :octicon:`milestone;3em`
-        
+
         Getting started
 
     .. grid-item-card:: The impatient
@@ -45,7 +45,7 @@
         :text-align: center
 
         :octicon:`rocket;3em`
-        
+
         Usage examples
 
     .. grid-item-card:: The thorough
@@ -55,7 +55,7 @@
         :text-align: center
 
         :octicon:`book;3em`
-        
+
         User guide
 
     .. grid-item-card:: The detail oriented
@@ -65,5 +65,5 @@
         :text-align: center
 
         :octicon:`codescan;3em`
-        
+
         API reference

@@ -7,14 +7,13 @@ import sys
 
 def term_supports_color() -> bool:
     plat = sys.platform
-    supported = (
-        plat != "Pocket PC" and
-        (plat != "win32" or "ANSICON" in os.environ))
+    supported = plat != "Pocket PC" and (plat != "win32" or "ANSICON" in os.environ)
     isatty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
     return supported and isatty
 
 
 if term_supports_color():
+
     class Colors:
         sep = "|"
         gry = "\033[2m"
@@ -24,7 +23,9 @@ if term_supports_color():
         ylw = "\033[1;33m"
         red = "\033[1;31m"
         rst = "\033[0m"
+
 else:
+
     class Colors:
         sep = "|"
         gry = ""
@@ -44,7 +45,6 @@ class OnlyYAWFilter(logging.Filter):
 
 
 class CustomFormatter(logging.Formatter):
-
     level = "%(levelname).3s"
     msg = "%(message)s"
     FORMATS = {
@@ -52,7 +52,8 @@ class CustomFormatter(logging.Formatter):
         logging.INFO: f"INF {Colors.sep} {msg}",
         logging.WARNING: f"{Colors.ylw}WRN {Colors.sep} {msg}{Colors.rst}",
         logging.ERROR: f"{Colors.red}ERR {Colors.sep} {msg}{Colors.rst}",
-        logging.CRITICAL: f"{Colors.red}CRT {Colors.sep} {msg}{Colors.rst}"}
+        logging.CRITICAL: f"{Colors.red}CRT {Colors.sep} {msg}{Colors.rst}",
+    }
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno, self.FORMATS[logging.INFO])
@@ -63,14 +64,12 @@ class CustomFormatter(logging.Formatter):
 def print_yaw_message(msg: str, color: str = Colors.blu) -> None:
     print(f"{color}YAW {Colors.sep} {msg}{Colors.rst}")
 
+
 def get_logger() -> logging.Logger:
     return logging.getLogger("yaw")
 
 
-def init_logger(
-    level: str = "info",
-    plain: bool = True
-) -> logging.Logger:
+def init_logger(level: str = "info", plain: bool = True) -> logging.Logger:
     level = getattr(logging, level.upper())
     handler = logging.StreamHandler(sys.stdout)
     if plain:

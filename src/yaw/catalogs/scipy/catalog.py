@@ -3,7 +3,6 @@ from __future__ import annotations
 import itertools
 import os
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -11,23 +10,33 @@ import pandas as pd
 
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy.patches import (
-    PatchCatalog, patch_id_from_path, create_patches, assign_patches)
+    PatchCatalog,
+    assign_patches,
+    create_patches,
+    patch_id_from_path,
+)
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
-from yaw.core.coordinates import Coordinate, Coord3D, CoordSky, DistSky
+from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.cosmology import Scale
 from yaw.core.logging import TimedLog
 from yaw.core.parallel import ParallelHelper
-from yaw.core.utils import (
-    LimitTracker, job_progress_bar, long_num_format)
+from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
 from yaw.correlation.paircounts import (
-    NormalisedCounts, PatchedCount, PatchedTotal, pack_results)
+    NormalisedCounts,
+    PatchedCount,
+    PatchedTotal,
+    pack_results,
+)
 from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
+
     from yaw.core.cosmology import TypeCosmology
+
+__all__ = ["ScipyCatalog"]
 
 
 def _count_pairs_thread(
@@ -39,7 +48,7 @@ def _count_pairs_thread(
     bin1: bool = True,
     bin2: bool = False,
     dist_weight_scale: float | None = None,
-    dist_weight_res: int = 50
+    dist_weight_res: int = 50,
 ) -> PatchCorrelationData:
     """Implementes the pair counting between two patches.
 
@@ -67,13 +76,13 @@ def _count_pairs_thread(
     for i, (intv, tree1, tree2) in enumerate(zip(z_intervals, trees1, trees2)):
         # if bin1 is False and bin2 is False, these will still give different
         # counts since the angle for scales is chaning
-        angles = [
-            scale.to_radian(intv.mid, cosmology) for scale in scales]
+        angles = [scale.to_radian(intv.mid, cosmology) for scale in scales]
         counts[:, i] = tree1.count(
             tree2,
             scales=angles,
             dist_weight_scale=dist_weight_scale,
-            weight_res=dist_weight_res)
+            weight_res=dist_weight_res,
+        )
         totals1[i] = tree1.total
         totals2[i] = tree2.total
     counts = {str(scale): count for scale, count in zip(scales, counts)}
@@ -81,12 +90,12 @@ def _count_pairs_thread(
         patches=PatchIDs(patch1.id, patch2.id),
         totals1=totals1,
         totals2=totals2,
-        counts=counts)
+        counts=counts,
+    )
 
 
 def _histogram_thread(
-    patch: PatchCatalog,
-    z_bins: NDArray[np.float_]
+    patch: PatchCatalog, z_bins: NDArray[np.float_]
 ) -> NDArray[np.float_]:
     """Computes a redshift histogram for a single PatchCatalog and returns the
     counts as array."""
@@ -104,7 +113,7 @@ class ScipyCatalog(BaseCatalog):
     :obj:`yaw.catalogs.scipy.kdtree`. Fully supports caching.
 
     .. Note::
-    
+
         This is currently the default backend and has the best support and
         performance. Currently, trees cannot be shared across the
         multiprocessing interface and must be rebuilt every time a patch is
@@ -123,7 +132,7 @@ class ScipyCatalog(BaseCatalog):
         redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None,
-        progress: bool = True
+        progress: bool = True,
     ) -> None:
         if len(data) == 0:
             raise ValueError("data catalog is empty")
@@ -149,26 +158,29 @@ class ScipyCatalog(BaseCatalog):
             else:
                 raise ValueError(
                     "either of 'patch_name', 'patch_centers', or 'n_patches' "
-                    "must be provided")
+                    "must be provided"
+                )
         if unload:
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
-                    f"patch directory does not exist: '{cache_directory}'")
+                    f"patch directory does not exist: '{cache_directory}'"
+                )
             self._logger.debug(f"using cache directory '{cache_directory}'")
 
         # create new patches
         if patch_mode != "dividing":
             position = CoordSky.from_array(
-                np.deg2rad(data[[ra_name, dec_name]].to_numpy()))
+                np.deg2rad(data[[ra_name, dec_name]].to_numpy())
+            )
             if patch_mode == "creating":
                 patch_centers, patch_ids = create_patches(
-                    position=position, n_patches=n_patches)
+                    position=position, n_patches=n_patches
+                )
                 log_msg = f"creating {n_patches} patches"
             else:
                 if isinstance(patch_centers, BaseCatalog):
                     patch_centers = patch_centers.centers.to_3d()
-                patch_ids = assign_patches(
-                    centers=patch_centers, position=position)
+                patch_ids = assign_patches(centers=patch_centers, position=position)
                 n_patches = len(patch_centers)
                 log_msg = f"applying {n_patches} patches from external data"
             patch_name = "patch"  # the default name
@@ -192,8 +204,9 @@ class ScipyCatalog(BaseCatalog):
                 if patch_id < 0:
                     raise ValueError("negative patch IDs are not supported")
                 # drop extra columns
-                patch_data = patch_data.drop(columns=[
-                    col for col in patch_data.columns if col not in renames])
+                patch_data = patch_data.drop(
+                    columns=[col for col in patch_data.columns if col not in renames]
+                )
                 patch_data.rename(columns=renames, inplace=True)
                 patch_data.reset_index(drop=True, inplace=True)
                 # look up the center of the patch if given
@@ -201,7 +214,8 @@ class ScipyCatalog(BaseCatalog):
                 if unload:
                     # data will be written as feather file and loaded on demand
                     kwargs["cachefile"] = os.path.join(
-                        cache_directory, f"patch_{patch_id:.0f}.feather")
+                        cache_directory, f"patch_{patch_id:.0f}.feather"
+                    )
                 patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
                 limits.update(patch.redshifts)
                 if unload:
@@ -215,21 +229,20 @@ class ScipyCatalog(BaseCatalog):
         # also store the patch properties
         if unload:
             centers = self.centers.to_3d()
-            property_df = pd.DataFrame(dict(
-                ids=self.ids,
-                x=centers.x,
-                y=centers.y,
-                z=centers.z,
-                r=self.radii.values))
+            property_df = pd.DataFrame(
+                dict(
+                    ids=self.ids,
+                    x=centers.x,
+                    y=centers.y,
+                    z=centers.z,
+                    r=self.radii.values,
+                )
+            )
             fpath = os.path.join(cache_directory, "properties.feather")
             property_df.to_feather(fpath)
 
     @classmethod
-    def from_cache(
-        cls,
-        cache_directory: str,
-        progress: bool = False
-    ) -> ScipyCatalog:
+    def from_cache(cls, cache_directory: str, progress: bool = False) -> ScipyCatalog:
         super().from_cache(cache_directory)
         new = cls.__new__(cls)
         # load the patch properties
@@ -256,9 +269,8 @@ class ScipyCatalog(BaseCatalog):
                 continue
             patch_id = patch_id_from_path(path)
             patch = PatchCatalog.from_cached(
-                abspath,
-                center=centers.get(patch_id),
-                radius=radii.get(patch_id))
+                abspath, center=centers.get(patch_id), radius=radii.get(patch_id)
+            )
             limits.update(patch.redshifts)
             patch.unload()
             new._patches[patch.id] = patch
@@ -319,8 +331,7 @@ class ScipyCatalog(BaseCatalog):
     @property
     def redshifts(self) -> NDArray[np.float_] | None:
         if self.has_redshifts():
-            return np.concatenate([
-                patch.redshifts for patch in iter(self)])
+            return np.concatenate([patch.redshifts for patch in iter(self)])
         else:
             return None
 
@@ -336,8 +347,7 @@ class ScipyCatalog(BaseCatalog):
 
     @property
     def patch(self) -> NDArray[np.int_]:
-        return np.concatenate([
-            np.full(len(patch), patch.id) for patch in iter(self)])
+        return np.concatenate([np.full(len(patch), patch.id) for patch in iter(self)])
 
     def get_min_redshift(self) -> float:
         return self._zmin
@@ -354,13 +364,11 @@ class ScipyCatalog(BaseCatalog):
 
     @property
     def centers(self) -> CoordSky:
-        return CoordSky.from_coords(
-            [self._patches[pid].center for pid in self.ids])
+        return CoordSky.from_coords([self._patches[pid].center for pid in self.ids])
 
     @property
     def radii(self) -> DistSky:
-        return DistSky.from_dists(
-            [self._patches[pid].radius for pid in self.ids])
+        return DistSky.from_dists([self._patches[pid].radius for pid in self.ids])
 
     def correlate(
         self,
@@ -368,7 +376,7 @@ class ScipyCatalog(BaseCatalog):
         binned: bool,
         other: ScipyCatalog | None = None,
         linkage: PatchLinkage | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> NormalisedCounts | dict[str, NormalisedCounts]:
         super().correlate(config, binned, other, linkage)
 
@@ -383,13 +391,16 @@ class ScipyCatalog(BaseCatalog):
                     cat_for_linkage = other
             linkage = PatchLinkage.from_setup(config, cat_for_linkage)
         patch1_list, patch2_list = linkage.get_patches(
-            self, other, config.backend.crosspatch)
+            self, other, config.backend.crosspatch
+        )
         n_jobs = len(patch1_list)
 
         # prepare job scheduling
         pool = ParallelHelper(
             function=_count_pairs_thread,
-            n_items=n_jobs, num_threads=config.backend.get_threads(n_jobs))
+            n_items=n_jobs,
+            num_threads=config.backend.get_threads(n_jobs),
+        )
         # patch1: PatchCatalog
         pool.add_iterable(patch1_list)
         # patch2: PatchCatalog
@@ -417,7 +428,8 @@ class ScipyCatalog(BaseCatalog):
         totals2 = np.zeros((n_patches, n_bins))
         count_dict = {
             str(scale): PatchedCount.zeros(binning, n_patches, auto=auto)
-            for scale in config.scales}
+            for scale in config.scales
+        }
         # run the scheduled tasks
         result_iter = pool.iter_result(ordered=False)
         # add an optional progress bar
@@ -435,17 +447,15 @@ class ScipyCatalog(BaseCatalog):
                 count_dict[scale_key].set_measurement((id1, id2), count)
 
         total = PatchedTotal(  # not scale-dependent
-            binning=binning,
-            totals1=totals1,
-            totals2=totals2,
-            auto=auto)
+            binning=binning, totals1=totals1, totals2=totals2, auto=auto
+        )
         return pack_results(count_dict, total)
 
     def true_redshifts(
         self,
         config: Configuration,
         sampling_config: ResamplingConfig | None = None,
-        progress: bool = False
+        progress: bool = False,
     ) -> HistData:
         super().true_redshifts(config)
         if sampling_config is None:
@@ -457,7 +467,8 @@ class ScipyCatalog(BaseCatalog):
         pool = ParallelHelper(
             function=_histogram_thread,
             n_items=self.n_patches,
-            num_threads=config.backend.get_threads(self.n_patches))
+            num_threads=config.backend.get_threads(self.n_patches),
+        )
         # patch: PatchCatalog
         pool.add_iterable(self._patches.values())
         # NDArray[np.float_]
@@ -476,4 +487,5 @@ class ScipyCatalog(BaseCatalog):
             binning=binning,
             data=nz_data,
             samples=nz_samp,
-            method=sampling_config.method)
+            method=sampling_config.method,
+        )

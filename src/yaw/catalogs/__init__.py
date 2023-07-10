@@ -9,10 +9,12 @@ common catalogue interface and must be subclasses by all other backend
 implementations.
 """
 
+# make backends available and make sure they are registered
 from yaw.catalogs.catalog import BaseCatalog
 from yaw.catalogs.factory import NewCatalog
 from yaw.catalogs.linkage import PatchLinkage
 
-# make backends available and make sure they are registered
-from yaw.catalogs import scipy, treecorr
+# isort: split
+from yaw.catalogs import scipy, treecorr  # noqa
 
+__all__ = ["BaseCatalog", "NewCatalog", "PatchLinkage"]

@@ -6,16 +6,18 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from yaw.config import OPTIONS
+from yaw.config import default as DEFAULT
+from yaw.config.utils import ConfigError
 from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import BinFactory, TypeCosmology
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
 
-from yaw.config import default as DEFAULT, OPTIONS
-from yaw.config.utils import ConfigError
-
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
+
+__all__ = ["AutoBinningConfig", "ManualBinningConfig", "make_binning_config"]
 
 
 logger = logging.getLogger(__name__)
@@ -49,9 +51,12 @@ class ManualBinningConfig(BaseBinningConfig):
 
     zbins: NDArray[np.float_] = field(
         metadata=Parameter(
-            type=float, nargs="*",
+            type=float,
+            nargs="*",
             help="list of custom redshift bin edges, if provided, other "
-                 "binning parameters are omitted, method is set to 'manual'"))
+            "binning parameters are omitted, method is set to 'manual'",
+        )
+    )
 
     def __post_init__(self) -> None:
         if len(self.zbins) < 2:
@@ -85,11 +90,7 @@ class ManualBinningConfig(BaseBinningConfig):
         return len(self.zbins) - 1
 
     @classmethod
-    def from_dict(
-        cls,
-        the_dict: dict[str, Any],
-        **kwargs
-    ) -> ManualBinningConfig:
+    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> ManualBinningConfig:
         return cls(np.asarray(the_dict["zbins"]))
 
     def to_dict(self) -> dict[str, Any]:
@@ -99,7 +100,7 @@ class ManualBinningConfig(BaseBinningConfig):
 @dataclass(frozen=True, repr=False)
 class AutoBinningConfig(BaseBinningConfig):
     """Configuration that generates a redshift binning.
-    
+
     To generate a redshift binning use the :meth:`generate` method.
 
     Args:
@@ -115,9 +116,10 @@ class AutoBinningConfig(BaseBinningConfig):
         default=DEFAULT.Configuration.binning.method,
         metadata=Parameter(
             choices=OPTIONS.binning,
-            help="redshift binning method, 'logspace' means equal size in "
-                 "log(1+z)",
-            default_text="(default: %(default)s)"))
+            help="redshift binning method, 'logspace' means equal size in log(1+z)",
+            default_text="(default: %(default)s)",
+        ),
+    )
     """Method used to create redshift binning, see
     :obj:`~yaw.config.options.Options.binning`."""
     zmin: float = field(
@@ -125,14 +127,18 @@ class AutoBinningConfig(BaseBinningConfig):
         metadata=Parameter(
             type=float,
             help="lower redshift limit",
-            default_text="(default: %(default)s)"))
+            default_text="(default: %(default)s)",
+        ),
+    )
     """Lowest redshift bin edge."""
     zmax: float = field(
         init=False,
         metadata=Parameter(
             type=float,
             help="upper redshift limit",
-            default_text="(default: %(default)s)"))
+            default_text="(default: %(default)s)",
+        ),
+    )
     """Highest redshift bin edge."""
     zbin_num: int = field(
         default=DEFAULT.AutoBinning.zbin_num,
@@ -140,13 +146,15 @@ class AutoBinningConfig(BaseBinningConfig):
         metadata=Parameter(
             type=int,
             help="number of redshift bins",
-            default_text="(default: %(default)s)"))
+            default_text="(default: %(default)s)",
+        ),
+    )
     """Number of redshift bins."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "zmin", float(self.zbins[0]))
         object.__setattr__(self, "zmax", float(self.zbins[-1]))
-        object.__setattr__(self, "zbin_num", len(self.zbins)-1)
+        object.__setattr__(self, "zbin_num", len(self.zbins) - 1)
 
     @classmethod
     def generate(
@@ -155,7 +163,7 @@ class AutoBinningConfig(BaseBinningConfig):
         zmax: float,
         zbin_num: int = DEFAULT.AutoBinning.zbin_num,
         method: str = DEFAULT.AutoBinning.method,
-        cosmology: TypeCosmology | None = None
+        cosmology: TypeCosmology | None = None,
     ) -> AutoBinningConfig:
         """Generate a new redshift binning configuration.
 
@@ -177,7 +185,7 @@ class AutoBinningConfig(BaseBinningConfig):
             cosmology (:obj:`astropy.cosmology.FLRW`, :obj:`~yaw.core.cosmology.CustomCosmology`, optional):
                 Cosmological model used for distance calculations. For a custom
                 model, refer to :mod:`yaw.core.cosmology`.
-        
+
         Returns:
             :obj:`AutoBinningConfig`
         """
@@ -193,13 +201,11 @@ class AutoBinningConfig(BaseBinningConfig):
 
     @classmethod
     def from_dict(
-        cls,
-        the_dict: dict[str, Any],
-        cosmology: TypeCosmology | None = None
+        cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
     ) -> AutoBinningConfig:
         """Create a class instance from a dictionary representation of the
         minimally required data.
-        
+
         Args:
             the_dict (:obj:`dict`):
                 Dictionary containing the data.
@@ -211,23 +217,18 @@ class AutoBinningConfig(BaseBinningConfig):
 
     def to_dict(self) -> dict[str, Any]:
         return dict(
-            zmin=self.zmin,
-            zmax=self.zmax,
-            zbin_num=self.zbin_num,
-            method=self.method)
+            zmin=self.zmin, zmax=self.zmax, zbin_num=self.zbin_num, method=self.method
+        )
 
 
 def warn_binning_args_ignored(
-    zmin: bool | float | None,
-    zmax: bool | float | None,
-    zbin_num: bool | int | None
+    zmin: bool | float | None, zmax: bool | float | None, zbin_num: bool | int | None
 ) -> None:
     """Issue a warning that values are ignored, if any of the arguments is
     set."""
     # NOTE: NotSet is also False
     if zmin or zmax or zbin_num:
-        logger.warn(
-            "'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
+        logger.warn("'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
 
 
 def make_binning_config(
@@ -248,12 +249,11 @@ def make_binning_config(
     """
     auto_args_set = (zmin is not None, zmax is not None, zbin_num is not None)
     if zbins is None and not all(auto_args_set):
-        raise ConfigError(
-            "either 'zbins' or 'zmin', 'zmax', 'zbin_num' are required")
+        raise ConfigError("either 'zbins' or 'zmin', 'zmax', 'zbin_num' are required")
     elif all(auto_args_set):
         return AutoBinningConfig.generate(
-            zmin=zmin, zmax=zmax, zbin_num=zbin_num,
-            method=method, cosmology=cosmology)
+            zmin=zmin, zmax=zmax, zbin_num=zbin_num, method=method, cosmology=cosmology
+        )
     else:
         warn_binning_args_ignored(*auto_args_set)
         return ManualBinningConfig(zbins)

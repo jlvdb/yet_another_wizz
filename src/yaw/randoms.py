@@ -10,14 +10,17 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.core.parallel import POOL_SHARE, ParallelHelper, SharedArray
 from yaw.core.logging import TimedLog
+from yaw.core.parallel import POOL_SHARE, ParallelHelper, SharedArray
 from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
+
     from yaw.catalogs import BaseCatalog
+
+__all__ = ["UniformRandoms"]
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +46,7 @@ class UniformRandoms:
         ra_max: float,
         dec_min: float,
         dec_max: float,
-        seed: int = 12345
+        seed: int = 12345,
     ) -> None:
         """Create a new generator for a the given footprint.
 
@@ -64,11 +67,7 @@ class UniformRandoms:
         self.rng = np.random.SeedSequence(seed)
 
     @classmethod
-    def from_catalog(
-        cls,
-        cat: BaseCatalog,
-        seed: int = 12345
-    ) -> UniformRandoms:
+    def from_catalog(cls, cat: BaseCatalog, seed: int = 12345) -> UniformRandoms:
         """Create a new generator with a rectangular footprint obtained from the
         coordinate range of a given data catalogue.
 
@@ -84,12 +83,12 @@ class UniformRandoms:
             np.rad2deg(cat.ra.max()),
             np.rad2deg(cat.dec.min()),
             np.rad2deg(cat.dec.max()),
-            seed=seed)
+            seed=seed,
+        )
 
     @staticmethod
     def sky2cylinder(
-        ra: float | NDArray[np.float_],
-        dec: float | NDArray[np.float_]
+        ra: float | NDArray[np.float_], dec: float | NDArray[np.float_]
     ) -> NDArray:
         """Conversion from spherical to cylindrical coordinates.
 
@@ -98,7 +97,7 @@ class UniformRandoms:
                 Right ascension(s) to convert to cylindrical coordinates.
             dec (:obj:`float`, :obj:`NDArray`):
                 Right ascension(s) to convert to cylindrical coordinates.
-        
+
         Returns:
             :obj:`NDArray`:
                 Array with of points in cylindrical coordinates of shape
@@ -107,11 +106,10 @@ class UniformRandoms:
         x = np.deg2rad(ra)
         y = np.sin(np.deg2rad(dec))
         return np.transpose([x, y])
- 
+
     @staticmethod
     def cylinder2sky(
-        x: float | NDArray[np.float_],
-        y: float | NDArray[np.float_]
+        x: float | NDArray[np.float_], y: float | NDArray[np.float_]
     ) -> float | NDArray[np.float_]:
         """Conversion from cylindrical to spherical coordinates.
 
@@ -120,7 +118,7 @@ class UniformRandoms:
                 `x`-coordinate(s) to convert to spherical coordinates.
             y (:obj:`float`, :obj:`NDArray`):
                 `y`-coordinate(s) to convert to spherical coordinates.
-        
+
         Returns:
             :obj:`NDArray`:
                 Array with of points in spherical coordinates of shape `(N, 2)`.
@@ -134,7 +132,7 @@ class UniformRandoms:
         size: int,
         names: list[str, str] | None = None,
         draw_from: dict[str, NDArray] | None = None,
-        n_threads: int = 1
+        n_threads: int = 1,
     ) -> DataFrame:
         """Generate new random points.
 
@@ -156,11 +154,11 @@ class UniformRandoms:
             n_threads (:obj:`int`, optional):
                 Generate data in parallel using subprocesses, default is
                 parallel processing disabled.
-                
+
                 .. deprecated:: 2.3.2
                     No performance gain observed. May be removed in a future
                     version.
-        
+
         Returns:
             :obj:`pandas.DataFrame`:
                 Data frame with uniform random coordinates and optionally
@@ -171,21 +169,22 @@ class UniformRandoms:
             n_threads = 1
         seeds = self.rng.spawn(n_threads)
         # distribute load
-        idx_break = np.linspace(0, size, n_threads+1).astype(np.int_)
+        idx_break = np.linspace(0, size, n_threads + 1).astype(np.int_)
         start = idx_break[:-1]
         end = idx_break[1:]
 
         # create output arrays
         shares = dict(
-            ra=SharedArray.empty((size,), "f8"),
-            dec=SharedArray.empty((size,), "f8"))
+            ra=SharedArray.empty((size,), "f8"), dec=SharedArray.empty((size,), "f8")
+        )
         if draw_from is not None:
             shares["in"] = {
-                key: SharedArray.from_numpy(array)
-                for key, array in draw_from.items()}
+                key: SharedArray.from_numpy(array) for key, array in draw_from.items()
+            }
             shares["out"] = {
                 key: SharedArray.empty((size,), array.dtype)
-                for key, array in draw_from.items()}
+                for key, array in draw_from.items()
+            }
         if names is None:
             names = ["ra", "dec"]
 
@@ -200,9 +199,12 @@ class UniformRandoms:
                 pool.add_iterable(end)
                 pool.result()  # output direclty pasted into shared arrays
                 # convert to dataframe
-                rand = pd.DataFrame({
-                    names[0]: pool.shares["ra"].to_numpy(copy=True),
-                    names[1]: pool.shares["dec"].to_numpy(copy=True)})
+                rand = pd.DataFrame(
+                    {
+                        names[0]: pool.shares["ra"].to_numpy(copy=True),
+                        names[1]: pool.shares["dec"].to_numpy(copy=True),
+                    }
+                )
                 if draw_from is not None:
                     for col, data in pool.shares["out"].items():
                         rand[col] = data.to_numpy(copy=True)
@@ -211,10 +213,7 @@ class UniformRandoms:
 
 
 def _generate_uniform_randoms(
-    inst: UniformRandoms,
-    seed: np.random.SeedSequence,
-    start: int,
-    end: int
+    inst: UniformRandoms, seed: np.random.SeedSequence, start: int, end: int
 ) -> int:
     rng = np.random.default_rng(seed)
     size = end - start
@@ -236,8 +235,7 @@ def _generate_uniform_randoms(
                 N = len(data)
             else:
                 if len(data) != N:
-                    raise ValueError(
-                        "length of columns to draw from does not match")
+                    raise ValueError("length of columns to draw from does not match")
         draw_idx = rng.integers(0, N, size=size)
         # draw and insert data
         for col, data in POOL_SHARE["in"].items():

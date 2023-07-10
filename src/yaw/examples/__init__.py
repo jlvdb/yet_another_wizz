@@ -10,6 +10,15 @@ from pathlib import Path
 
 import yaw
 
+__all__ = [
+    "w_sp",
+    "w_ss",
+    "w_pp",
+    "normalised_counts",
+    "patched_count",
+    "patched_total",
+]
+
 
 _path = Path(__file__).parent
 

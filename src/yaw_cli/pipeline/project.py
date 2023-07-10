@@ -13,14 +13,18 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from yaw import __version__
-from yaw.config import Configuration, default as DEFAULT
-from yaw.config.utils import parse_section_error 
+from yaw.config import Configuration
+from yaw.config import default as DEFAULT
+from yaw.config.utils import parse_section_error
 from yaw.core.abc import DictRepresentation
 from yaw.core.utils import TypePathStr
-
 from yaw_cli.pipeline.data import InputManager
 from yaw_cli.pipeline.directories import (
-    CacheDirectory, CountsDirectory, EstimateDirectory, TrueDirectory)
+    CacheDirectory,
+    CountsDirectory,
+    EstimateDirectory,
+    TrueDirectory,
+)
 from yaw_cli.pipeline.logger import get_logger
 from yaw_cli.pipeline.processing import DataProcessor, PostProcessor
 from yaw_cli.pipeline.tasks import TaskManager
@@ -47,10 +51,7 @@ def check_version(version: str) -> None:
             raise SetupError(msg)
 
 
-def compress_config(
-    config: dict[str, Any],
-    default: dict[str, Any]
-) -> dict[str, Any]:
+def compress_config(config: dict[str, Any], default: dict[str, Any]) -> dict[str, Any]:
     compressed = dict(**config)
     for key, value in config.items():
         if key in default:
@@ -66,10 +67,7 @@ def compress_config(
     return compressed
 
 
-def write_setup_file(
-    path: TypePathStr,
-    setup_dict: dict[str, Any]
-) -> None:
+def write_setup_file(path: TypePathStr, setup_dict: dict[str, Any]) -> None:
     logger.debug("writing setup file")
     setup_dict = {k: v for k, v in setup_dict.items()}
     setup_dict["_version"] = __version__
@@ -108,8 +106,7 @@ def load_setup_as_dict(setup_file: TypePathStr) -> dict[str, Any]:
         try:
             return yaml.safe_load(f.read())
         except Exception as e:
-            raise SetupError(
-                f"parsing the setup file '{setup_file}' failed") from e
+            raise SetupError(f"parsing the setup file '{setup_file}' failed") from e
 
 
 def load_config_from_setup(setup_file: TypePathStr) -> Configuration:
@@ -123,6 +120,7 @@ def parse_config_from_setup(setup_dict: dict[str, Any]) -> Configuration:
         return Configuration.from_dict(setup_dict["configuration"])
     except KeyError as e:
         parse_section_error(e, "configuration", SetupError)
+
 
 @dataclass(frozen=True)
 class ProjectState:
@@ -139,18 +137,17 @@ class ProjectState:
 
 
 class YawDirectory(DictRepresentation):
-
     _tasks: TaskManager
 
     def __init__(self, path: TypePathStr) -> None:
         self._path = Path(path).expanduser()
         if not self.path.exists():
-            raise FileNotFoundError(
-                f"project directory '{self.path}' does not exist")
+            raise FileNotFoundError(f"project directory '{self.path}' does not exist")
         if not self.setup_file.exists():
             raise FileNotFoundError(
                 f"not a {self.__class__.__name__}, setup file "
-                f"'{self.setup_file}' does not exist")
+                f"'{self.setup_file}' does not exist"
+            )
         if not self.log_file.exists():
             logger.info(f"setting up log file '{self.log_file}'")
         else:
@@ -171,7 +168,8 @@ class YawDirectory(DictRepresentation):
         fh = logging.FileHandler(self.log_file, mode="a")
         fh.setLevel(logging.DEBUG)
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         fh.setFormatter(formatter)
         logger.addHandler(fh)
 
@@ -184,7 +182,8 @@ class YawDirectory(DictRepresentation):
             self.setup_write()
 
     @abstractproperty
-    def setup_file(self) -> Path: pass
+    def setup_file(self) -> Path:
+        pass
 
     def setup_write(self) -> None:
         write_setup_file(self.setup_file, self.to_dict())
@@ -255,7 +254,8 @@ class YawDirectory(DictRepresentation):
             has_w_pp_cf=has_w_pp_cf,
             has_nz_cc=has_nz_cc,
             has_nz_ref=true_dir.has_reference,
-            has_nz_true=true_dir.has_unknown)
+            has_nz_true=true_dir.has_unknown,
+        )
 
     @property
     def processor(self) -> PostProcessor:
@@ -281,19 +281,14 @@ class YawDirectory(DictRepresentation):
     def counts_path(self) -> Path:
         return self.path.joinpath("paircounts")
 
-    def get_counts_dir(
-        self,
-        scale_key: str,
-        create: bool = False
-    ) -> CountsDirectory:
+    def get_counts_dir(self, scale_key: str, create: bool = False) -> CountsDirectory:
         path = self.counts_path.joinpath(scale_key)
         if create:
             path.mkdir(exist_ok=True)
         return CountsDirectory(path)
 
     def iter_counts(
-        self,
-        create: bool = False
+        self, create: bool = False
     ) -> Iterator[tuple[str, CountsDirectory]]:
         for scale in self.iter_scales():
             counts = self.get_counts_dir(scale, create=create)
@@ -304,10 +299,7 @@ class YawDirectory(DictRepresentation):
         return self.path.joinpath("estimate")
 
     def get_estimate_dir(
-        self,
-        scale_key: str,
-        tag: str = "fid",
-        create: bool = False
+        self, scale_key: str, tag: str = "fid", create: bool = False
     ) -> EstimateDirectory:
         path = self.estimate_path.joinpath(scale_key, tag)
         if create:
@@ -326,9 +318,7 @@ class YawDirectory(DictRepresentation):
             yield tag
 
     def iter_estimate(
-        self,
-        create: bool = False,
-        tag: str = DEFAULT.NotSet
+        self, create: bool = False, tag: str = DEFAULT.NotSet
     ) -> Iterator[tuple[tuple[str, str], EstimateDirectory]]:
         if tag is DEFAULT.NotSet:
             tag_iter = self.iter_tags()
@@ -339,10 +329,7 @@ class YawDirectory(DictRepresentation):
                 est = self.get_estimate_dir(scale, tag, create=create)
                 yield (scale, tag), est
 
-    def get_true_dir(
-        self,
-        create: bool = False
-    ) -> TrueDirectory:
+    def get_true_dir(self, create: bool = False) -> TrueDirectory:
         path = self.path.joinpath("true")
         if create:
             path.mkdir(exist_ok=True)
@@ -353,14 +340,15 @@ class YawDirectory(DictRepresentation):
         return self._tasks
 
     @abstractmethod
-    def get_bin_indices(self) -> set[int]: pass
+    def get_bin_indices(self) -> set[int]:
+        pass
 
     @abstractproperty
-    def n_bins(self) -> int: pass
+    def n_bins(self) -> int:
+        pass
 
 
 class ProjectDirectory(YawDirectory):
-
     @classmethod
     def create(
         cls,
@@ -368,7 +356,7 @@ class ProjectDirectory(YawDirectory):
         config: Configuration,
         n_patches: int | None = None,
         cachepath: TypePathStr | None = None,
-        backend: str = DEFAULT.backend
+        backend: str = DEFAULT.backend,
     ) -> ProjectDirectory:
         logger.info(f"creating new project at '{path}'")
         data = dict()
@@ -378,18 +366,11 @@ class ProjectDirectory(YawDirectory):
             data["cachepath"] = cachepath
         if backend != DEFAULT.backend:
             data["backend"] = backend
-        setup_dict = dict(
-            configuration=config.to_dict(),
-            data=data,
-            tasks=[])
+        setup_dict = dict(configuration=config.to_dict(), data=data, tasks=[])
         return cls.from_dict(setup_dict, path=path)
 
     @classmethod
-    def from_setup(
-        cls,
-        path: TypePathStr,
-        setup_file: TypePathStr
-    ) -> ProjectDirectory:
+    def from_setup(cls, path: TypePathStr, setup_file: TypePathStr) -> ProjectDirectory:
         new = cls.__new__(cls)  # access to path attributes
         new._path = Path(path).expanduser()
         new._path.mkdir(parents=True, exist_ok=False)
@@ -424,11 +405,13 @@ class ProjectDirectory(YawDirectory):
     def to_dict(self) -> dict[str, Any]:
         # strip default values from config
         configuration = compress_config(
-            self._config.to_dict(), DEFAULT.Configuration.__dict__)
+            self._config.to_dict(), DEFAULT.Configuration.__dict__
+        )
         setup = dict(
             configuration=configuration,
             data=self._inputs.to_dict(),
-            tasks=self._tasks.history_to_list())
+            tasks=self._tasks.history_to_list(),
+        )
         # cache: if default location set to None. Reason: if cloning setup,
         # original cache would be used (unless manually overridden)
         if setup["data"]["cachepath"] == str(self.default_cache_path):
@@ -450,26 +433,17 @@ class ProjectDirectory(YawDirectory):
     def get_cache_dir(self) -> CacheDirectory:
         return self.inputs.get_cache()
 
-    def set_reference(
-        self,
-        data: Input,
-        rand: Input | None = None
-    ) -> None:
+    def set_reference(self, data: Input, rand: Input | None = None) -> None:
         if rand is not None:
-            logger.debug(
-                f"registering reference random catalog '{rand.filepath}'")
+            logger.debug(f"registering reference random catalog '{rand.filepath}'")
         self._inputs.set_reference(data, rand)
-    
-    def add_unknown(
-        self,
-        bin_idx: int,
-        data: Input,
-        rand: Input | None = None
-    ) -> None:
+
+    def add_unknown(self, bin_idx: int, data: Input, rand: Input | None = None) -> None:
         if rand is not None:
             logger.debug(
                 f"registering unknown bin {bin_idx} random catalog "
-                f"'{rand.filepath}'")
+                f"'{rand.filepath}'"
+            )
         self._inputs.add_unknown(bin_idx, data, rand)
 
     def get_bin_indices(self) -> set[int]:

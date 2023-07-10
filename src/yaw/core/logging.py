@@ -9,6 +9,8 @@ from datetime import timedelta
 from timeit import default_timer
 from typing import Callable
 
+__all__ = ["LogCustomWarning", "TimedLog"]
+
 
 class LogCustomWarning:
     """Context wrapper that temporarily redirects warnings to a logger."""
@@ -17,7 +19,7 @@ class LogCustomWarning:
         self,
         logger: logging.Logger,
         alt_message: str | None = None,
-        ignore: bool = True
+        ignore: bool = True,
     ):
         """Instead of showing the warning through the :func:`warnings.warn`
         machinery, write the message as warning to the provided logger.
@@ -55,7 +57,7 @@ class LogCustomWarning:
 class TimedLog:
     """Context wrapper that measures the elapsed time and emits a log message on
     exit.
-    
+
     Emits a log in the format ``{message} - done {elapsed time}``.
 
     Args:
@@ -65,11 +67,7 @@ class TimedLog:
             The log message body.
     """
 
-    def __init__(
-        self,
-        logging_callback: Callable,
-        msg: str | None = None
-    ) -> None:
+    def __init__(self, logging_callback: Callable, msg: str | None = None) -> None:
         self.callback = logging_callback
         self.msg = msg
 

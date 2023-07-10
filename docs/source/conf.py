@@ -7,11 +7,13 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 import os
+
 try:
     try:  # user has installed the package
         import yaw
     except ImportError:  # try local package location
         import sys
+
         sys.path.insert(0, os.path.abspath("../../src"))
         import yaw
 except ImportError as e:
@@ -36,7 +38,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
-    "sphinx.ext.mathjax"
+    "sphinx.ext.mathjax",
 ]
 
 templates_path = ["_templates"]
@@ -54,6 +56,7 @@ copybutton_line_continuation_character = "\\"
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
+pypi = "https://pypi.org/project/yet_another_wizz"
 html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
@@ -72,11 +75,10 @@ html_theme_options = {
     },
     "pygment_light_style": "xcode",
     "pygment_dark_style": "github-dark",
-    "announcement": "<p>Stable release now available on <a href='https://pypi.org/project/yet_another_wizz/'>PyPI</a>!</p>"
+    "announcement": f"<p>Now available on <a href='{pypi}/'>PyPI</a>!</p>",
 }
 html_sidebars = {
-    "**": [
-        "search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
+    "**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
 }
 html_context = {
     "default_mode": "auto",
@@ -87,6 +89,7 @@ html_context = {
 # generate a changelog file with dropdown sections
 ver_strs = []
 ver_texts = []
+ver_text = []
 with open("../../CHANGELOG.rst") as f:
     for line in f.readlines():
         if line.startswith("Version"):
@@ -102,9 +105,9 @@ with open("changes.rst", "w") as f:
     f.write("Change log\n==========\n\n")
     for i, (ver_str, ver_text) in enumerate(zip(ver_strs, ver_texts)):
         f.write(f".. dropdown:: Version {ver_str}\n")
-        f.write(f"    :class-title: h5\n")
+        f.write("    :class-title: h5\n")
         if i == 0:
-            f.write(f"    :open:\n")
+            f.write("    :open:\n")
         for line in ver_text:
             f.write(f"    {line}")
 
@@ -126,7 +129,16 @@ if not os.path.exists(path):
         f.write(setup_default)
 
 for sub in (
-    "", "init", "cross", "auto", "ztrue", "cache", "merge", "zcc", "plot", "run"
+    "",
+    "init",
+    "cross",
+    "auto",
+    "ztrue",
+    "cache",
+    "merge",
+    "zcc",
+    "plot",
+    "run",
 ):
     path = f"user_guide/cmd/yaw_help_{sub}.txt"
     if not os.path.exists(path):
