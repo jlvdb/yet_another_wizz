@@ -58,7 +58,7 @@ itself, e.g.:
 
         >>> config.scales.rmin, config.scales.rmin
         (100.0, 1000.0)
-        
+
         >>> new = config.modify(rmin=200, rmax=2000)
         >>> new.scales.rmin, new.scales.rmax
         (200.0, 2000.0)
@@ -144,5 +144,3 @@ model, make sure to implemented it as subclass of
 
         def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike:
             return my_comoving_transverse_distance(z)
-
-

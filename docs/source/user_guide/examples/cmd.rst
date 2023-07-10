@@ -104,7 +104,7 @@ most important ones are:
 The first file is a YAML configuration file which records all configuration,
 inputs and tasks applied, which :ref:`makes this run reproducable<yaw_run>`.
 
-The ``estimate`` directory contains the check plots of the redshift estimate and 
+The ``estimate`` directory contains the check plots of the redshift estimate and
 the reference sample autocorrelation function, which is a proxy for the galaxy
 bias. The data products are stored in ``kpc100t100/fid``, the default name for
 our choice of scales. They are named ``n_cc_0.dat`` (redshifts estimate) and
