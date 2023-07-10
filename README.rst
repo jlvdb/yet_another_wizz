@@ -1,8 +1,8 @@
 yet_another_wizz
 ================
 
-.. image:: https://badge.fury.io/py/yet-another-wizz.svg
-    :target: https://badge.fury.io/py/yet-another-wizz
+.. image:: https://img.shields.io/pypi/v/yet_another_wizz?logo=pypi&logoColor=blue
+    :target: https://pypi.org/project/yet_another_wizz/
 .. image:: https://readthedocs.org/projects/yet-another-wizz/badge/?version=latest
     :target: https://yet-another-wizz.readthedocs.io/en/latest/?badge=latest
 .. image:: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml/badge.svg
