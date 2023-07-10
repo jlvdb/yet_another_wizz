@@ -37,7 +37,7 @@ from yaw.deprecated import (
 from yaw.randoms import UniformRandoms
 from yaw.redshifts import HistData, RedshiftData
 
-__version__ = "2.5.post0"
+__version__ = "2.5.1"
 
 __all__ = [
     "NewCatalog",

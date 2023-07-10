@@ -2,6 +2,17 @@ Change log
 ==========
 
 
+Version 2.5.1
+-------------
+
+Moved the command line client to an independent repository to avoid issues with
+the global version number for both python backend and client. Updated the docs
+accordingly
+
+The new package client package is available at PyPI and
+https://github.com/jlvdb/yet_another_wizz_cli.git
+
+
 Version 2.5.post0
 -----------------
 
