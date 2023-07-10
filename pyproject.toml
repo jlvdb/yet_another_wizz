@@ -22,29 +22,28 @@ dependencies = [
     "typing_extensions;python_version<'3.10'",
     "more_itertools;python_version<'3.10'",
     "deprecated",
-    "numpy",
-    "pyarrow",
     "tqdm",
-    "h5py",
+    "numpy",
     "pandas",
     "astropandas>=1.2.1",
     "scipy",
     "astropy",
+    "pyarrow",
+    "h5py",
+    "pyyaml",
     "treecorr>=4.3",
-    "emcee",
     "matplotlib",
 ]
 
-[project.scripts]
-yaw_cli = "yaw_cli:__main__"
-
 [project.optional-dependencies]
 plot = ["matplotlib"]
+# note that yaw_cli is currently necessary to generate the joint docs
 docs = [
     "sphinx",
     "sphinx-design",
     "sphinx-copybutton",
     "pydata-sphinx-theme",
+    "yet_another_wizz_cli>=1.2.1",
 ]
 test = [
     "typing_extensions",

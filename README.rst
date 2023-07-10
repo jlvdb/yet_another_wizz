@@ -1,16 +1,19 @@
 yet_another_wizz
 ================
 
+.. image:: https://badge.fury.io/py/yet-another-wizz.svg
+    :target: https://badge.fury.io/py/yet-another-wizz
+.. image:: https://readthedocs.org/projects/yet-another-wizz/badge/?version=latest
+    :target: https://yet-another-wizz.readthedocs.io/en/latest/?badge=latest
 .. image:: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml/badge.svg
     :target: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml
 .. image:: https://codecov.io/gh/jlvdb/yet_another_wizz/branch/main/graph/badge.svg?token=PC41ME2AR8
     :target: https://codecov.io/gh/jlvdb/yet_another_wizz
-.. image:: https://readthedocs.org/projects/yet-another-wizz/badge/?version=latest
-    :target: https://yet-another-wizz.readthedocs.io/en/latest/?badge=latest
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
     :target: https://github.com/psf/black
 .. image:: https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336
     :target: https://pycqa.github.io/isort/
+
 
 *yet_another_wizz* is a python package to efficiently compute cross-correlation
 redshifts, also know as clustering redshifts and is hosted on github:
@@ -38,8 +41,9 @@ The yet_another_wizz package can be installed directly with pip::
 
     pip install yet_another_wizz
 
-This will install the python package ``yaw``, as well as the ``yaw_cli``
-executable command line tool.
+This will install the python library ``yaw``. There also exists a separate
+command line tool called *yet_another_wizz_cli* (``yaw_cli``) that is available
+at PyPI and `github <https://github.com/jlvdb/yet_another_wizz_cli>`_.
 
 
 Usage
@@ -47,12 +51,12 @@ Usage
 
 There are two main ways to use yet_another_wizz,
 
-- the ``yaw_cli`` commmand line tool and
-- the python package ``yaw`` directly.
+- the python library ``yaw`` itself and
+- the (separate) ``yaw_cli`` commmand line tool.
 
 Most people will probably get started with the command line tool, which should
 cover all necessary tasks for a standard clustering redshift calibration. For
-custom solutions, use the python package. A basic example as well as the API
+custom solutions, use the python library. A basic example as well as the API
 reference can be found in the official documentation.
 
 
