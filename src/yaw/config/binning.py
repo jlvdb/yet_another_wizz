@@ -116,7 +116,7 @@ class AutoBinningConfig(BaseBinningConfig):
         default=DEFAULT.Configuration.binning.method,
         metadata=Parameter(
             choices=OPTIONS.binning,
-            help="redshift binning method, 'logspace' means equal size in " "log(1+z)",
+            help="redshift binning method, 'logspace' means equal size in log(1+z)",
             default_text="(default: %(default)s)",
         ),
     )

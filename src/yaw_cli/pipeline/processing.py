@@ -378,7 +378,7 @@ class DataProcessor(PostProcessor):
                 randoms = dict(ref_rand=self._ref_rand)
             else:
                 raise MissingCatalogError(
-                    "crosscorrelation requires either reference or " "unknown randoms"
+                    "crosscorrelation requires either reference or unknown randoms"
                 )
         cfs = yaw.crosscorrelate(
             self.config,

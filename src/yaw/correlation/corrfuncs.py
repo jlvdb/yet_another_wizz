@@ -668,7 +668,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         # select the correct estimator
         cls = options[estimator]
         logger.debug(
-            f"selecting estimator '{cls.short}' from " f"{'/'.join(self.estimators)}"
+            f"selecting estimator '{cls.short}' from {'/'.join(self.estimators)}"
         )
         return cls
 

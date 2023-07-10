@@ -180,7 +180,7 @@ class RedshiftData(CorrData):
                 ref_data.is_compatible(cross_data, require=True)
             except ValueError as e:
                 raise ValueError(
-                    "'ref_corr' correlation data is not compatible with " "'cross_data'"
+                    "'ref_corr' correlation data is not compatible with 'cross_data'"
                 ) from e
             w_ss_data = ref_data.data
             w_ss_samp = ref_data.samples
@@ -496,9 +496,7 @@ class HistData(RedshiftData):
     @property
     def _cov_desc(self) -> str:
         n = "normalised " if self.density else " "
-        return (
-            f"# n(z) {n}histogram covariance matrix " f"({self.n_bins}x{self.n_bins})"
-        )
+        return f"# n(z) {n}histogram covariance matrix ({self.n_bins}x{self.n_bins})"
 
     @classmethod
     def from_files(cls, path_prefix: TypePathStr) -> HistData:

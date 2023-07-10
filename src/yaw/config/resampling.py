@@ -59,7 +59,7 @@ class ResamplingConfig(DictRepresentation):
         if self.method not in OPTIONS.method:
             opts = ", ".join(f"'{s}'" for s in OPTIONS.method)
             raise ConfigError(
-                f"invalid resampling method '{self.method}', " f"must either of {opts}"
+                f"invalid resampling method '{self.method}', must either of {opts}"
             )
 
     @property

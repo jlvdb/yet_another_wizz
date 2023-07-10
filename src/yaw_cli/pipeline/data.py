@@ -378,7 +378,7 @@ class InputManager(DictRepresentation):
 
     def add_unknown(self, bin_idx: int, data: Input, rand: Input | None = None) -> None:
         logger.debug(
-            f"registering unknown bin {bin_idx} data catalog " f"'{data.filepath}'"
+            f"registering unknown bin {bin_idx} data catalog '{data.filepath}'"
         )
         # make sure the bin indices will remain aligned
         if self._unknown["rand"] is not None and rand is None:
@@ -391,7 +391,7 @@ class InputManager(DictRepresentation):
             and rand is not None
         ):
             raise ValueError(
-                "no previous randoms configured, cannot add randoms for " "current bin"
+                "no previous randoms configured, cannot add randoms for current bin"
             )
         # set the data
         for key, value in zip(["data", "rand"], [data, rand]):

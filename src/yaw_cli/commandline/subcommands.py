@@ -104,20 +104,20 @@ class CommandInit(SubCommand):
 
         group_scales = parser.add_argument_group(
             title="measurement scales",
-            description="sets the physical scales for the correlation " "measurements",
+            description="sets the physical scales for the correlation measurements",
         )
         populate_parser(yaw_config.ScalesConfig, group_scales)
 
         group_bins = parser.add_argument_group(
             title="redshift binning",
-            description="sets the redshift binning for the clustering " "redshifts",
+            description="sets the redshift binning for the clustering redshifts",
         )
         populate_parser(yaw_config.AutoBinningConfig, group_bins)
         populate_parser(yaw_config.ManualBinningConfig, group_bins)
 
         group_backend = parser.add_argument_group(
             title="backend specific",
-            description="parameters that are specific to pair counting " "backends",
+            description="parameters that are specific to pair counting backends",
         )
         populate_parser(yaw_config.BackendConfig, group_backend)
 
@@ -457,7 +457,7 @@ class CommandRun(SubCommand):
             required=True,
             type=utils.Path_exists,
             metavar="<file>",
-            help="setup YAML file with configuration, input files and " "task list",
+            help="setup YAML file with configuration, input files and task list",
         )
         group_setup.add_argument(
             "--config-from",
