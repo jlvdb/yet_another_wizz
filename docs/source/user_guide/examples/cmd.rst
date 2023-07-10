@@ -3,9 +3,10 @@
 Using the command tools
 -----------------------
 
-The command line tools operate on a single, unified
-:ref:`output directory<projdir>`, in which configuration, input and output data
-are organised automatically.
+The command line tool ``yaw_cli``
+(`separate installation required <https://github.com/jlvdb/yet_another_wizz_cli>`_)
+operate on a single, unified :ref:`output directory<projdir>`, in which
+configuration, input and output data are organised automatically.
 
 
 Creating a new project
