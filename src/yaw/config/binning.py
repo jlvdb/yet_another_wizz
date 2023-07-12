@@ -223,7 +223,8 @@ class AutoBinningConfig(BaseBinningConfig):
 
 
 def make_binning_config(
-    cosmology: TypeCosmology | str | None,
+    *,
+    cosmology: TypeCosmology | str | None = None,
     zmin: float | None = None,
     zmax: float | None = None,
     zbin_num: int = DEFAULT.AutoBinning.zbin_num,

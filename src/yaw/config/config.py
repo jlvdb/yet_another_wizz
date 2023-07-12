@@ -309,7 +309,7 @@ class Configuration(DictRepresentation):
             utils.parse_section_error(e, "scales")
         try:
             binning_conf = config.pop("binning")
-            binning = make_binning_config(cosmology, **binning_conf)
+            binning = make_binning_config(cosmology=cosmology, **binning_conf)
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "binning")
         # parse the optional subgroups
