@@ -15,7 +15,6 @@ from yaw.config.binning import (
     AutoBinningConfig,
     ManualBinningConfig,
     make_binning_config,
-    warn_binning_args_ignored,
 )
 from yaw.config.scales import ScalesConfig
 from yaw.core.abc import DictRepresentation
@@ -235,17 +234,15 @@ class Configuration(DictRepresentation):
             config["scales"]["rbin_num"] = rbin_num
         # AutoBinningConfig /  ManualBinningConfig
         if zbins is not DEFAULT.NotSet:
-            warn_binning_args_ignored(zmin, zmax, zbin_num)
             config["binning"]["zbins"] = zbins
-        else:
-            if zmin is not DEFAULT.NotSet:
-                config["binning"]["zmin"] = zmin
-            if zmax is not DEFAULT.NotSet:
-                config["binning"]["zmax"] = zmax
-            if zbin_num is not DEFAULT.NotSet:
-                config["binning"]["zbin_num"] = zbin_num
-            if method is not DEFAULT.NotSet:
-                config["binning"]["method"] = method
+        if zmin is not DEFAULT.NotSet:
+            config["binning"]["zmin"] = zmin
+        if zmax is not DEFAULT.NotSet:
+            config["binning"]["zmax"] = zmax
+        if zbin_num is not DEFAULT.NotSet:
+            config["binning"]["zbin_num"] = zbin_num
+        if method is not DEFAULT.NotSet:
+            config["binning"]["method"] = method
         # BackendConfig
         if thread_num is not DEFAULT.NotSet:
             config["backend"]["thread_num"] = thread_num

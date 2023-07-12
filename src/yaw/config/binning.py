@@ -53,8 +53,7 @@ class ManualBinningConfig(BaseBinningConfig):
         metadata=Parameter(
             type=float,
             nargs="*",
-            help="list of custom redshift bin edges, if provided, other "
-            "binning parameters are omitted, method is set to 'manual'",
+            help="list of custom redshift bin edges, if method is set to 'manual'",
         )
     )
 
@@ -189,6 +188,8 @@ class AutoBinningConfig(BaseBinningConfig):
         Returns:
             :obj:`AutoBinningConfig`
         """
+        if not isinstance(method, str):
+            raise ValueError("'method' must a string")
         zbins = BinFactory(zmin, zmax, zbin_num, cosmology).get(method)
         return cls(zbins, method)
 
@@ -221,22 +222,12 @@ class AutoBinningConfig(BaseBinningConfig):
         )
 
 
-def warn_binning_args_ignored(
-    zmin: bool | float | None, zmax: bool | float | None, zbin_num: bool | int | None
-) -> None:
-    """Issue a warning that values are ignored, if any of the arguments is
-    set."""
-    # NOTE: NotSet is also False
-    if zmin or zmax or zbin_num:
-        logger.warning("'zmin', 'zmax', 'nbins' are ignored if 'zbins' is provided")
-
-
 def make_binning_config(
     cosmology: TypeCosmology | str | None,
     zmin: float | None = None,
     zmax: float | None = None,
-    zbin_num: int | None = None,
-    method: str | None = None,
+    zbin_num: int = DEFAULT.AutoBinning.zbin_num,
+    method: str = DEFAULT.AutoBinning.method,
     zbins: NDArray[np.float_] | None = None,
 ) -> ManualBinningConfig | AutoBinningConfig:
     """
@@ -247,13 +238,17 @@ def make_binning_config(
     :obj:`AutoBinningConfig`. Issues a warning if any argument is set but
     ignored by the returned configuration instance.
     """
-    auto_args_set = (zmin is not None, zmax is not None, zbin_num is not None)
-    if zbins is None and not all(auto_args_set):
-        raise ConfigError("either 'zbins' or 'zmin', 'zmax', 'zbin_num' are required")
+    auto_args_set = (zmin is not None, zmax is not None)
+    manual_args_set = (zbins is not None,)
+    if not all(manual_args_set) and not all(auto_args_set):
+        raise ConfigError("either 'zbins' or 'zmin' and 'zmax' are required")
     elif all(auto_args_set):
+        if all(manual_args_set):
+            logger.warning(
+                "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
+            )
         return AutoBinningConfig.generate(
             zmin=zmin, zmax=zmax, zbin_num=zbin_num, method=method, cosmology=cosmology
         )
     else:
-        warn_binning_args_ignored(*auto_args_set)
         return ManualBinningConfig(zbins)
