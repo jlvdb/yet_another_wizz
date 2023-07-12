@@ -90,7 +90,9 @@ class ManualBinningConfig(BaseBinningConfig):
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> ManualBinningConfig:
-        return cls(np.asarray(the_dict["zbins"]))
+        new_dict = {key: val for key, val in the_dict.items()}
+        zbins = new_dict.pop("zbins")
+        return cls(np.asarray(zbins), **new_dict)
 
     def to_dict(self) -> dict[str, Any]:
         return dict(method=self.method, zbins=self.zbins.tolist())
