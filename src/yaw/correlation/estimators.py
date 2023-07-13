@@ -22,7 +22,7 @@ True
 
 from __future__ import annotations
 
-import logging
+import warnings
 from abc import ABC, abstractclassmethod, abstractproperty
 from typing import TYPE_CHECKING
 
@@ -38,9 +38,6 @@ __all__ = [
     "Hamilton",
     "LandySzalay",
 ]
-
-
-logger = logging.getLogger(__name__)
 
 
 class EstimatorError(Exception):
@@ -159,7 +156,7 @@ class CorrelationEstimator(ABC):
     def _warn_enum_zero(cls, counts: NDArray):
         """Raise a warning if any value in the expression enumerator is zero"""
         if np.any(counts == 0.0):
-            logger.warning(f"estimator {cls.short} encontered zeros in enumerator")
+            warnings.warn(f"estimator {cls.short} encontered zeros in enumerator")
 
     @abstractclassmethod
     def eval(

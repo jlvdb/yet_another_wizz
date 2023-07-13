@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -18,9 +18,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
 __all__ = ["AutoBinningConfig", "ManualBinningConfig", "make_binning_config"]
-
-
-logger = logging.getLogger(__name__)
 
 
 class BaseBinningConfig(DictRepresentation):
@@ -247,7 +244,7 @@ def make_binning_config(
         raise ConfigError("either 'zbins' or 'zmin' and 'zmax' are required")
     elif all(auto_args_set):
         if all(manual_args_set):
-            logger.warning(
+            warnings.warn(
                 "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
             )
         return AutoBinningConfig.generate(
