@@ -67,7 +67,10 @@ def parse_section_error(
     entirely missing subsection in the configuration.
     """
     msg = exception.args[0]
-    item = msg.split("'")[1]
+    try:
+        item = msg.split("'")[1]
+    except IndexError:
+        item = msg
     if isinstance(exception, TypeError):
         if "__init__() got an unexpected keyword argument" in msg:
             raise reraise(
