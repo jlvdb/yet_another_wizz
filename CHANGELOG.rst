@@ -2,6 +2,18 @@ Change log
 ==========
 
 
+Version 2.5.3
+-------------
+
+- Emit warnings instead of sending to the python logging interface where they
+  might be unnoticed.
+- Added unittest for ``yaw.core.config``.
+
+.. rubric:: Bug fixes
+
+- Added missing default values when creating binning configurations.
+
+
 Version 2.5.2
 -------------
 
