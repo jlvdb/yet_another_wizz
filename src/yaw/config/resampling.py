@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -73,8 +73,10 @@ class ResamplingConfig(DictRepresentation):
         """
         if self._resampling_idx is None:
             return None
-        else:
+        elif self.method == "bootstrap":
             return self._resampling_idx.shape[1]
+        else:
+            return self._resampling_idx.shape[0]
 
     def _generate_bootstrap(self, n_patches: int) -> NDArray[np.int_]:
         """Generate samples for the bootstrap resampling method.
@@ -134,6 +136,12 @@ class ResamplingConfig(DictRepresentation):
 
     def to_dict(self) -> dict[str, Any]:
         if self.method == "jackknife":
-            return dict(method=self.method, crosspatch=self.crosspatch)
+            return dict(
+                method=self.method,
+                crosspatch=self.crosspatch,
+                global_norm=self.global_norm,
+            )
         else:
-            return super().to_dict()
+            the_dict = asdict(self)
+            the_dict.pop("_resampling_idx")
+            return the_dict
