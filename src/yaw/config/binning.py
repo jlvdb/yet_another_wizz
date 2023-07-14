@@ -193,9 +193,9 @@ class AutoBinningConfig(BaseBinningConfig):
         return cls(zbins, method)
 
     def __eq__(self, other: ManualBinningConfig) -> bool:
-        if not array_equal(self.zbins, other.zbins):
-            return False
         if self.method != other.method:
+            return False
+        if not array_equal(self.zbins, other.zbins):
             return False
         return True
 

@@ -42,6 +42,14 @@ class TestManualBinningConfig:
         assert manual_binning.method == "manual"
         with raises(ValueError):
             ManualBinningConfig(bin_edges[::-1])
+        with raises(ConfigError):
+            ManualBinningConfig([0.1])
+
+    def test_eq(self, bin_edges, manual_binning):
+        new_bins = bin_edges.copy()
+        new_bins[-1] = 2.0
+        assert ManualBinningConfig(bin_edges) == manual_binning
+        assert not ManualBinningConfig(new_bins) == manual_binning
 
     def test_properties(self, bin_props, manual_binning):
         assert manual_binning.zmin == bin_props["zmin"]
@@ -70,6 +78,19 @@ class TestAutoBinningConfig:
         assert binning.method == method
         npt.assert_array_equal(bin_edges, auto_binning.zbins)
 
+    def test_eq(self, bin_props, auto_binning):
+        assert AutoBinningConfig.generate(**bin_props) == auto_binning
+        new_props = dict(
+            zmin=bin_props["zmin"] + 0.001,
+            zmax=bin_props["zmax"] + 0.001,
+            zbin_num=bin_props["zbin_num"] + 1,
+            method="comoving",
+        )
+        for param, value in new_props.items():
+            the_props = {k: v for k, v in bin_props.items()}
+            the_props[param] = value
+            assert not AutoBinningConfig.generate(**the_props) == auto_binning
+
     def test_properties(self, bin_props, auto_binning):
         assert auto_binning.zmin == bin_props["zmin"]
         assert auto_binning.zmax == bin_props["zmax"]
@@ -90,6 +111,10 @@ class TestAutoBinningConfig:
 
 def test_make_binning_config_auto(bin_props, auto_binning):
     assert auto_binning == make_binning_config(**bin_props)
+    the_props = {k: v for k, v in bin_props.items()}
+    the_props["method"] = None
+    with raises(ValueError):
+        make_binning_config(**the_props)
 
 
 def test_make_binning_config_manual(bin_edges, manual_binning):
