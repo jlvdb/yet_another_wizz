@@ -1,0 +1,9 @@
+[run]
+omit = src/yaw/examples/*
+
+[report]
+exclude_lines =
+    # Skip any pass lines such as may be used for @abstractmethod
+    pass
+    # Have to re-enable the standard pragma
+    pragma: no cover

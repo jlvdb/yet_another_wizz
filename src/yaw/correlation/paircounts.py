@@ -161,12 +161,12 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
 
         The array 3-dimensional with shape (N, N, K), where N is the number of
         spatial patches, and K is the number of redshift bins."""
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def _sum(self, config: ResamplingConfig) -> NDArray:
         """Method that implements the sum over all patches."""
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
@@ -175,7 +175,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
 
         For N patches, draw N realisations by leaving out one of the N patches.
         """
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def _bootstrap(self, config: ResamplingConfig) -> NDArray:
@@ -185,7 +185,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         For N patches, draw M realisations each containing N randomly chosen
         patches.
         """
-        raise NotImplementedError
+        pass
 
     @deprecated(reason="renamed to CorrFunc.sample_sum", version="2.3.1")
     def get_sum(self, *args, **kwargs):
