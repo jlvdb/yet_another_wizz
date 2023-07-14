@@ -63,12 +63,16 @@ class BackendConfig(DictRepresentation):
     def get_threads(self, max=None) -> int:
         """Get the number of threads for parallel processing.
 
-        The value is capped at the number of logical cores available.
+        The value is capped at an optional maximum value.
+
+        Args:
+            max (:obj:`int`, optional):
+                Maximum number to return.
+
+        Returns:
+            :obj:`int`
         """
-        if self.thread_num is None:
-            thread_num = os.cpu_count()
-        else:
-            thread_num = self.thread_num
+        thread_num = self.thread_num
         if max is not None:
             if max < 1:
                 raise ValueError("'max' must be positive")
