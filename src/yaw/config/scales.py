@@ -37,10 +37,10 @@ class ScalesConfig(DictRepresentation):
     can be controlled by setting the number of bins.
 
     Args:
-        rmin (:obj:`float`, :obj:`Sequence[float]`):
+        rmin (:obj:`float`, :obj:`list[float]`):
             Single or multiple lower scale limits in kpc (angular diameter
             distance).
-        rmax (:obj:`float`, :obj:`Sequence[float]`):
+        rmax (:obj:`float`, :obj:`list[float]`):
             Single or multiple upper scale limits in kpc (angular diameter
             distance).
         rweight (:obj:`float`, optional):
@@ -50,7 +50,7 @@ class ScalesConfig(DictRepresentation):
             by separation.
     """
 
-    rmin: Sequence[float] | float = field(
+    rmin: list[float] | float = field(
         metadata=Parameter(
             type=float,
             nargs="*",
@@ -59,7 +59,7 @@ class ScalesConfig(DictRepresentation):
         )
     )
     """Lower scale limit(s) in kpc (angular diameter distance)."""
-    rmax: Sequence[float] | float = field(
+    rmax: list[float] | float = field(
         metadata=Parameter(
             type=float,
             nargs="*",
