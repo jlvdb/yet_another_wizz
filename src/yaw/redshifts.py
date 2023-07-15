@@ -137,7 +137,7 @@ class RedshiftData(CorrData):
         .. deprecated:: 2.3.2
             Renamed to :meth:`from_corrdata`.
         """
-        return cls.from_corrdata(*args, **kwargs)
+        return cls.from_corrdata(*args, **kwargs)  # pragma: no cover
 
     @classmethod
     def from_corrdata(
@@ -221,7 +221,7 @@ class RedshiftData(CorrData):
         .. deprecated:: 2.3.2
             Renamed to :meth:`from_corrfuncs`.
         """
-        return cls.from_corrfuncs(*args, **kwargs)
+        return cls.from_corrfuncs(*args, **kwargs)  # pragma: no cover
 
     @classmethod
     def from_corrfuncs(

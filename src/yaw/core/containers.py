@@ -185,9 +185,6 @@ class SampledValue(Generic[_Tscalar]):
         else:
             return False
 
-    def __ne__(self, other: object) -> bool:
-        return not self.__eq__(other)
-
     @property
     def n_samples(self) -> int:
         """Number of samples used for error estimate."""
@@ -307,9 +304,6 @@ class SampledData(BinnedQuantity):
             )
         else:
             return False
-
-    def __ne__(self, other: object) -> bool:
-        return not self.__eq__(other)
 
     def __add__(self, other: _Tdata) -> _Tdata:
         self.is_compatible(other, require=True)

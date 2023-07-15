@@ -306,7 +306,7 @@ class CorrData(SampledData):
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
         scale_by_dz: bool = False,
-    ) -> Axis:  # pragma: no cover
+    ) -> Axis:
         """Create a plot of the correlation data as a function of redshift.
 
         Create a new axis or plot to an existing one, add x-axis offsets, if
@@ -337,8 +337,8 @@ class CorrData(SampledData):
                 :obj:`dz`.
         """
         x = self.mids + xoffset
-        y = self.data
-        yerr = self.error
+        y = self.data.astype(np.float_)
+        yerr = self.error.astype(np.float_)
         if scale_by_dz:
             y *= self.dz
             yerr *= self.dz
@@ -514,9 +514,6 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 return False
         return True
 
-    def __neq__(self, other) -> bool:
-        return not self == other
-
     def __add__(self, other: CorrFunc) -> CorrFunc:
         # check that the pair counts are set consistently
         kinds = []
@@ -685,7 +682,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         .. deprecated:: 2.3.1
             Renamed to :meth:`sample`.
         """
-        return self.sample(*args, **kwargs)
+        return self.sample(*args, **kwargs)  # pragma: no cover
 
     def sample(
         self,

@@ -132,9 +132,6 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
                 return False
         return True
 
-    def __neq__(self, other) -> bool:
-        return not self == other
-
     @property
     def dtype(self) -> DTypeLike:
         """The numpy data type of the underlying data."""
@@ -193,7 +190,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         .. deprecated:: 2.3.1
             Renamed to :meth:`sample_sum`.
         """
-        return self.sample_sum(*args, **kwargs)
+        return self.sample_sum(*args, **kwargs)  # pragma: no cover
 
     def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         """Compute the sum of the data over all patches and samples thereof.
@@ -959,9 +956,6 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
             )
         else:
             return False
-
-    def __neq__(self, other) -> bool:
-        return not self == other
 
     def __add__(self, other: NormalisedCounts) -> NormalisedCounts:
         count = self.count + other.count
