@@ -209,6 +209,14 @@ class TestPatchedTotal:
         # just call once
         repr(pt)
 
+    @mark.skip
+    def test_eq(self):
+        assert 0
+
+    @mark.skip
+    def test_prod(self):
+        assert 0
+
     def test_array(self, patched_totals_full, patch_matrix_full):
         pt = patched_totals_full
         n_bins = pt.n_bins
@@ -246,6 +254,22 @@ class TestPatchedTotal:
         with raises(NotImplementedError):
             patched_totals_full.sample_sum(ResamplingConfig(method="bootstrap"))
 
+    @mark.skip
+    def test_bins(self):
+        assert 0
+
+    @mark.skip
+    def test_patches(self):
+        assert 0
+
+    @mark.skip
+    def test_concatenate_patches(self):
+        assert 0
+
+    @mark.skip
+    def test_concatenate_bins(self):
+        assert 0
+
 
 def patched_counts_from_matrix(binning, matrix, auto):
     n_bins = len(binning)
@@ -273,6 +297,10 @@ class TestPatchedCount:
             )  # not square
         # just call once
         repr(counts)
+
+    @mark.skip
+    def test_eq(self):
+        assert 0
 
     def test_keys_values(self, binning):
         n_bins = len(binning)
@@ -355,6 +383,34 @@ class TestPatchedCount:
         with raises(NotImplementedError):
             counts.sample_sum(ResamplingConfig(method="bootstrap"))
 
+    @mark.skip
+    def test_bins(self):
+        assert 0
+
+    @mark.skip
+    def test_patches(self):
+        assert 0
+
+    @mark.skip
+    def test_concatenate_patches(self):
+        assert 0
+
+    @mark.skip
+    def test_concatenate_bins(self):
+        assert 0
+
+    @mark.skip
+    def test_add(self):
+        assert 0
+
+    @mark.skip
+    def test_radd(self):
+        assert 0
+
+    @mark.skip
+    def test_mul(self):
+        assert 0
+
 
 @fixture
 def pair_count_result(patched_totals_full, patch_matrix_full):
@@ -387,6 +443,10 @@ class TestNormalisedCounts:
         # just call once
         repr(res)
 
+    @mark.skip
+    def test_eq(self):
+        assert 0
+
     def test_sample(self, pair_count_result, expect_matrix_full):
         config = ResamplingConfig(method="jackknife")
         result = pair_count_result.sample(config)
@@ -414,3 +474,40 @@ class TestNormalisedCounts:
             assert binA.left == binB.left
             assert binA.right == binB.right
         assert restored.total.auto == pair_count_result.total.auto
+
+    @mark.skip
+    def test_add(self):
+        assert 0
+
+    @mark.skip
+    def test_radd(self):
+        assert 0
+
+    @mark.skip
+    def test_mul(self):
+        assert 0
+
+    @mark.skip
+    def test_bins(self):
+        assert 0
+
+    @mark.skip
+    def test_patches(self):
+        assert 0
+
+    @mark.skip
+    def test_auto(self):
+        assert 0
+
+    @mark.skip
+    def test_concatenate_patches(self):
+        assert 0
+
+    @mark.skip
+    def test_concatenate_bins(self):
+        assert 0
+
+
+@mark.skip
+def test_pack_results(self):
+    assert 0
