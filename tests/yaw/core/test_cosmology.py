@@ -65,8 +65,9 @@ class TestBinFactory:
     def test_logspace(self):
         result = np.exp([1, 2, 3]) - 1.0
         factory = cosmology.BinFactory(result[0], result[-1], nbins=2)
-        npt.assert_array_equal(factory.logspace(), result)
-        npt.assert_array_equal(factory.get("logspace"), result)
+        # encountered machine precision issue on github actions
+        npt.assert_array_almost(factory.logspace(), result)
+        npt.assert_array_almost(factory.get("logspace"), result)
 
     def test_check(self):
         factory = cosmology.BinFactory(0.1, 0.2, nbins=9)
