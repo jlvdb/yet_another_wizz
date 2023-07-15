@@ -70,7 +70,7 @@ class Cts(ABC):
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Cts):
-            return False
+            return False  # pragma: no cover
         var1 = set(self._str.split("_"))
         var2 = set(other._str.split("_"))
         return not var1.isdisjoint(var2)
