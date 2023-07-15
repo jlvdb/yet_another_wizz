@@ -8,10 +8,18 @@ Version 2.5.3
 - Emit warnings instead of sending to the python logging interface where they
   might be unnoticed.
 - Added unittest for ``yaw.core.config``.
+- Added missing unittest for ``yaw.core.cosmology``.
+- Deprecated the ``Configuration.plot_scales`` method.
 
 .. rubric:: Bug fixes
 
 - Added missing default values when creating binning configurations.
+- Added missing checks for input parameters of configuration related classes.
+- Made the behaviour of ``Configuration.modify`` for different binning related
+  parameters consistent.
+- Fixed the ``ResamplingConfig.n_patches`` return values.
+- Corrected the parameters returned by ``ResamplingConfig.to_dict``.
+- Various other minor bug fixes in ``yaw.core.config``.
 
 
 Version 2.5.2
