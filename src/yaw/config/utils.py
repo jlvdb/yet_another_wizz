@@ -68,20 +68,21 @@ def parse_section_error(
     Covered cases are undefined key names, missing required key names or
     entirely missing subsection in the configuration.
     """
-    msg = exception.args[0]
-    try:
-        item = msg.split("'")[1]
-    except IndexError:
-        item = msg
-    if isinstance(exception, TypeError):
-        if "__init__() got an unexpected keyword argument" in msg:
-            raise reraise(
-                f"encountered unknown option '{item}' in section '{section}'"
-            ) from exception
-        elif "missing" in msg:
-            raise reraise(
-                f"missing option '{item}' in section '{section}'"
-            ) from exception
-    elif isinstance(exception, KeyError):
-        raise reraise(f"missing section '{section}'") from exception
+    if len(exception.args) > 0:
+        msg = exception.args[0]
+        try:
+            item = msg.split("'")[1]
+        except IndexError:
+            item = msg
+        if isinstance(exception, TypeError):
+            if "got an unexpected keyword argument" in msg:
+                raise reraise(
+                    f"encountered unknown option '{item}' in section '{section}'"
+                ) from exception
+            elif "missing" in msg:
+                raise reraise(
+                    f"missing option '{item}' in section '{section}'"
+                ) from exception
+        elif isinstance(exception, KeyError):
+            raise reraise(f"missing section '{section}'") from exception
     raise

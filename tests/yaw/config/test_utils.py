@@ -1,5 +1,5 @@
 from astropy.cosmology import FlatwCDM, Planck15
-from pytest import raises
+from pytest import mark, raises
 
 from yaw.config import utils
 from yaw.core.cosmology import CustomCosmology, get_default_cosmology
@@ -37,3 +37,20 @@ def test_parse_cosmology():
     with raises(utils.ConfigError):
         utils.parse_cosmology(123)
     assert utils.parse_cosmology(Planck15) == Planck15
+
+
+@mark.parametrize("exception", [KeyError, TypeError])
+def test_parse_section_error_propagates_unknown(exception):
+    with raises(exception):
+        try:
+            raise exception
+        except Exception as e:
+            utils.parse_section_error(e, "some_section")
+
+
+def test_parse_section_error_propagates_other_typeerror():
+    with raises(TypeError):
+        try:
+            raise TypeError("some error")
+        except Exception as e:
+            utils.parse_section_error(e, "some_section")
