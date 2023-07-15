@@ -19,7 +19,7 @@ from yaw.catalogs import PatchLinkage
 from yaw.config import OPTIONS, ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData
-from yaw.core.logging import LogCustomWarning, TimedLog
+from yaw.core.logging import TimedLog
 from yaw.core.utils import TypePathStr
 from yaw.core.utils import format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
@@ -106,10 +106,7 @@ class CorrData(SampledData):
     """Optional descriptive text for the contained data."""
 
     def __post_init__(self) -> None:
-        with LogCustomWarning(
-            logger, "invalid values encountered in correlation samples"
-        ):
-            super().__post_init__()
+        super().__post_init__()
 
     @classmethod
     def from_files(cls: Type[_Tdata], path_prefix: TypePathStr) -> _Tdata:

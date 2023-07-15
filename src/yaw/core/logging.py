@@ -3,55 +3,11 @@
 
 from __future__ import annotations
 
-import logging
-import warnings
 from datetime import timedelta
 from timeit import default_timer
 from typing import Callable
 
-__all__ = ["LogCustomWarning", "TimedLog"]
-
-
-class LogCustomWarning:
-    """Context wrapper that temporarily redirects warnings to a logger."""
-
-    def __init__(
-        self,
-        logger: logging.Logger,
-        alt_message: str | None = None,
-        ignore: bool = True,
-    ):
-        """Instead of showing the warning through the :func:`warnings.warning`
-        machinery, write the message as warning to the provided logger.
-
-        Args:
-            logger (:obj:`logging.Logger`):
-                The logger instance to which the warning is redirected.
-            alt_message (:obj:`str`, optional):
-                Replace the original message text with this value instead.
-            ignore (:obj:`bool`, optional):
-                Do not show warning with :func:`warnings.warning` (the default).
-        """
-        self._logger = logger
-        self._message = alt_message
-        self._ignore = ignore
-
-    def _process_warning(self, message, category, filename, lineno, *args):
-        if not self._ignore:
-            self._old_showwarning(message, category, filename, lineno, *args)
-        if self._message is not None:
-            message = self._message
-        else:
-            message = f"{category.__name__}: {message}"
-        self._logger.warning(message)
-
-    def __enter__(self) -> TimedLog:
-        self._old_showwarning = warnings.showwarning
-        warnings.showwarning = self._process_warning
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
-        warnings.showwarning = self._old_showwarning
+__all__ = ["TimedLog"]
 
 
 class TimedLog:

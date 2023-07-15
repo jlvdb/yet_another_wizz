@@ -17,7 +17,6 @@ known.
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -28,7 +27,7 @@ from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
 from yaw.core.containers import SampledValue
-from yaw.core.logging import LogCustomWarning, TimedLog
+from yaw.core.logging import TimedLog
 from yaw.core.math import rebin, shift_histogram
 from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrData
@@ -205,13 +204,8 @@ class RedshiftData(CorrData):
         N = cross_data.n_samples
         dzsq_data = cross_data.dz**2
         dzsq_samp = np.tile(dzsq_data, N).reshape((N, -1))
-        with LogCustomWarning(
-            logger, "invalid values encountered in redshift estimate"
-        ):
-            nz_data = w_sp_data / np.sqrt(dzsq_data * w_ss_data * w_pp_data)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            nz_samp = w_sp_samp / np.sqrt(dzsq_samp * w_ss_samp * w_pp_samp)
+        nz_data = w_sp_data / np.sqrt(dzsq_data * w_ss_data * w_pp_data)
+        nz_samp = w_sp_samp / np.sqrt(dzsq_samp * w_ss_samp * w_pp_samp)
         return cls(
             binning=cross_data.binning,
             data=nz_data,

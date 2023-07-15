@@ -53,7 +53,7 @@ class PatchedQuantity(ABC):
         Returns:
             :obj:`yaw.core.containers.Indexer`
         """
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def concatenate_patches(self: _Tpatched, *data: _Tpatched) -> _Tpatched:
@@ -77,7 +77,7 @@ class PatchedQuantity(ABC):
         Returns:
             New instance of this container with combined data.
         """
-        raise NotImplementedError
+        pass
 
 
 _Tbinned = TypeVar("_Tbinned", bound="BinnedQuantity")
@@ -86,13 +86,14 @@ _Tbinned = TypeVar("_Tbinned", bound="BinnedQuantity")
 class BinnedQuantity(ABC):
     """Base class for an object that has data organised in redshift bins."""
 
+    @abstractmethod
     def get_binning(self) -> IntervalIndex:
         """Get the underlying, exact redshift bin intervals.
 
         Returns:
             :obj:`pandas.IntervalIndex`
         """
-        raise NotImplementedError
+        pass
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -144,7 +145,7 @@ class BinnedQuantity(ABC):
         Returns:
             :obj:`yaw.core.containers.Indexer`
         """
-        raise NotImplementedError
+        pass
 
     def is_compatible(self: _Tbinned, other: _Tbinned, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
@@ -197,7 +198,7 @@ class BinnedQuantity(ABC):
         Returns:
             New instance of this container with combined data.
         """
-        raise NotImplementedError
+        pass
 
 
 def concatenate_bin_edges(*patched: BinnedQuantity) -> IntervalIndex:
@@ -237,7 +238,7 @@ class HDFSerializable(ABC):
         Returns:
             :obj:`HDFSerializablep`
         """
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def to_hdf(self, dest: h5py.Group) -> None:
@@ -247,7 +248,7 @@ class HDFSerializable(ABC):
             dest (:obj:`h5py.Group`):
                 Group in which the serialised data structures are created.
         """
-        raise NotImplementedError
+        pass
 
     @classmethod
     def from_file(cls: Type[_Thdf], path: TypePathStr) -> _Thdf:

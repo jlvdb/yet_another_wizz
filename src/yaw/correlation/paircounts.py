@@ -13,7 +13,6 @@ counts-to-total-objects and samples thereof.
 
 from __future__ import annotations
 
-import logging
 from abc import abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -38,7 +37,6 @@ from yaw.core.abc import (
     concatenate_bin_edges,
 )
 from yaw.core.containers import Indexer, PatchIDs, SampledData
-from yaw.core.logging import LogCustomWarning
 from yaw.core.math import apply_slice_ndim, outer_triu_sum
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -46,9 +44,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import IntervalIndex
 
 __all__ = ["PatchedTotal", "PatchedCount", "NormalisedCounts"]
-
-
-logger = logging.getLogger(__name__)
 
 _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 """default compression settings for :obj:`h5py.Dataset`."""
@@ -166,12 +161,12 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
 
         The array 3-dimensional with shape (N, N, K), where N is the number of
         spatial patches, and K is the number of redshift bins."""
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def _sum(self, config: ResamplingConfig) -> NDArray:
         """Method that implements the sum over all patches."""
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def _jackknife(self, config: ResamplingConfig, signal: NDArray) -> NDArray:
@@ -180,7 +175,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
 
         For N patches, draw N realisations by leaving out one of the N patches.
         """
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def _bootstrap(self, config: ResamplingConfig) -> NDArray:
@@ -190,7 +185,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         For N patches, draw M realisations each containing N randomly chosen
         patches.
         """
-        raise NotImplementedError
+        pass
 
     @deprecated(reason="renamed to CorrFunc.sample_sum", version="2.3.1")
     def get_sum(self, *args, **kwargs):
@@ -1038,15 +1033,12 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         """
         counts = self.count.sample_sum(config)
         totals = self.total.sample_sum(config)
-        with LogCustomWarning(
-            logger, "some patches contain no data after binning by redshift"
-        ):
-            samples = SampledData(
-                binning=self.get_binning(),
-                data=(counts.data / totals.data),
-                samples=(counts.samples / totals.samples),
-                method=config.method,
-            )
+        samples = SampledData(
+            binning=self.get_binning(),
+            data=(counts.data / totals.data),
+            samples=(counts.samples / totals.samples),
+            method=config.method,
+        )
         return samples
 
     @classmethod

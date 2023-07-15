@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, get_args
 
 import numpy as np
 import yaml
+from deprecated import deprecated
 
 from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
@@ -15,7 +16,6 @@ from yaw.config.binning import (
     AutoBinningConfig,
     ManualBinningConfig,
     make_binning_config,
-    warn_binning_args_ignored,
 )
 from yaw.config.scales import ScalesConfig
 from yaw.core.abc import DictRepresentation
@@ -33,6 +33,24 @@ __all__ = ["Configuration"]
 
 
 logger = logging.getLogger(__name__)
+
+
+def update_if_set(the_dict: dict, key: str, value: Any | DEFAULT.NotSet) -> None:
+    if value is not DEFAULT.NotSet:
+        the_dict[key] = value
+
+
+def update_auto_binning_if_set(
+    the_dict: dict,
+    zmin: float | None = DEFAULT.NotSet,
+    zmax: float | None = DEFAULT.NotSet,
+    zbin_num: int | None = DEFAULT.NotSet,
+    method: str | None = DEFAULT.NotSet,
+) -> None:
+    update_if_set(the_dict, "zmin", zmin)
+    update_if_set(the_dict, "zmax", zmax)
+    update_if_set(the_dict, "zbin_num", zbin_num)
+    update_if_set(the_dict, "method", method)
 
 
 @dataclass(frozen=True)
@@ -96,7 +114,7 @@ class Configuration(DictRepresentation):
         elif isinstance(self.cosmology, str):
             cosmology = utils.yaml_to_cosmology(self.cosmology)
         elif not isinstance(self.cosmology, get_args(TypeCosmology)):
-            which = ", ".join(get_args(TypeCosmology))
+            which = ", ".join(str(c) for c in get_args(TypeCosmology))
             raise utils.ConfigError(f"'cosmology' must be instance of: {which}")
         else:
             cosmology = self.cosmology
@@ -220,46 +238,53 @@ class Configuration(DictRepresentation):
         :obj:`~yaw.config.default.NotSet`.
         """
         config = self.to_dict()
+
+        # cosmology
         if cosmology is not DEFAULT.NotSet:
             if isinstance(cosmology, str):
                 cosmology = utils.yaml_to_cosmology(cosmology)
             config["cosmology"] = utils.cosmology_to_yaml(cosmology)
+
         # ScalesConfig
-        if rmin is not DEFAULT.NotSet:
-            config["scales"]["rmin"] = rmin
-        if rmax is not DEFAULT.NotSet:
-            config["scales"]["rmax"] = rmax
-        if rweight is not DEFAULT.NotSet:
-            config["scales"]["rweight"] = rweight
-        if rbin_num is not DEFAULT.NotSet:
-            config["scales"]["rbin_num"] = rbin_num
-        # AutoBinningConfig /  ManualBinningConfig
-        if zbins is not DEFAULT.NotSet:
-            warn_binning_args_ignored(zmin, zmax, zbin_num)
-            config["binning"]["zbins"] = zbins
-        else:
-            if zmin is not DEFAULT.NotSet:
-                config["binning"]["zmin"] = zmin
-            if zmax is not DEFAULT.NotSet:
-                config["binning"]["zmax"] = zmax
-            if zbin_num is not DEFAULT.NotSet:
-                config["binning"]["zbin_num"] = zbin_num
-            if method is not DEFAULT.NotSet:
-                config["binning"]["method"] = method
+        update_if_set(config["scales"], "rmin", rmin)
+        update_if_set(config["scales"], "rmax", rmax)
+        update_if_set(config["scales"], "rweight", rweight)
+        update_if_set(config["scales"], "rbin_num", rbin_num)
+
+        # AutoBinningConfig / ManualBinningConfig
+        if isinstance(self.binning, AutoBinningConfig):
+            if zbins is not DEFAULT.NotSet:
+                config["binning"] = dict(zbins=zbins)  # remove other params
+            else:
+                update_auto_binning_if_set(
+                    config["binning"], zmin, zmax, zbin_num, method
+                )
+        else:  # is ManualBinningConfig
+            if zbins is not DEFAULT.NotSet:
+                config["binning"]["zbins"] = zbins
+            else:
+                config["binning"] = dict()  # clear the binning parameters
+                update_auto_binning_if_set(
+                    config["binning"], zmin, zmax, zbin_num, method
+                )
+
         # BackendConfig
-        if thread_num is not DEFAULT.NotSet:
-            config["backend"]["thread_num"] = thread_num
-        if crosspatch is not DEFAULT.NotSet:
-            config["backend"]["crosspatch"] = crosspatch
-        if rbin_slop is not DEFAULT.NotSet:
-            config["backend"]["rbin_slop"] = rbin_slop
+        update_if_set(config["backend"], "thread_num", thread_num)
+        update_if_set(config["backend"], "crosspatch", crosspatch)
+        update_if_set(config["backend"], "rbin_slop", rbin_slop)
+
         return self.__class__.from_dict(config)
 
+    @deprecated(reason="no longer maintained", version="2.5.3")
     def plot_scales(
         self, catalog: BaseCatalog, log: bool = True, legend: bool = True
-    ) -> Figure:
+    ) -> Figure:  # pragma: no cover
         """Plot the configured correlation scales at different redshifts in
-        comparison to the size of patches in a data catalogue."""
+        comparison to the size of patches in a data catalogue.
+
+        .. deprecated:: 2.5.3
+            No longer maintained.
+        """
         import matplotlib.pyplot as plt
 
         fig, ax_scale = plt.subplots(1, 1)
@@ -312,7 +337,7 @@ class Configuration(DictRepresentation):
             utils.parse_section_error(e, "scales")
         try:
             binning_conf = config.pop("binning")
-            binning = make_binning_config(cosmology, **binning_conf)
+            binning = make_binning_config(cosmology=cosmology, **binning_conf)
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "binning")
         # parse the optional subgroups
