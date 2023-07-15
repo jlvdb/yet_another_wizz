@@ -1,4 +1,4 @@
-.. image:: docs/source/_static/logo-dark.svg
+.. image:: https://raw.githubusercontent.com/jlvdb/yet_another_wizz/main/docs/source/_static/logo-dark.png
     :width: 1000
     :alt: yet_another_wizz
 
