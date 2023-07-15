@@ -45,6 +45,9 @@ class TestManualBinningConfig:
         with raises(ConfigError):
             ManualBinningConfig([0.1])
 
+    def test_pass_repr(self, manual_binning):
+        str(manual_binning)
+
     def test_eq(self, bin_edges, manual_binning):
         new_bins = bin_edges.copy()
         new_bins[-1] = 2.0
@@ -77,6 +80,9 @@ class TestAutoBinningConfig:
         npt.assert_array_equal(bin_edges, binning.zbins)
         assert binning.method == method
         npt.assert_array_equal(bin_edges, auto_binning.zbins)
+
+    def test_pass_repr(self, auto_binning):
+        str(auto_binning)
 
     def test_eq(self, bin_props, auto_binning):
         assert AutoBinningConfig.generate(**bin_props) == auto_binning
