@@ -166,7 +166,7 @@ class CorrelationEstimator(ABC):
 
         Should call :meth:`_warn_enum_zero` to raise warnings on zero-division.
         """
-        NotImplemented
+        pass
 
 
 class PeeblesHauser(CorrelationEstimator):

@@ -56,7 +56,7 @@ class CustomCosmology(ABC):
             :obj:`astropy.units.Quantity`:
                 Comoving distance in Mpc to each input redshift.
         """
-        NotImplemented
+        pass
 
     @abstractmethod
     def comoving_transverse_distance(self, z: ArrayLike) -> ArrayLike:
@@ -75,7 +75,7 @@ class CustomCosmology(ABC):
             :obj:`astropy.units.Quantity`:
                 Comoving transverse distance in Mpc at each input redshift.
         """
-        NotImplemented
+        pass
 
 
 TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
