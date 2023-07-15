@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, get_args
 
 import numpy as np
 import yaml
+from deprecated import deprecated
 
 from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
@@ -252,11 +253,16 @@ class Configuration(DictRepresentation):
             config["backend"]["rbin_slop"] = rbin_slop
         return self.__class__.from_dict(config)
 
+    @deprecated(reason="no longer maintained", version="2.5.3")
     def plot_scales(
         self, catalog: BaseCatalog, log: bool = True, legend: bool = True
-    ) -> Figure:
+    ) -> Figure:  # pragma: no cover
         """Plot the configured correlation scales at different redshifts in
-        comparison to the size of patches in a data catalogue."""
+        comparison to the size of patches in a data catalogue.
+
+        .. deprecated:: 2.5.3
+            No longer maintained.
+        """
         import matplotlib.pyplot as plt
 
         fig, ax_scale = plt.subplots(1, 1)
