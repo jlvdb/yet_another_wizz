@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.testing as npt
-from pytest import fixture, raises
+from pytest import fixture, raises, warns
 
 from yaw.config.binning import (
     AutoBinningConfig,
@@ -128,9 +128,10 @@ def test_make_binning_config_manual(bin_edges, manual_binning):
 
 
 def test_make_binning_config_all_arg(bin_edges, bin_props, manual_binning):
-    assert isinstance(
-        make_binning_config(zbins=bin_edges, **bin_props), AutoBinningConfig
-    )
+    with warns(UserWarning, match="ignored"):
+        assert isinstance(
+            make_binning_config(zbins=bin_edges, **bin_props), AutoBinningConfig
+        )
 
 
 def test_make_binning_config_no_z_arg(bin_edges, bin_props, auto_binning):

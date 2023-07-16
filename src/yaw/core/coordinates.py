@@ -160,8 +160,9 @@ class Coord3D(Coordinate):
         r_d2 = np.sqrt(x * x + y * y)
         r_d3 = np.sqrt(x * x + y * y + z * z)
         # transform
-        ra = np.arccos(x / r_d2) * sgn(y) % (2.0 * np.pi)
-        ra[np.isnan(ra)] = 0.0
+        x_normed = np.ones_like(x)  # fallback for zero-division, arccos(1)=0.0
+        np.divide(x, r_d2, where=r_d2 > 0.0, out=x_normed)
+        ra = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
         dec = np.arcsin(self.z / r_d3)
         return CoordSky(ra, dec)
 

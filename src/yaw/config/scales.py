@@ -155,4 +155,4 @@ class ScalesConfig(DictRepresentation):
             >>> [str(scale) for scale in ScalesConfig]
             ...
         """
-        return [str(scale) for scale in self]
+        return [str(scale) for scale in self]  # pragma: no cover

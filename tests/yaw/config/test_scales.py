@@ -31,9 +31,12 @@ class TestScalesConfig:
         with raises(ConfigError):
             ScalesConfig(100, [100])
 
-    def test_dict_keys(self, default_scales):
-        scales = set(default_scales.dict_keys())
-        assert scales == set(str(scale) for scale in default_scales)
+    def test_iter(self, default_scales):
+        scales = set(
+            Scale(rmin, rmax)
+            for rmin, rmax in zip(default_scales.rmin, default_scales.rmax)
+        )
+        assert scales == set(default_scales)
 
     def test_getitem(self, default_scales):
         assert default_scales[1] == Scale(
