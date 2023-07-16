@@ -853,6 +853,11 @@ def add_corrfuncs(
             The combined correlation function after summing the pairs.
     """
     if weights is None:
+        return np.sum(corrfuncs)
+    else:
+        return np.dot(corrfuncs, weights)
+
+    if weights is None:
         weights = [1.0] * len(corrfuncs)
     else:
         if len(corrfuncs) != len(weights):
