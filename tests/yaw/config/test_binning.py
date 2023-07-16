@@ -53,6 +53,7 @@ class TestManualBinningConfig:
         new_bins[-1] = 2.0
         assert ManualBinningConfig(bin_edges) == manual_binning
         assert not ManualBinningConfig(new_bins) == manual_binning
+        assert manual_binning != 1
 
     def test_properties(self, bin_props, manual_binning):
         assert manual_binning.zmin == bin_props["zmin"]
@@ -96,6 +97,7 @@ class TestAutoBinningConfig:
             the_props = {k: v for k, v in bin_props.items()}
             the_props[param] = value
             assert AutoBinningConfig.generate(**the_props) != auto_binning
+        assert manual_binning != 1
 
     def test_properties(self, bin_props, auto_binning):
         assert auto_binning.zmin == bin_props["zmin"]

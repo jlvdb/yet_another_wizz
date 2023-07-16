@@ -48,3 +48,4 @@ class TestScalesConfig:
         assert scales != ScalesConfig(scales.rmin[:1], scales.rmax[:1])
         assert scales != ScalesConfig(scales.rmin, scales.rmax, rweight=1.0)
         assert scales != ScalesConfig(scales.rmin, scales.rmax, rbin_num=11)
+        assert scales != 1

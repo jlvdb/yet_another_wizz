@@ -310,6 +310,10 @@ class TestDist3D:
         for a, b in zip(dists, dists.values):
             assert a == coordinates.Dist3D(b)
 
+    def test_eq(self):
+        assert coordinates.Dist3D(1.0) == coordinates.Dist3D(1.0)
+        assert coordinates.Dist3D(1.0) != 1.0
+
     def test_ordering(self):
         assert coordinates.Dist3D(1.0) == coordinates.Dist3D(1.0)
         assert coordinates.Dist3D(1.0) <= coordinates.Dist3D(1.0)
@@ -319,6 +323,8 @@ class TestDist3D:
         assert coordinates.Dist3D(2.0) > coordinates.Dist3D(1.0)
         # test array
         assert np.all(coordinates.Dist3D([0.0, 1.0]) == coordinates.Dist3D([0.0, 1.0]))
+        with raises(TypeError):
+            coordinates.Dist3D(1.0) < 1.0
 
     def test_add_sub(self):
         dist_90deg = coordinates.Dist3D(np.sqrt(2.0))  # don't add linearly
@@ -335,6 +341,11 @@ class TestDist3D:
         )
         # wrap around unit sphere
         assert coordinates.Dist3D(2.0) + dist_90deg == dist_90deg
+        # test incompatible types
+        with raises(TypeError):
+            coordinates.Dist3D(1.0) + 1.0
+        with raises(TypeError):
+            coordinates.Dist3D(1.0) - 1.0
 
     def test_conversion(self):
         assert coordinates.Dist3D(0.0).to_sky() == coordinates.DistSky(0.0)
@@ -373,6 +384,13 @@ class TestDistSky:
         npt.assert_equal(dists.values, [0.1, 1.0])
         dists.__repr__()
         f"{coordinates.DistSky(2.0)}"
+
+    def test_add_sub(self):
+        # test incompatible types
+        with raises(TypeError):
+            coordinates.DistSky(1.0) + 1.0
+        with raises(TypeError):
+            coordinates.DistSky(1.0) - 1.0
 
     def test_conversion(self):
         # see also TestDist3D.test_to_sky

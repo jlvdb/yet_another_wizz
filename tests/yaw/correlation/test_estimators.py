@@ -11,6 +11,7 @@ class TestCts:
     def test_equivalents(self):
         assert estimators.CtsDR() == estimators.CtsMix()
         assert estimators.CtsRD() == estimators.CtsMix()
+        assert estimators.CtsDD() != 1.0
 
     def test_repr_checks(self):
         repr(estimators.CtsMix())
