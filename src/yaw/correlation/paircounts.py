@@ -122,15 +122,8 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         return f"{string}, {shape=})"
 
     @abstractmethod
-    def __eq__(self, other) -> bool:
-        if isinstance(other, self.__class__):
-            if self.n_bins != other.n_bins:
-                return False
-            elif self.n_patches != other.n_patches:
-                return False
-            elif not (self.get_binning() == other.get_binning()).all():
-                return False
-        return True
+    def __eq__(self, other: object) -> bool:
+        pass
 
     @property
     def dtype(self) -> DTypeLike:
@@ -325,14 +318,17 @@ class PatchedTotal(PatchedArray):
         self.totals2 = totals2
         self.auto = auto
 
-    def __eq__(self, other) -> bool:
-        if not super().__eq__(other):
-            return False  # checks type
-        return (
-            np.all(self.totals1 == other.totals1)
-            and np.all(self.totals2 == other.totals2)
-            and self.auto == other.auto
-        )
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            return (
+                self.n_bins == other.n_bins
+                and self.n_patches == other.n_patches
+                and (self.get_binning() == other.get_binning()).all()
+                and np.all(self.totals1 == other.totals1)
+                and np.all(self.totals2 == other.totals2)
+                and self.auto == other.auto
+            )
+        return NotImplemented
 
     def as_array(self) -> NDArray:
         return np.einsum("i...,j...->ij...", self.totals1, self.totals2)
@@ -637,27 +633,38 @@ class PatchedCount(PatchedArray):
         counts = np.zeros((n_patches, n_patches, len(binning)), dtype=dtype)
         return cls(binning, counts, auto=auto)
 
-    def __eq__(self, other) -> bool:
-        if not super().__eq__(other):
-            return False  # checks type
-        return np.all(self.counts == other.counts) and (self.auto == other.auto)
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            return (
+                self.n_bins == other.n_bins
+                and self.n_patches == other.n_patches
+                and (self.get_binning() == other.get_binning()).all()
+                and np.all(self.counts == other.counts)
+                and (self.auto == other.auto)
+            )
+        return NotImplemented
 
-    def __add__(self, other: PatchedCount) -> PatchedCount:
-        self.is_compatible(other, require=True)
-        if self.n_patches != other.n_patches:
-            raise ValueError("number of patches does not agree")
-        return self.__class__(
-            self.get_binning(), self.counts + other.counts, auto=self.auto
-        )
+    def __add__(self, other: object) -> PatchedCount:
+        if isinstance(other, self.__class__):
+            self.is_compatible(other, require=True)
+            if self.n_patches != other.n_patches:
+                raise ValueError("number of patches does not agree")
+            return self.__class__(
+                self.get_binning(), self.counts + other.counts, auto=self.auto
+            )
+        return NotImplemented
 
-    def __radd__(self, other: PatchedCount | int | float) -> PatchedCount:
-        if other == 0:
+    def __radd__(self, other: object) -> PatchedCount:
+        if np.isscalar(other) and other == 0:
             return self
-        else:
-            return self.__add__(other)
+        return other.__add__(self)
 
-    def __mul__(self, other: np.number) -> PatchedCount:
-        return self.__class__(self.get_binning(), self.counts * other, auto=self.auto)
+    def __mul__(self, other: object) -> PatchedCount:
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
+            return self.__class__(
+                self.get_binning(), self.counts * other, auto=self.auto
+            )
+        return NotImplemented
 
     def set_measurement(self, key: PatchIDs | tuple[int, int], item: NDArray):
         """Set the counts value in all redshift bins for a pair of patch
@@ -949,30 +956,30 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         n_patches = self.n_patches
         return f"{string}, {n_patches=})"
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, self.__class__):
-            return np.all(self.count == other.count) and np.all(
-                self.total == other.total
-            )
-        else:
-            return False
+            return self.count == other.count and self.total == other.total
+        return NotImplemented
 
-    def __add__(self, other: NormalisedCounts) -> NormalisedCounts:
-        count = self.count + other.count
-        if np.any(self.total.totals1 != other.total.totals1) or np.any(
-            self.total.totals2 != other.total.totals2
-        ):
-            raise ValueError("total number of objects do not agree for operands")
-        return self.__class__(count, self.total)
+    def __add__(self, other: object) -> NormalisedCounts:
+        if isinstance(other, self.__class__):
+            count = self.count + other.count
+            if np.any(self.total.totals1 != other.total.totals1) or np.any(
+                self.total.totals2 != other.total.totals2
+            ):
+                raise ValueError("total number of objects do not agree for operands")
+            return self.__class__(count, self.total)
+        return NotImplemented
 
-    def __radd__(self, other: NormalisedCounts | int | float) -> NormalisedCounts:
-        if other == 0:
+    def __radd__(self, other: object) -> NormalisedCounts:
+        if np.isscalar(other) and other == 0:
             return self
-        else:
-            return self.__add__(other)
+        return other.__add__(self)
 
-    def __mul__(self, other: np.number) -> NormalisedCounts:
-        return self.__class__(self.count * other, self.total)
+    def __mul__(self, other: object) -> NormalisedCounts:
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
+            return self.__class__(self.count * other, self.total)
+        return NotImplemented
 
     @property
     def auto(self) -> bool:

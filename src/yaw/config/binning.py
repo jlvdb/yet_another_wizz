@@ -36,8 +36,15 @@ class BaseBinningConfig(DictRepresentation):
         method = self.method
         return f"{name}({zbin_num=}, {z=}, {method=})"
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, BaseBinningConfig):
+            return (self.method == other.method) and array_equal(
+                self.zbins, other.zbins
+            )
+        return NotImplemented
 
-@dataclass(frozen=True, repr=False)
+
+@dataclass(frozen=True, repr=False, eq=False)
 class ManualBinningConfig(BaseBinningConfig):
     """Configuration that specifies a manual redshift binning.
 
@@ -59,11 +66,6 @@ class ManualBinningConfig(BaseBinningConfig):
             raise ConfigError("'zbins' must have at least two edges")
         BinFactory.check(self.zbins)
         object.__setattr__(self, "zbins", np.asarray(self.zbins))
-
-    def __eq__(self, other: ManualBinningConfig) -> bool:
-        if not array_equal(self.zbins, other.zbins):
-            return False
-        return True
 
     @property
     def method(self) -> str:
@@ -95,7 +97,7 @@ class ManualBinningConfig(BaseBinningConfig):
         return dict(method=self.method, zbins=self.zbins.tolist())
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class AutoBinningConfig(BaseBinningConfig):
     """Configuration that generates a redshift binning.
 
@@ -191,13 +193,6 @@ class AutoBinningConfig(BaseBinningConfig):
             raise ValueError("'method' must a string")
         zbins = BinFactory(zmin, zmax, zbin_num, cosmology).get(method)
         return cls(zbins, method)
-
-    def __eq__(self, other: ManualBinningConfig) -> bool:
-        if self.method != other.method:
-            return False
-        if not array_equal(self.zbins, other.zbins):
-            return False
-        return True
 
     @classmethod
     def from_dict(

@@ -505,45 +505,52 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
 
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, self.__class__):
-            return False
-        for cfield in fields(self):
-            kind = cfield.name
-            if getattr(self, kind) != getattr(other, kind):
-                return False
-        return True
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            for cfield in fields(self):
+                kind = cfield.name
+                if getattr(self, kind) != getattr(other, kind):
+                    return False
+            return True
+        return NotImplemented
 
-    def __add__(self, other: CorrFunc) -> CorrFunc:
-        # check that the pair counts are set consistently
-        kinds = []
-        for cfield in fields(self):
-            kind = cfield.name
-            self_set = getattr(self, kind) is not None
-            other_set = getattr(other, kind) is not None
-            if (self_set and not other_set) or (not self_set and other_set):
-                raise ValueError(f"pair counts for '{kind}' not set for both operands")
-            elif self_set and other_set:
-                kinds.append(kind)
+    def __add__(self, other: object) -> CorrFunc:
+        if isinstance(other, self.__class__):
+            # check that the pair counts are set consistently
+            kinds = []
+            for cfield in fields(self):
+                kind = cfield.name
+                self_set = getattr(self, kind) is not None
+                other_set = getattr(other, kind) is not None
+                if (self_set and not other_set) or (not self_set and other_set):
+                    raise ValueError(
+                        f"pair counts for '{kind}' not set for both operands"
+                    )
+                elif self_set and other_set:
+                    kinds.append(kind)
 
-        kwargs = {kind: getattr(self, kind) + getattr(other, kind) for kind in kinds}
-        return self.__class__(**kwargs)
+            kwargs = {
+                kind: getattr(self, kind) + getattr(other, kind) for kind in kinds
+            }
+            return self.__class__(**kwargs)
+        return NotImplemented
 
-    def __radd__(self, other: CorrFunc | int | float) -> CorrFunc:
-        if other == 0:
+    def __radd__(self, other: object) -> CorrFunc:
+        if np.isscalar(other) and other == 0:
             return self
-        else:
-            return self.__add__(other)
+        return other.__add__(self)
 
-    def __mul__(self, other: np.number) -> CorrFunc:
-        # check that the pair counts are set consistently
-        kwargs = {}
-        for cfield in fields(self):
-            kind = cfield.name
-            counts = getattr(self, kind)
-            if counts is not None:
-                kwargs[kind] = counts * other
-        return self.__class__(**kwargs)
+    def __mul__(self, other: object) -> CorrFunc:
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
+            # check that the pair counts are set consistently
+            kwargs = {}
+            for cfield in fields(self):
+                kind = cfield.name
+                counts = getattr(self, kind)
+                if counts is not None:
+                    kwargs[kind] = counts * other
+            return self.__class__(**kwargs)
+        return NotImplemented
 
     @property
     def auto(self) -> bool:

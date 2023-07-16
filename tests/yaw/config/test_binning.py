@@ -95,7 +95,7 @@ class TestAutoBinningConfig:
         for param, value in new_props.items():
             the_props = {k: v for k, v in bin_props.items()}
             the_props[param] = value
-            assert not AutoBinningConfig.generate(**the_props) == auto_binning
+            assert AutoBinningConfig.generate(**the_props) != auto_binning
 
     def test_properties(self, bin_props, auto_binning):
         assert auto_binning.zmin == bin_props["zmin"]

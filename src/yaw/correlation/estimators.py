@@ -69,11 +69,11 @@ class Cts(ABC):
         return self._hash
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Cts):
-            return False  # pragma: no cover
-        var1 = set(self._str.split("_"))
-        var2 = set(other._str.split("_"))
-        return not var1.isdisjoint(var2)
+        if isinstance(other, Cts):
+            var1 = set(self._str.split("_"))
+            var2 = set(other._str.split("_"))
+            return not var1.isdisjoint(var2)
+        return NotImplemented
 
 
 class CtsDD(Cts):
