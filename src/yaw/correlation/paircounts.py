@@ -17,7 +17,7 @@ from abc import abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import accumulate
-from typing import TYPE_CHECKING, NoReturn, Union
+from typing import TYPE_CHECKING, NoReturn, Type, Union
 
 try:  # pragma: no cover
     from typing import TypeAlias
@@ -53,6 +53,12 @@ TypeSlice: TypeAlias = Union[slice, int, None]
 TypeIndex: TypeAlias = Union[int, slice, Sequence]
 
 
+def sequence_require_type(items: Sequence, class_or_inst: Type | object) -> None:
+    for item in items:
+        if not isinstance(item, class_or_inst):
+            raise TypeError(f"invalid type '{type(item)}' for concatenation")
+
+
 def check_mergable(patched_arrays: Sequence[PatchedArray], *, patches: bool) -> None:
     """Check if two instaces of PatchedArray can be merged along the patch
     or binning axis.
@@ -71,11 +77,8 @@ def check_mergable(patched_arrays: Sequence[PatchedArray], *, patches: bool) -> 
             raise ValueError("cannot merge mixed cross- and autocorrelations")
         if patches:
             reference.is_compatible(patched, require=True)
-        else:
-            if reference.auto != patched.auto:
-                raise ValueError("cannot merge mixed cross- and autocorrelations")
-            if reference.n_patches != patched.n_patches:
-                raise ValueError("cannot merge, patch numbers do not match")
+        elif reference.n_patches != patched.n_patches:
+            raise ValueError("cannot merge, patch numbers do not match")
 
 
 def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
@@ -387,6 +390,7 @@ class PatchedTotal(PatchedArray):
         dest.create_dataset("auto", data=self.auto)
 
     def concatenate_patches(self, *data: PatchedTotal) -> PatchedTotal:
+        sequence_require_type(data, self.__class__)
         all_totals: list[PatchedTotal] = [self, *data]
         check_mergable(all_totals, patches=True)
         return self.__class__(
@@ -397,6 +401,7 @@ class PatchedTotal(PatchedArray):
         )
 
     def concatenate_bins(self, *data: PatchedTotal) -> PatchedTotal:
+        sequence_require_type(data, self.__class__)
         all_totals: list[PatchedTotal] = [self, *data]
         check_mergable(all_totals, patches=False)
         binning = concatenate_bin_edges(*all_totals)
@@ -787,22 +792,27 @@ class PatchedCount(PatchedArray):
         dest.create_dataset("auto", data=self.auto)
 
     def concatenate_patches(self, *data: PatchedCount) -> PatchedCount:
+        sequence_require_type(data, self.__class__)
         all_counts: list[PatchedCount] = [self, *data]
         check_mergable(all_counts, patches=True)
         offsets = patch_idx_offset(all_counts)
+        n_patches = [count.n_patches for count in all_counts]
         merged = self.__class__.zeros(
             binning=self.get_binning(),
-            n_patches=sum(count.n_patches for count in all_counts),
+            n_patches=sum(n_patches),
             auto=self.auto,
         )
         # insert the blocks of counts into the merged counts array
         loc = 0
-        for count, offset in zip(all_counts, offsets):
-            merged.counts[loc : loc + offset, loc : loc + offset] = count.counts
+        for count, offset, n in zip(all_counts, offsets, n_patches):
+            i_start = offset
+            i_end = i_start + n
+            merged.counts[i_start:i_end, i_start:i_end] = count.counts
             loc += offset
         return merged
 
     def concatenate_bins(self, *data: PatchedCount) -> PatchedCount:
+        sequence_require_type(data, self.__class__)
         all_counts: list[PatchedCount] = [self, *data]
         check_mergable(all_counts, patches=False)
         binning = concatenate_bin_edges(*all_counts)
@@ -1055,6 +1065,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         self.total.to_hdf(group)
 
     def concatenate_patches(self, *pcounts: NormalisedCounts) -> NormalisedCounts:
+        sequence_require_type(pcounts, self.__class__)
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]
         return self.__class__(
@@ -1063,6 +1074,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         )
 
     def concatenate_bins(self, *pcounts: NormalisedCounts) -> NormalisedCounts:
+        sequence_require_type(pcounts, self.__class__)
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]
         return self.__class__(
