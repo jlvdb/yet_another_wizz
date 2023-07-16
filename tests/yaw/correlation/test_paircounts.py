@@ -11,6 +11,7 @@ import pandas.testing as pdt
 from pytest import fixture, mark, raises
 
 from yaw.config import ResamplingConfig
+from yaw.core.math import apply_slice_ndim
 from yaw.correlation import paircounts
 
 
@@ -135,14 +136,64 @@ def binning():
     return pd.IntervalIndex.from_breaks([0.0, 0.5, 1.0, 1.5])
 
 
-@mark.skip
-def test_check_mergable():
-    assert 0
+@fixture
+def binning_next():
+    return pd.IntervalIndex.from_breaks([1.5, 2.0, 2.5, 3.0])
 
 
-@mark.skip
-def test_patch_idx_offset():
-    assert 0
+def modify_totals(totals, **kwargs):
+    allargs = dict(
+        binning=totals.get_binning(),
+        totals1=totals.totals1,
+        totals2=totals.totals2,
+        auto=totals.auto,
+    )
+    allargs.update(kwargs)
+    return paircounts.PatchedTotal(**allargs)
+
+
+def modify_counts(counts, **kwargs):
+    allargs = dict(
+        binning=counts.get_binning(),
+        counts=counts.counts,
+        auto=counts.auto,
+    )
+    allargs.update(kwargs)
+    return paircounts.PatchedCount(**allargs)
+
+
+def test_check_mergable_bins(patched_totals_full):
+    paircounts.check_mergable([patched_totals_full, patched_totals_full], patches=False)
+    new = modify_totals(patched_totals_full, auto=True)
+    with raises(ValueError, match="cross-"):
+        paircounts.check_mergable([patched_totals_full, new], patches=False)
+    with raises(ValueError, match="patch numbers"):
+        paircounts.check_mergable(
+            [patched_totals_full, patched_totals_full.patches[1:]], patches=False
+        )
+    paircounts.check_mergable(
+        [patched_totals_full, patched_totals_full.bins[1:]], patches=False
+    )
+
+
+def test_check_mergable_patches(patched_totals_full):
+    paircounts.check_mergable([patched_totals_full, patched_totals_full], patches=True)
+    new = modify_totals(patched_totals_full, auto=True)
+    with raises(ValueError, match="cross-"):
+        paircounts.check_mergable([patched_totals_full, new], patches=False)
+    paircounts.check_mergable(
+        [patched_totals_full, patched_totals_full.bins[1:]], patches=False
+    )
+
+
+def test_patch_idx_offset(patched_totals_full):
+    npt.assert_array_almost_equal(
+        paircounts.patch_idx_offset([patched_totals_full]), np.zeros(1)
+    )
+    result = np.array([0, patched_totals_full.n_patches])
+    npt.assert_array_almost_equal(
+        paircounts.patch_idx_offset([patched_totals_full, patched_totals_full]), result
+    )
 
 
 def test_binning_hdf(tmp_hdf5):
@@ -209,13 +260,28 @@ class TestPatchedTotal:
         # just call once
         repr(pt)
 
-    @mark.skip
-    def test_eq(self):
-        assert 0
+    def test_eq(self, patched_totals_full):
+        assert patched_totals_full == patched_totals_full
+        patched_new = paircounts.PatchedTotal(
+            patched_totals_full.get_binning(),
+            totals1=patched_totals_full.totals2,
+            totals2=patched_totals_full.totals2,
+            auto=patched_totals_full.auto,
+        )
+        assert patched_totals_full != patched_new
+        patched_new = paircounts.PatchedTotal(
+            patched_totals_full.get_binning(),
+            totals1=patched_totals_full.totals1,
+            totals2=patched_totals_full.totals2,
+            auto=not patched_totals_full.auto,
+        )
+        assert patched_totals_full != patched_new
+        assert patched_totals_full != 1
 
-    @mark.skip
-    def test_prod(self):
-        assert 0
+    def test_size(self, patched_totals_full):
+        np = patched_totals_full.n_patches
+        nb = patched_totals_full.n_bins
+        assert patched_totals_full.size == (np * np * nb)
 
     def test_array(self, patched_totals_full, patch_matrix_full):
         pt = patched_totals_full
@@ -250,31 +316,77 @@ class TestPatchedTotal:
             assert result.data[0] == data
             npt.assert_equal(result.samples[:, 0], jack)
 
+        subset = patched_totals_full.patches[0]
+        assert subset.sample_sum(config).samples.ndim == 2
+
     def test_bootstrap(self, patched_totals_full):
         with raises(NotImplementedError):
             patched_totals_full.sample_sum(ResamplingConfig(method="bootstrap"))
 
-    @mark.skip
-    def test_bins(self):
-        assert 0
+    @mark.parametrize("items", [1, 2, slice(0, 2), [1, 2]])
+    def test_bins(self, patched_totals_full, patch_totals, items):
+        t1 = add_zbin_dimension(patch_totals[0], patched_totals_full.n_bins)
+        t2 = add_zbin_dimension(patch_totals[1], patched_totals_full.n_bins)
+        subset = patched_totals_full.bins[items]
+        npt.assert_array_equal(subset.totals1, apply_slice_ndim(t1, items, axis=1))
+        npt.assert_array_equal(subset.totals2, apply_slice_ndim(t2, items, axis=1))
+        assert (subset.get_binning() == patched_totals_full.get_binning()[items]).all()
 
-    @mark.skip
-    def test_patches(self):
-        assert 0
+    def test_bins_iter(self, patched_totals_full, patch_totals):
+        t1 = add_zbin_dimension(patch_totals[0], patched_totals_full.n_bins)
+        t2 = add_zbin_dimension(patch_totals[1], patched_totals_full.n_bins)
+        for i, _bin in enumerate(patched_totals_full.bins):
+            npt.assert_array_equal(_bin.totals1, apply_slice_ndim(t1, i, axis=1))
+            npt.assert_array_equal(_bin.totals2, apply_slice_ndim(t2, i, axis=1))
 
-    @mark.skip
-    def test_concatenate_patches(self):
-        assert 0
+    @mark.parametrize("items", [1, 2, slice(0, 2), [1, 2]])
+    def test_patches(self, patched_totals_full, patch_totals, items):
+        t1 = add_zbin_dimension(patch_totals[0], patched_totals_full.n_bins)
+        t2 = add_zbin_dimension(patch_totals[1], patched_totals_full.n_bins)
+        subset = patched_totals_full.patches[items]
+        npt.assert_array_equal(subset.totals1, apply_slice_ndim(t1, items, axis=0))
+        npt.assert_array_equal(subset.totals2, apply_slice_ndim(t2, items, axis=0))
+        assert (subset.get_binning() == patched_totals_full.get_binning()).all()
 
-    @mark.skip
-    def test_concatenate_bins(self):
-        assert 0
+    def test_patches_iter(self, patched_totals_full, patch_totals):
+        t1 = add_zbin_dimension(patch_totals[0], patched_totals_full.n_bins)
+        t2 = add_zbin_dimension(patch_totals[1], patched_totals_full.n_bins)
+        for i, _bin in enumerate(patched_totals_full.patches):
+            npt.assert_array_equal(_bin.totals1, apply_slice_ndim(t1, i, axis=0))
+            npt.assert_array_equal(_bin.totals2, apply_slice_ndim(t2, i, axis=0))
+
+    def test_concatenate_patches(self, patched_totals_full, binning_next):
+        merged = patched_totals_full.concatenate_patches(patched_totals_full)
+        diag = np.diag(patched_totals_full.as_array()[:, :, 0])
+        npt.assert_array_equal(
+            np.diag(merged.as_array()[:, :, 0]), np.concatenate([diag, diag])
+        )
+        mod = modify_totals(patched_totals_full, binning=binning_next)
+        with raises(ValueError):
+            patched_totals_full.concatenate_patches(mod)
+
+    def test_concatenate_bins(self, patched_totals_full, binning_next):
+        appended = modify_totals(patched_totals_full, binning=binning_next)
+        merged = patched_totals_full.concatenate_bins(appended)
+        binned = patched_totals_full.as_array()[0, 0]
+        npt.assert_array_equal(
+            merged.as_array()[0, 0], np.concatenate([binned, binned])
+        )
+        with raises(ValueError):
+            patched_totals_full.concatenate_bins(patched_totals_full)
 
 
 def patched_counts_from_matrix(binning, matrix, auto):
     n_bins = len(binning)
     counts = add_zbin_dimension(matrix, n_bins)
     return paircounts.PatchedCount(binning, counts, auto=auto)
+
+
+@fixture
+def patched_counts_full(binning, patch_matrix_full):
+    n_bins = len(binning)
+    matrix = add_zbin_dimension(patch_matrix_full, n_bins)
+    return paircounts.PatchedCount(binning, matrix, auto=False)
 
 
 class TestPatchedCount:
@@ -298,9 +410,26 @@ class TestPatchedCount:
         # just call once
         repr(counts)
 
-    @mark.skip
-    def test_eq(self):
-        assert 0
+    def test_eq(self, patched_counts_full):
+        assert patched_counts_full == patched_counts_full
+        patched_new = paircounts.PatchedCount(
+            patched_counts_full.get_binning(),
+            patched_counts_full.counts + 1,
+            auto=patched_counts_full.auto,
+        )
+        assert patched_counts_full != patched_new
+        patched_new = paircounts.PatchedCount(
+            patched_counts_full.get_binning(),
+            patched_counts_full.counts,
+            auto=not patched_counts_full.auto,
+        )
+        assert patched_counts_full != patched_new
+        assert patched_counts_full != 1
+
+    def test_size(self, patched_counts_full):
+        np = patched_counts_full.n_patches
+        nb = patched_counts_full.n_bins
+        assert patched_counts_full.size == (np * np * nb)
 
     def test_keys_values(self, binning):
         n_bins = len(binning)
@@ -378,38 +507,91 @@ class TestPatchedCount:
         assert result.data[0] == data
         npt.assert_equal(result.samples[:, 0], jack)
 
+        subset = counts.patches[0]
+        assert subset.sample_sum(config).samples.ndim == 2
+
     def test_bootstrap(self, binning, patch_matrix_full):
         counts = patched_counts_from_matrix(binning, patch_matrix_full, auto=False)
         with raises(NotImplementedError):
             counts.sample_sum(ResamplingConfig(method="bootstrap"))
 
-    @mark.skip
-    def test_bins(self):
-        assert 0
+    @mark.parametrize("items", [1, 2, slice(0, 2), [1, 2]])
+    def test_bins(self, patched_counts_full, items):
+        subset = patched_counts_full.bins[items]
+        npt.assert_array_equal(
+            subset.counts, apply_slice_ndim(patched_counts_full.counts, items, axis=2)
+        )
+        assert (subset.get_binning() == patched_counts_full.get_binning()[items]).all()
 
-    @mark.skip
-    def test_patches(self):
-        assert 0
+    def test_bins_iter(self, patched_counts_full):
+        for i, _bin in enumerate(patched_counts_full.bins):
+            npt.assert_array_equal(
+                _bin.counts, apply_slice_ndim(patched_counts_full.counts, i, axis=2)
+            )
 
-    @mark.skip
-    def test_concatenate_patches(self):
-        assert 0
+    @mark.parametrize("items", [1, 2, slice(0, 2), [1, 2]])
+    def test_patches(self, patched_counts_full, items):
+        subset = patched_counts_full.patches[items]
+        npt.assert_array_equal(
+            subset.counts,
+            apply_slice_ndim(patched_counts_full.counts, items, axis=(0, 1)),
+        )
+        assert (subset.get_binning() == patched_counts_full.get_binning()).all()
 
-    @mark.skip
-    def test_concatenate_bins(self):
-        assert 0
+    def test_patches_iter(self, patched_counts_full):
+        for i, _bin in enumerate(patched_counts_full.patches):
+            npt.assert_array_equal(
+                _bin.counts,
+                apply_slice_ndim(patched_counts_full.counts, i, axis=(0, 1)),
+            )
 
-    @mark.skip
-    def test_add(self):
-        assert 0
+    def test_concatenate_patches(self, patched_counts_full, binning_next):
+        merged = patched_counts_full.concatenate_patches(patched_counts_full)
+        diag = np.diag(patched_counts_full.as_array()[:, :, 0])
+        npt.assert_array_equal(
+            np.diag(merged.as_array()[:, :, 0]), np.concatenate([diag, diag])
+        )
+        mod = modify_counts(patched_counts_full, binning=binning_next)
+        with raises(ValueError):
+            patched_counts_full.concatenate_patches(mod)
 
-    @mark.skip
-    def test_radd(self):
-        assert 0
+    def test_concatenate_bins(self, patched_counts_full, binning_next):
+        appended = modify_counts(patched_counts_full, binning=binning_next)
+        merged = patched_counts_full.concatenate_bins(appended)
+        binned = patched_counts_full.as_array()[0, 0]
+        npt.assert_array_equal(
+            merged.as_array()[0, 0], np.concatenate([binned, binned])
+        )
+        with raises(ValueError):
+            patched_counts_full.concatenate_bins(patched_counts_full)
 
-    @mark.skip
-    def test_mul(self):
-        assert 0
+    def test_add(self, patched_counts_full):
+        summed = patched_counts_full + patched_counts_full
+        npt.assert_array_equal(summed.counts, patched_counts_full.counts * 2)
+        with raises(TypeError):
+            patched_counts_full + 1
+        with raises(ValueError):
+            patched_counts_full + patched_counts_full.patches[:-1]
+        with raises(ValueError):
+            patched_counts_full + patched_counts_full.bins[:-1]
+
+    def test_radd(self, patched_counts_full):
+        assert (0 + patched_counts_full) == patched_counts_full
+        assert sum([patched_counts_full]) == patched_counts_full
+        with raises(TypeError):
+            1 + patched_counts_full
+
+    def test_mul(self, patched_counts_full):
+        assert patched_counts_full * 2 == patched_counts_full + patched_counts_full
+        with raises(TypeError):
+            2 * patched_counts_full
+        with raises(TypeError):
+            patched_counts_full * True
+        with raises(TypeError):
+            patched_counts_full * [1, 2]
+
+    def test_sum(self, patched_counts_full):
+        assert patched_counts_full.sum() == np.sum(patched_counts_full.counts)
 
 
 @fixture
@@ -443,9 +625,10 @@ class TestNormalisedCounts:
         # just call once
         repr(res)
 
-    @mark.skip
-    def test_eq(self):
-        assert 0
+    def test_eq(self, pair_count_result):
+        assert pair_count_result == pair_count_result
+        assert pair_count_result != pair_count_result.bins[1:]
+        assert pair_count_result != 1
 
     def test_sample(self, pair_count_result, expect_matrix_full):
         config = ResamplingConfig(method="jackknife")
@@ -475,39 +658,88 @@ class TestNormalisedCounts:
             assert binA.right == binB.right
         assert restored.total.auto == pair_count_result.total.auto
 
-    @mark.skip
-    def test_add(self):
-        assert 0
+    def test_add(self, pair_count_result):
+        summed = pair_count_result + pair_count_result
+        assert pair_count_result.total == summed.total
+        assert pair_count_result.count * 2 == summed.count
+        with raises(TypeError):
+            pair_count_result + 1
+        # total does not agree
+        new_total = paircounts.PatchedTotal(
+            pair_count_result.get_binning(),
+            pair_count_result.total.totals1 + 1,
+            pair_count_result.total.totals2,
+            auto=pair_count_result.auto,
+        )
+        new = paircounts.NormalisedCounts(pair_count_result.count, new_total)
+        with raises(ValueError, match="total number"):
+            pair_count_result + new
 
-    @mark.skip
-    def test_radd(self):
-        assert 0
+    def test_radd(self, pair_count_result):
+        assert (0 + pair_count_result) == pair_count_result
+        assert sum([pair_count_result]) == pair_count_result
+        with raises(TypeError):
+            1 + pair_count_result
 
-    @mark.skip
-    def test_mul(self):
-        assert 0
+    def test_mul(self, pair_count_result):
+        mul = pair_count_result * 2
+        assert mul.total == pair_count_result.total
+        assert mul.count == pair_count_result.count * 2
+        with raises(TypeError):
+            pair_count_result * True
 
-    @mark.skip
-    def test_bins(self):
-        assert 0
+    @mark.parametrize("items", [1, 2, slice(0, 2), [1, 2]])
+    def test_bins(self, pair_count_result, items):
+        pc = pair_count_result
+        assert pc.bins[items] == paircounts.NormalisedCounts(
+            pc.count.bins[items], pc.total.bins[items]
+        )
 
-    @mark.skip
-    def test_patches(self):
-        assert 0
+    @mark.parametrize("items", [1, 2, slice(0, 2), [1, 2]])
+    def test_patches(self, pair_count_result, items):
+        pc = pair_count_result
+        assert pc.patches[items] == paircounts.NormalisedCounts(
+            pc.count.patches[items], pc.total.patches[items]
+        )
 
-    @mark.skip
-    def test_auto(self):
-        assert 0
+    def test_auto(self, pair_count_result):
+        assert pair_count_result.auto == pair_count_result.count.auto
 
-    @mark.skip
-    def test_concatenate_patches(self):
-        assert 0
+    def test_concatenate_patches(self, pair_count_result):
+        merged = pair_count_result.concatenate_patches(pair_count_result)
+        merged_count = pair_count_result.count.concatenate_patches(
+            pair_count_result.count
+        )
+        merged_total = pair_count_result.total.concatenate_patches(
+            pair_count_result.total
+        )
+        assert merged == paircounts.NormalisedCounts(
+            count=merged_count, total=merged_total
+        )
+        with raises(TypeError, match="concat"):
+            pair_count_result.concatenate_patches(pair_count_result.total)
 
-    @mark.skip
-    def test_concatenate_bins(self):
-        assert 0
+    def test_concatenate_bins(self, pair_count_result, binning_next):
+        shifted_count = modify_counts(pair_count_result.count, binning=binning_next)
+        shifted_total = modify_totals(pair_count_result.total, binning=binning_next)
+        shifted_pc = paircounts.NormalisedCounts(
+            count=shifted_count, total=shifted_total
+        )
+        merged = pair_count_result.concatenate_bins(shifted_pc)
+        merged_count = pair_count_result.count.concatenate_bins(shifted_count)
+        merged_total = pair_count_result.total.concatenate_bins(shifted_total)
+        assert merged == paircounts.NormalisedCounts(
+            count=merged_count, total=merged_total
+        )
+        with raises(TypeError, match="concat"):
+            pair_count_result.concatenate_bins(pair_count_result.total)
 
 
-@mark.skip
-def test_pack_results(self):
-    assert 0
+def test_pack_results(pair_count_result):
+    pc = pair_count_result
+    counts = dict(a=pc.count)
+    assert paircounts.pack_results(counts, pc.total) == pc
+    counts["b"] = pc.count
+    result = paircounts.pack_results(counts, pc.total)
+    for key in counts:
+        assert result[key] == pc
