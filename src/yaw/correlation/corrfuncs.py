@@ -493,7 +493,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 continue
             try:
                 self.dd.is_compatible(pairs, require=True)
-            except ValueError as e:
+                assert self.dd.n_patches == pairs.n_patches
+            except (ValueError, AssertionError) as e:
                 raise ValueError(
                     f"pair counts '{kind}' and 'dd' are not compatible"
                 ) from e
