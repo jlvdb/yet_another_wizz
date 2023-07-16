@@ -594,7 +594,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def n_patches(self) -> int:
         return self.dd.n_patches
 
-    def is_compatible(self, other: CorrFunc, require: bool = True) -> bool:
+    def is_compatible(self, other: CorrFunc, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
 
         Ensures that the redshift binning and the number of patches are
@@ -628,8 +628,6 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         available = set()
         # iterate all dataclass attributes that are in __init__
         for attr in fields(self):
-            if not attr.init:
-                continue
             if getattr(self, attr.name) is not None:
                 available.add(cts_from_code(attr.name))
         # check which estimators are supported
@@ -640,7 +638,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return estimators
 
     def _check_and_select_estimator(
-        self, estimator: str | None
+        self, estimator: str | None = None
     ) -> type[CorrelationEstimator]:
         options = self.estimators
         if estimator is None:
@@ -660,13 +658,9 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             # determine which pair counts are missing
             for attr in fields(self):
                 name = attr.name
-                if not attr.init:
-                    continue
                 cts = cts_from_code(name)
                 if getattr(self, name) is None and cts in est_class.requires:
                     raise EstimatorError(f"estimator requires {name}")
-            else:
-                raise RuntimeError()
         # select the correct estimator
         cls = options[estimator]
         logger.debug(
