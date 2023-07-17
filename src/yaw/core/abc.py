@@ -4,7 +4,7 @@ for high level containers in other modules.
 
 from __future__ import annotations
 
-from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Type, TypeVar
 
@@ -34,12 +34,14 @@ _Tpatched = TypeVar("_Tpatched", bound="PatchedQuantity")
 class PatchedQuantity(ABC):
     """Base class for an object that has data organised in spatial patches."""
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def n_patches(self) -> int:
         """Get the number of spatial patches."""
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def patches(self) -> Indexer:
         """An :obj:`~yaw.core.containers.Indexer` attribute that supports
         iteration over the spatial patches or selecting a subset of the patches.
@@ -129,7 +131,8 @@ class BinnedQuantity(ABC):
         be: ``left``, ``right``, ``both``, ``neither``."""
         return self.get_binning().closed
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def bins(self) -> Indexer:
         """An :obj:`~yaw.core.containers.Indexer` attribute that supports
         iteration over the bins or selecting a subset of the bins.
@@ -227,7 +230,8 @@ _Thdf = TypeVar("_Thdf", bound="HDFSerializable")
 class HDFSerializable(ABC):
     """Base class for an object that can be serialised into a HDF5 file."""
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def from_hdf(cls: Type[_Thdf], source: h5py.Group) -> _Thdf:
         """Create a class instance by deserialising data from a HDF5 group.
 

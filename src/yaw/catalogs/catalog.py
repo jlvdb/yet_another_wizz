@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from abc import abstractclassmethod, abstractmethod, abstractproperty
+from abc import abstractmethod
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -133,7 +133,8 @@ class BaseCatalog:
             progress=progress,
         )
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def from_cache(cls, cache_directory: str, progress: bool = False) -> BaseCatalog:
         """Restore the catalogue from its cache directory.
 
@@ -160,7 +161,8 @@ class BaseCatalog:
     def __getitem__(self, item: int) -> Any:
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def ids(self) -> list[int]:
         """Return a list of unique patch indices in the catalog."""
         pass
@@ -215,27 +217,32 @@ class BaseCatalog:
         """
         return CoordSky(self.ra, self.dec)
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def ra(self) -> NDArray[np.float_]:
         """Get an array of the right ascension values in radians."""
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def dec(self) -> NDArray[np.float_]:
         """Get an array of the declination values in radians."""
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def redshifts(self) -> NDArray[np.float_] | None:
         """Get the redshifts as array or ``None`` if not available."""
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def weights(self) -> NDArray[np.float_]:
         """Get the object weights as array or ``None`` if not available."""
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def patch(self) -> NDArray[np.int_]:
         """Get the patch indices of each object as array."""
         pass
@@ -250,7 +257,8 @@ class BaseCatalog:
         """Get the maximum redshift or ``None`` if not available."""
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def total(self) -> float:
         """Get the sum of weights or the number of objects if weights are not
         available."""
@@ -260,7 +268,8 @@ class BaseCatalog:
         """Get an array of the sum of weights or number of objects in each
         patch."""
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def centers(self) -> CoordSky:
         """Get a vector of sky coordinates of the patch centers in radians.
 
@@ -269,7 +278,8 @@ class BaseCatalog:
         """
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def radii(self) -> DistSky:
         """Get a vector of angular separations in radians that describe the
         patch sizes.

@@ -5,7 +5,7 @@ as angular coordinates and distances in radian.
 
 from __future__ import annotations
 
-from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 from functools import total_ordering
 from typing import TYPE_CHECKING, TypeVar
@@ -27,11 +27,13 @@ class Coordinate(ABC):
     def __init__(self, coords: dict[str, ArrayLike]) -> None:
         pass
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def from_array(cls, array) -> Coordinate:
         pass
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def from_coords(cls, coords: Sequence[Coordinate]) -> Coordinate:
         """Concatenate a sequence of coordinates into a new vector of
         coordates."""
@@ -40,7 +42,8 @@ class Coordinate(ABC):
     def __repr__(self) -> str:
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def dim(self) -> tuple[str]:
         """A list of names of coordinates in the coordinate system."""
         pass
@@ -50,7 +53,8 @@ class Coordinate(ABC):
         """The number of coordinates in the coordinate system."""
         return len(self.dim)
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def values(self) -> NDArray[np.float_]:
         """The coordinate values cast into a numpy array with shape
         `(N, ndim)` or `(ndim,)` if there is only a single entry."""
