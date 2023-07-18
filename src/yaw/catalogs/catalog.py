@@ -117,10 +117,10 @@ class BaseCatalog:
                 "centers)"
             )
 
-        cls._logger.info(f"reading catalog file '{filepath}'")
+        cls._logger.info("reading catalog file '%s'", filepath)
         data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
         if sparse is not None:
-            cls._logger.debug(f"sparse sampling data {sparse}x")
+            cls._logger.debug("sparse sampling data %ix", sparse)
             data = data[::sparse]
         return cls(
             data,
@@ -140,7 +140,7 @@ class BaseCatalog:
 
         Catalogs should be instantiated through the factory class, see
         :meth:`yaw.catalogs.NewCatalog.from_cache`."""
-        cls._logger.info(f"restoring from cache directory '{cache_directory}'")
+        cls._logger.info("restoring from cache directory '%s'", cache_directory)
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -347,8 +347,11 @@ class BaseCatalog:
         n1 = long_num_format(len(self))
         n2 = long_num_format(len(self) if other is None else len(other))
         self._logger.debug(
-            f"correlating with {'' if binned else 'un'}binned catalog "
-            f"({n1}x{n2}) in {config.binning.zbin_num} redshift bins"
+            "correlating with %sbinned catalog (%sx%s) in %d redshift bins",
+            "" if binned else "un",
+            n1,
+            n2,
+            config.binning.zbin_num,
         )
 
     @abstractmethod

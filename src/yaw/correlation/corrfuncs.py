@@ -128,7 +128,7 @@ class CorrData(SampledData):
             :obj:`CorrData`
         """
         name = cls.__name__.lower()[:-4]
-        logger.debug(f"reading {name} data from '{path_prefix}.*'")
+        logger.debug("reading %s data from '%s.*'", name, path_prefix)
         # load data and errors
         ext = "dat"
         data_error = np.loadtxt(f"{path_prefix}.{ext}")
@@ -212,7 +212,7 @@ class CorrData(SampledData):
                 The base name of the output files without any file extension.
         """
         name = self.__class__.__name__.lower()[:-4]
-        logger.info(f"writing {name} data to '{path_prefix}.*'")
+        logger.info("writing %s data to '%s.*'", name, path_prefix)
         PREC = 10
         DELIM = " "
 
@@ -664,7 +664,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         # select the correct estimator
         cls = options[estimator]
         logger.debug(
-            f"selecting estimator '{cls.short}' from {'/'.join(self.estimators)}"
+            "selecting estimator '%s' from %s", cls.short, "/".join(self.estimators)
         )
         return cls
 
@@ -717,7 +717,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         if config is None:
             config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
-        logger.debug(f"computing correlation and {config.method} samples")
+        logger.debug("computing correlation and %s samples", config.method)
         # get the pair counts for the required terms (DD, maybe DR and/or RR)
         required_data = {}
         required_samples = {}
@@ -778,12 +778,12 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     @classmethod
     def from_file(cls, path: TypePathStr) -> CorrFunc:
-        logger.debug(f"reading pair counts from '{path}'")
+        logger.debug("reading pair counts from '%s'", path)
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
     def to_file(self, path: TypePathStr) -> None:
-        logger.info(f"writing pair counts to '{path}'")
+        logger.info("writing pair counts to '%s'", path)
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
 
@@ -927,8 +927,10 @@ def autocorrelate(
     _check_patch_centers([data, random])
     scales = config.scales.as_array()
     logger.info(
-        f"running autocorrelation ({len(scales)} scales, "
-        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)"
+        "running autocorrelation (%i scales, %.0f<r<=%.0fkpc)",
+        len(scales),
+        scales.min(),
+        scales.max(),
     )
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, random)
@@ -1022,8 +1024,10 @@ def crosscorrelate(
 
     scales = config.scales.as_array()
     logger.info(
-        f"running crosscorrelation ({len(scales)} scales, "
-        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)"
+        "running crosscorrelation (%i scales, %.0f<r<=%.0fkpc)",
+        len(scales),
+        scales.min(),
+        scales.max(),
     )
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, unknown)

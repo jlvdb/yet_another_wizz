@@ -200,7 +200,7 @@ class RedshiftData(CorrData):
             mitigate.append("unknown")
 
         if len(mitigate) > 0:
-            logger.debug(f"mitigating {' and '.join(mitigate)} sample bias")
+            logger.debug("mitigating %s sample bias", " and ".join(mitigate))
         N = cross_data.n_samples
         dzsq_data = cross_data.dz**2
         dzsq_samp = np.tile(dzsq_data, N).reshape((N, -1))
