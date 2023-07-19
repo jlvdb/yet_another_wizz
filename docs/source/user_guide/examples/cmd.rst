@@ -111,3 +111,29 @@ bias. The data products are stored in ``kpc100t100/fid``, the default name for
 our choice of scales. They are named ``n_cc_1.dat`` (redshifts estimate) and
 ``auto_reference.dat`` (reference autocorrelation) and are accompanied by a
 covariance matrix and jackknife samples in separate files.
+
+Finally, there are automatically generated checkplots in the ``estimate``
+directory, one for the reference sample autocorrelation function and one for
+the redshift estimate.
+
+
+Tomographic binning and other subsets
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If the unknown sample is split into different subsets, e.g. tomographic redshift
+bins, these can be processed easily with ``yaw_cli`` by providing a list of
+unknown (and optionally random) data catalogues, e.g.:
+
+.. code-block:: bash
+
+    $ yaw_cli cross output \
+        --unk-path unknown1.fits unknown2.fits unknown3.fits \
+        --unk-ra ra \
+        --unk-dec dec
+
+This would produce clustering redshift estimates for three subsets of the
+unknown data, in each case using the same reference sample as before. The
+redshift estimates in ``estimate/kpc100t100/fid`` are numbered automatically
+(counting from 1) and are called  ``n_cc_1.dat``, ``n_cc_2.dat``, and
+``n_cc_3.dat`` for this example. The automatically generated checkplot will
+contain three panels instead of one.
