@@ -53,8 +53,8 @@ files with ``--unk-path`` as we would like (e.g. tomographic bins).
 
 In the same way we measure the autocorrelation function of the reference sample
 to mitigate its galaxy bias evolution. In our case, the ``yaw_cli auto``
-:ref:`command<yaw_auto>` takes no further inputs since most run parameters are
-already configured at this point.
+:ref:`command<yaw_auto>` takes no further inputs since most run parameters,
+including the reference sample, are already configured at this point.
 
 .. code-block:: bash
 
@@ -96,7 +96,7 @@ most important ones are:
     │  ├─ kpc100t1000/
     │  │  └─ fid/
     │  │     ├─ auto_reference.dat
-    │  │     └─ nz_cc_0.dat
+    │  │     └─ nz_cc_1.dat
     │  ├─ auto_reference.png
     │  └─ nz_estimate.png
     ├─ setup.log
@@ -108,6 +108,6 @@ inputs and tasks applied, which :ref:`makes this run reproducable<yaw_run>`.
 The ``estimate`` directory contains the check plots of the redshift estimate and
 the reference sample autocorrelation function, which is a proxy for the galaxy
 bias. The data products are stored in ``kpc100t100/fid``, the default name for
-our choice of scales. They are named ``n_cc_0.dat`` (redshifts estimate) and
+our choice of scales. They are named ``n_cc_1.dat`` (redshifts estimate) and
 ``auto_reference.dat`` (reference autocorrelation) and are accompanied by a
 covariance matrix and jackknife samples in separate files.
