@@ -128,10 +128,10 @@ if not os.path.exists(path):
 path = "user_guide/cmd/default_setup.yaml"
 if not os.path.exists(path):
     print(f"generating '{path}'")
-    from yaw_cli.pipeline.default_setup import setup_default
+    from yaw_cli.pipeline.default_setup import gen_default
 
     with open(path, "w") as f:
-        f.write(setup_default)
+        f.write(gen_default(78))
 
 for sub in (
     "",
