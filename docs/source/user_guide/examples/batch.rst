@@ -18,8 +18,31 @@ contents below) found in the previously created project ``output``:
 The results will be written to a new project folder called ``reproduced`` and
 will contain the same files in the end, including a copy of the original YAML
 configuration. More details on configuration files can be found in the section
-on :ref:`batch processing<yaw_run>`.
+on :ref:`batch processing<conf_yaml>`.
 
-.. literalinclude:: example.yaml
-    :caption: ``output/setup.yaml``
-    :language: yaml
+.. dropdown:: Contents of ``output/setup.yaml``.
+
+    .. literalinclude:: example.yaml
+        :language: yaml
+
+
+Processing subsets
+^^^^^^^^^^^^^^^^^^
+
+As in the previous example, we can also process the unknown sample in subsets if
+these subsets are stored in separate input catalogues. In that case, the syntax
+of the configuration file from above changes slightly since we must assign an
+index to each of the unknown data input catalogues. These bin indices can be
+assinged arbitrarily, but to be consistent with the ``yaw_cli cross`` example
+the configuration file would have to look like this:
+
+.. dropdown:: Contents of ``output/setup.yaml`` with tomographic bins.
+
+    .. literalinclude:: example_bins.yaml
+        :language: yaml
+
+.. Note::
+
+    To provide a multiple unknown data subsets the single file path must be
+    replaced by a mapping of bin index to file path, the rest of the file is
+    unchanged compared to the example above.

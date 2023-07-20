@@ -23,7 +23,10 @@ data:
             redshift: z
     unknown:
         data:
-            filepath: unknown.fits
+            filepath:
+                1: unknown1.fits
+                2: unknown2.fits
+                3: unknown3.fits
             ra: ra
             dec: dec
 
