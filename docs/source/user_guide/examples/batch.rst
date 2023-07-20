@@ -18,7 +18,7 @@ contents below) found in the previously created project ``output``:
 The results will be written to a new project folder called ``reproduced`` and
 will contain the same files in the end, including a copy of the original YAML
 configuration. More details on configuration files can be found in the section
-on :ref:`batch processing<yaw_run>`.
+on :ref:`batch processing<conf_yaml>`.
 
 .. dropdown:: Contents of ``output/setup.yaml``.
 
