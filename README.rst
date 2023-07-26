@@ -80,7 +80,8 @@ For bug reports or requesting new features, please use the github issue page:
 https://github.com/jlvdb/yet_another_wizz/issues
 
 
-**Maintainers:**
+Maintainers
+-----------
 
 - Jan Luca van den Busch
   (*author*, Ruhr-Universität Bochum, Astronomisches Institut)
