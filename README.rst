@@ -57,6 +57,17 @@ python library, type::
 
     pip install yet_another_wizz[cli]
 
+LSST-DESC RAIL plugin
+~~~~~~~~~~~~~~~~~~~~~
+
+Currently there is also a
+`plugin interface <https://github.com/jlvdb/yet_another_wizz_rail>`_  for the
+Redshift Assessment Infrastructure Layers
+(`RAIL <https://github.com/LSSTDESC/rail>`_) pipeline under development. To
+install it alongside the python library, including ``rail`` itself, type::
+
+    pip install yet_another_wizz[rail]
+
 
 Usage
 -----
@@ -65,8 +76,9 @@ There are two main ways to use yet_another_wizz,
 
 - the python library ``yaw`` itself and
 - the (separate) ``yaw_cli`` commmand line tool.
+- the (separate) ``yaw_rail`` RAIL plugin (coming soon).
 
-Most people will probably get started with the command line tool, which should
+Most users will probably get started with the command line tool, which should
 cover all necessary tasks for a standard clustering redshift calibration. For
 custom solutions, use the python library. A basic example as well as the API
 reference can be found in the official documentation.
