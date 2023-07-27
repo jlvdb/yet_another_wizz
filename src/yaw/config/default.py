@@ -6,7 +6,7 @@ the default values, as listed below.
 __all__ = [
     "NotSet",
     "Scales",
-    "AutoBinning",
+    "Binning",
     "Backend",
     "Configuration",
     "Resampling",
@@ -31,7 +31,7 @@ class Scales:
     rbin_num = 50
 
 
-class AutoBinning:
+class Binning:
     method = "linear"
     zbin_num = 30
 
@@ -44,7 +44,7 @@ class Backend:
 
 class Configuration:
     scales = Scales
-    binning = AutoBinning
+    binning = Binning
     backend = Backend
     cosmology = "Planck15"
 
