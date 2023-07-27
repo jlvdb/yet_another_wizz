@@ -228,13 +228,6 @@ class Configuration(BaseConfig):
         crosspatch: bool | None = DEFAULT.NotSet,
         rbin_slop: float | None = DEFAULT.NotSet,
     ) -> Configuration:
-        """Create a copy of the current configuration with updated parameter
-        values.
-
-        The method arguments are identical to :meth:`create`. Values that should
-        not be modified are by default represented by the special value
-        :obj:`~yaw.config.default.NotSet`.
-        """
         if cosmology is not DEFAULT.NotSet:
             if isinstance(cosmology, str):
                 cosmology = utils.yaml_to_cosmology(cosmology)
@@ -252,7 +245,7 @@ class Configuration(BaseConfig):
             cosmology=cosmology,
         )
         backend = self.backend.modify(
-            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_num
+            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
         )
         return self.__class__(
             cosmology=cosmology, scales=scales, binning=binning, backend=backend

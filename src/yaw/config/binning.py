@@ -32,7 +32,7 @@ class BinningConfig(BaseConfig):
     )
     """Edges of redshift bins."""
     method: str = field(
-        default=DEFAULT.Configuration.binning.method,
+        default=DEFAULT.Binning.method,
         metadata=Parameter(
             choices=OPTIONS.binning,
             help="redshift binning method, 'logspace' means equal size in log(1+z)",
@@ -60,7 +60,7 @@ class BinningConfig(BaseConfig):
     )
     """Highest redshift bin edge."""
     zbin_num: int = field(
-        default=DEFAULT.AutoBinning.zbin_num,
+        default=DEFAULT.Binning.zbin_num,
         init=False,
         metadata=Parameter(
             type=int,
@@ -73,8 +73,8 @@ class BinningConfig(BaseConfig):
     def __post_init__(self) -> None:
         if len(self.zbins) < 2:
             raise ConfigError("'zbins' must have at least two edges")
-        BinFactory.check(self.zbins)
         object.__setattr__(self, "zbins", np.asarray(self.zbins))
+        BinFactory.check(self.zbins)
         object.__setattr__(self, "zmin", self.zbins[0])
         object.__setattr__(self, "zmax", self.zbins[-1])
         object.__setattr__(self, "zbin_num", len(self.zbins) - 1)
@@ -82,7 +82,7 @@ class BinningConfig(BaseConfig):
     def __eq__(self, other) -> bool:
         if not isinstance(other, self.__class__):
             return False
-        if not array_equal(self.zbins, other.zbins) or self.method != other.method:
+        if self.method != other.method or not array_equal(self.zbins, other.zbins):
             return False
         return True
 
@@ -111,7 +111,7 @@ class BinningConfig(BaseConfig):
         """Create a new redshift binning configuration.
 
         If redshift bins (``zbins``) are provided, ``method`` is set to
-        ``manual`` and provided bins are used. If ``zmin`` and ``zmax`` are
+        ``"manual"`` and the bins edges are used. If ``zmin`` and ``zmax`` are
         provided, instead generates a specified number of bins between this
         lower and upper redshift limit. The spacing of the bins depends the
         generation method, the default is a linear spacing.
@@ -170,24 +170,26 @@ class BinningConfig(BaseConfig):
         method: str = DEFAULT.NotSet,
         cosmology: TypeCosmology | str | None = None,
     ) -> BinningConfig:
-        """TODO
+        """Create a copy of the current configuration with updated parameter
+        values.
+
+        The method arguments are identical to :meth:`create`. Values that should
+        not be modified are by default represented by the special value
+        :obj:`~yaw.config.default.NotSet`.
 
         .. Note::
 
             The ``cosmology`` parameter is only used when generating binnings
             that require cosmological distance computations.
         """
-        if zbins is not DEFAULT.NotSet:
-            kwargs = {"zbins": zbins}
-        else:
-            kwargs = {
-                key: value
-                for key, value in dict(
-                    zmin=zmin, zmax=zmax, zbin_num=zbin_num, method=method
-                ).items()
-                if value is not DEFAULT.NotSet
-            }
-        return self.__class__.create(cosmology=cosmology, **kwargs)
+        return super().modify(
+            zbins=zbins,
+            zmin=zmin,
+            zmax=zmax,
+            zbin_num=zbin_num,
+            method=method,
+            cosmology=cosmology,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         if self.is_manual:
