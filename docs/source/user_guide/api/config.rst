@@ -27,7 +27,7 @@ for :ref:`batch processing<yaw_run>`:
     >>> config.scales
     ScalesConfig(rmin=100.0, rmax=1000.0, rweight=None, rbin_num=50)
     >>> config.binning
-    AutoBinningConfig(zbin_num=30, z='0.070...1.420', method='linear')
+    BinningConfig(zbin_num=30, z='0.070...1.420', method='linear')
     >>> config.backend
     BackendConfig(thread_num=8, crosspatch=True, rbin_slop=0.01)
     >>> config.cosmology
@@ -96,11 +96,9 @@ manually using the ``zbins`` parameter:
     ...     rmin=100, rmax=1000, zmin=0.07, zmax=1.42,
     ...     zbin_num=30, method="linear")
 
-The former creates a :class:`~yaw.config.ManualBinningConfig` object, the latter
-constructs a :class:`~yaw.config.AutoBinningConfig` class. The case shown above
-corresponds to the default binning, which are 30 bins, linearly spaced in
-redshift. Other spacings can be selected using the method parameter, see also
-:const:`~yaw.config.options.Options.binning`.
+The latter example above corresponds to the default binning, which are 30 bins,
+linearly spaced in redshift. Other spacings can be selected using the method
+parameter, see also :const:`~yaw.config.options.Options.binning`.
 
 .. Note::
 

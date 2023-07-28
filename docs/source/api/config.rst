@@ -21,7 +21,6 @@ yaw.config
 
     Configuration
     ScalesConfig
-    AutoBinningConfig
-    ManualBinningConfig
+    BinningConfig
     BackendConfig
     ResamplingConfig
