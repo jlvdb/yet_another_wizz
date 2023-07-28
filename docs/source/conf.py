@@ -149,3 +149,20 @@ for sub in (
     if not os.path.exists(path):
         print(f"generating '{path}'")
         os.system(f"yaw_cli {sub} --help > {path}")
+
+path = "api/default.py"
+if not os.path.exists(path):
+    print(f"generating '{path}'")
+with open("../../src/yaw/config/default.py") as f:
+    outlines = []
+    header_over = False
+    start = False
+    for line in f.readlines():
+        if line.startswith("# docs"):
+            header_over = True
+            continue
+        if header_over:
+            outlines.append(line)
+text = "".join(outlines)
+with open(path, "w") as f:
+    f.write(text.lstrip("\n"))

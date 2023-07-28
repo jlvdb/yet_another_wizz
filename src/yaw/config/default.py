@@ -26,6 +26,9 @@ class NotSet(metaclass=_NotSet_meta):
     pass
 
 
+# docs: render code below
+
+
 class Scales:
     rweight = None
     rbin_num = 50
