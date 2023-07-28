@@ -210,11 +210,10 @@ class Configuration(BaseConfig):
         crosspatch: bool | None = DEFAULT.NotSet,
         rbin_slop: float | None = DEFAULT.NotSet,
     ) -> Configuration:
-        if cosmology is not DEFAULT.NotSet:
-            if isinstance(cosmology, str):
-                cosmology = utils.yaml_to_cosmology(cosmology)
-        else:
+        if cosmology is DEFAULT.NotSet:
             cosmology = self.cosmology
+        elif isinstance(cosmology, str):
+            cosmology = utils.yaml_to_cosmology(cosmology)
         scales = self.scales.modify(
             rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num
         )
