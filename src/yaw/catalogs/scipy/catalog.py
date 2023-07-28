@@ -165,7 +165,7 @@ class ScipyCatalog(BaseCatalog):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'"
                 )
-            self._logger.debug(f"using cache directory '{cache_directory}'")
+            self._logger.debug("using cache directory '%s'", cache_directory)
 
         # create new patches
         if patch_mode != "dividing":
@@ -176,21 +176,21 @@ class ScipyCatalog(BaseCatalog):
                 patch_centers, patch_ids = create_patches(
                     position=position, n_patches=n_patches
                 )
-                log_msg = f"creating {n_patches} patches"
+                log_msg = "creating %i patches"
             else:
                 if isinstance(patch_centers, BaseCatalog):
                     patch_centers = patch_centers.centers.to_3d()
                 patch_ids = assign_patches(centers=patch_centers, position=position)
                 n_patches = len(patch_centers)
-                log_msg = f"applying {n_patches} patches from external data"
+                log_msg = "applying %i patches from external data"
             patch_name = "patch"  # the default name
             data[patch_name] = patch_ids
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
             n_patches = len(data[patch_name].unique())
-            log_msg = f"dividing data into {n_patches} predefined patches"
+            log_msg = "dividing data into %i predefined patches"
             centers = dict()  # this can be empty
-        self._logger.debug(log_msg)
+        self._logger.debug(log_msg, n_patches)
 
         # run groupby first to avoid any intermediate copies of full data
         n_obj_str = long_num_format(len(data))

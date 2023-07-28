@@ -128,7 +128,7 @@ class TreecorrCatalog(BaseCatalog):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'"
                 )
-            self._logger.info(f"using cache directory '{cache_directory}'")
+            self._logger.info("using cache directory '%s'", cache_directory)
 
         if n_patches is not None:
             kwargs["npatch"] = n_patches
@@ -366,7 +366,7 @@ class TreecorrCatalog(BaseCatalog):
 
         # iterate the bins and compute the correlation
         self._logger.debug(
-            f"running treecorr on {config.backend.get_threads()} threads"
+            "running treecorr on %i threads", config.backend.get_threads()
         )
         for i, ((intv, bincat1), (_, bincat2)) in enumerate(zip(cats1, cats2)):
             if progress:

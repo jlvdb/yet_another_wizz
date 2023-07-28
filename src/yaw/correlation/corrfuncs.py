@@ -128,7 +128,7 @@ class CorrData(SampledData):
             :obj:`CorrData`
         """
         name = cls.__name__.lower()[:-4]
-        logger.debug(f"reading {name} data from '{path_prefix}.*'")
+        logger.debug("reading %s data from '%s.*'", name, path_prefix)
         # load data and errors
         ext = "dat"
         data_error = np.loadtxt(f"{path_prefix}.{ext}")
@@ -212,7 +212,7 @@ class CorrData(SampledData):
                 The base name of the output files without any file extension.
         """
         name = self.__class__.__name__.lower()[:-4]
-        logger.info(f"writing {name} data to '{path_prefix}.*'")
+        logger.info("writing %s data to '%s.*'", name, path_prefix)
         PREC = 10
         DELIM = " "
 
@@ -306,7 +306,7 @@ class CorrData(SampledData):
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
         scale_by_dz: bool = False,
-    ) -> Axis:  # pragma: no cover
+    ) -> Axis:
         """Create a plot of the correlation data as a function of redshift.
 
         Create a new axis or plot to an existing one, add x-axis offsets, if
@@ -337,8 +337,8 @@ class CorrData(SampledData):
                 :obj:`dz`.
         """
         x = self.mids + xoffset
-        y = self.data
-        yerr = self.error
+        y = self.data.astype(np.float_)
+        yerr = self.error.astype(np.float_)
         if scale_by_dz:
             y *= self.dz
             yerr *= self.dz
@@ -493,7 +493,8 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 continue
             try:
                 self.dd.is_compatible(pairs, require=True)
-            except ValueError as e:
+                assert self.dd.n_patches == pairs.n_patches
+            except (ValueError, AssertionError) as e:
                 raise ValueError(
                     f"pair counts '{kind}' and 'dd' are not compatible"
                 ) from e
@@ -505,48 +506,52 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         other = f"n_patches={self.n_patches}"
         return f"{string}, {pairs}, {other})"
 
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, self.__class__):
-            return False
-        for cfield in fields(self):
-            kind = cfield.name
-            if getattr(self, kind) != getattr(other, kind):
-                return False
-        return True
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            for cfield in fields(self):
+                kind = cfield.name
+                if getattr(self, kind) != getattr(other, kind):
+                    return False
+            return True
+        return NotImplemented
 
-    def __neq__(self, other) -> bool:
-        return not self == other
+    def __add__(self, other: object) -> CorrFunc:
+        if isinstance(other, self.__class__):
+            # check that the pair counts are set consistently
+            kinds = []
+            for cfield in fields(self):
+                kind = cfield.name
+                self_set = getattr(self, kind) is not None
+                other_set = getattr(other, kind) is not None
+                if (self_set and not other_set) or (not self_set and other_set):
+                    raise ValueError(
+                        f"pair counts for '{kind}' not set for both operands"
+                    )
+                elif self_set and other_set:
+                    kinds.append(kind)
 
-    def __add__(self, other: CorrFunc) -> CorrFunc:
-        # check that the pair counts are set consistently
-        kinds = []
-        for cfield in fields(self):
-            kind = cfield.name
-            self_set = getattr(self, kind) is not None
-            other_set = getattr(other, kind) is not None
-            if (self_set and not other_set) or (not self_set and other_set):
-                raise ValueError(f"pair counts for '{kind}' not set for both operands")
-            elif self_set and other_set:
-                kinds.append(kind)
+            kwargs = {
+                kind: getattr(self, kind) + getattr(other, kind) for kind in kinds
+            }
+            return self.__class__(**kwargs)
+        return NotImplemented
 
-        kwargs = {kind: getattr(self, kind) + getattr(other, kind) for kind in kinds}
-        return self.__class__(**kwargs)
-
-    def __radd__(self, other: CorrFunc | int | float) -> CorrFunc:
-        if other == 0:
+    def __radd__(self, other: object) -> CorrFunc:
+        if np.isscalar(other) and other == 0:
             return self
-        else:
-            return self.__add__(other)
+        return other.__add__(self)
 
-    def __mul__(self, other: np.number) -> CorrFunc:
-        # check that the pair counts are set consistently
-        kwargs = {}
-        for cfield in fields(self):
-            kind = cfield.name
-            counts = getattr(self, kind)
-            if counts is not None:
-                kwargs[kind] = counts * other
-        return self.__class__(**kwargs)
+    def __mul__(self, other: object) -> CorrFunc:
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
+            # check that the pair counts are set consistently
+            kwargs = {}
+            for cfield in fields(self):
+                kind = cfield.name
+                counts = getattr(self, kind)
+                if counts is not None:
+                    kwargs[kind] = counts * other
+            return self.__class__(**kwargs)
+        return NotImplemented
 
     @property
     def auto(self) -> bool:
@@ -589,7 +594,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def n_patches(self) -> int:
         return self.dd.n_patches
 
-    def is_compatible(self, other: CorrFunc, require: bool = True) -> bool:
+    def is_compatible(self, other: CorrFunc, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
 
         Ensures that the redshift binning and the number of patches are
@@ -623,8 +628,6 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         available = set()
         # iterate all dataclass attributes that are in __init__
         for attr in fields(self):
-            if not attr.init:
-                continue
             if getattr(self, attr.name) is not None:
                 available.add(cts_from_code(attr.name))
         # check which estimators are supported
@@ -635,7 +638,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return estimators
 
     def _check_and_select_estimator(
-        self, estimator: str | None
+        self, estimator: str | None = None
     ) -> type[CorrelationEstimator]:
         options = self.estimators
         if estimator is None:
@@ -655,17 +658,13 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             # determine which pair counts are missing
             for attr in fields(self):
                 name = attr.name
-                if not attr.init:
-                    continue
                 cts = cts_from_code(name)
                 if getattr(self, name) is None and cts in est_class.requires:
                     raise EstimatorError(f"estimator requires {name}")
-            else:
-                raise RuntimeError()
         # select the correct estimator
         cls = options[estimator]
         logger.debug(
-            f"selecting estimator '{cls.short}' from {'/'.join(self.estimators)}"
+            "selecting estimator '%s' from %s", cls.short, "/".join(self.estimators)
         )
         return cls
 
@@ -685,7 +684,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         .. deprecated:: 2.3.1
             Renamed to :meth:`sample`.
         """
-        return self.sample(*args, **kwargs)
+        return self.sample(*args, **kwargs)  # pragma: no cover
 
     def sample(
         self,
@@ -718,7 +717,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         if config is None:
             config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
-        logger.debug(f"computing correlation and {config.method} samples")
+        logger.debug("computing correlation and %s samples", config.method)
         # get the pair counts for the required terms (DD, maybe DR and/or RR)
         required_data = {}
         required_samples = {}
@@ -779,12 +778,12 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
     @classmethod
     def from_file(cls, path: TypePathStr) -> CorrFunc:
-        logger.debug(f"reading pair counts from '{path}'")
+        logger.debug("reading pair counts from '%s'", path)
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
     def to_file(self, path: TypePathStr) -> None:
-        logger.info(f"writing pair counts to '{path}'")
+        logger.info("writing pair counts to '%s'", path)
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
 
@@ -928,8 +927,10 @@ def autocorrelate(
     _check_patch_centers([data, random])
     scales = config.scales.as_array()
     logger.info(
-        f"running autocorrelation ({len(scales)} scales, "
-        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)"
+        "running autocorrelation (%i scales, %.0f<r<=%.0fkpc)",
+        len(scales),
+        scales.min(),
+        scales.max(),
     )
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, random)
@@ -1023,8 +1024,10 @@ def crosscorrelate(
 
     scales = config.scales.as_array()
     logger.info(
-        f"running crosscorrelation ({len(scales)} scales, "
-        f"{scales.min():.0f}<r<={scales.max():.0f}kpc)"
+        "running crosscorrelation (%i scales, %.0f<r<=%.0fkpc)",
+        len(scales),
+        scales.min(),
+        scales.max(),
     )
     if linkage is None:
         linkage = PatchLinkage.from_setup(config, unknown)

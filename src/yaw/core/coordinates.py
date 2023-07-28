@@ -5,7 +5,7 @@ as angular coordinates and distances in radian.
 
 from __future__ import annotations
 
-from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 from functools import total_ordering
 from typing import TYPE_CHECKING, TypeVar
@@ -27,11 +27,13 @@ class Coordinate(ABC):
     def __init__(self, coords: dict[str, ArrayLike]) -> None:
         pass
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def from_array(cls, array) -> Coordinate:
         pass
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def from_coords(cls, coords: Sequence[Coordinate]) -> Coordinate:
         """Concatenate a sequence of coordinates into a new vector of
         coordates."""
@@ -40,7 +42,8 @@ class Coordinate(ABC):
     def __repr__(self) -> str:
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def dim(self) -> tuple[str]:
         """A list of names of coordinates in the coordinate system."""
         pass
@@ -50,7 +53,8 @@ class Coordinate(ABC):
         """The number of coordinates in the coordinate system."""
         return len(self.dim)
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def values(self) -> NDArray[np.float_]:
         """The coordinate values cast into a numpy array with shape
         `(N, ndim)` or `(ndim,)` if there is only a single entry."""
@@ -160,8 +164,9 @@ class Coord3D(Coordinate):
         r_d2 = np.sqrt(x * x + y * y)
         r_d3 = np.sqrt(x * x + y * y + z * z)
         # transform
-        ra = np.arccos(x / r_d2) * sgn(y) % (2.0 * np.pi)
-        ra[np.isnan(ra)] = 0.0
+        x_normed = np.ones_like(x)  # fallback for zero-division, arccos(1)=0.0
+        np.divide(x, r_d2, where=r_d2 > 0.0, out=x_normed)
+        ra = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
         dec = np.arcsin(self.z / r_d3)
         return CoordSky(ra, dec)
 
@@ -334,18 +339,22 @@ class Distance(ABC):
     def __format__(self, __format_spec: str) -> str:
         return self.values.__format__(__format_spec)
 
-    def __eq__(self, other: Distance) -> ArrayLike[np.bool_]:
-        return self.values == other.values
+    def __eq__(self, other: object) -> ArrayLike[np.bool_]:
+        if isinstance(other, self.__class__):
+            return self.values == other.values
+        return NotImplemented
 
     def __lt__(self, other: Distance) -> ArrayLike[np.bool_]:
-        return self.values < other.values
+        if isinstance(other, self.__class__):
+            return self.values < other.values
+        return NotImplemented
 
     @abstractmethod
-    def __add__(self: _Tdist, other: _Tdist) -> _Tdist:
+    def __add__(self, other: object) -> _Tdist:
         pass
 
     @abstractmethod
-    def __sub__(self: _Tdist, other: _Tdist) -> _Tdist:
+    def __sub__(self, other: object) -> _Tdist:
         pass
 
     def min(self) -> _Tdist:
@@ -372,13 +381,17 @@ class Distance(ABC):
 class Dist3D(Distance):
     """Implements a vector of Euclidean distances."""
 
-    def __add__(self, other: Dist3D) -> DistSky:
-        dist_sky = self.to_sky() + other.to_sky()
-        return dist_sky.to_3d()
+    def __add__(self, other: object) -> DistSky:
+        if isinstance(other, Dist3D):
+            dist_sky = self.to_sky() + other.to_sky()
+            return dist_sky.to_3d()
+        return NotImplemented
 
-    def __sub__(self, other: Dist3D) -> DistSky:
-        dist_sky = self.to_sky() - other.to_sky()
-        return dist_sky.to_3d()
+    def __sub__(self, other: object) -> DistSky:
+        if isinstance(other, Dist3D):
+            dist_sky = self.to_sky() - other.to_sky()
+            return dist_sky.to_3d()
+        return NotImplemented
 
     def to_3d(self) -> Dist3D:
         return self
@@ -392,11 +405,15 @@ class Dist3D(Distance):
 class DistSky(Distance):
     """Implements a vector of angular distances in radian."""
 
-    def __add__(self, other: DistSky) -> DistSky:
-        return DistSky(self.values + other.values)
+    def __add__(self, other: object) -> DistSky:
+        if isinstance(other, DistSky):
+            return DistSky(self.values + other.values)
+        return NotImplemented
 
-    def __sub__(self, other: DistSky) -> DistSky:
-        return DistSky(self.values - other.values)
+    def __sub__(self, other: object) -> DistSky:
+        if isinstance(other, DistSky):
+            return DistSky(self.values - other.values)
+        return NotImplemented
 
     def to_3d(self) -> Dist3D:
         return Dist3D(2.0 * np.sin(self.values / 2.0))

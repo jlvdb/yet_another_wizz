@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.testing as npt
-from pytest import fixture, raises
+from pytest import fixture, raises, warns
 
 from yaw.config.binning import BinningConfig
 from yaw.config.utils import ConfigError

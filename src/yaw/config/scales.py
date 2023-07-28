@@ -120,14 +120,14 @@ class ScalesConfig(BaseConfig):
         else:
             raise ConfigError("'rmin' and 'rmax' must be both sequences or float")
 
-    def __eq__(self, other: ScalesConfig) -> bool:
-        if not array_equal(self.as_array(), other.as_array()):
-            return False
-        if self.rweight != other.rweight:
-            return False
-        if self.rbin_num != other.rbin_num:
-            return False
-        return True
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            return (
+                array_equal(self.as_array(), other.as_array())
+                and self.rweight == other.rweight
+                and self.rbin_num == other.rbin_num
+            )
+        return NotImplemented
 
     def __getitem__(self, idx: int) -> Scale:
         scales = self.as_array()
@@ -164,4 +164,4 @@ class ScalesConfig(BaseConfig):
             >>> [str(scale) for scale in ScalesConfig]
             ...
         """
-        return [str(scale) for scale in self]
+        return [str(scale) for scale in self]  # pragma: no cover

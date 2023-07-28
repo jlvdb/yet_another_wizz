@@ -174,19 +174,14 @@ class SampledValue(Generic[_Tscalar]):
         return f"{self.value:+.3g}+/-{self.error:.3g}"
 
     def __eq__(self, other: object) -> bool:
-        if isinstance(other, self.__class__):
-            if self.samples.shape != other.samples.shape:
-                return False
+        if isinstance(other, SampledValue):
             return (
-                self.method == other.method
+                self.samples.shape == other.samples.shape
+                and self.method == other.method
                 and self.value == other.value
                 and np.all(self.samples == other.samples)
             )
-        else:
-            return False
-
-    def __ne__(self, other: object) -> bool:
-        return not self.__eq__(other)
+        return NotImplemented
 
     @property
     def n_samples(self) -> int:
@@ -297,37 +292,36 @@ class SampledData(BinnedQuantity):
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, self.__class__):
-            if self.samples.shape != other.samples.shape:
-                return False
             return (
-                self.method == other.method
+                self.samples.shape == other.samples.shape
+                and self.method == other.method
                 and np.all(self.data == other.data)
                 and np.all(self.samples == other.samples)
                 and (self.binning == other.binning).all()
             )
-        else:
-            return False
+        return NotImplemented
 
-    def __ne__(self, other: object) -> bool:
-        return not self.__eq__(other)
+    def __add__(self, other: object) -> _Tdata:
+        if not isinstance(other, self.__class__):
+            self.is_compatible(other, require=True)
+            return self.__class__(
+                binning=self.get_binning(),
+                data=self.data + other.data,
+                samples=self.samples + other.samples,
+                method=self.method,
+            )
+        return NotImplemented
 
-    def __add__(self, other: _Tdata) -> _Tdata:
-        self.is_compatible(other, require=True)
-        return self.__class__(
-            binning=self.get_binning(),
-            data=self.data + other.data,
-            samples=self.samples + other.samples,
-            method=self.method,
-        )
-
-    def __sub__(self, other: _Tdata) -> _Tdata:
-        self.is_compatible(other, require=True)
-        return self.__class__(
-            binning=self.get_binning(),
-            data=self.data - other.data,
-            samples=self.samples - other.samples,
-            method=self.method,
-        )
+    def __sub__(self, other: object) -> _Tdata:
+        if not isinstance(other, self.__class__):
+            self.is_compatible(other, require=True)
+            return self.__class__(
+                binning=self.get_binning(),
+                data=self.data - other.data,
+                samples=self.samples - other.samples,
+                method=self.method,
+            )
+        return NotImplemented
 
     @property
     def bins(self: _Tdata) -> Indexer[int | slice | Sequence, _Tdata]:

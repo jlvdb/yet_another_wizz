@@ -23,7 +23,7 @@ True
 from __future__ import annotations
 
 import warnings
-from abc import ABC, abstractclassmethod, abstractproperty
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -47,7 +47,8 @@ class EstimatorError(Exception):
 class Cts(ABC):
     """Base class to symbolically represent pair counts."""
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def _hash(self) -> int:
         """Used for comparison.
 
@@ -55,7 +56,8 @@ class Cts(ABC):
         :obj:`CtsMix`."""
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def _str(self) -> str:
         pass
 
@@ -69,11 +71,11 @@ class Cts(ABC):
         return self._hash
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Cts):
-            return False
-        var1 = set(self._str.split("_"))
-        var2 = set(other._str.split("_"))
-        return not var1.isdisjoint(var2)
+        if isinstance(other, Cts):
+            var1 = set(self._str.split("_"))
+            var2 = set(other._str.split("_"))
+            return not var1.isdisjoint(var2)
+        return NotImplemented
 
 
 class CtsDD(Cts):
@@ -158,7 +160,8 @@ class CorrelationEstimator(ABC):
         if np.any(counts == 0.0):
             warnings.warn(f"estimator {cls.short} encontered zeros in enumerator")
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def eval(
         cls, *, dd: NDArray, dr: NDArray, rr: NDArray, rd: NDArray | None = None
     ) -> NDArray:

@@ -333,7 +333,7 @@ class Configuration(BaseConfig):
         Returns:
             :obj:`Configuration`
         """
-        logger.info(f"reading configuration file '{path}'")
+        logger.info("reading configuration file '%s'", path)
         with open(str(path)) as f:
             config = yaml.safe_load(f.read())
         return cls.from_dict(config)
@@ -345,7 +345,7 @@ class Configuration(BaseConfig):
             path (:obj:`pathlib.Path`, :obj:`str`):
                 Path to which the YAML file is written.
         """
-        logger.info(f"writing configuration file '{path}'")
+        logger.info("writing configuration file '%s'", path)
         string = yaml.dump(self.to_dict())
         with open(str(path), "w") as f:
             f.write(string)

@@ -279,7 +279,7 @@ class ParallelHelper(Generic[_T]):
                 all_initargs.append(None)
             else:
                 raise TypeError("'initargs' must be an iterable")
-        logger.debug(f"running {self.n_jobs()} jobs on {self.n_threads()} threads")
+        logger.debug("running %i jobs on %i threads", self.n_jobs(), self.n_threads())
         return multiprocessing.Pool(
             initializer=_threadinit, initargs=all_initargs, processes=self._num_threads
         )
