@@ -75,8 +75,8 @@ class BinningConfig(BaseConfig):
             raise ConfigError("'zbins' must have at least two edges")
         object.__setattr__(self, "zbins", np.asarray(self.zbins))
         BinFactory.check(self.zbins)
-        object.__setattr__(self, "zmin", self.zbins[0])
-        object.__setattr__(self, "zmax", self.zbins[-1])
+        object.__setattr__(self, "zmin", float(self.zbins[0]))
+        object.__setattr__(self, "zmax", float(self.zbins[-1]))
         object.__setattr__(self, "zbin_num", len(self.zbins) - 1)
 
     def __eq__(self, other) -> bool:
@@ -182,14 +182,17 @@ class BinningConfig(BaseConfig):
             The ``cosmology`` parameter is only used when generating binnings
             that require cosmological distance computations.
         """
-        return super().modify(
-            zbins=zbins,
-            zmin=zmin,
-            zmax=zmax,
-            zbin_num=zbin_num,
-            method=method,
-            cosmology=cosmology,
-        )
+        if zbins is not DEFAULT.NotSet:
+            kwargs = dict(zbins=zbins)
+        else:
+            inputs = dict(zmin=zmin, zmax=zmax, zbin_num=zbin_num, method=method)
+            mods = {k: v for k, v in inputs.items() if v is not DEFAULT.NotSet}
+            if self.is_manual:  # use every input as parameter
+                kwargs = mods
+            else:  # keep the existing parameters and update with inputs
+                kwargs = self.to_dict()
+                kwargs.update(mods)
+        return self.__class__.create(**kwargs, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
         if self.is_manual:
