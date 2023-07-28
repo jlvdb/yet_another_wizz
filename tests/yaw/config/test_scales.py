@@ -45,3 +45,14 @@ class TestScalesConfig:
         assert scales != ScalesConfig(scales.rmin[:1], scales.rmax[:1])
         assert scales != ScalesConfig(scales.rmin, scales.rmax, rweight=1.0)
         assert scales != ScalesConfig(scales.rmin, scales.rmax, rbin_num=11)
+
+    def test_modify(self, default_scales):
+        substitutes = dict(
+            rmin=[10, 20],
+            rmax=[200, 400],
+            rweight=-1.0,
+            rbin_num=100,
+        )
+        for param, value in substitutes.items():
+            conf = default_scales.modify(**{param: value})
+            assert getattr(conf, param) == value
