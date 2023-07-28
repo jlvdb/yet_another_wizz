@@ -2,8 +2,7 @@
 parameters for the correlation function measurements. These parameters control
 
 1. the scales on which correlations are measured (:obj:`ScalesConfig`),
-2. the redshift binning for the redshift reconstruction
-   (:obj:`AutoBinningConfig` or :obj:`ManualBinningConfig`),
+2. the redshift binning for the redshift reconstruction (:obj:`BinningConfig`),
 3. backend related parameters (:obj:`BackendConfig`), and
 4. the resampling method for error estimation (:obj:`ResamplingConfig`).
 

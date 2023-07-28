@@ -20,7 +20,7 @@ class Options:
     @property
     def binning(self) -> tuple[str]:
         """Lists the currently implemented methods to generate redshift bins
-        with the :obj:`~yaw.config.AutoBinningConfig` class.
+        with the :obj:`~yaw.config.BinningConfig` class.
 
         .. rubric:: Values
 
@@ -31,6 +31,10 @@ class Options:
 
         ``logspace``: Generate a binning with equal width in logarithmic
         redshift :math:`\\log(1+z)`.
+
+        .. Note::
+
+            Class also accepts ``manual`` if custom bin edges are provided.
         """
         return ("comoving", "linear", "logspace")
 

@@ -43,9 +43,8 @@ class Configuration(BaseConfig):
 
         The structure and meaning of the parameters is described in more detail
         in the specialised configuration objects :obj:`ScalesConfig`,
-        :obj:`AutoBinningConfig` / :obj:`ManualBinningConfig`,
-        :obj:`BackendConfig`, which are stored as class attributes
-        :obj:`scales`, :obj:`binning`, and :obj:`backend`.
+        :obj:`BinningConfig`, :obj:`BackendConfig`, which are stored as class
+        attributes :obj:`scales`, :obj:`binning`, and :obj:`backend`.
 
         To access e.g. the lower measurement scale limit, use
 
@@ -60,7 +59,7 @@ class Configuration(BaseConfig):
     Args:
         scales (:obj:`~yaw.config.ScalesConfig`):
             The configuration of the measurement scales.
-        binning (:obj:`~yaw.config.AutoBinningConfig`, :obj:`~yaw.config.ManualBinningConfig`):
+        binning (:obj:`~yaw.config.BinningConfig`):
             The redshift binning configuration.
         backend (:obj:`~yaw.config.BackendConfig`):
             The backend-specific configuration.
@@ -109,7 +108,7 @@ class Configuration(BaseConfig):
         rmax: ArrayLike,
         rweight: float | None = DEFAULT.Configuration.scales.rweight,
         rbin_num: int = DEFAULT.Configuration.scales.rbin_num,
-        # AutoBinningConfig / ManualBinningConfig
+        # BinningConfig
         zmin: ArrayLike = None,
         zmax: ArrayLike = None,
         zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
@@ -124,8 +123,7 @@ class Configuration(BaseConfig):
 
         Except for the ``cosmology`` parameter, all other parameters are passed
         to the constructors of the respective :obj:`ScalesConfig`,
-        :obj:`AutoBinningConfig` / :obj:`ManualBinningConfig`,
-        :obj:`BackendConfig` classes.
+        :obj:`BinningConfig`, and :obj:`BackendConfig` classes.
 
         .. Note::
 
@@ -199,7 +197,7 @@ class Configuration(BaseConfig):
         rmax: ArrayLike | None = DEFAULT.NotSet,
         rweight: float | None = DEFAULT.NotSet,
         rbin_num: int | None = DEFAULT.NotSet,
-        # AutoBinningConfig /  ManualBinningConfig
+        # BinningConfig
         zmin: float | None = DEFAULT.NotSet,
         zmax: float | None = DEFAULT.NotSet,
         zbin_num: int | None = DEFAULT.NotSet,
