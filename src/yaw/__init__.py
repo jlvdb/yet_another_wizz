@@ -28,14 +28,13 @@ from yaw.config import Configuration, ResamplingConfig
 from yaw.core.cosmology import Scale
 from yaw.core.math import global_covariance
 from yaw.correlation import CorrData, CorrFunc, autocorrelate, crosscorrelate
-from yaw.deprecated import (
-    CorrelationData,
-    CorrelationFunction,
-    HistogramData,
-    PairCountResult,
-)
 from yaw.randoms import UniformRandoms
 from yaw.redshifts import HistData, RedshiftData
+
+# isort: split
+from yaw.deprecated.correlation.corrfuncs import CorrelationData, CorrelationFunction
+from yaw.deprecated.correlation.paircounts import PairCountResult
+from yaw.deprecated.redshifts import HistogramData
 
 __all__ = [
     "NewCatalog",
@@ -56,4 +55,4 @@ __all__ = [
     "HistogramData",
     "PairCountResult",
 ]
-__version__ = "2.5.4"
+__version__ = "2.5.5"
