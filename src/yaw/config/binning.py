@@ -95,6 +95,7 @@ class BinningConfig(BaseConfig):
 
     @property
     def is_manual(self) -> bool:
+        """Whether the redshift bins are set manually."""
         return self.method == "manual"
 
     @classmethod
