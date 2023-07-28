@@ -31,24 +31,6 @@ __all__ = ["Configuration"]
 logger = logging.getLogger(__name__)
 
 
-def update_if_set(the_dict: dict, key: str, value: Any | DEFAULT.NotSet) -> None:
-    if value is not DEFAULT.NotSet:
-        the_dict[key] = value
-
-
-def update_auto_binning_if_set(
-    the_dict: dict,
-    zmin: float | None = DEFAULT.NotSet,
-    zmax: float | None = DEFAULT.NotSet,
-    zbin_num: int | None = DEFAULT.NotSet,
-    method: str | None = DEFAULT.NotSet,
-) -> None:
-    update_if_set(the_dict, "zmin", zmin)
-    update_if_set(the_dict, "zmax", zmax)
-    update_if_set(the_dict, "zbin_num", zbin_num)
-    update_if_set(the_dict, "method", method)
-
-
 @dataclass(frozen=True)
 class Configuration(BaseConfig):
     """The central configration for correlation measurements.
