@@ -8,8 +8,8 @@ import numpy as np
 from deprecated import deprecated
 
 from yaw.config import default as DEFAULT
+from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
-from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import Scale
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
@@ -21,7 +21,7 @@ __all__ = ["ScalesConfig"]
 
 
 @dataclass(frozen=True)
-class ScalesConfig(DictRepresentation):
+class ScalesConfig(BaseConfig):
     """Configuration of scales used for correlation measurements.
 
     Correlation functions are measured on one or many intervals
@@ -120,14 +120,14 @@ class ScalesConfig(DictRepresentation):
         else:
             raise ConfigError("'rmin' and 'rmax' must be both sequences or float")
 
-    def __eq__(self, other: ScalesConfig) -> bool:
-        if not array_equal(self.as_array(), other.as_array()):
-            return False
-        if self.rweight != other.rweight:
-            return False
-        if self.rbin_num != other.rbin_num:
-            return False
-        return True
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            return (
+                array_equal(self.as_array(), other.as_array())
+                and self.rweight == other.rweight
+                and self.rbin_num == other.rbin_num
+            )
+        return NotImplemented
 
     def __getitem__(self, idx: int) -> Scale:
         scales = self.as_array()
@@ -136,6 +136,15 @@ class ScalesConfig(DictRepresentation):
     def __iter__(self) -> Iterator[Scale]:
         for rmin, rmax in self.as_array():
             yield Scale(rmin=rmin, rmax=rmax)
+
+    def modify(
+        self,
+        rmin: list[float] | float = DEFAULT.NotSet,
+        rmax: list[float] | float = DEFAULT.NotSet,
+        rweight: float | None = DEFAULT.NotSet,
+        rbin_num: int = DEFAULT.NotSet,
+    ) -> ScalesConfig:
+        return super().modify(rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
 
     def as_array(self) -> NDArray[np.float_]:
         """Obtain the scales cuts as array of shape (2, N)"""
@@ -155,4 +164,4 @@ class ScalesConfig(DictRepresentation):
             >>> [str(scale) for scale in ScalesConfig]
             ...
         """
-        return [str(scale) for scale in self]
+        return [str(scale) for scale in self]  # pragma: no cover

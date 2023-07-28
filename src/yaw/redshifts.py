@@ -137,7 +137,7 @@ class RedshiftData(CorrData):
         .. deprecated:: 2.3.2
             Renamed to :meth:`from_corrdata`.
         """
-        return cls.from_corrdata(*args, **kwargs)
+        return cls.from_corrdata(*args, **kwargs)  # pragma: no cover
 
     @classmethod
     def from_corrdata(
@@ -200,7 +200,7 @@ class RedshiftData(CorrData):
             mitigate.append("unknown")
 
         if len(mitigate) > 0:
-            logger.debug(f"mitigating {' and '.join(mitigate)} sample bias")
+            logger.debug("mitigating %s sample bias", " and ".join(mitigate))
         N = cross_data.n_samples
         dzsq_data = cross_data.dz**2
         dzsq_samp = np.tile(dzsq_data, N).reshape((N, -1))
@@ -221,7 +221,7 @@ class RedshiftData(CorrData):
         .. deprecated:: 2.3.2
             Renamed to :meth:`from_corrfuncs`.
         """
-        return cls.from_corrfuncs(*args, **kwargs)
+        return cls.from_corrfuncs(*args, **kwargs)  # pragma: no cover
 
     @classmethod
     def from_corrfuncs(
@@ -448,7 +448,7 @@ class RedshiftData(CorrData):
         )
 
 
-@dataclass(frozen=True, repr=False, eq=False)
+@dataclass(frozen=True, repr=False)
 class HistData(RedshiftData):
     """Container for histogram data.
 
@@ -476,6 +476,12 @@ class HistData(RedshiftData):
 
     density: bool = field(default=False)
     """Whether the data is normalised, i.e. a density estimate."""
+
+    def __eq__(self, other: object) -> bool:
+        parent_eq = super().__eq__(other)
+        if isinstance(other, self.__class__):
+            return self.density == other.density
+        return parent_eq
 
     @property
     def _dat_desc(self) -> str:

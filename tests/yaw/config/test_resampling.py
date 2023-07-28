@@ -19,6 +19,18 @@ class TestResamplingConfig:
         conf.get_samples(n_patches)
         assert conf.n_patches == n_patches
 
+    def test_modify(self):
+        substitutes = dict(
+            method="bootstrap",
+            crosspatch=False,
+            n_boot=10,
+            global_norm=True,
+            seed=99,
+        )
+        for param, value in substitutes.items():
+            conf = ResamplingConfig().modify(**{param: value})
+            assert getattr(conf, param) == value
+
     def test__generate_jackknife(self):
         samples = ResamplingConfig()._generate_jackknife(n_patches=3)
         npt.assert_array_equal(samples.sum(axis=1), [3, 2, 1])

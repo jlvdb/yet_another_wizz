@@ -29,17 +29,21 @@ from yaw.config.options import OPTIONS
 
 # isort: split
 from yaw.config.backend import BackendConfig
-from yaw.config.binning import AutoBinningConfig, ManualBinningConfig
+from yaw.config.binning import BinningConfig
 from yaw.config.config import Configuration
 from yaw.config.resampling import ResamplingConfig
 from yaw.config.scales import ScalesConfig
 
+# isort: split
+from yaw.deprecated.config.binning import AutoBinningConfig, ManualBinningConfig
+
 __all__ = [
     "DEFAULT",
-    "BackendConfig",
     "AutoBinningConfig",
-    "ManualBinningConfig",
+    "BackendConfig",
+    "BinningConfig",
     "Configuration",
+    "ManualBinningConfig",
     "OPTIONS",
     "ResamplingConfig",
     "ScalesConfig",

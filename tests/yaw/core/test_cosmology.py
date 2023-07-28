@@ -25,6 +25,9 @@ class TestScale:
         with raises(ValueError):
             cosmology.Scale(10, 2)
 
+    def test_str(self):
+        str(cosmology.Scale(1.0, 100.0))
+
     def test_mid(self):
         assert cosmology.Scale(10.0, 30.0).mid == 20.0
 

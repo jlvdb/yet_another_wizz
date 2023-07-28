@@ -76,7 +76,7 @@ class PatchLinkage:
             max_query_radius = 0.0  # only relevant for cross-patch
         max_query_radius = DistSky(max_query_radius)
 
-        logger.debug(f"computing patch linkage with {max_query_radius=:.3e}")
+        logger.debug("computing patch linkage with %.3e", max_query_radius.values)
         centers_3d = catalog.centers.to_3d().values
         radii = catalog.radii.values
         # compute distance between all patch centers
@@ -90,7 +90,7 @@ class PatchLinkage:
         for id1, overlap in enumerate(overlaps):
             patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
         logger.debug(
-            f"found {len(patch_pairs)} patch links " f"for {catalog.n_patches} patches"
+            "found %d patch links for %d patches", len(patch_pairs), catalog.n_patches
         )
         return cls(patch_pairs)
 

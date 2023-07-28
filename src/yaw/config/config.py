@@ -11,14 +11,10 @@ from deprecated import deprecated
 from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
 from yaw.config import utils
+from yaw.config.abc import BaseConfig
 from yaw.config.backend import BackendConfig
-from yaw.config.binning import (
-    AutoBinningConfig,
-    ManualBinningConfig,
-    make_binning_config,
-)
+from yaw.config.binning import BinningConfig
 from yaw.config.scales import ScalesConfig
-from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import TypeCosmology, get_default_cosmology, r_kpc_to_angle
 from yaw.core.docs import Parameter
 
@@ -35,26 +31,8 @@ __all__ = ["Configuration"]
 logger = logging.getLogger(__name__)
 
 
-def update_if_set(the_dict: dict, key: str, value: Any | DEFAULT.NotSet) -> None:
-    if value is not DEFAULT.NotSet:
-        the_dict[key] = value
-
-
-def update_auto_binning_if_set(
-    the_dict: dict,
-    zmin: float | None = DEFAULT.NotSet,
-    zmax: float | None = DEFAULT.NotSet,
-    zbin_num: int | None = DEFAULT.NotSet,
-    method: str | None = DEFAULT.NotSet,
-) -> None:
-    update_if_set(the_dict, "zmin", zmin)
-    update_if_set(the_dict, "zmax", zmax)
-    update_if_set(the_dict, "zbin_num", zbin_num)
-    update_if_set(the_dict, "method", method)
-
-
 @dataclass(frozen=True)
-class Configuration(DictRepresentation):
+class Configuration(BaseConfig):
     """The central configration for correlation measurements.
 
     Bundles the configuration of measurement scales, redshift binning, and
@@ -92,7 +70,7 @@ class Configuration(DictRepresentation):
 
     scales: ScalesConfig
     """The configuration of the measurement scales."""
-    binning: AutoBinningConfig | ManualBinningConfig
+    binning: BinningConfig
     """The redshift binning configuration."""
     backend: BackendConfig = field(default_factory=BackendConfig)
     """The backend-specific configuration."""
@@ -196,8 +174,10 @@ class Configuration(DictRepresentation):
             :obj:`Configuration`
         """
         cosmology = utils.parse_cosmology(cosmology)
-        scales = ScalesConfig(rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
-        binning = make_binning_config(
+        scales = ScalesConfig.create(
+            rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num
+        )
+        binning = BinningConfig.create(
             cosmology=cosmology,
             zmin=zmin,
             zmax=zmax,
@@ -205,7 +185,7 @@ class Configuration(DictRepresentation):
             method=method,
             zbins=zbins,
         )
-        backend = BackendConfig(
+        backend = BackendConfig.create(
             thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
         )
         return cls(scales=scales, binning=binning, backend=backend, cosmology=cosmology)
@@ -230,50 +210,27 @@ class Configuration(DictRepresentation):
         crosspatch: bool | None = DEFAULT.NotSet,
         rbin_slop: float | None = DEFAULT.NotSet,
     ) -> Configuration:
-        """Create a copy of the current configuration with updated parameter
-        values.
-
-        The method arguments are identical to :meth:`create`. Values that should
-        not be modified are by default represented by the special value
-        :obj:`~yaw.config.default.NotSet`.
-        """
-        config = self.to_dict()
-
-        # cosmology
-        if cosmology is not DEFAULT.NotSet:
-            if isinstance(cosmology, str):
-                cosmology = utils.yaml_to_cosmology(cosmology)
-            config["cosmology"] = utils.cosmology_to_yaml(cosmology)
-
-        # ScalesConfig
-        update_if_set(config["scales"], "rmin", rmin)
-        update_if_set(config["scales"], "rmax", rmax)
-        update_if_set(config["scales"], "rweight", rweight)
-        update_if_set(config["scales"], "rbin_num", rbin_num)
-
-        # AutoBinningConfig / ManualBinningConfig
-        if isinstance(self.binning, AutoBinningConfig):
-            if zbins is not DEFAULT.NotSet:
-                config["binning"] = dict(zbins=zbins)  # remove other params
-            else:
-                update_auto_binning_if_set(
-                    config["binning"], zmin, zmax, zbin_num, method
-                )
-        else:  # is ManualBinningConfig
-            if zbins is not DEFAULT.NotSet:
-                config["binning"]["zbins"] = zbins
-            else:
-                config["binning"] = dict()  # clear the binning parameters
-                update_auto_binning_if_set(
-                    config["binning"], zmin, zmax, zbin_num, method
-                )
-
-        # BackendConfig
-        update_if_set(config["backend"], "thread_num", thread_num)
-        update_if_set(config["backend"], "crosspatch", crosspatch)
-        update_if_set(config["backend"], "rbin_slop", rbin_slop)
-
-        return self.__class__.from_dict(config)
+        if cosmology is DEFAULT.NotSet:
+            cosmology = self.cosmology
+        elif isinstance(cosmology, str):
+            cosmology = utils.yaml_to_cosmology(cosmology)
+        scales = self.scales.modify(
+            rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num
+        )
+        binning = self.binning.modify(
+            zmin=zmin,
+            zmax=zmax,
+            method=method,
+            zbin_num=zbin_num,
+            zbins=zbins,
+            cosmology=cosmology,
+        )
+        backend = self.backend.modify(
+            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
+        )
+        return self.__class__(
+            cosmology=cosmology, scales=scales, binning=binning, backend=backend
+        )
 
     @deprecated(reason="no longer maintained", version="2.5.3")
     def plot_scales(
@@ -332,17 +289,19 @@ class Configuration(DictRepresentation):
         )
         # parse the required subgroups
         try:
-            scales = ScalesConfig.from_dict(config.pop("scales"))
+            scales_dict = config.pop("scales")
+            scales = ScalesConfig.from_dict(scales_dict)
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "scales")
         try:
-            binning_conf = config.pop("binning")
-            binning = make_binning_config(cosmology=cosmology, **binning_conf)
+            binning_dict = config.pop("binning")
+            binning = BinningConfig.from_dict(binning_dict, cosmology=cosmology)
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "binning")
         # parse the optional subgroups
         try:
-            backend = BackendConfig.from_dict(config.pop("backend"))
+            backend_dict = config.pop("backend")
+            backend = BackendConfig.from_dict(backend_dict)
         except KeyError:
             backend = BackendConfig()
         except TypeError as e:
@@ -374,7 +333,7 @@ class Configuration(DictRepresentation):
         Returns:
             :obj:`Configuration`
         """
-        logger.info(f"reading configuration file '{path}'")
+        logger.info("reading configuration file '%s'", path)
         with open(str(path)) as f:
             config = yaml.safe_load(f.read())
         return cls.from_dict(config)
@@ -386,7 +345,7 @@ class Configuration(DictRepresentation):
             path (:obj:`pathlib.Path`, :obj:`str`):
                 Path to which the YAML file is written.
         """
-        logger.info(f"writing configuration file '{path}'")
+        logger.info("writing configuration file '%s'", path)
         string = yaml.dump(self.to_dict())
         with open(str(path), "w") as f:
             f.write(string)

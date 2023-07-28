@@ -3,15 +3,15 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from yaw.config import default as DEFAULT
-from yaw.core.abc import DictRepresentation
+from yaw.config import DEFAULT
+from yaw.config.abc import BaseConfig
 from yaw.core.docs import Parameter
 
 __all__ = ["BackendConfig"]
 
 
 @dataclass(frozen=True)
-class BackendConfig(DictRepresentation):
+class BackendConfig(BaseConfig):
     """Configuration of backends used for correlation measurements.
 
     Args:
@@ -59,6 +59,16 @@ class BackendConfig(DictRepresentation):
     def __post_init__(self) -> None:
         if self.thread_num is None:
             object.__setattr__(self, "thread_num", os.cpu_count())
+
+    def modify(
+        self,
+        thread_num: int | None = DEFAULT.NotSet,
+        crosspatch: bool = DEFAULT.NotSet,
+        rbin_slop: float = DEFAULT.NotSet,
+    ) -> BackendConfig:
+        return super().modify(
+            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
+        )
 
     def get_threads(self, max=None) -> int:
         """Get the number of threads for parallel processing.

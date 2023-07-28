@@ -17,7 +17,7 @@ from abc import abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import accumulate
-from typing import TYPE_CHECKING, NoReturn, Union
+from typing import TYPE_CHECKING, NoReturn, Type, Union
 
 try:  # pragma: no cover
     from typing import TypeAlias
@@ -53,6 +53,12 @@ TypeSlice: TypeAlias = Union[slice, int, None]
 TypeIndex: TypeAlias = Union[int, slice, Sequence]
 
 
+def sequence_require_type(items: Sequence, class_or_inst: Type | object) -> None:
+    for item in items:
+        if not isinstance(item, class_or_inst):
+            raise TypeError(f"invalid type '{type(item)}' for concatenation")
+
+
 def check_mergable(patched_arrays: Sequence[PatchedArray], *, patches: bool) -> None:
     """Check if two instaces of PatchedArray can be merged along the patch
     or binning axis.
@@ -71,11 +77,8 @@ def check_mergable(patched_arrays: Sequence[PatchedArray], *, patches: bool) -> 
             raise ValueError("cannot merge mixed cross- and autocorrelations")
         if patches:
             reference.is_compatible(patched, require=True)
-        else:
-            if reference.auto != patched.auto:
-                raise ValueError("cannot merge mixed cross- and autocorrelations")
-            if reference.n_patches != patched.n_patches:
-                raise ValueError("cannot merge, patch numbers do not match")
+        elif reference.n_patches != patched.n_patches:
+            raise ValueError("cannot merge, patch numbers do not match")
 
 
 def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
@@ -122,18 +125,8 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         return f"{string}, {shape=})"
 
     @abstractmethod
-    def __eq__(self, other) -> bool:
-        if isinstance(other, self.__class__):
-            if self.n_bins != other.n_bins:
-                return False
-            elif self.n_patches != other.n_patches:
-                return False
-            elif not (self.get_binning() == other.get_binning()).all():
-                return False
-        return True
-
-    def __neq__(self, other) -> bool:
-        return not self == other
+    def __eq__(self, other: object) -> bool:
+        pass
 
     @property
     def dtype(self) -> DTypeLike:
@@ -193,7 +186,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         .. deprecated:: 2.3.1
             Renamed to :meth:`sample_sum`.
         """
-        return self.sample_sum(*args, **kwargs)
+        return self.sample_sum(*args, **kwargs)  # pragma: no cover
 
     def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         """Compute the sum of the data over all patches and samples thereof.
@@ -328,14 +321,17 @@ class PatchedTotal(PatchedArray):
         self.totals2 = totals2
         self.auto = auto
 
-    def __eq__(self, other) -> bool:
-        if not super().__eq__(other):
-            return False  # checks type
-        return (
-            np.all(self.totals1 == other.totals1)
-            and np.all(self.totals2 == other.totals2)
-            and self.auto == other.auto
-        )
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            return (
+                self.n_bins == other.n_bins
+                and self.n_patches == other.n_patches
+                and (self.get_binning() == other.get_binning()).all()
+                and np.all(self.totals1 == other.totals1)
+                and np.all(self.totals2 == other.totals2)
+                and self.auto == other.auto
+            )
+        return NotImplemented
 
     def as_array(self) -> NDArray:
         return np.einsum("i...,j...->ij...", self.totals1, self.totals2)
@@ -394,6 +390,7 @@ class PatchedTotal(PatchedArray):
         dest.create_dataset("auto", data=self.auto)
 
     def concatenate_patches(self, *data: PatchedTotal) -> PatchedTotal:
+        sequence_require_type(data, self.__class__)
         all_totals: list[PatchedTotal] = [self, *data]
         check_mergable(all_totals, patches=True)
         return self.__class__(
@@ -404,6 +401,7 @@ class PatchedTotal(PatchedArray):
         )
 
     def concatenate_bins(self, *data: PatchedTotal) -> PatchedTotal:
+        sequence_require_type(data, self.__class__)
         all_totals: list[PatchedTotal] = [self, *data]
         check_mergable(all_totals, patches=False)
         binning = concatenate_bin_edges(*all_totals)
@@ -640,27 +638,38 @@ class PatchedCount(PatchedArray):
         counts = np.zeros((n_patches, n_patches, len(binning)), dtype=dtype)
         return cls(binning, counts, auto=auto)
 
-    def __eq__(self, other) -> bool:
-        if not super().__eq__(other):
-            return False  # checks type
-        return np.all(self.counts == other.counts) and (self.auto == other.auto)
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, self.__class__):
+            return (
+                self.n_bins == other.n_bins
+                and self.n_patches == other.n_patches
+                and (self.get_binning() == other.get_binning()).all()
+                and np.all(self.counts == other.counts)
+                and (self.auto == other.auto)
+            )
+        return NotImplemented
 
-    def __add__(self, other: PatchedCount) -> PatchedCount:
-        self.is_compatible(other, require=True)
-        if self.n_patches != other.n_patches:
-            raise ValueError("number of patches does not agree")
-        return self.__class__(
-            self.get_binning(), self.counts + other.counts, auto=self.auto
-        )
+    def __add__(self, other: object) -> PatchedCount:
+        if isinstance(other, self.__class__):
+            self.is_compatible(other, require=True)
+            if self.n_patches != other.n_patches:
+                raise ValueError("number of patches does not agree")
+            return self.__class__(
+                self.get_binning(), self.counts + other.counts, auto=self.auto
+            )
+        return NotImplemented
 
-    def __radd__(self, other: PatchedCount | int | float) -> PatchedCount:
-        if other == 0:
+    def __radd__(self, other: object) -> PatchedCount:
+        if np.isscalar(other) and other == 0:
             return self
-        else:
-            return self.__add__(other)
+        return other.__add__(self)
 
-    def __mul__(self, other: np.number) -> PatchedCount:
-        return self.__class__(self.get_binning(), self.counts * other, auto=self.auto)
+    def __mul__(self, other: object) -> PatchedCount:
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
+            return self.__class__(
+                self.get_binning(), self.counts * other, auto=self.auto
+            )
+        return NotImplemented
 
     def set_measurement(self, key: PatchIDs | tuple[int, int], item: NDArray):
         """Set the counts value in all redshift bins for a pair of patch
@@ -783,22 +792,27 @@ class PatchedCount(PatchedArray):
         dest.create_dataset("auto", data=self.auto)
 
     def concatenate_patches(self, *data: PatchedCount) -> PatchedCount:
+        sequence_require_type(data, self.__class__)
         all_counts: list[PatchedCount] = [self, *data]
         check_mergable(all_counts, patches=True)
         offsets = patch_idx_offset(all_counts)
+        n_patches = [count.n_patches for count in all_counts]
         merged = self.__class__.zeros(
             binning=self.get_binning(),
-            n_patches=sum(count.n_patches for count in all_counts),
+            n_patches=sum(n_patches),
             auto=self.auto,
         )
         # insert the blocks of counts into the merged counts array
         loc = 0
-        for count, offset in zip(all_counts, offsets):
-            merged.counts[loc : loc + offset, loc : loc + offset] = count.counts
+        for count, offset, n in zip(all_counts, offsets, n_patches):
+            i_start = offset
+            i_end = i_start + n
+            merged.counts[i_start:i_end, i_start:i_end] = count.counts
             loc += offset
         return merged
 
     def concatenate_bins(self, *data: PatchedCount) -> PatchedCount:
+        sequence_require_type(data, self.__class__)
         all_counts: list[PatchedCount] = [self, *data]
         check_mergable(all_counts, patches=False)
         binning = concatenate_bin_edges(*all_counts)
@@ -952,33 +966,30 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         n_patches = self.n_patches
         return f"{string}, {n_patches=})"
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, self.__class__):
-            return np.all(self.count == other.count) and np.all(
-                self.total == other.total
-            )
-        else:
-            return False
+            return self.count == other.count and self.total == other.total
+        return NotImplemented
 
-    def __neq__(self, other) -> bool:
-        return not self == other
+    def __add__(self, other: object) -> NormalisedCounts:
+        if isinstance(other, self.__class__):
+            count = self.count + other.count
+            if np.any(self.total.totals1 != other.total.totals1) or np.any(
+                self.total.totals2 != other.total.totals2
+            ):
+                raise ValueError("total number of objects do not agree for operands")
+            return self.__class__(count, self.total)
+        return NotImplemented
 
-    def __add__(self, other: NormalisedCounts) -> NormalisedCounts:
-        count = self.count + other.count
-        if np.any(self.total.totals1 != other.total.totals1) or np.any(
-            self.total.totals2 != other.total.totals2
-        ):
-            raise ValueError("total number of objects do not agree for operands")
-        return self.__class__(count, self.total)
-
-    def __radd__(self, other: NormalisedCounts | int | float) -> NormalisedCounts:
-        if other == 0:
+    def __radd__(self, other: object) -> NormalisedCounts:
+        if np.isscalar(other) and other == 0:
             return self
-        else:
-            return self.__add__(other)
+        return other.__add__(self)
 
-    def __mul__(self, other: np.number) -> NormalisedCounts:
-        return self.__class__(self.count * other, self.total)
+    def __mul__(self, other: object) -> NormalisedCounts:
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
+            return self.__class__(self.count * other, self.total)
+        return NotImplemented
 
     @property
     def auto(self) -> bool:
@@ -1054,6 +1065,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         self.total.to_hdf(group)
 
     def concatenate_patches(self, *pcounts: NormalisedCounts) -> NormalisedCounts:
+        sequence_require_type(pcounts, self.__class__)
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]
         return self.__class__(
@@ -1062,6 +1074,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         )
 
     def concatenate_bins(self, *pcounts: NormalisedCounts) -> NormalisedCounts:
+        sequence_require_type(pcounts, self.__class__)
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]
         return self.__class__(
