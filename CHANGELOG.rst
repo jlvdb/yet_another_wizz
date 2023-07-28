@@ -2,6 +2,19 @@ Change log
 ==========
 
 
+Version 2.5.5
+-------------
+
+- Implemented a uniform API for configuration classes
+- Deprecated ``AutoBinningConfig`` and ``ManualBinningConfig`` and combined them
+  in new ``BinningConfig`` class.
+- Adhere to python standards in data model (double underscore methods).
+- Added missing type checks for data concatenation.
+- Improved the unit test coverage.
+- Corrected default values for ``.is_compatible()`` methods.
+- Corrected some errors in the documentation.
+
+
 Version 2.5.4
 -------------
 

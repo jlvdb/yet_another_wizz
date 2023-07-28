@@ -87,10 +87,9 @@ class TestBinningConfig:
     def test_create_manual(self, bin_edges, manual_binning):
         assert manual_binning == BinningConfig.create(zbins=bin_edges)
 
-    def test_create_all_arg(self, bin_edges, bin_props, manual_binning):
-        assert isinstance(
-            BinningConfig.create(zbins=bin_edges, **bin_props), BinningConfig
-        )
+    def test_create_all_arg(self, bin_edges, bin_props, auto_binning):
+        with warns(UserWarning, match="ignored"):
+            assert BinningConfig.create(zbins=bin_edges, **bin_props) == auto_binning
 
     def test_create_no_z_arg(self, bin_edges, bin_props, auto_binning):
         with raises(ConfigError):

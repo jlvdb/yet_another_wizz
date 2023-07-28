@@ -210,11 +210,10 @@ class Configuration(BaseConfig):
         crosspatch: bool | None = DEFAULT.NotSet,
         rbin_slop: float | None = DEFAULT.NotSet,
     ) -> Configuration:
-        if cosmology is not DEFAULT.NotSet:
-            if isinstance(cosmology, str):
-                cosmology = utils.yaml_to_cosmology(cosmology)
-        else:
+        if cosmology is DEFAULT.NotSet:
             cosmology = self.cosmology
+        elif isinstance(cosmology, str):
+            cosmology = utils.yaml_to_cosmology(cosmology)
         scales = self.scales.modify(
             rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num
         )
@@ -290,18 +289,19 @@ class Configuration(BaseConfig):
         )
         # parse the required subgroups
         try:
-            scales = ScalesConfig.from_dict(config.pop("scales"))
+            scales_dict = config.pop("scales")
+            scales = ScalesConfig.from_dict(scales_dict)
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "scales")
         try:
-            binning = BinningConfig.from_dict(
-                config.pop("binning"), cosmology=cosmology
-            )
+            binning_dict = config.pop("binning")
+            binning = BinningConfig.from_dict(binning_dict, cosmology=cosmology)
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "binning")
         # parse the optional subgroups
         try:
-            backend = BackendConfig.from_dict(config.pop("backend"))
+            backend_dict = config.pop("backend")
+            backend = BackendConfig.from_dict(backend_dict)
         except KeyError:
             backend = BackendConfig()
         except TypeError as e:

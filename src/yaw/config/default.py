@@ -36,6 +36,9 @@ class Binning:
     zbin_num = 30
 
 
+AutoBinning = Binning  # keep for backwards compatibilty
+
+
 class Backend:
     thread_num = None
     crosspatch = True
