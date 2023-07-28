@@ -11,7 +11,7 @@
         :img-top: /_static/title.svg
 
         *yet_another_wizz* is an open source python package to efficiently
-        compute cross-correlation redshifts, also know as clustering redshifts.
+        compute cross-correlation redshifts, also known as clustering redshifts.
 
     .. grid-item::
         :columns: 12

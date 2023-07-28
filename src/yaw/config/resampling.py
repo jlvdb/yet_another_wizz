@@ -7,8 +7,8 @@ import numpy as np
 
 from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
+from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
-from yaw.core.abc import DictRepresentation
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -17,7 +17,7 @@ __all__ = ["ResamplingConfig"]
 
 
 @dataclass(frozen=True)
-class ResamplingConfig(DictRepresentation):
+class ResamplingConfig(BaseConfig):
     """Configuration for error estimation from spatial resampling.
 
     Used for all functions and methods that use spatial patches for error
@@ -61,6 +61,22 @@ class ResamplingConfig(DictRepresentation):
             raise ConfigError(
                 f"invalid resampling method '{self.method}', must either of {opts}"
             )
+
+    def modify(
+        self,
+        method: str = DEFAULT.NotSet,
+        crosspatch: bool = DEFAULT.NotSet,
+        n_boot: int = DEFAULT.NotSet,
+        global_norm: bool = DEFAULT.NotSet,
+        seed: int = DEFAULT.NotSet,
+    ) -> ResamplingConfig:
+        return super().modify(
+            method=method,
+            crosspatch=crosspatch,
+            n_boot=n_boot,
+            global_norm=global_norm,
+            seed=seed,
+        )
 
     @property
     def n_patches(self) -> int | None:

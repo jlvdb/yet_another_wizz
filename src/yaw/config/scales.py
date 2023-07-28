@@ -8,8 +8,8 @@ import numpy as np
 from deprecated import deprecated
 
 from yaw.config import default as DEFAULT
+from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
-from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import Scale
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
@@ -21,7 +21,7 @@ __all__ = ["ScalesConfig"]
 
 
 @dataclass(frozen=True)
-class ScalesConfig(DictRepresentation):
+class ScalesConfig(BaseConfig):
     """Configuration of scales used for correlation measurements.
 
     Correlation functions are measured on one or many intervals
@@ -136,6 +136,15 @@ class ScalesConfig(DictRepresentation):
     def __iter__(self) -> Iterator[Scale]:
         for rmin, rmax in self.as_array():
             yield Scale(rmin=rmin, rmax=rmax)
+
+    def modify(
+        self,
+        rmin: list[float] | float = DEFAULT.NotSet,
+        rmax: list[float] | float = DEFAULT.NotSet,
+        rweight: float | None = DEFAULT.NotSet,
+        rbin_num: int = DEFAULT.NotSet,
+    ) -> ScalesConfig:
+        return super().modify(rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
 
     def as_array(self) -> NDArray[np.float_]:
         """Obtain the scales cuts as array of shape (2, N)"""

@@ -3,12 +3,7 @@ import numpy.testing as npt
 from astropy.cosmology import WMAP9, Planck15
 from pytest import fixture, mark, raises
 
-from yaw.config import (
-    AutoBinningConfig,
-    BackendConfig,
-    Configuration,
-    ManualBinningConfig,
-)
+from yaw.config import BackendConfig, BinningConfig, Configuration
 from yaw.config.utils import ConfigError
 from yaw.core.cosmology import get_default_cosmology
 
@@ -185,27 +180,29 @@ class TestConfigurationModify:
             conf = auto_config.modify(**{param: value})
             auto_kwargs = auto_config.to_dict()["binning"]
             auto_kwargs[param] = value
-            assert conf.binning == AutoBinningConfig.generate(**auto_kwargs)
+            assert conf.binning == BinningConfig.create(**auto_kwargs)
 
     def test_update_binning_manual_update_zbins(self, manual_config):
         zbins = np.linspace(1, 10)
-        assert manual_config.modify(zbins=zbins).binning == ManualBinningConfig(zbins)
+        assert manual_config.modify(zbins=zbins).binning == BinningConfig.create(
+            zbins=zbins
+        )
 
     def test_update_binning_manual_all_other(self, manual_config, default_dict):
         bin_dict = default_dict["binning"]
         kwargs = dict(zmin=bin_dict["zmin"], zmax=bin_dict["zmax"])
         # only z limits
-        expect = AutoBinningConfig.generate(**bin_dict)
+        expect = BinningConfig.create(**bin_dict)
         got = manual_config.modify(**kwargs)
         assert expect == got.binning
         # add method
         added_dict = {k: v for k, v in bin_dict.items() if k != "method"}
-        expect = AutoBinningConfig.generate(**added_dict, method="comoving")
+        expect = BinningConfig.create(**added_dict, method="comoving")
         got = manual_config.modify(**kwargs, method="comoving")
         assert expect == got.binning
         # add zbin_num
         added_dict = {k: v for k, v in bin_dict.items() if k != "zbin_num"}
-        expect = AutoBinningConfig.generate(**added_dict, zbin_num=5)
+        expect = BinningConfig.create(**added_dict, zbin_num=5)
         got = manual_config.modify(**kwargs, zbin_num=5)
         assert expect == got.binning
 

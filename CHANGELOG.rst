@@ -2,6 +2,12 @@ Change log
 ==========
 
 
+Version 2.5.4
+-------------
+
+A new release for PyPI to fix the linked yet_another_wizz logo.
+
+
 Version 2.5.3
 -------------
 
