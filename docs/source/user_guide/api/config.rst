@@ -96,7 +96,7 @@ manually using the ``zbins`` parameter:
     ...     rmin=100, rmax=1000, zmin=0.07, zmax=1.42,
     ...     zbin_num=30, method="linear")
 
-The case shown above corresponds to the default binning, which are 30 bins,
+The latter example above corresponds to the default binning, which are 30 bins,
 linearly spaced in redshift. Other spacings can be selected using the method
 parameter, see also :const:`~yaw.config.options.Options.binning`.
 
