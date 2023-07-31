@@ -32,7 +32,6 @@ dependencies = [
     "h5py",
     "pyyaml",
     "treecorr>=4.3",
-    "matplotlib",
 ]
 
 [project.optional-dependencies]
