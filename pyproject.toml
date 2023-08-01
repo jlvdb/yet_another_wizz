@@ -49,6 +49,7 @@ docs = [
 test = [
     "typing_extensions",
     "more_itertools",
+    "yet_another_wizz[plot]",
     "coverage",
     "pytest",
     "pytest-cov",
