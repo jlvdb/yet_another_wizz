@@ -32,7 +32,6 @@ dependencies = [
     "h5py",
     "pyyaml",
     "treecorr>=4.3",
-    "matplotlib",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +49,7 @@ docs = [
 test = [
     "typing_extensions",
     "more_itertools",
+    "yet_another_wizz[plot]",
     "coverage",
     "pytest",
     "pytest-cov",
