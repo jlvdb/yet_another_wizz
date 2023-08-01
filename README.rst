@@ -23,7 +23,7 @@ redshifts, also know as clustering redshifts and is hosted on github:
 - code: https://github.com/jlvdb/yet_another_wizz.git
 - docs: https://yet-another-wizz.readthedocs.io/
 - PyPI: https://pypi.org/project/yet_another_wizz/
-- Docker: https://hub.docker.com/r/jlvdb/yet_another_wizz
+- Docker: https://hub.docker.com/r/jlvdb/yet_another_wizz/
 
 The method allows to estimate the unknown redshift distribution of a galaxy
 sample by correlating the on-sky positions with a reference sample with known
