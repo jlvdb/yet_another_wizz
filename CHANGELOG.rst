@@ -2,6 +2,12 @@ Change log
 ==========
 
 
+Version 2.5.6
+-------------
+
+Made code available as image on ``hub.docker.com``.
+
+
 Version 2.5.5
 -------------
 
