@@ -34,6 +34,7 @@ class BinningConfig(BaseConfig):
     method: str = field(
         default=DEFAULT.Binning.method,
         metadata=Parameter(
+            type=str,
             choices=OPTIONS.binning,
             help="redshift binning method, 'logspace' means equal size in log(1+z)",
             default_text="(default: %(default)s)",

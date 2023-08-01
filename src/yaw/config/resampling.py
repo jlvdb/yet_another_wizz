@@ -9,6 +9,7 @@ from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
 from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
+from yaw.core.docs import Parameter
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -40,16 +41,38 @@ class ResamplingConfig(BaseConfig):
             Random seed to use.
     """
 
-    method: str = DEFAULT.Resampling.method
+    method: str = field(
+        default=DEFAULT.Resampling.method,
+        metadata=Parameter(type=str, help="resampling method to use"),
+    )
     """Resampling method to use, see :obj:`~yaw.config.options.Options.method`.
     """
-    crosspatch: bool = DEFAULT.Resampling.crosspatch
+    crosspatch: bool = field(
+        default=DEFAULT.Resampling.crosspatch,
+        metadata=Parameter(
+            type=bool, help="whether to use cross-patch pair count measurements"
+        ),
+    )
     """Whether to use cross-patch pair count measurements."""
-    n_boot: int = DEFAULT.Resampling.n_boot
+    n_boot: int = field(
+        default=DEFAULT.Resampling.n_boot,
+        metadata=Parameter(
+            type=int, help="number of samples to generate if method='bootstrap'"
+        ),
+    )
     """Number of samples to generate for the ``bootstrap`` method."""
-    global_norm: bool = DEFAULT.Resampling.global_norm
+    global_norm: bool = field(
+        default=DEFAULT.Resampling.global_norm,
+        metadata=Parameter(
+            type=bool,
+            help="whether to normalise paircounts globally or for each sample",
+        ),
+    )
     """Whether to normalise paircounts globally or for each sample."""
-    seed: int = DEFAULT.Resampling.seed
+    seed: int = field(
+        default=DEFAULT.Resampling.seed,
+        metadata=Parameter(type=int, help="random seed to use"),
+    )
     """Random seed to use."""
     _resampling_idx: NDArray[np.int_] | None = field(
         default=None, init=False, repr=False
