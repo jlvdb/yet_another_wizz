@@ -7,11 +7,13 @@
 # To get a newer version, you will need to update the SHA.
 # You can also reference a tag or branch, but the action may change without warning.
 
-name: Publish Docker image
+name: ci
 
 on:
   push:
-    branches: ["docker-test"]
+    branches: [main]
+  release:
+    types: [published]
 
 jobs:
   push_to_registry:
@@ -35,9 +37,12 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        uses: docker/metadata-action@v3
         with:
           images: jlvdb/yet_another_wizz
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
