@@ -3,7 +3,8 @@ ARG python=python:3.10-slim
 # create a container with compilers
 FROM ${python} AS base
 # upgrade the package index and install security upgrades
-RUN apt-get update && \
+RUN set -eux; \
+    apt-get update; \
     apt-get install -y --no-install-recommends \
         build-essential \
         libffi-dev \
@@ -36,16 +37,18 @@ RUN pip install .
 # final stage
 FROM ${python} as release
 # install missing object and clean up
-RUN apt-get update && \
-    apt-get install libgomp1 && \
-    apt-get autoremove -y && \
-    apt-get clean -y && \
+RUN set -eux; \
+    apt-get update; \
+    apt-get install libgomp1; \
+    apt-get autoremove -y; \
+    apt-get clean -y; \
     rm -rf /var/lib/apt/lists/*
 # copy the virtual environment
 COPY --from=build /venv /venv
 ENV PATH=/venv/bin:$PATH
 # create a non-root user and add a working directory
-RUN addgroup --system --gid 1001 yaw && \
+RUN set -eux; \
+    addgroup --system --gid 1001 yaw; \
     adduser --system --no-create-home --uid 1001 --gid 1001 yaw
 USER yaw
 WORKDIR /data
