@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import itertools
+import multiprocessing
 import os
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
+from itertools import repeat
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from yaw.catalogs import BaseCatalog, PatchLinkage
+from yaw.catalogs.scipy import utils
 from yaw.catalogs.scipy.patches import (
     PatchCatalog,
     assign_patches,
@@ -16,95 +18,32 @@ from yaw.catalogs.scipy.patches import (
     patch_id_from_path,
 )
 from yaw.config import Configuration, ResamplingConfig
-from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
-from yaw.core.cosmology import Scale
 from yaw.core.logging import TimedLog
-from yaw.core.parallel import ParallelHelper
 from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
-from yaw.correlation.paircounts import (
-    NormalisedCounts,
-    PatchedCount,
-    PatchedTotal,
-    pack_results,
-)
+from yaw.correlation.paircounts import NormalisedCounts
 from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
 
-    from yaw.core.cosmology import TypeCosmology
+    from yaw.core.containers import PatchCorrelationData
+
 
 __all__ = ["ScipyCatalog"]
 
 
-def _count_pairs_thread(
-    patch1: PatchCatalog,
-    patch2: PatchCatalog,
-    scales: Sequence[Scale],
-    cosmology: TypeCosmology,
-    z_bins: NDArray[np.float_],
-    bin1: bool = True,
-    bin2: bool = False,
-    dist_weight_scale: float | None = None,
-    dist_weight_res: int = 50,
+def _worker_correlate(
+    args: tuple[PatchCatalog, PatchCatalog, Configuration, bool, bool]
 ) -> PatchCorrelationData:
-    """Implementes the pair counting between two patches.
-
-    Bins the data as needed and builds the KDTrees for the pair finding.
-    Converts the physical scales to angles for the given cosmology and redshift
-    and counts the pairs. Pairs are recoreded for each set of scales and stored
-    in a PatchCorrelationData object.
-    """
-    z_intervals = pd.IntervalIndex.from_breaks(z_bins)
-    # build trees
-    patch1.load(use_threads=False)
-    if bin1:
-        trees1 = [patch.get_tree() for _, patch in patch1.iter_bins(z_bins)]
-    else:
-        trees1 = itertools.repeat(patch1.get_tree())
-    patch2.load(use_threads=False)
-    if bin2:
-        trees2 = [patch.get_tree() for _, patch in patch2.iter_bins(z_bins)]
-    else:
-        trees2 = itertools.repeat(patch2.get_tree())
-    # count pairs, iterate through the bins and count pairs between the trees
-    counts = np.empty((len(scales), len(z_intervals)))
-    totals1 = np.empty(len(z_intervals))
-    totals2 = np.empty(len(z_intervals))
-    for i, (intv, tree1, tree2) in enumerate(zip(z_intervals, trees1, trees2)):
-        # if bin1 is False and bin2 is False, these will still give different
-        # counts since the angle for scales is chaning
-        angles = [scale.to_radian(intv.mid, cosmology) for scale in scales]
-        counts[:, i] = tree1.count(
-            tree2,
-            scales=angles,
-            dist_weight_scale=dist_weight_scale,
-            weight_res=dist_weight_res,
-        )
-        totals1[i] = tree1.total
-        totals2[i] = tree2.total
-    counts = {str(scale): count for scale, count in zip(scales, counts)}
-    return PatchCorrelationData(
-        patches=PatchIDs(patch1.id, patch2.id),
-        totals1=totals1,
-        totals2=totals2,
-        counts=counts,
-    )
+    return utils.count_pairs_patches(*args)
 
 
-def _histogram_thread(
-    patch: PatchCatalog, z_bins: NDArray[np.float_]
+def _worker_true_redshifts(
+    args: tuple[PatchCatalog, NDArray[np.float_]]
 ) -> NDArray[np.float_]:
-    """Computes a redshift histogram for a single PatchCatalog and returns the
-    counts as array."""
-    is_loaded = patch.is_loaded()
-    patch.load()
-    counts, _ = np.histogram(patch.redshifts, z_bins, weights=patch.weights)
-    if not is_loaded:
-        patch.unload()
-    return counts
+    return utils.count_histogram_patch(*args)
 
 
 class ScipyCatalog(BaseCatalog):
@@ -379,77 +318,25 @@ class ScipyCatalog(BaseCatalog):
         progress: bool = False,
     ) -> NormalisedCounts | dict[str, NormalisedCounts]:
         super().correlate(config, binned, other, linkage)
-
         auto = other is None
-        if not auto and not isinstance(other, ScipyCatalog):
-            raise TypeError
-
-        if linkage is None:
-            cat_for_linkage = self
-            if not auto:
-                if len(other) > len(self):
-                    cat_for_linkage = other
-            linkage = PatchLinkage.from_setup(config, cat_for_linkage)
-        patch1_list, patch2_list = linkage.get_patches(
-            self, other, config.backend.crosspatch
+        patch1_list, patch2_list = utils.get_patch_list(
+            self, other, config, linkage, auto
         )
+
+        # process the patch pairs, add an optional progress bar
         n_jobs = len(patch1_list)
-
-        # prepare job scheduling
-        pool = ParallelHelper(
-            function=_count_pairs_thread,
-            n_items=n_jobs,
-            num_threads=config.backend.get_threads(n_jobs),
+        bin1 = self.has_redshifts()
+        bin2 = binned if other is not None else True
+        iter_args = zip(
+            patch1_list, patch2_list, repeat(config), repeat(bin1), repeat(bin2)
         )
-        # patch1: PatchCatalog
-        pool.add_iterable(patch1_list)
-        # patch2: PatchCatalog
-        pool.add_iterable(patch2_list)
-        # scales: Sequence[Scale]
-        pool.add_constant(list(config.scales))
-        # cosmology: TypeCosmology
-        pool.add_constant(config.cosmology)
-        # z_bins: NDArray[np.float_]
-        pool.add_constant(config.binning.zbins)
-        # bin1: bool
-        pool.add_constant(self.has_redshifts())
-        # bin2: bool
-        pool.add_constant(binned if other is not None else True)
-        # dist_weight_scale: float | None
-        pool.add_constant(config.scales.rweight)
-        # weight_res: int
-        pool.add_constant(config.scales.rbin_num)
-
-        binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
-        n_bins = len(binning)
-        n_patches = self.n_patches
-        # set up data to repack task results from [ids->scale] to [scale->ids]
-        totals1 = np.zeros((n_patches, n_bins))
-        totals2 = np.zeros((n_patches, n_bins))
-        count_dict = {
-            str(scale): PatchedCount.zeros(binning, n_patches, auto=auto)
-            for scale in config.scales
-        }
-        # run the scheduled tasks
-        result_iter = pool.iter_result(ordered=False)
-        # add an optional progress bar
         if progress:
-            result_iter = job_progress_bar(result_iter, total=pool.n_jobs())
-        for patch_data in result_iter:
-            id1, id2 = patch_data.patches
-            # record total weight per bin, overwriting OK since identical
-            totals1[id1] = patch_data.totals1
-            totals2[id2] = patch_data.totals2
-            # record counts at each scale
-            for scale_key, count in patch_data.counts.items():
-                if auto and id1 == id2:
-                    count = count * 0.5  # autocorr. pairs are counted twice
-                count_dict[scale_key].set_measurement((id1, id2), count)
+            iter_args = job_progress_bar(iter_args, total=n_jobs)
+        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
+            patch_datasets = list(pool.imap_unordered(_worker_correlate, iter_args))
 
-        total = PatchedTotal(  # not scale-dependent
-            binning=binning, totals1=totals1, totals2=totals2, auto=auto
-        )
-        return pack_results(count_dict, total)
+        # merge the pair counts from all patch combinations
+        return utils.merge_pairs_patches(patch_datasets, config, self.n_patches, auto)
 
     def true_redshifts(
         self,
@@ -458,34 +345,18 @@ class ScipyCatalog(BaseCatalog):
         progress: bool = False,
     ) -> HistData:
         super().true_redshifts(config)
-        if sampling_config is None:
-            sampling_config = ResamplingConfig()  # default values
-
         if not self.has_redshifts():
             raise ValueError("catalog has no redshifts")
+
         # compute the reshift histogram in each patch
-        pool = ParallelHelper(
-            function=_histogram_thread,
-            n_items=self.n_patches,
-            num_threads=config.backend.get_threads(self.n_patches),
-        )
-        # patch: PatchCatalog
-        pool.add_iterable(self._patches.values())
-        # NDArray[np.float_]
-        pool.add_constant(config.binning.zbins)
-        iterator = pool.iter_result()
+        n_jobs = self.n_patches
+        iter_args = zip(self._patches.values(), repeat(config.binning.zbins))
         if progress:
-            iterator = job_progress_bar(iterator)
-        hist_counts = np.array(list(iterator))
+            iter_args = job_progress_bar(iter_args, total=n_jobs)
+        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
+            hist_counts = list(pool.imap_unordered(_worker_true_redshifts, iter_args))
 
         # construct the output data samples
-        binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
-        patch_idx = sampling_config.get_samples(self.n_patches)
-        nz_data = hist_counts.sum(axis=0)
-        nz_samp = np.sum(hist_counts[patch_idx], axis=1)
-        return HistData(
-            binning=binning,
-            data=nz_data,
-            samples=nz_samp,
-            method=sampling_config.method,
+        return utils.merge_histogram_patches(
+            np.array(hist_counts), config, sampling_config
         )

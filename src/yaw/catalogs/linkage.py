@@ -195,7 +195,7 @@ class PatchLinkage:
         collection1: BaseCatalog,
         collection2: BaseCatalog | None = None,
         crosspatch: bool = True,
-    ) -> tuple[list[BaseCatalog], list[BaseCatalog]]:
+    ) -> tuple[list, list]:
         """Return linked pairs of patch data ready for processing.
 
         Instead of returning a list of patch index pairs, the actual patch data
