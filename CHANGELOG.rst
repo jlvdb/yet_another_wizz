@@ -2,6 +2,12 @@ Change log
 ==========
 
 
+Version 2.5.7
+-------------
+
+Internal refactoring in ``catalogs.scipy`` needed for the RAIL plugin.
+
+
 Version 2.5.6
 -------------
 

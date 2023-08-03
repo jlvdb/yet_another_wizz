@@ -55,4 +55,4 @@ __all__ = [
     "HistogramData",
     "PairCountResult",
 ]
-__version__ = "2.5.6"
+__version__ = "2.5.7"
