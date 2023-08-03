@@ -13,7 +13,6 @@ yaw.core
     core.coordinates
     core.cosmology
     core.math
-    core.parallel
 
 
 .. rubric:: Functions
