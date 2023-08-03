@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 
 from yaw.core.logging import TimedLog
-from yaw.core.parallel import POOL_SHARE, ParallelHelper, SharedArray
 from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -164,81 +163,36 @@ class UniformRandoms:
                 Data frame with uniform random coordinates and optionally
                 additional features draw from input data.
         """
-        # seeds for threads
-        if size <= 100 * n_threads:  # there is some kind of floor
-            n_threads = 1
-        seeds = self.rng.spawn(n_threads)
-        # distribute load
-        idx_break = np.linspace(0, size, n_threads + 1).astype(np.int_)
-        start = idx_break[:-1]
-        end = idx_break[1:]
-
-        # create output arrays
-        shares = dict(
-            ra=SharedArray.empty((size,), "f8"), dec=SharedArray.empty((size,), "f8")
-        )
-        if draw_from is not None:
-            shares["in"] = {
-                key: SharedArray.from_numpy(array) for key, array in draw_from.items()
-            }
-            shares["out"] = {
-                key: SharedArray.empty((size,), array.dtype)
-                for key, array in draw_from.items()
-            }
-        if names is None:
-            names = ["ra", "dec"]
-
-        # process
+        if n_threads != 1:
+            DeprecationWarning("'n_threads' is deprecated")
+        seed = self.rng.spawn(1)[0]  # backwards compatibility
         msg = f"generate ({long_num_format(size)} uniform randoms)"
         with TimedLog(logger.info, msg):
-            with ParallelHelper(_generate_uniform_randoms, n_threads) as pool:
-                pool.shares = shares  # assign in bulk
-                pool.add_constant(self)
-                pool.add_iterable(seeds)
-                pool.add_iterable(start)
-                pool.add_iterable(end)
-                pool.result()  # output direclty pasted into shared arrays
-                # convert to dataframe
-                rand = pd.DataFrame(
-                    {
-                        names[0]: pool.shares["ra"].to_numpy(copy=True),
-                        names[1]: pool.shares["dec"].to_numpy(copy=True),
-                    }
-                )
-                if draw_from is not None:
-                    for col, data in pool.shares["out"].items():
-                        rand[col] = data.to_numpy(copy=True)
-                # will delete shared arrays after this
+            # build the output dataframe
+            columns = ["ra", "dec"] if names is None else names
+            if draw_from is not None:
+                columns.extend(draw_from.keys())
+            rand = pd.DataFrame(
+                columns=["ra", "dec"] if names is None else names,
+                index=pd.RangeIndex(0, size),
+            )
+            # generate the positions
+            rng = np.random.default_rng(seed)
+            x = rng.uniform(self.x_min, self.x_max, size)
+            y = rng.uniform(self.y_min, self.y_max, size)
+            ra_dec = UniformRandoms.cylinder2sky(x, y)
+            rand["ra"] = ra_dec[:, 0]
+            rand["dec"] = ra_dec[:, 1]
+            # draw extra data
+            if draw_from is not None:
+                N = len(next(iter(draw_from.values())))
+                draw_idx = rng.integers(0, N, size=size)
+                for key, values in draw_from.items():
+                    if not isinstance(values, np.ndarray):
+                        raise TypeError(f"expected a numpy array for property '{key}")
+                    if len(values) != N:
+                        raise ValueError(
+                            f"expected a {N} values to draw from for property '{key}'"
+                        )
+                    rand[key] = values[draw_idx]
         return rand
-
-
-def _generate_uniform_randoms(
-    inst: UniformRandoms, seed: np.random.SeedSequence, start: int, end: int
-) -> int:
-    rng = np.random.default_rng(seed)
-    size = end - start
-    ra = POOL_SHARE["ra"].to_numpy()
-    dec = POOL_SHARE["dec"].to_numpy()
-    # generate positions
-    x = rng.uniform(inst.x_min, inst.x_max, size)
-    y = rng.uniform(inst.y_min, inst.y_max, size)
-    ra_dec = UniformRandoms.cylinder2sky(x, y)
-    ra[start:end] = ra_dec[:, 0]
-    dec[start:end] = ra_dec[:, 1]
-    # generate random draw
-    if "in" in POOL_SHARE:
-        N = None
-        for col, data in POOL_SHARE["in"].items():
-            if N is None:
-                if len(data.shape) > 1:
-                    raise ValueError("data to draw from must be 1-dimensional")
-                N = len(data)
-            else:
-                if len(data) != N:
-                    raise ValueError("length of columns to draw from does not match")
-        draw_idx = rng.integers(0, N, size=size)
-        # draw and insert data
-        for col, data in POOL_SHARE["in"].items():
-            rand = POOL_SHARE["out"][col].to_numpy()
-            rand[start:end] = data.to_numpy()[draw_idx]
-    return size
