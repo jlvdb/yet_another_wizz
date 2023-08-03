@@ -40,7 +40,28 @@ def get_patch_list(
     linkage: PatchLinkage | None,
     auto: bool,
 ) -> tuple[list[PatchCatalog], list[PatchCatalog]]:
-    """ """
+    """Generate a two lists of patch pairs to correlate.
+
+    Generate the listing from two catalogs either from a given linkage or from
+    a newly constructed one.
+
+    Args:
+        catalog1 (:obj:`yaw.catalogs.scipy.ScipyCatalog`):
+            The first input data catalogue.
+        catalog2 (:obj:`yaw.catalogs.scipy.ScipyCatalog`, :obj:`None`):
+            The second input data catalogue, can be `None`.
+        config (:obj:`yaw.config.Configuration`):
+            The configuration used for the correlation measurement.
+        linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, :obj:`None`):
+            Linkage object that defines with patches must be correlated for
+            a given scales and which patch combinations can be skipped.
+        auto (:obj:`bool`):
+            Whether to generate patch pairs for an autocorrelation.
+
+    Returns:
+        Two lists, one containing the patches from the first catalogue that are
+        paired with the ones in the second list from the second catalogues.
+    """
     if linkage is None:
         if not auto and len(catalog2) > len(catalog1):
             cat_for_linkage = catalog2
@@ -57,12 +78,28 @@ def count_pairs_patches(
     bin1: bool = True,
     bin2: bool = False,
 ) -> PatchCorrelationData:
-    """Implementes the pair counting between two patches.
+    """Implementes the pair counting between two patches in bins of redshift.
 
     Bins the data as needed and builds the KDTrees for the pair finding.
     Converts the physical scales to angles for the given cosmology and redshift
     and counts the pairs. Pairs are recoreded for each set of scales and stored
     in a PatchCorrelationData object.
+
+    Args:
+        patch1 (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+            The first input patch catalogue.
+        patch2 (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+            The second input patch catalogue.
+        config (:obj:`yaw.config.Configuration`):
+            The configuration used for the correlation measurement.
+        bin1 (:obj:`bool`):
+            Whether to apply binning to the first patch.
+        bin2 (:obj:`bool`):
+            Whether to apply binning to the second patch.
+
+    Returns:
+        A container containing the patch IDs, number of objects from both
+        patches and the number of pair counts, each in bins of redshift.
     """
     scales = list(config.scales)
     z_bins = config.binning.zbins
@@ -109,7 +146,22 @@ def merge_pairs_patches(
     n_patches: int,
     auto: bool,
 ) -> NormalisedCounts | dict[str, NormalisedCounts]:
-    """ """
+    """Merge pair counts from patch pairs into a pair count container.
+
+    Args:
+        patch_datasets (obj:`Iterable[PatchCorrelationData]`):
+            An iterable containing pair counts measured from pairs of patches.
+        config (:obj:`yaw.config.Configuration`):
+            The configuration used for the correlation measurement.
+        n_patches (:obj:`int`):
+            The total number of patches in both catalogs.
+        auto (:obj:`bool`):
+            Whether the pair counts are from an autocorrelation measurement.
+
+    Returns:
+        A :obj:`~yaw.correlation.paircounts.NormalisedCounts` instance if a
+        single measurement scale is used, otherwise a dictionary of scales.
+    """
     binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
     n_bins = len(binning)
     # set up data to repack task results from [ids->scale] to [scale->ids]
@@ -138,8 +190,18 @@ def merge_pairs_patches(
 def count_histogram_patch(
     patch: PatchCatalog, z_bins: NDArray[np.float_]
 ) -> NDArray[np.float_]:
-    """Computes a redshift histogram for a single PatchCatalog and returns the
-    counts as array."""
+    """Compute a histogram of redshifts in a single patch.
+
+    Args:
+        patch (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+            The input patch catalogue.
+        z_bins (:obj:`NDArray[np.float_]`):
+            The bin edges including the right-most edge.
+
+    Returns:
+        :obj:`NDArray[np.float_]`:
+            Counts in the provided redshift bins.
+    """
     is_loaded = patch.is_loaded()
     patch.load()
     counts, _ = np.histogram(patch.redshifts, z_bins, weights=patch.weights)
@@ -150,13 +212,27 @@ def count_histogram_patch(
 
 def merge_histogram_patches(
     hist_counts: NDArray[np.float_],
-    config: Configuration,
+    z_bins: NDArray[np.float_],
     sampling_config: ResamplingConfig | None = None,
 ) -> HistData:
-    """ """
+    """Merge redshift histogram from patches into a histogram data container.
+
+    Args:
+        hist_counts (:obj:`NDArray[np.float_]`):
+            A two-dimensional array with histogram counts with shape
+            `(n_patches, n_bins)`.
+        z_bins (:obj:`NDArray[np.float_]`):
+            The bin edges including the right-most edge.
+        sampling_config: (:obj:`yaw.config.ResamplingConfig`, optional):
+            Specify the resampling method and its configuration.
+
+    Returns:
+        :obj:`yaw.redshifts.HistData`:
+            Histogram data with samples and covaraiance estimate.
+    """
     if sampling_config is None:
         sampling_config = ResamplingConfig()  # default values
-    binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
+    binning = pd.IntervalIndex.from_breaks(z_bins)
     patch_idx = sampling_config.get_samples(len(hist_counts))
     nz_data = hist_counts.sum(axis=0)
     nz_samp = np.sum(hist_counts[patch_idx], axis=1)

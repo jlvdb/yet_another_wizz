@@ -358,5 +358,5 @@ class ScipyCatalog(BaseCatalog):
 
         # construct the output data samples
         return utils.merge_histogram_patches(
-            np.array(hist_counts), config, sampling_config
+            np.array(hist_counts), config.binning.zbins, sampling_config
         )
