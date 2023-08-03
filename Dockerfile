@@ -26,8 +26,10 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         build-essential \
+        gfortran \
         libffi-dev \
-        libbz2-dev
+        libbz2-dev \
+        zlib1g-dev
 # create the virtual environment
 RUN python3 -m venv ${ENV_DIR}
 ENV PATH=${ENV_DIR}/bin:$PATH
