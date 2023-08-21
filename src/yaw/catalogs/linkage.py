@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Iterator
 
 import numpy as np
 from numpy.typing import NDArray
@@ -88,7 +88,7 @@ class PatchLinkage:
         overlaps = dist_mat_3d.to_sky() < (size_sum + max_query_radius)
         patch_pairs = []
         for id1, overlap in enumerate(overlaps):
-            patch_pairs.extend((id1, id2) for id2 in np.where(overlap)[0])
+            patch_pairs.extend(PatchIDs(id1, id2) for id2 in np.where(overlap)[0])
         logger.debug(
             "found %d patch links for %d patches", len(patch_pairs), catalog.n_patches
         )
@@ -133,21 +133,26 @@ class PatchLinkage:
         """
         if crosspatch:
             if auto:
-                pairs = [(i, j) for i, j in self.pairs if j >= i]
+                pairs = [PatchIDs(i, j) for i, j in self.pairs if j >= i]
             else:
                 pairs = self.pairs
         else:
-            pairs = [(i, j) for i, j in self.pairs if i == j]
+            pairs = [PatchIDs(i, j) for i, j in self.pairs if i == j]
         return pairs
 
     @staticmethod
-    def _parse_collections(
+    def is_auto(
         collection1: BaseCatalog, collection2: BaseCatalog | None = None
-    ) -> tuple[bool, BaseCatalog, BaseCatalog]:
-        auto = collection2 is None
-        if auto:
-            collection2 = collection1
-        return auto, collection1, collection2
+    ) -> bool:
+        """Whether the provided patch collections are identical and therefore
+        result in an autocorrelation measurement."""
+        if collection2 is None:
+            auto = True
+        elif collection1 is collection2:
+            auto = True
+        else:
+            auto = False
+        return auto
 
     def get_matrix(
         self,
@@ -179,10 +184,7 @@ class PatchLinkage:
             The patch centers of both catalogues must be (very close to)
             identical.
         """
-        auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2
-        )
-        pairs = self.get_pairs(auto, crosspatch)
+        pairs = self.get_pairs(self.is_auto(collection1, collection2), crosspatch)
         # make a boolean matrix indicating the exisiting patch combinations
         n_patches = self.n_patches
         matrix = np.zeros((n_patches, n_patches), dtype=np.bool_)
@@ -190,12 +192,42 @@ class PatchLinkage:
             matrix[pair] = True
         return matrix
 
+    def iter_patches(
+        self,
+        collection1: BaseCatalog,
+        collection2: BaseCatalog | None = None,
+        crosspatch: bool = True,
+    ) -> Iterator[tuple[Any, Any]]:
+        """Iterate over pairs of patch data that need to be processed for a
+        correlation measurement.
+
+        Args:
+            collection1 (:obj:`BaseCatalog`):
+                First catalog for patch linkage.
+            collection2 (:obj:`BaseCatalog`, optional):
+                Second catalog for patch linkage. If not provided or identical
+                to first argument, generates an autocorrelation case.
+            crosspatch (:obj:`bool`):
+                Link patches just with themselves and ignore cross-patch pairs.
+
+        Yields:
+            tuple: Two patch data sets for pair counting, type depends on the
+            concrete implementation of the :obj:`BaseCatalog` used for the
+            inputs.
+        """
+        auto = self.is_auto(collection1, collection2)
+        if auto:
+            collection2 = collection1
+        pairs = self.get_pairs(auto, crosspatch)
+        for id1, id2 in pairs:
+            yield collection1[id1], collection2[id2]
+
     def get_patches(
         self,
         collection1: BaseCatalog,
         collection2: BaseCatalog | None = None,
         crosspatch: bool = True,
-    ) -> tuple[list, list]:
+    ) -> tuple[tuple, tuple]:
         """Return linked pairs of patch data ready for processing.
 
         Instead of returning a list of patch index pairs, the actual patch data
@@ -214,7 +246,7 @@ class PatchLinkage:
                 Link patches just with themselves and ignore cross-patch pairs.
 
         Returns:
-            list, list: Two lists with patch data from ``collection1`` and
+            tuple, tuple: Two tuples with patch data from ``collection1`` and
             ``collection2`` (if provided, else ``collection1``) that are linked.
 
         .. Warning::
@@ -222,14 +254,4 @@ class PatchLinkage:
             The patch centers of both catalogues must be (very close to)
             identical.
         """
-        auto, collection1, collection2 = self._parse_collections(
-            collection1, collection2
-        )
-        pairs = self.get_pairs(auto, crosspatch)
-        # generate the patch lists
-        patches1 = []
-        patches2 = []
-        for id1, id2 in pairs:
-            patches1.append(collection1[id1])
-            patches2.append(collection2[id2])
-        return patches1, patches2
+        return tuple(zip(self.iter_patches(collection1, collection2, crosspatch)))

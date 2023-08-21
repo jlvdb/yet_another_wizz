@@ -240,7 +240,7 @@ class HDFSerializable(ABC):
                 Group in an opened HDF5 file that contains the serialised data.
 
         Returns:
-            :obj:`HDFSerializablep`
+            :obj:`HDFSerializable`
         """
         pass
 

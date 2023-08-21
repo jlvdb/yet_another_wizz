@@ -18,10 +18,11 @@ import numpy as np
 import pandas as pd
 
 from yaw.config import OPTIONS
-from yaw.core.abc import BinnedQuantity, concatenate_bin_edges
+from yaw.core.abc import BinnedQuantity, HDFSerializable, concatenate_bin_edges
 from yaw.core.math import cov_from_samples
 
 if TYPE_CHECKING:  # pragma: no cover
+    import h5py
     from numpy.typing import NDArray
     from pandas import DataFrame, IntervalIndex, Series
 
@@ -90,7 +91,7 @@ class PatchIDs(NamedTuple):
 
 
 @dataclass(frozen=True)
-class PatchCorrelationData:
+class PatchCorrelationData(HDFSerializable):
     """Container to hold the result of a pair counting operation between two
     spatial patches.
 
@@ -110,6 +111,35 @@ class PatchCorrelationData:
     totals1: NDArray
     totals2: NDArray
     counts: dict[str, NDArray]
+
+    def from_hdf(cls, source: h5py.Group) -> PatchCorrelationData:
+        # restore the patch ids
+        source_name = source.name.split("/")[-1]
+        id1_str, id2_str = source_name.split(",")
+        patches = PatchIDs(int(id1_str), int(id2_str))
+        # load the total number of objects
+        totals1 = source["totals1"][:]
+        totals2 = source["totals2"][:]
+        # load the counts
+        counts = dict()
+        for name, dataset in source.items():
+            try:
+                _, scale = name.split("@")
+            except ValueError:
+                continue
+            else:
+                counts[scale] = dataset[:]
+        return cls(patches=patches, totals1=totals1, totals2=totals2, counts=counts)
+
+    def to_hdf(self, dest: h5py.Group) -> None:
+        # encode the patch ids in the group name
+        group = dest.create_group(f"{self.patches.id1},{self.patches.id2}")
+        # write the total number of objects
+        group.create_dataset("totals1", data=self.totals1)
+        group.create_dataset("totals1", data=self.totals1)
+        # write the counts
+        for scale, counts in self.counts.items():
+            group.create_dataset(f"counts@{scale}", data=counts)
 
 
 _Tscalar = TypeVar("_Tscalar", bound=np.number)
