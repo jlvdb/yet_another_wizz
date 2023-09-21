@@ -47,55 +47,55 @@ def mock_data_rad(mock_data):
 
 @fixture
 def mock_patch(mock_data):
-    return patches.PatchCatalog(0, mock_data, degrees=True)
+    return patches.ScipyPatch(0, mock_data, degrees=True)
 
 
 @fixture
 def patch_cached(mock_data, tmp_path):
     path = str(tmp_path / "test_1.feather")
-    patch = patches.PatchCatalog(0, mock_data, degrees=True, cachefile=path)
+    patch = patches.ScipyPatch(0, mock_data, degrees=True, cachefile=path)
     patch.unload()
     yield patch
 
 
-class TestPatchCatalog:
+class TestScipyPatch:
     def test_init(self, mock_data):
         """attributes .data"""
-        patch = patches.PatchCatalog(0, mock_data, degrees=False)
+        patch = patches.ScipyPatch(0, mock_data, degrees=False)
         assert patch.id == 0
         pdt.assert_frame_equal(patch.data, mock_data)
         # required columns
         for col in ("ra", "dec"):
             with raises(KeyError):
-                patches.PatchCatalog(0, mock_data.drop(columns=col))
+                patches.ScipyPatch(0, mock_data.drop(columns=col))
         # extra column
         with raises(KeyError):
-            patches.PatchCatalog(0, mock_data.rename(columns={"redshift": "z"}))
+            patches.ScipyPatch(0, mock_data.rename(columns={"redshift": "z"}))
 
     def test_cache_file(self, mock_data, mock_data_rad, tmp_path):
         patch_id = 10
 
         # create with rad data
         cachefile = tmp_path / f"test_rad_{patch_id}.feather"
-        patch = patches.PatchCatalog(
+        patch = patches.ScipyPatch(
             patch_id, mock_data_rad, degrees=False, cachefile=cachefile
         )
         assert cachefile.exists()
         pdt.assert_frame_equal(pd.read_feather(cachefile), patch.data)
         # reload file
-        patch = patches.PatchCatalog.from_cached(str(cachefile))
+        patch = patches.ScipyPatch.from_cached(str(cachefile))
         pdt.assert_frame_equal(mock_data_rad, patch.data)
         assert patch.id == patch_id
 
         # create with degrees data
         cachefile = tmp_path / f"test_deg_{patch_id}.feather"
-        patch = patches.PatchCatalog(
+        patch = patches.ScipyPatch(
             patch_id, mock_data, degrees=True, cachefile=cachefile
         )
         assert cachefile.exists()
         pdt.assert_frame_equal(pd.read_feather(cachefile), patch.data)
         # reload file
-        patch = patches.PatchCatalog.from_cached(str(cachefile))
+        patch = patches.ScipyPatch.from_cached(str(cachefile))
         pdt.assert_frame_equal(mock_data_rad, patch.data)
         assert patch.id == patch_id
 
@@ -125,11 +125,11 @@ class TestPatchCatalog:
 
     def test_positional(self, mock_data, mock_data_rad, patch_cached):
         """attributes .pos, .ra, .dec"""
-        patch = patches.PatchCatalog(0, mock_data, degrees=True)
+        patch = patches.ScipyPatch(0, mock_data, degrees=True)
         npt.assert_equal(patch.ra, mock_data_rad["ra"])
         npt.assert_equal(patch.dec, mock_data_rad["dec"])
         # check everything works if there is no conversion
-        patch = patches.PatchCatalog(0, mock_data_rad, degrees=False)
+        patch = patches.ScipyPatch(0, mock_data_rad, degrees=False)
         npt.assert_equal(patch.ra, mock_data_rad["ra"])
         npt.assert_equal(patch.dec, mock_data_rad["dec"])
         # unloaded
@@ -141,9 +141,7 @@ class TestPatchCatalog:
         assert mock_patch.has_redshifts()
         npt.assert_equal(mock_patch.redshifts, mock_data["redshift"])
         # drop redshifts
-        patch = patches.PatchCatalog(
-            0, mock_data.drop(columns="redshift"), degrees=True
-        )
+        patch = patches.ScipyPatch(0, mock_data.drop(columns="redshift"), degrees=True)
         assert not patch.has_redshifts()
         # unloaded
         with raises(patches.CachingError):
@@ -153,7 +151,7 @@ class TestPatchCatalog:
         assert mock_patch.has_weights()
         npt.assert_equal(mock_patch.weights, mock_data["weights"])
         # drop weights
-        patch = patches.PatchCatalog(0, mock_data.drop(columns="weights"), degrees=True)
+        patch = patches.ScipyPatch(0, mock_data.drop(columns="weights"), degrees=True)
         assert not patch.has_weights()
         # TODO: unloaded
         with raises(patches.CachingError):
@@ -162,7 +160,7 @@ class TestPatchCatalog:
     def test_total(self, mock_data, mock_patch, patch_cached):
         assert mock_patch.total == mock_data["weights"].sum()
         # drop weights
-        patch = patches.PatchCatalog(0, mock_data.drop(columns="weights"), degrees=True)
+        patch = patches.ScipyPatch(0, mock_data.drop(columns="weights"), degrees=True)
         assert len(patch) == len(mock_data)
         # unloaded
         patch_cached.total == mock_data["weights"].sum()
@@ -172,13 +170,13 @@ class TestPatchCatalog:
         zbins = [0.1, 0.5, 1.0]
         for i, (intv, patch) in enumerate(mock_patch.iter_bins(zbins)):
             assert isinstance(intv, pd.Interval)
-            assert isinstance(patch, patches.PatchCatalog)
+            assert isinstance(patch, patches.ScipyPatch)
             assert patch.redshifts.min() >= intv.left == zbins[i]
             assert patch.redshifts.max() <= intv.right == zbins[i + 1]
             assert patch.ra.max() < 2 * np.pi  # cheap way to rule out degrees
 
         # no redshifts
-        patch_noz = patches.PatchCatalog(0, mock_data.drop(columns="redshift"))
+        patch_noz = patches.ScipyPatch(0, mock_data.drop(columns="redshift"))
         with raises(ValueError):
             next(patch_noz.iter_bins(zbins))
         for intv, patch in patch_noz.iter_bins(zbins, allow_no_redshift=True):

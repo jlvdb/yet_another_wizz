@@ -1,0 +1,14 @@
+Basic idea:
+cKDTrees can be pickled and loading pickles is much faster than rebuilding trees
+every time. Simply build the trees once when the data is first loaded and then
+store them for later use.
+
+Plans for the branch:
+- A cache location is mandatory and is used to store pickled KDTrees
+- PatchCatalog.data is no longer a DataFrame but creates them on request
+- Attribtues directly link to PatchCatalog.tree
+- The SphericalKDTree has an additional attribute for redshifts and RA and DEC
+- The SphericalKDTree has a __getstate__ and __setstate__ method to not store
+  the RA and DEC data twice
+- Create a BasePatchCatalog object with some common methods between backends,
+  which just serves as a wrapper around the underlying data structures

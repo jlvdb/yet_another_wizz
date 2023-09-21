@@ -12,7 +12,7 @@ import pandas as pd
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy import utils
 from yaw.catalogs.scipy.patches import (
-    PatchCatalog,
+    ScipyPatch,
     assign_patches,
     create_patches,
     patch_id_from_path,
@@ -35,13 +35,13 @@ __all__ = ["ScipyCatalog"]
 
 
 def _worker_correlate(
-    args: tuple[PatchCatalog, PatchCatalog, Configuration, bool, bool]
+    args: tuple[ScipyPatch, ScipyPatch, Configuration, bool, bool]
 ) -> PatchCorrelationData:
     return utils.count_pairs_patches(*args)
 
 
 def _worker_true_redshifts(
-    args: tuple[PatchCatalog, NDArray[np.float_]]
+    args: tuple[ScipyPatch, NDArray[np.float_]]
 ) -> NDArray[np.float_]:
     return utils.count_histogram_patch(*args)
 
@@ -135,7 +135,7 @@ class ScipyCatalog(BaseCatalog):
         n_obj_str = long_num_format(len(data))
         with TimedLog(self._logger.info, f"processed {n_obj_str} records"):
             limits = LimitTracker()
-            patches: dict[int, PatchCatalog] = {}
+            patches: dict[int, ScipyPatch] = {}
             patch_iter = data.groupby(patch_name)
             if progress:
                 patch_iter = job_progress_bar(patch_iter, total=n_patches)
@@ -155,7 +155,7 @@ class ScipyCatalog(BaseCatalog):
                     kwargs["cachefile"] = os.path.join(
                         cache_directory, f"patch_{patch_id:.0f}.feather"
                     )
-                patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
+                patch = ScipyPatch(int(patch_id), patch_data, **kwargs)
                 limits.update(patch.redshifts)
                 if unload:
                     patch.unload()
@@ -207,7 +207,7 @@ class ScipyCatalog(BaseCatalog):
             if not os.path.isfile(abspath):
                 continue
             patch_id = patch_id_from_path(path)
-            patch = PatchCatalog.from_cached(
+            patch = ScipyPatch.from_cached(
                 abspath, center=centers.get(patch_id), radius=radii.get(patch_id)
             )
             limits.update(patch.redshifts)
@@ -219,7 +219,7 @@ class ScipyCatalog(BaseCatalog):
     def __len__(self) -> int:
         return sum(len(patch) for patch in self._patches.values())
 
-    def __getitem__(self, item: int) -> PatchCatalog:
+    def __getitem__(self, item: int) -> ScipyPatch:
         return self._patches[item]
 
     @property
@@ -231,7 +231,7 @@ class ScipyCatalog(BaseCatalog):
         # seems ok to drop the last patch if that is empty and therefore missing
         return max(self._patches.keys()) + 1
 
-    def __iter__(self) -> Iterator[PatchCatalog]:
+    def __iter__(self) -> Iterator[ScipyPatch]:
         for patch_id in self.ids:
             patch = self._patches[patch_id]
             loaded = patch.is_loaded()

@@ -19,5 +19,5 @@ yaw.catalogs.scipy
     :template: custom-class-template.rst
 
     ScipyCatalog
-    PatchCatalog
+    ScipyPatch
     SphericalKDTree

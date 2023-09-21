@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from yaw.core.coordinates import Coordinate, DistSky
+from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -31,6 +31,8 @@ class SphericalKDTree:
     def __init__(
         self,
         position: Coordinate,
+        *,
+        redshifts: NDArray[np.float_] | None = None,
         weights: NDArray[np.float_] | None = None,
         leafsize: int = 16,
     ) -> None:
@@ -48,21 +50,39 @@ class SphericalKDTree:
         """
         position = np.atleast_2d(position.to_3d().values)
         self.tree = cKDTree(position, leafsize)
-        if weights is None:
-            self.weights = np.ones(len(position))
-        else:
+        if weights is not None:
+            assert len(redshifts) == len(position)
+            redshifts = np.asarray(redshifts)
+        self.redshifts = redshifts
+        if weights is not None:
             assert len(weights) == len(position)
-            self.weights = np.asarray(weights)
+            weights = np.asarray(weights)
+        self.weights = weights
 
     def __len__(self) -> int:
-        return len(self.weights)
+        return len(self.tree.data)
+
+    @property
+    def pos(self) -> CoordSky:
+        return Coord3D.from_array(self.tree.data).to_sky()
+
+    @property
+    def ra(self) -> NDArray[np.float_]:
+        return self.pos.ra
+
+    @property
+    def dec(self) -> NDArray[np.float_]:
+        return self.pos.dec
 
     @property
     def total(self) -> float:
         """Sum of weights or total number of objects if not provided."""
-        if self._total is None:
-            self._total = self.weights.sum()
-        return self._total
+        if self.weights is not None:
+            if self._total is None:
+                self._total = self.weights.sum()
+            return self._total
+        else:
+            return len(self)
 
     def count(
         self,

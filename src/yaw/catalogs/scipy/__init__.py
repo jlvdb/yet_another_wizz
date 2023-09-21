@@ -2,6 +2,6 @@
 
 from yaw.catalogs.scipy.catalog import ScipyCatalog
 from yaw.catalogs.scipy.kdtree import SphericalKDTree
-from yaw.catalogs.scipy.patches import PatchCatalog
+from yaw.catalogs.scipy.patches import ScipyPatch
 
-__all__ = ["ScipyCatalog", "SphericalKDTree", "PatchCatalog"]
+__all__ = ["ScipyCatalog", "SphericalKDTree", "ScipyPatch"]
