@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from scipy.cluster import vq
 
 from yaw.catalogs.scipy.kdtree import SphericalKDTree
@@ -13,7 +14,8 @@ from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, Distance, DistSk
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
-    from pandas import DataFrame, Interval
+    from pandas import Interval
+    from polars import DataFrame
 
 __all__ = ["PatchCatalog"]
 
@@ -35,6 +37,23 @@ def patch_id_from_path(fpath: str) -> int:
     return int(patch_id)
 
 
+def polars2pandas_interval(label_tuple: tuple[str,]) -> Interval:
+    """Convert a polars.Series.cut label to a pandas.Interval"""
+    label = label_tuple[0]
+    left = label[0] == "["
+    right = label[-1] == "]"
+    if left and right:
+        closed = "both"
+    elif left:
+        closed = "left"
+    elif right:
+        closed = "right"
+    else:
+        closed = "neither"
+    left, right = label[1:-1].split(",")
+    return pd.Interval(float(left), float(right), closed=closed)
+
+
 class PatchCatalog:
     """Represents a single spatial patch of a :obj:`ScipyCatalog`.
 
@@ -49,7 +68,7 @@ class PatchCatalog:
     """Unique index of the patch."""
     cachefile = None
     """The patch to the cached .feather data file if caching is enabled."""
-    _data = pd.DataFrame()
+    _data = pl.DataFrame()
     _len = 0
     _total = None
     _has_z = False
@@ -100,14 +119,14 @@ class PatchCatalog:
                 "restricted to 'redshift' and 'weights'"
             )
         # next line is crucial, otherwise lines below modify data inplace
-        self._data = data.copy()
+        self._data = data
         if degrees:
-            self._data["ra"] = np.deg2rad(data["ra"])
-            self._data["dec"] = np.deg2rad(data["dec"])
+            self._data = self._data.with_columns(ra=np.deg2rad(pl.col("ra")))
+            self._data = self._data.with_columns(dec=np.deg2rad(pl.col("dec")))
         # if there is a file path, store the file
         if cachefile is not None:
             self.cachefile = cachefile
-            self._data.to_feather(cachefile)
+            self._data.write_ipc(cachefile)
         self._init(center, radius)
 
     def _init(
@@ -180,7 +199,7 @@ class PatchCatalog:
         new.id = patch_id_from_path(cachefile)
         new.cachefile = cachefile
         try:
-            new._data = pd.read_feather(cachefile)
+            new._data = pl.read_ipc(cachefile)
         except Exception as e:
             args = ()
             if hasattr(e, "args"):
@@ -205,7 +224,7 @@ class PatchCatalog:
         if not self.is_loaded():
             if self.cachefile is None:
                 raise CachingError("no datapath provided to load the data")
-            self._data = pd.read_feather(self.cachefile, use_threads=use_threads)
+            self._data = pl.read_ipc(self.cachefile)
 
     def unload(self) -> None:
         """Drop the data from memory.
@@ -335,7 +354,17 @@ class PatchCatalog:
             for intv in pd.IntervalIndex.from_breaks(z_bins, closed="left"):
                 yield intv, self
         else:
-            for intv, bin_data in self._data.groupby(pd.cut(self.redshifts, z_bins)):
+            self.require_loaded()
+            splitted = [
+                (polars2pandas_interval(label), data)
+                for label, data in self._data.group_by(self._data["redshift"].cut(z_bins))
+            ]
+            filtered = [
+                [label, data] for label, data in splitted
+                if np.isfinite(label.left) and np.isfinite(label.right)
+            ]
+            ordered = sorted(filtered, key=lambda label_data: label_data[0].left)
+            for intv, bin_data in ordered:
                 yield intv, PatchCatalog(
                     self.id,
                     bin_data,

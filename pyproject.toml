@@ -25,6 +25,7 @@ dependencies = [
     "tqdm",
     "numpy",
     "pandas",
+    "polars",
     "astropandas>=1.2.1",
     "scipy",
     "astropy",

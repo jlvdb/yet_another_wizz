@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from yaw.catalogs import BaseCatalog, PatchLinkage
 from yaw.catalogs.scipy import utils
@@ -75,6 +76,7 @@ class ScipyCatalog(BaseCatalog):
     ) -> None:
         if len(data) == 0:
             raise ValueError("data catalog is empty")
+        data = pl.from_pandas(data)
         # check if the columns exist
         renames = {ra_name: "ra", dec_name: "dec"}
         if redshift_name is not None:
@@ -135,19 +137,14 @@ class ScipyCatalog(BaseCatalog):
         n_obj_str = long_num_format(len(data))
         with TimedLog(self._logger.info, f"processed {n_obj_str} records"):
             limits = LimitTracker()
+            data = data[list(renames.keys())].rename(renames)
             patches: dict[int, PatchCatalog] = {}
-            patch_iter = data.groupby(patch_name)
+            patch_iter = data.group_by(patch_name)
             if progress:
                 patch_iter = job_progress_bar(patch_iter, total=n_patches)
             for patch_id, patch_data in patch_iter:
                 if patch_id < 0:
                     raise ValueError("negative patch IDs are not supported")
-                # drop extra columns
-                patch_data = patch_data.drop(
-                    columns=[col for col in patch_data.columns if col not in renames]
-                )
-                patch_data.rename(columns=renames, inplace=True)
-                patch_data.reset_index(drop=True, inplace=True)
                 # look up the center of the patch if given
                 kwargs = dict(center=centers.get(patch_id))
                 if unload:
