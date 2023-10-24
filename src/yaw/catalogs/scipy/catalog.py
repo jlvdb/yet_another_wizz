@@ -125,13 +125,14 @@ class ScipyCatalog(BaseCatalog):
                 n_patches = len(patch_centers)
                 log_msg = "applying %i patches from external data"
             patch_name = "patch"  # the default name
-            data[patch_name] = patch_ids
+            data = data.with_columns(**{patch_name: patch_ids})
             centers = {pid: pos for pid, pos in enumerate(patch_centers)}
         else:
             n_patches = len(data[patch_name].unique())
             log_msg = "dividing data into %i predefined patches"
             centers = dict()  # this can be empty
         self._logger.debug(log_msg, n_patches)
+        renames[patch_name] = "patch"
 
         # run groupby first to avoid any intermediate copies of full data
         n_obj_str = long_num_format(len(data))
@@ -152,7 +153,7 @@ class ScipyCatalog(BaseCatalog):
                     kwargs["cachefile"] = os.path.join(
                         cache_directory, f"patch_{patch_id:.0f}.feather"
                     )
-                patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
+                patch = PatchCatalog(int(patch_id), patch_data.drop("patch"), **kwargs)
                 limits.update(patch.redshifts)
                 if unload:
                     patch.unload()
