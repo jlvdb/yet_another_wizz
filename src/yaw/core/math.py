@@ -148,6 +148,7 @@ def cov_from_samples(
     method: str,
     rowvar: bool = False,
     kind: str = "full",  # full, diag, var
+    ignore_nan: bool = True,
 ) -> NDArray:
     """Compute a joint covariance from a sequence of data samples.
 
@@ -168,6 +169,9 @@ def cov_from_samples(
         kind (:obj:`str`, optional):
             Determines the kind of covariance computed, see
             :obj:`~yaw.config.options.Options.kind`.
+        ignore_nan (:obj:`bool`, optional):
+            If true, drop nan observations when computing the covariance. If
+            false, any nan observation will result in a nan covariance estimate.
     """
     ax_samples = 1 if rowvar else 0
     ax_observ = 0 if rowvar else 1
@@ -183,13 +187,21 @@ def cov_from_samples(
         n_obs = concat_samples.shape[ax_observ]
         return np.full((n_obs, n_obs), np.nan)
 
+    if ignore_nan:
+        concat_samples = np.ma.masked_invalid(concat_samples)
+        np_cov_func = np.ma.cov
+    else:
+        np_cov_func = np.cov
+
     if method == "bootstrap":
-        covmat = np.cov(concat_samples, rowvar=rowvar, ddof=1)
+        covmat = np_cov_func(concat_samples, rowvar=rowvar, ddof=1)
     elif method == "jackknife":
         n_samples = concat_samples.shape[ax_samples]
-        covmat = np.cov(concat_samples, rowvar=rowvar, ddof=0) * (n_samples - 1)
+        covmat = np_cov_func(concat_samples, rowvar=rowvar, ddof=0) * (n_samples - 1)
     else:
         raise ValueError(f"invalid sampling method '{method}'")
+    if isinstance(covmat, np.ma.masked_array):
+        covmat = covmat.filled(np.nan)  # refill masked values with nans
 
     if kind == "full":
         pass
