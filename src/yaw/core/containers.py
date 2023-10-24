@@ -313,7 +313,7 @@ class SampledData(BinnedQuantity):
         return NotImplemented
 
     def __sub__(self, other: object) -> _Tdata:
-        if not isinstance(other, self.__class__):
+        if isinstance(other, self.__class__):
             self.is_compatible(other, require=True)
             return self.__class__(
                 binning=self.get_binning(),
