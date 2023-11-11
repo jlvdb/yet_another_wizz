@@ -1,65 +1,63 @@
 from __future__ import annotations
 
+import multiprocessing
 import logging
-from abc import abstractmethod
+import os
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, TypeVar
+from itertools import repeat
+from typing import TYPE_CHECKING, Any
 
 import astropandas as apd
 import numpy as np
+import pandas as pd
 from numpy.typing import NDArray
 
-from yaw.core.coordinates import Coordinate, CoordSky, DistSky
-from yaw.core.utils import long_num_format
+from yaw.catalogs import PatchLinkage
+from yaw.catalogs import utils
+from yaw.catalogs.patches import (
+    PatchCatalog,
+    assign_patches,
+    create_patches,
+    patch_id_from_path,
+)
+from yaw.config import Configuration, ResamplingConfig
+from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
+from yaw.core.logging import TimedLog
+from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
+from yaw.correlation.paircounts import NormalisedCounts
+from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
+    from numpy.typing import NDArray
     from pandas import DataFrame
 
     from yaw.catalogs import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
+    from yaw.core.containers import PatchCorrelationData
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
 
-__all__ = ["BaseCatalog"]
+__all__ = ["Catalog"]
 
 
-_Tcat = TypeVar("_Tcat", bound="BaseCatalog")
+def _worker_correlate(
+    args: tuple[PatchCatalog, PatchCatalog, Configuration, bool, bool]
+) -> PatchCorrelationData:
+    return utils.count_pairs_patches(*args)
 
 
-class BackendError(Exception):
-    pass
+def _worker_true_redshifts(
+    args: tuple[PatchCatalog, NDArray[np.float_]]
+) -> NDArray[np.float_]:
+    return utils.count_histogram_patch(*args)
 
 
-class BaseCatalog:
-    """The data catalog base class.
-
-    Every new backend must implement a catalog class based on this abstract base
-    class. On import this subclass is automatically registered and can be
-    instantiated using the factory class :class:`yaw.NewCatalog`.
-
-    .. Note::
-
-        Base classes must follow the ``[Backendname]Catalog`` naming convention.
-        The new backend is then registered with name ``backendname`` (lower
-        case).
+class Catalog:
+    """TODO: See factory
     """
 
     _logger = logging.getLogger("yaw.catalog")
-    _backends = dict()
 
-    def __init_subclass__(cls, **kwargs):
-        """Handles the backend subclass registration."""
-        super().__init_subclass__(**kwargs)
-        if not cls.__name__.endswith("Catalog"):
-            raise BackendError(
-                "subclasses of 'BaseCatalog' must follow naming convention "
-                "'[Backend name]Catalog for registration (e.g. ScipyCatalog "
-                "-> 'scipy')"
-            )
-        backend = cls.__name__.strip("Catalog").lower()
-        cls._backends[backend] = cls
-
-    @abstractmethod
     def __init__(
         self,
         data: DataFrame,
@@ -67,24 +65,126 @@ class BaseCatalog:
         dec_name: str,
         *,
         patch_name: str | None = None,
-        patch_centers: BaseCatalog | Coordinate | None = None,
+        patch_centers: Catalog | Coordinate | None = None,
         n_patches: int | None = None,
         redshift_name: str | None = None,
         weight_name: str | None = None,
         cache_directory: str | None = None,
-        progress: bool = False,
+        progress: bool = True,
     ) -> None:
-        """Build a catalogue from in-memory data.
+        """TODO: See factory"""
+        if len(data) == 0:
+            raise ValueError("data catalog is empty")
+        # check if the columns exist
+        renames = {ra_name: "ra", dec_name: "dec"}
+        if redshift_name is not None:
+            renames[redshift_name] = "redshift"
+        if weight_name is not None:
+            renames[weight_name] = "weights"
+        for col_name, kind in renames.items():
+            if col_name not in data:
+                raise KeyError(f"column {kind}='{col_name}' not found in data")
 
-        Catalogs should be instantiated through the factory class, see
-        :meth:`yaw.catalogs.NewCatalog.from_dataframe`."""
-        pass
+        # check if patches should be written and unloaded from memory
+        unload = cache_directory is not None
+        if patch_name is not None:
+            patch_mode = "dividing"
+        else:
+            if n_patches is not None:
+                patch_mode = "creating"
+            elif patch_centers is not None:
+                patch_mode = "applying"
+            else:
+                raise ValueError(
+                    "either of 'patch_name', 'patch_centers', or 'n_patches' "
+                    "must be provided"
+                )
+        if unload:
+            if not os.path.exists(cache_directory):
+                raise FileNotFoundError(
+                    f"patch directory does not exist: '{cache_directory}'"
+                )
+            self._logger.debug("using cache directory '%s'", cache_directory)
+
+        # create new patches
+        if patch_mode != "dividing":
+            position = CoordSky.from_array(
+                np.deg2rad(data[[ra_name, dec_name]].to_numpy())
+            )
+            if patch_mode == "creating":
+                patch_centers, patch_ids = create_patches(
+                    position=position, n_patches=n_patches
+                )
+                log_msg = "creating %i patches"
+            else:
+                if isinstance(patch_centers, Catalog):
+                    patch_centers = patch_centers.centers.to_3d()
+                patch_ids = assign_patches(centers=patch_centers, position=position)
+                n_patches = len(patch_centers)
+                log_msg = "applying %i patches from external data"
+            patch_name = "patch"  # the default name
+            data[patch_name] = patch_ids
+            centers = {pid: pos for pid, pos in enumerate(patch_centers)}
+        else:
+            n_patches = len(data[patch_name].unique())
+            log_msg = "dividing data into %i predefined patches"
+            centers = dict()  # this can be empty
+        self._logger.debug(log_msg, n_patches)
+
+        # run groupby first to avoid any intermediate copies of full data
+        n_obj_str = long_num_format(len(data))
+        with TimedLog(self._logger.info, f"processed {n_obj_str} records"):
+            limits = LimitTracker()
+            patches: dict[int, PatchCatalog] = {}
+            patch_iter = data.groupby(patch_name)
+            if progress:
+                patch_iter = job_progress_bar(patch_iter, total=n_patches)
+            for patch_id, patch_data in patch_iter:
+                if patch_id < 0:
+                    raise ValueError("negative patch IDs are not supported")
+                # drop extra columns
+                patch_data = patch_data.drop(
+                    columns=[col for col in patch_data.columns if col not in renames]
+                )
+                patch_data.rename(columns=renames, inplace=True)
+                patch_data.reset_index(drop=True, inplace=True)
+                # look up the center of the patch if given
+                kwargs = dict(center=centers.get(patch_id))
+                if unload:
+                    # data will be written as feather file and loaded on demand
+                    kwargs["cachefile"] = os.path.join(
+                        cache_directory, f"patch_{patch_id:.0f}.feather"
+                    )
+                patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
+                limits.update(patch.redshifts)
+                if unload:
+                    patch.unload()
+                patches[patch.id] = patch
+            if progress:  # clean up if any patch was empty and skipped
+                patch_iter.close()
+            self._zmin, self._zmax = limits.get()
+            self._patches = patches
+
+        # also store the patch properties
+        if unload:
+            centers = self.centers.to_3d()
+            property_df = pd.DataFrame(
+                dict(
+                    ids=self.ids,
+                    x=centers.x,
+                    y=centers.y,
+                    z=centers.z,
+                    r=self.radii.values,
+                )
+            )
+            fpath = os.path.join(cache_directory, "properties.feather")
+            property_df.to_feather(fpath)
 
     @classmethod
     def from_file(
         cls,
         filepath: str,
-        patches: str | int | BaseCatalog | Coordinate,
+        patches: str | int | Catalog | Coordinate,
         ra: str,
         dec: str,
         *,
@@ -95,11 +195,8 @@ class BaseCatalog:
         file_ext: str | None = None,
         progress: bool = False,
         **kwargs,
-    ) -> BaseCatalog:
-        """Build a catalogue from data file.
-
-        Catalogs should be instantiated through the factory class, see
-        :meth:`yaw.catalogs.NewCatalog.from_file`."""
+    ) -> Catalog:
+        """TODO: See factory"""
         columns = [c for c in [ra, dec, redshift, weight] if c is not None]
         if isinstance(patches, str):
             columns.append(patches)
@@ -108,7 +205,7 @@ class BaseCatalog:
             patch_kwarg = dict(n_patches=patches)
         elif isinstance(patches, Coordinate):
             patch_kwarg = dict(patch_centers=patches)
-        elif isinstance(patches, BaseCatalog):
+        elif isinstance(patches, Catalog):
             patch_kwarg = dict(patch_centers=patches.centers)
         else:
             raise TypeError(
@@ -134,13 +231,41 @@ class BaseCatalog:
         )
 
     @classmethod
-    @abstractmethod
-    def from_cache(cls, cache_directory: str, progress: bool = False) -> BaseCatalog:
-        """Restore the catalogue from its cache directory.
-
-        Catalogs should be instantiated through the factory class, see
-        :meth:`yaw.catalogs.NewCatalog.from_cache`."""
+    def from_cache(cls, cache_directory: str, progress: bool = False) -> Catalog:
+        """TODO: See factory"""
         cls._logger.info("restoring from cache directory '%s'", cache_directory)
+        new = cls.__new__(cls)
+        # load the patch properties
+        fpath = os.path.join(cache_directory, "properties.feather")
+        property_df = pd.read_feather(fpath)
+        # transform data frame to dictionaries
+        ids = property_df["ids"]
+        centers = Coord3D.from_array(property_df[["x", "y", "z"]].to_numpy())
+        radii = DistSky(property_df["r"].to_numpy())
+        # transform to dictionary
+        centers = {pid: center for pid, center in zip(ids, centers)}
+        radii = {pid: radius for pid, radius in zip(ids, radii)}
+        # load the patches
+        limits = LimitTracker()
+        new._patches = {}
+        patch_files = list(os.listdir(cache_directory))
+        if progress:
+            patch_files = job_progress_bar(patch_files)
+        for path in patch_files:
+            if not path.startswith("patch"):
+                continue
+            abspath = os.path.join(cache_directory, path)
+            if not os.path.isfile(abspath):
+                continue
+            patch_id = patch_id_from_path(path)
+            patch = PatchCatalog.from_cached(
+                abspath, center=centers.get(patch_id), radius=radii.get(patch_id)
+            )
+            limits.update(patch.redshifts)
+            patch.unload()
+            new._patches[patch.id] = patch
+        new._zmin, new._zmax = limits.get()
+        return new
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -153,38 +278,38 @@ class BaseCatalog:
         arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"{name}({arg_str})"
 
-    @abstractmethod
     def __len__(self) -> int:
-        pass
+        return sum(len(patch) for patch in self._patches.values())
 
-    @abstractmethod
     def __getitem__(self, item: int) -> Any:
-        pass
+        return self._patches[item]
 
     @property
-    @abstractmethod
     def ids(self) -> list[int]:
         """Return a list of unique patch indices in the catalog."""
-        pass
+        return sorted(self._patches.keys())
 
-    @abstractmethod
+    @property
     def n_patches(self) -> int:
         """The number of spatial patches of this catalogue."""
         pass
 
-    @abstractmethod
     def __iter__(self) -> Iterator:
-        pass
+        for patch_id in self.ids:
+            patch = self._patches[patch_id]
+            loaded = patch.is_loaded()
+            patch.load()
+            yield patch
+            if not loaded:
+                patch.unload()
 
-    @abstractmethod
     def is_loaded(self) -> bool:
         """Indicates whether the catalog data is loaded.
 
         Always ``True`` if no cache is used. If the catalog is unloaded, data
         will be read from cache every time data is accessed."""
-        pass
+        return all([patch.is_loaded() for patch in self._patches.values()])
 
-    @abstractmethod
     def load(self) -> None:
         """Permanently load data from cache into memory.
 
@@ -192,21 +317,22 @@ class BaseCatalog:
         is configured.
         """
         self._logger.debug("bulk loading catalog")
+        for patch in self._patches.values():
+            patch.load()
 
-    @abstractmethod
     def unload(self) -> None:
         """Unload data from memory if a disk cache is provided."""
         self._logger.debug("bulk unloading catalog")
+        for patch in self._patches.values():
+            patch.unload()
 
-    @abstractmethod
     def has_redshifts(self) -> bool:
         """Indicates whether the :meth:`redshifts` attribute holds data."""
-        pass
+        return all(patch.has_redshifts() for patch in self._patches.values())
 
-    @abstractmethod
     def has_weights(self) -> bool:
         """Indicates whether the :meth:`weights` attribute holds data."""
-        pass
+        return all(patch.has_weights() for patch in self._patches.values())
 
     @property
     def pos(self) -> CoordSky:
@@ -218,68 +344,68 @@ class BaseCatalog:
         return CoordSky(self.ra, self.dec)
 
     @property
-    @abstractmethod
     def ra(self) -> NDArray[np.float_]:
         """Get an array of the right ascension values in radians."""
-        pass
+        return np.concatenate([patch.ra for patch in iter(self)])
 
     @property
-    @abstractmethod
     def dec(self) -> NDArray[np.float_]:
         """Get an array of the declination values in radians."""
-        pass
+        return np.concatenate([patch.dec for patch in iter(self)])
 
     @property
-    @abstractmethod
     def redshifts(self) -> NDArray[np.float_] | None:
         """Get the redshifts as array or ``None`` if not available."""
-        pass
+        if self.has_redshifts():
+            return np.concatenate([patch.redshifts for patch in iter(self)])
+        else:
+            return None
 
     @property
-    @abstractmethod
     def weights(self) -> NDArray[np.float_]:
         """Get the object weights as array or ``None`` if not available."""
-        pass
+        weights = []
+        for patch in iter(self):
+            if patch.has_weights():
+                weights.append(patch.weights)
+            else:
+                weights.append(np.ones(len(patch)))
+        return np.concatenate(weights)
 
     @property
-    @abstractmethod
     def patch(self) -> NDArray[np.int_]:
         """Get the patch indices of each object as array."""
-        pass
+        return np.concatenate([np.full(len(patch), patch.id) for patch in iter(self)])
 
-    @abstractmethod
     def get_min_redshift(self) -> float:
         """Get the minimum redshift or ``None`` if not available."""
-        pass
+        return self._zmin
 
-    @abstractmethod
     def get_max_redshift(self) -> float:
         """Get the maximum redshift or ``None`` if not available."""
-        pass
+        return self._zmax
 
     @property
-    @abstractmethod
     def total(self) -> float:
         """Get the sum of weights or the number of objects if weights are not
         available."""
+        return self.get_totals().sum()
 
-    @abstractmethod
     def get_totals(self) -> NDArray[np.float_]:
         """Get an array of the sum of weights or number of objects in each
         patch."""
+        return np.array([patch.total for patch in self._patches.values()])
 
     @property
-    @abstractmethod
     def centers(self) -> CoordSky:
         """Get a vector of sky coordinates of the patch centers in radians.
 
         Returns:
             :obj:`yaw.core.coordinates.CoordSky`
         """
-        pass
+        return CoordSky.from_coords([self._patches[pid].center for pid in self.ids])
 
     @property
-    @abstractmethod
     def radii(self) -> DistSky:
         """Get a vector of angular separations in radians that describe the
         patch sizes.
@@ -290,14 +416,13 @@ class BaseCatalog:
         Returns:
             :obj:`yaw.core.coordinates.DistSky`
         """
-        pass
+        return DistSky.from_dists([self._patches[pid].radius for pid in self.ids])
 
-    @abstractmethod
     def correlate(
         self,
         config: Configuration,
         binned: bool,
-        other: _Tcat = None,
+        other: Catalog | None = None,
         linkage: PatchLinkage | None = None,
         progress: bool = False,
     ) -> NormalisedCounts | dict[str, NormalisedCounts]:
@@ -354,7 +479,26 @@ class BaseCatalog:
             config.binning.zbin_num,
         )
 
-    @abstractmethod
+        auto = other is None
+        patch1_list, patch2_list = utils.get_patch_list(
+            self, other, config, linkage, auto
+        )
+
+        # process the patch pairs, add an optional progress bar
+        n_jobs = len(patch1_list)
+        bin1 = self.has_redshifts()
+        bin2 = binned if other is not None else True
+        iter_args = zip(
+            patch1_list, patch2_list, repeat(config), repeat(bin1), repeat(bin2)
+        )
+        if progress:
+            iter_args = job_progress_bar(iter_args, total=n_jobs)
+        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
+            patch_datasets = list(pool.imap_unordered(_worker_correlate, iter_args))
+
+        # merge the pair counts from all patch combinations
+        return utils.merge_pairs_patches(patch_datasets, config, self.n_patches, auto)
+
     def true_redshifts(
         self,
         config: Configuration,
@@ -378,3 +522,18 @@ class BaseCatalog:
                 Object holding the redshift histogram
         """
         self._logger.info("computing true redshift distribution")
+        if not self.has_redshifts():
+            raise ValueError("catalog has no redshifts")
+
+        # compute the reshift histogram in each patch
+        n_jobs = self.n_patches
+        iter_args = zip(self._patches.values(), repeat(config.binning.zbins))
+        if progress:
+            iter_args = job_progress_bar(iter_args, total=n_jobs)
+        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
+            hist_counts = list(pool.imap_unordered(_worker_true_redshifts, iter_args))
+
+        # construct the output data samples
+        return utils.merge_histogram_patches(
+            np.array(hist_counts), config.binning.zbins, sampling_config
+        )
