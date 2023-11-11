@@ -394,7 +394,7 @@ def check_mergable(cfs: Sequence[CorrFunc | None]) -> None:
         ref_pcounts = getattr(reference, kind)
         for cf in cfs[1:]:
             pcounts = getattr(cf, kind)
-            if type(ref_pcounts) != type(pcounts):
+            if type(ref_pcounts) is not type(pcounts):
                 raise ValueError(f"cannot merge, '{kind}' incompatible")
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import multiprocessing
 import logging
+import multiprocessing
 import os
 from collections.abc import Iterator
 from itertools import repeat
@@ -10,9 +10,7 @@ from typing import TYPE_CHECKING, Any
 import astropandas as apd
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
 
-from yaw.catalogs import PatchLinkage
 from yaw.catalogs import utils
 from yaw.catalogs.patches import (
     PatchCatalog,
@@ -20,12 +18,9 @@ from yaw.catalogs.patches import (
     create_patches,
     patch_id_from_path,
 )
-from yaw.config import Configuration, ResamplingConfig
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.logging import TimedLog
 from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
-from yaw.correlation.paircounts import NormalisedCounts
-from yaw.redshifts import HistData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -53,8 +48,7 @@ def _worker_true_redshifts(
 
 
 class Catalog:
-    """TODO: See factory
-    """
+    """TODO: See factory"""
 
     _logger = logging.getLogger("yaw.catalog")
 

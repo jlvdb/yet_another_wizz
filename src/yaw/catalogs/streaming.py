@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, TypeAlias, Union
+from typing import TYPE_CHECKING, Any, Generator, Iterable
 
 import fitsio
 import h5py
@@ -10,7 +10,6 @@ import numpy as np
 import polars as pl
 import pyarrow
 from pyarrow import parquet
-from pyarrow.interchange import from_dataframe
 
 if TYPE_CHECKING:
     from polars import DataFrame
