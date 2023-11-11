@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 
 from yaw.core.coordinates import Coordinate, DistSky
 
@@ -18,7 +18,7 @@ class InvalidScalesError(Exception):
 
 
 class SphericalKDTree:
-    """Wrapper around :obj:`scipy.spatial.cKDTree` that represents angular
+    """Wrapper around :obj:`scipy.spatial.KDTree` that represents angular
     coordinates as points on the unitsphere.
 
     The only implemented operation is counting pairs in a fixed angular annulus.
@@ -47,7 +47,7 @@ class SphericalKDTree:
                 with no further childs.
         """
         position = np.atleast_2d(position.to_3d().values)
-        self.tree = cKDTree(position, leafsize)
+        self.tree = KDTree(position, leafsize)
         if weights is None:
             self.weights = np.ones(len(position))
         else:

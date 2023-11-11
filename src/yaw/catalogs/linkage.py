@@ -12,7 +12,7 @@ from yaw.core.coordinates import Dist3D, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.catalogs import BaseCatalog
+    from yaw.catalogs import Catalog
     from yaw.config import Configuration
 
 __all__ = ["PatchLinkage"]
@@ -47,7 +47,7 @@ class PatchLinkage:
         self.pairs = patch_tuples
 
     @classmethod
-    def from_setup(cls, config: Configuration, catalog: BaseCatalog) -> PatchLinkage:
+    def from_setup(cls, config: Configuration, catalog: Catalog) -> PatchLinkage:
         """Generate a new patch linkage.
 
         Compute a maximum angular separation for at low redshift for the scales
@@ -59,7 +59,7 @@ class PatchLinkage:
             config (`~yaw.Configuration`):
                 Configuration object that defines the scales and cosmology
                 needed to compute the maximum angular scale.
-            catalog (:obj:`BaseCatalog`):
+            catalog (:obj:`Catalog`):
                 Catalog instance with patch centers and sizes.
 
         Returns:
@@ -142,8 +142,8 @@ class PatchLinkage:
 
     @staticmethod
     def _parse_collections(
-        collection1: BaseCatalog, collection2: BaseCatalog | None = None
-    ) -> tuple[bool, BaseCatalog, BaseCatalog]:
+        collection1: Catalog, collection2: Catalog | None = None
+    ) -> tuple[bool, Catalog, Catalog]:
         auto = collection2 is None
         if auto:
             collection2 = collection1
@@ -151,8 +151,8 @@ class PatchLinkage:
 
     def get_matrix(
         self,
-        collection1: BaseCatalog,
-        collection2: BaseCatalog | None = None,
+        collection1: Catalog,
+        collection2: Catalog | None = None,
         crosspatch: bool = True,
     ) -> NDArray[np.bool_]:
         """Convert the list of linked patches to a boolean matrix indicating if
@@ -163,9 +163,9 @@ class PatchLinkage:
         purpose of the inputs.
 
         Args:
-            collection1 (:obj:`BaseCatalog`):
+            collection1 (:obj:`Catalog`):
                 First catalog for patch linkage.
-            collection2 (:obj:`BaseCatalog`, optional):
+            collection2 (:obj:`Catalog`, optional):
                 Second catalog for patch linkage. If not provided, returns a
                 matrix for an autocorrelation case.
             crosspatch (:obj:`bool`):
@@ -192,8 +192,8 @@ class PatchLinkage:
 
     def get_patches(
         self,
-        collection1: BaseCatalog,
-        collection2: BaseCatalog | None = None,
+        collection1: Catalog,
+        collection2: Catalog | None = None,
         crosspatch: bool = True,
     ) -> tuple[list, list]:
         """Return linked pairs of patch data ready for processing.
@@ -205,9 +205,9 @@ class PatchLinkage:
         patch linkage.
 
         Args:
-            collection1 (:obj:`BaseCatalog`):
+            collection1 (:obj:`Catalog`):
                 First catalog for patch linkage.
-            collection2 (:obj:`BaseCatalog`, optional):
+            collection2 (:obj:`Catalog`, optional):
                 Second catalog for patch linkage. If not provided, returns a
                 matrix for an autocorrelation case.
             crosspatch (:obj:`bool`):

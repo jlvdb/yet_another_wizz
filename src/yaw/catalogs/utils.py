@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from yaw.catalogs import PatchLinkage
-from yaw.catalogs.scipy.patches import PatchCatalog
+from yaw.catalogs.patches import PatchCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.correlation.paircounts import (
@@ -22,7 +22,7 @@ from yaw.redshifts import HistData
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-    from yaw.catalogs.scipy.catalog import ScipyCatalog
+    from yaw.catalogs.catalog import Catalog
 
 __all__ = [
     "get_patch_list",
@@ -34,8 +34,8 @@ __all__ = [
 
 
 def get_patch_list(
-    catalog1: ScipyCatalog,
-    catalog2: ScipyCatalog | None,
+    catalog1: Catalog,
+    catalog2: Catalog | None,
     config: Configuration,
     linkage: PatchLinkage | None,
     auto: bool,
@@ -46,9 +46,9 @@ def get_patch_list(
     a newly constructed one.
 
     Args:
-        catalog1 (:obj:`yaw.catalogs.scipy.ScipyCatalog`):
+        catalog1 (:obj:`yaw.catalogs.scipy.Catalog`):
             The first input data catalogue.
-        catalog2 (:obj:`yaw.catalogs.scipy.ScipyCatalog`, :obj:`None`):
+        catalog2 (:obj:`yaw.catalogs.scipy.Catalog`, :obj:`None`):
             The second input data catalogue, can be `None`.
         config (:obj:`yaw.config.Configuration`):
             The configuration used for the correlation measurement.

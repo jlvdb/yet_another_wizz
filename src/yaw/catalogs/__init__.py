@@ -2,6 +2,7 @@
 manage file loading, construction of spatial patches, and implement the pair
 counting needed for the correlation function measurements.
 
+TODO: UPDATE THIS
 The most important member is the catalog factory class :obj:`NewCatalog`,
 which provides an interface to create new catalog instances for each of the
 supported correlation measurement backends. The :obj:`BaseCatalog` defines the
