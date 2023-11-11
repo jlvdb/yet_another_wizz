@@ -61,6 +61,19 @@ class Reader(FileContext):
     def iter(self) -> Generator[DataFrame]:
         pass
 
+    def read_all(self, sparse: int | None = None) -> DataFrame:
+        total = 0
+        chunks = []
+        for chunk in self.iter():
+            n_chunk = len(chunk)
+            if sparse is not None:
+                # take a regular subset that factors in the chunk size
+                idx = np.arange(total % sparse, n_chunk, sparse)
+                chunk = chunk.select([pl.all().take(idx)])
+            chunks.append(chunk)
+            total += n_chunk
+        return pl.concat(chunks)
+
 
 class ParquetReader(Reader):
     def __init__(
