@@ -2,31 +2,20 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, TypeAlias, Union
 
 import fitsio
 import h5py
 import numpy as np
+import polars as pl
 import pyarrow
 from pyarrow import parquet
 from pyarrow.interchange import from_dataframe
 
-try:
-    import polars as pl
-
-    use_polars = True
-except ImportError:
-    import pandas as pd
-
-    use_polars = False
-
-if use_polars:
-    DataFrame = pl.DataFrame
-else:
-    DataFrame = pd.DataFrame
-
 if TYPE_CHECKING:
+    from polars import DataFrame
     from pyarrow import Table
+    from pyarrow.ipc import RecordBatchFileWriter
 
 
 def pyarrow_groupby(
@@ -47,13 +36,6 @@ def pyarrow_groupby(
         ]
         group_table = pyarrow.Table.from_arrays(group_col_data, names=out_names)
         yield key, group_table
-
-
-def dataframe_groupby(df: DataFrame, *args, **kwargs) -> Iterator[tuple[Any, DataFrame]]:
-    if hasattr(df, "group_by"):
-        return df.group_by(*args, **kwargs)
-    else:
-        return df.groupby(*args, **kwargs)
 
 
 class FileContext(ABC):
@@ -95,10 +77,7 @@ class ParquetReader(Reader):
         n_groups = self.file.num_row_groups
         for gid in range(n_groups):
             group = self.file.read_row_group(gid, self.columns)
-            if use_polars:
-                yield pl.from_arrow(group)
-            else:
-                yield group.to_pandas()
+            yield pl.from_arrow(group)
 
 
 class FitsReader(Reader):
@@ -129,10 +108,7 @@ class FitsReader(Reader):
             coldata = {
                 col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
             }
-            if use_polars:
-                yield pl.DataFrame(coldata)
-            else:
-                yield pd.DataFrame(coldata)
+            yield pl.DataFrame(coldata)
 
 
 class HDFReader(Reader):
@@ -159,10 +135,7 @@ class HDFReader(Reader):
                 col: self.file[col][offset : offset + self.chunksize]
                 for col in self.columns
             }
-            if use_polars:
-                yield pl.DataFrame(coldata)
-            else:
-                yield pd.DataFrame(coldata)
+            yield pl.DataFrame(coldata)
 
 
 class CSVReader(Reader):
@@ -185,37 +158,25 @@ class CSVReader(Reader):
         pass
 
     def iter(self) -> Generator[DataFrame]:
-        if use_polars:
-            n_batch = 10
-            batch_size = int(np.ceil(self.chunksize // n_batch))
-            reader = pl.read_csv_batched(
-                self.path,
-                columns=self.columns,
-                separator=self.separator,
-                eol_char=self.eol_char,
-                batch_size=batch_size,
-            )
-            while True:
-                group = reader.next_batches(n_batch)
-                if group is None:
-                    return
-                yield pl.concat(group)
-        else:
-            reader = pd.read_csv(
-                self.path,
-                usecols=self.columns,
-                sep=self.separator,
-                lineterminator=self.eol_char,
-                chunksize=self.chunksize,
-            )
-            for batch in reader:
-                yield batch
+        n_batch = 10
+        batch_size = int(np.ceil(self.chunksize // n_batch))
+        reader = pl.read_csv_batched(
+            self.path,
+            columns=self.columns,
+            separator=self.separator,
+            eol_char=self.eol_char,
+            batch_size=batch_size,
+        )
+        while True:
+            group = reader.next_batches(n_batch)
+            if group is None:
+                return
+            yield pl.concat(group)
 
 
 class PatchCollector:
-
     def __init__(self) -> None:
-        self._patches: dict[int, list[Table | DataFrame]] = {}
+        self._patches: dict[int, list[DataFrame]] = {}
 
     def process(
         self,
@@ -223,12 +184,9 @@ class PatchCollector:
         patch_key: str,
         drop_key: bool = True,
     ) -> None:
-        for pid, df_patch in dataframe_groupby(df, patch_key):
+        for pid, df_patch in df.group_by(patch_key):
             if drop_key:
-                if use_polars:
-                    df_patch = df_patch.drop(patch_key)
-                else:
-                    df_patch = df_patch.drop(columns=patch_key)
+                df_patch = df_patch.drop(patch_key)
             if pid not in self._patches:
                 self._patches[pid] = []
             self._patches[pid].append(df_patch)
@@ -236,21 +194,7 @@ class PatchCollector:
     def get_patches(self) -> dict[int, DataFrame]:
         patches = dict()
         for pid, shards in self._patches.items():
-            if use_polars:
-                patches[pid] = pl.concat(shards)
-            else:
-                patches[pid] = pd.concat(shards)
-        self._patches = {}
-        return patches
-
-    def get_patches2(self) -> dict[int, DataFrame]:
-        patches = dict()
-        for pid, shards in self._patches.items():
-            patch = pyarrow.concat_tables(shards)
-            if use_polars:
-                yield pl.from_arrow(patch)
-            else:
-                yield patch.to_pandas()
+            patches[pid] = pl.concat(shards)
         self._patches = {}
         return patches
 
@@ -258,7 +202,7 @@ class PatchCollector:
 class PatchWriter(FileContext):
     def __init__(self, prefix: str) -> None:
         self.files: dict[int, pyarrow.OSFile] = {}
-        self.writers: dict[int, parquet.ipc.new_file] = {}
+        self.writers: dict[int, RecordBatchFileWriter] = {}
         root = os.path.dirname(prefix)
         if root != "" and not os.path.exists(root):
             os.mkdir(root)
@@ -276,19 +220,10 @@ class PatchWriter(FileContext):
         patch_key: str,
         drop_key: bool = True,
     ) -> None:
-        for pid, df_patch in dataframe_groupby(df, patch_key):
-            if isinstance(df_patch, DataFrame):
-                if use_polars:
-                    if drop_key:
-                        df_patch = df_patch.drop(patch_key)
-                    arrow_patch = df_patch.to_arrow()
-                else:
-                    if drop_key:
-                        df_patch = df_patch.drop(columns=patch_key)
-                    arrow_patch = from_dataframe(df_patch)
-            else:
-                raise TypeError("'df' is not a valid DataFrame")
-
+        for pid, df_patch in df.group_by(patch_key):
+            if drop_key:
+                df_patch = df_patch.drop(patch_key)
+            arrow_patch = df_patch.to_arrow()
             if pid not in self.writers:
                 self.files[pid] = pyarrow.OSFile(self.template.format(pid), "wb")
                 self.writers[pid] = pyarrow.ipc.new_file(
