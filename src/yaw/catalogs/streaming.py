@@ -12,7 +12,7 @@ import pyarrow
 from polars import DataFrame
 from pyarrow import parquet
 
-from ._streaming import _count_lines
+from ._streaming import _count_lines, _estimate_lines
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 
 def count_lines(filename: str) -> int:
     return _count_lines(filename)
+
+
+def estimate_lines(filename: str) -> int:
+    return _estimate_lines(filename)
 
 
 class Closable(Protocol):
@@ -54,6 +58,9 @@ class Reader(FileContext):
     @abstractmethod
     def n_rows(self) -> int:
         pass
+
+    def estimate_nrows(self) -> int:
+        return self.n_rows
 
     @abstractmethod
     def iter(self) -> Generator[DataFrame]:
@@ -206,6 +213,9 @@ class CSVReader(Reader):
     @property
     def n_rows(self) -> int:
         return count_lines(self.path)
+
+    def estimate_nrows(self) -> int:
+        return estimate_lines(self.path)
 
     def iter(self) -> Generator[DataFrame]:
         n_batch = self.chunksize // self.batchsize
