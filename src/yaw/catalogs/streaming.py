@@ -12,9 +12,15 @@ import pyarrow
 from polars import DataFrame
 from pyarrow import parquet
 
+from ._streaming import _count_lines
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pyarrow.ipc import RecordBatchFileWriter
+
+
+def count_lines(filename: str) -> int:
+    return _count_lines(filename)
 
 
 class Closable(Protocol):
@@ -43,6 +49,11 @@ class Reader(FileContext):
 
     def close(self) -> None:
         self.file.close()
+
+    @property
+    @abstractmethod
+    def n_rows(self) -> int:
+        pass
 
     @abstractmethod
     def iter(self) -> Generator[DataFrame]:
@@ -73,6 +84,11 @@ class ParquetReader(Reader):
         self.columns = None if columns is None else list(columns)
         self.file = parquet.ParquetFile(path)
 
+    @property
+    def n_rows(self) -> int:
+        metadata = parquet.read_metadata(self.path)
+        return metadata.num_rows
+
     def iter(self) -> Generator[DataFrame]:
         n_groups = self.file.num_row_groups
         for gid in range(n_groups):
@@ -97,29 +113,30 @@ class FitsReader(Reader):
         hdu: int = 1,
     ) -> None:
         self.path = path
-        self.hdu = hdu
         self.chunksize = chunksize
         self.file = fitsio.FITS(path)
+        self.hdu = self.file[hdu]
         if columns is None:
             self.columns = self.fits.get_colnames()
         else:
             self.columns = list(columns)
 
+    @property
+    def n_rows(self) -> int:
+        return self.hdu.get_nrows()
+
     def iter(self) -> Generator[DataFrame]:
-        hdu = self.file[self.hdu]
-        n_rows = hdu.get_nrows()
-        n_groups = int(np.ceil(n_rows / self.chunksize))
+        n_groups = int(np.ceil(self.n_rows / self.chunksize))
         for gid in range(n_groups):
             offset = gid * self.chunksize
-            data: NDArray = hdu[self.columns][offset : offset + self.chunksize]
+            data: NDArray = self.hdu[self.columns][offset : offset + self.chunksize]
             coldata = {
                 col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
             }
             yield DataFrame(coldata)
 
     def read_all(self, sparse: int | None = None) -> DataFrame:
-        hdu = self.file[self.hdu]
-        data: NDArray = hdu[self.columns][::sparse]
+        data: NDArray = self.hdu[self.columns][::sparse]
         coldata = {
             col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
         }
@@ -143,11 +160,15 @@ class HDFReader(Reader):
         self.chunksize = chunksize
         self.file = h5py.File(path, mode="r")
 
-    def iter(self) -> Generator[DataFrame]:
+    @property
+    def n_rows(self) -> int:
         n_rows = [self.file[col].shape[0] for col in self.columns]
         if len(set(n_rows)) != 1:
             raise IndexError("columns do not have equal length")
-        n_groups = int(np.ceil(n_rows[0] / self.chunksize))
+        return n_rows[0]
+
+    def iter(self) -> Generator[DataFrame]:
+        n_groups = int(np.ceil(self.n_rows / self.chunksize))
         for gid in range(n_groups):
             offset = gid * self.chunksize
             coldata = {
@@ -181,6 +202,10 @@ class CSVReader(Reader):
 
     def close(self) -> None:
         pass
+
+    @property
+    def n_rows(self) -> int:
+        return count_lines(self.path)
 
     def iter(self) -> Generator[DataFrame]:
         n_batch = self.chunksize // self.batchsize
@@ -269,12 +294,7 @@ class PatchWriter(FileContext):
             self.writers[pid].write(arrow_patch)
 
 
-def get_reader(
-    path: str,
-    columns: Iterable[str] | None = None,
-    sparse: int | None = None,
-    **kwargs,
-) -> type[Reader]:
+def get_reader(path: str) -> type[Reader]:
     # parse the extension
     _, ext = os.path.splitext(path)
     ext = ext.lower()
