@@ -1,86 +1,150 @@
 #include <Python.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <math.h>
 
 
-#define BUF_SIZE 65536
+#define NUM_THREADS 4
+
+
+struct ThreadData {
+    char *fileContent;
+    size_t start;
+    size_t end;
+    size_t lineCount;
+};
+
+
+void* count_lines_in_chunk(void* arg) {
+    struct ThreadData* data = (struct ThreadData*)arg;
+
+    for (size_t i = data->start; i < data->end; i++) {
+        if (data->fileContent[i] == '\n') {
+            data->lineCount++;
+        }
+    }
+
+    pthread_exit(NULL);
+}
 
 
 static PyObject* _count_lines(PyObject* self, PyObject* args) {
     const char *filename;
-    char buf[BUF_SIZE];
-    FILE *file;
-    long count = 0;
-    size_t res, i;
-
     if (!PyArg_ParseTuple(args, "s", &filename)) {
         return NULL;
     }
 
-    file = fopen(filename, "r");
-    if (file == NULL) {
+    int file = open(filename, O_RDONLY);
+    if (file == -1) {
         PyErr_SetString(PyExc_FileNotFoundError, "File not found");
         return NULL;
     }
 
-    for(;;)
-    {
-        res = fread(buf, 1, BUF_SIZE, file);
-        for(i = 0; i < res; i++)
-            if (buf[i] == '\n')
-                count++;
-        if (feof(file)) {
-            break;
-        }
+    struct stat fileStat;
+    if (fstat(file, &fileStat) == -1) {
+        PyErr_SetString(PyExc_OSError, "Error getting file size");
+        close(file);
+        return NULL;
     }
 
-    fclose(file);
+    char *fileContent = mmap(NULL, fileStat.st_size, PROT_READ, MAP_PRIVATE, file, 0);
+    if (fileContent == MAP_FAILED) {
+        PyErr_SetString(PyExc_OSError, "Error mapping file to memory");
+        close(file);
+        return NULL;
+    }
 
-    return PyLong_FromLong(count);
+    pthread_t threads[NUM_THREADS];
+    struct ThreadData threadData[NUM_THREADS];
+
+    size_t chunkSize = fileStat.st_size / NUM_THREADS;
+
+    for (int i = 0; i < NUM_THREADS; i++) {
+        threadData[i].fileContent = fileContent;
+        threadData[i].start = i * chunkSize;
+        threadData[i].end = (i == NUM_THREADS - 1) ? fileStat.st_size : (i + 1) * chunkSize;
+        threadData[i].lineCount = 0;
+
+        pthread_create(&threads[i], NULL, count_lines_in_chunk, (void*)&threadData[i]);
+    }
+
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    size_t count = 0;
+    for (size_t i = 0; i < NUM_THREADS; i++) {
+        count += threadData[i].lineCount;
+    }
+
+    // Clean up
+    munmap(fileContent, fileStat.st_size);
+    close(file);
+
+    return PyLong_FromSize_t(count);
 }
 
 
 static PyObject* _estimate_lines(PyObject* self, PyObject* args) {
     const char *filename;
-    char buf[BUF_SIZE];
-    FILE *file;
-    long size, read = 0, count = 0;
-    size_t res, i;
-    float frac;
-
     if (!PyArg_ParseTuple(args, "s", &filename)) {
         return NULL;
     }
 
-    file = fopen(filename, "r");
-    if (file == NULL) {
+    int file = open(filename, O_RDONLY);
+    if (file == -1) {
         PyErr_SetString(PyExc_FileNotFoundError, "File not found");
         return NULL;
     }
 
-    fseek(file, 0, SEEK_END);
-    size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    for(;;)
-    {
-        res = fread(buf, 1, BUF_SIZE, file);
-        read += res;
-        for(i = 0; i < res; i++)
-            if (buf[i] == '\n')
-                count++;
-        frac = (float)read / size;
-        if (frac > 0.01) {
-            count = (long)(count / frac);
-            break;
-        }
-        if (feof(file)) {
-            break;
-        }
+    struct stat fileStat;
+    if (fstat(file, &fileStat) == -1) {
+        PyErr_SetString(PyExc_OSError, "Error getting file size");
+        close(file);
+        return NULL;
     }
 
-    fclose(file);
+    char *fileContent = mmap(NULL, fileStat.st_size, PROT_READ, MAP_PRIVATE, file, 0);
+    if (fileContent == MAP_FAILED) {
+        PyErr_SetString(PyExc_OSError, "Error mapping file to memory");
+        close(file);
+        return NULL;
+    }
 
-    return PyLong_FromLong(count);
+    pthread_t threads[NUM_THREADS];
+    struct ThreadData threadData[NUM_THREADS];
+
+    size_t chunkSize = (size_t)ceil(fileStat.st_size / NUM_THREADS / 100.0);
+    size_t end = (size_t)ceil(fileStat.st_size / 100.0);
+
+    for (int i = 0; i < NUM_THREADS; i++) {
+        threadData[i].fileContent = fileContent;
+        threadData[i].start = i * chunkSize;
+        threadData[i].end = (i == NUM_THREADS - 1) ? end : (i + 1) * chunkSize;
+        threadData[i].lineCount = 0;
+
+        pthread_create(&threads[i], NULL, count_lines_in_chunk, (void*)&threadData[i]);
+    }
+
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    size_t count = 0;
+    for (size_t i = 0; i < NUM_THREADS; i++) {
+        count += threadData[i].lineCount;
+    }
+
+    // Clean up
+    munmap(fileContent, fileStat.st_size);
+    close(file);
+
+    return PyLong_FromSize_t(count * 100);
 }
 
 
