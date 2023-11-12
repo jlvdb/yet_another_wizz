@@ -8,13 +8,10 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TypeVar, Union
 
-import numpy as np
 import tqdm
-from numpy.typing import NDArray
 
 __all__ = [
     "job_progress_bar",
-    "LimitTracker",
     "long_num_format",
     "bytes_format",
     "format_float_fixed_width",
@@ -31,26 +28,6 @@ def job_progress_bar(
     """Configure and return a tqdm progress bar with custom format."""
     config = dict(delay=0.5, leave=False, smoothing=0.1, unit="jobs")
     return tqdm.tqdm(iterable, total=total, **config)
-
-
-class LimitTracker:
-    """Tracks the global minimum and maximum of batches of arrays."""
-
-    def __init__(self):
-        self.min = +np.inf
-        self.max = -np.inf
-
-    def update(self, data: NDArray | None):
-        """Process a new array with data and update the limits if necessary."""
-        if data is not None:
-            self.min = np.minimum(self.min, np.min(data))
-            self.max = np.maximum(self.max, np.max(data))
-
-    def get(self):
-        """Return the minimum and maximum values processed so far."""
-        vmin = None if np.isinf(self.min) else self.min
-        vmax = None if np.isinf(self.max) else self.max
-        return vmin, vmax
 
 
 def long_num_format(x: float) -> str:

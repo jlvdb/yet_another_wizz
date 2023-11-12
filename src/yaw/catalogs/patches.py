@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import gc
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import pyarrow
 from scipy.cluster import vq
 
 from yaw.catalogs.kdtree import SphericalKDTree
@@ -26,6 +28,17 @@ class CachingError(Exception):
     pass
 
 
+def check_columns(data: DataFrame, extra: Iterable) -> None:
+    required = {"ra", "dec"}
+    optional = {"weight", "redshift"} | set(extra)
+    existing = set(data.columns)
+    for col in required - existing:
+        raise KeyError("column 'ra' is required but missing")
+    for col in existing - (required | optional):
+        opt = ", ".join(optional)
+        raise KeyError(f"unidentified column '{col}', allowed optionals are: {opt}")
+
+
 def patch_id_from_path(fpath: str) -> int:
     """Extract the patch ID from the file name in the cache directory"""
     ext = ".feather"
@@ -35,8 +48,46 @@ def patch_id_from_path(fpath: str) -> int:
     return int(patch_id)
 
 
+@dataclass
+class PatchMeta:
+    id: int
+    zmin: float
+    zmax: float
+    length: int
+    total: float
+    has_z: bool
+    has_w: bool
+    center: Coordinate
+    radius: Distance
+
+    @classmethod
+    def from_patch(cls, patch: PatchCatalog) -> PatchMeta:
+        return cls(
+            id=patch.id,
+            zmin=patch.redshift.min(),
+            zmax=patch.redshift.max(),
+            center=patch.center,
+            radius=patch.radius,
+            length=len(patch),
+            total=patch.total,
+            has_z=patch.has_redshift(),
+            has_w=patch.has_weight(),
+        )
+
+    def asdict(self) -> dict:
+        meta = {k: v for k, v in asdict(self).items()}
+        del meta["center"]
+        del meta["radius"]
+        center = self.center.to_3d()
+        meta["x"] = center.x
+        meta["y"] = center.y
+        meta["z"] = center.z
+        meta["r"] = self.radius.values
+        return meta
+
+
 class PatchCatalog:
-    """Represents a single spatial patch of a :obj:`ScipyCatalog`.
+    """Represents a single spatial patch of a :obj:`Catalog`.
 
     A patch holds the data from single patch of the catalogue and provides
     method to access this data. Furthermore, it implements the caching to and
@@ -50,12 +101,6 @@ class PatchCatalog:
     cachefile = None
     """The patch to the cached .feather data file if caching is enabled."""
     _data = pd.DataFrame()
-    _len = 0
-    _total = None
-    _has_z = False
-    _has_weights = False
-    _center = None
-    _radius = None
 
     def __init__(
         self,
@@ -64,7 +109,6 @@ class PatchCatalog:
         cachefile: str | None = None,
         center: Coordinate | None = None,
         radius: Distance | None = None,
-        degrees: bool = True,
     ) -> None:
         """Create a new patch from a data frame.
 
@@ -75,90 +119,70 @@ class PatchCatalog:
             id (:obj:`int`):
                 Unique index of the patch.
             data (:obj:`pandas.DataFrame`):
-                Data frame with columns ``ra``, ``dec`` (by default assumed to
-                be in degrees) and optionally ``weights``, ``redshift`` if
-                either data is available.
+                Data frame with columns ``ra`` (right ascension), ``dec``
+                (declination) in radians and optionally ``weight``,
+                ``redshift`` if either data is available.
             cachefile (:obj:`str`, optional):
                 If provided, the data is cached as .feather file at this path.
             center (:obj:`yaw.core.coordiante.Coordiante`, optional):
                 Center coordinates of the patch. Computed automatically if not
                 provided.
             radius (:obj:`yaw.core.coordiante.Distance`, optional):
-                The angular size of the patch. Computed automatically if not
-                provided.
-            degrees (:obj:`bool`):
-                Whether the input coordinates ``ra``, ``dec`` are in degrees.
+                The angular size of the patch in radians. Computed automatically
+                if not provided.
         """
         self.id = id
-        if "ra" not in data:
-            raise KeyError("right ascension column ('ra') is required")
-        if "dec" not in data:
-            raise KeyError("declination column ('dec') is required")
-        if not set(data.columns) <= set(["ra", "dec", "redshift", "weights"]):
-            raise KeyError(
-                "'data' contains unidentified columns, optional columns are "
-                "restricted to 'redshift' and 'weights'"
-            )
-        # next line is crucial, otherwise lines below modify data inplace
-        self._data = data.copy()
-        if degrees:
-            self._data["ra"] = np.deg2rad(data["ra"])
-            self._data["dec"] = np.deg2rad(data["dec"])
+        check_columns(data)
+        self._data = data
         # if there is a file path, store the file
         if cachefile is not None:
             self.cachefile = cachefile
             self._data.to_feather(cachefile)
-        self._init(center, radius)
+        # compute all metadata
+        self._precompute_metadata(center, radius)
 
-    def _init(
+    def _precompute_metadata(self, center, radius) -> None:
+        self._length = len(self._data)
+        self._has_z = "redshift" in self._data
+        try:
+            self._total = float(self._data["weight"].sum())
+            self._has_w = True
+        except KeyError:
+            self._total = len(self._data)
+            self._has_w = False
+        self._compute_center_radius(center, radius)
+
+    def _compute_center_radius(
         self, center: Coordinate | None = None, radius: Distance | None = None
     ) -> None:
-        self._len = len(self._data)
-        self._has_z = "redshift" in self._data
-        self._has_weights = "weights" in self._data
-        if self.has_weights():
-            self._total = float(self.weights.sum())
+        # use provided values
+        if center is not None and radius is not None:
+            return center.to_3d(), radius.to_sky()
+
+        # load a subset of the data to compute the center and/or radius
+        self.load()
+        SUBSET_SIZE = 1000  # seems a reasonable, fast but not too sparse
+        if self._length < SUBSET_SIZE:
+            positions = self.pos
         else:
-            self._total = len(self)
+            rng = np.random.default_rng(seed=12345)
+            which = rng.integers(0, self._length, size=SUBSET_SIZE)
+            positions = self.pos[which]
+        positions = positions.to_3d()
 
-        # precompute (estimate) the patch center and size since it is quite fast
-        # and the data is still loaded
-        if center is None or radius is None:
-            SUBSET_SIZE = 1000  # seems a reasonable, fast but not too sparse
-            if self._len < SUBSET_SIZE:
-                positions = self.pos.to_3d()
-            else:
-                rng = np.random.default_rng(seed=12345)
-                which = rng.integers(0, self._len, size=SUBSET_SIZE)
-                positions = self.pos[which].to_3d()
-
-        # store in xyz coordinates
         if center is None:
-            self._center = positions.mean()
-        else:
-            self._center = center.to_3d()
-
-        if center is None or radius is None:  # new center requires recomputing
-            # compute maximum distance to any of the data points
-            radius = positions.distance(self._center).max()
-
-        # store radius in radians
-        self._radius = radius.to_sky()
-
-    def __repr__(self) -> str:
-        s = self.__class__.__name__
-        s += f"(id={self.id}, length={len(self)}, loaded={self.is_loaded()})"
-        return s
-
-    def __len__(self) -> int:
-        return self._len
+            center = positions.mean()
+            self._center = center.to_sky().to_3d()  # ensure to be on unit sphere
+        if radius is None:
+            maxdist = positions.distance(self._center).max()
+            self._radius = maxdist.to_sky()
+        return center.to_3d(), radius.to_sky()
 
     @classmethod
     def from_cached(
         cls,
         cachefile: str,
-        center: Coordinate | None = None,
-        radius: Distance | None = None,
+        metadata: PatchMeta | None = None,
     ) -> PatchCatalog:
         """Restore the patch instance from its cache file.
 
@@ -175,19 +199,41 @@ class PatchCatalog:
                 The angular size of the patch. Computed automatically if not
                 provided.
         """
-        # create the data instance
-        new = cls.__new__(cls)
-        new.id = patch_id_from_path(cachefile)
-        new.cachefile = cachefile
-        try:
-            new._data = pd.read_feather(cachefile)
-        except Exception as e:
-            args = ()
-            if hasattr(e, "args"):
-                args = e.args
-            raise NotAPatchFileError(*args) from e
-        new._init(center, radius)
-        return new
+        # check the input file
+        id = patch_id_from_path(cachefile)
+
+        if metadata is None:
+            try:
+                data = pd.read_feather(cachefile)
+            except Exception as e:
+                raise NotAPatchFileError(cachefile) from e
+            return cls(id, data, cachefile)
+
+        else:
+            try:
+                pyarrow.ipc.open_file(cachefile)
+            except Exception as e:
+                raise NotAPatchFileError(cachefile) from e
+            # create the patch without load the actual data
+            new = cls.__new__(cls)
+            new.id = id
+            new.cachefile = cachefile
+            new._data = None
+            new._length = metadata.length
+            new._total = metadata.total
+            new._has_z = metadata.has_z
+            new._has_w = metadata.has_w
+            new._center = metadata.center.to_3d()
+            new._radius = metadata.radius.to_sky()
+            return new
+
+    def __repr__(self) -> str:
+        s = self.__class__.__name__
+        s += f"(id={self.id}, length={len(self)}, loaded={self.is_loaded()})"
+        return s
+
+    def __len__(self) -> int:
+        return self._length
 
     def is_loaded(self) -> bool:
         """Whether the data is present in memory"""
@@ -204,7 +250,7 @@ class PatchCatalog:
         Raises a :obj:`CachingError` if no cache file is sepcified."""
         if not self.is_loaded():
             if self.cachefile is None:
-                raise CachingError("no datapath provided to load the data")
+                raise CachingError("there is no cached data")
             self._data = pd.read_feather(self.cachefile, use_threads=use_threads)
 
     def unload(self) -> None:
@@ -212,22 +258,24 @@ class PatchCatalog:
 
         Raises a :obj:`CachingError` if no cache file is sepcified."""
         if self.cachefile is None:
-            raise CachingError("no datapath provided to unload the data")
+            raise CachingError("cachepath not set")
         self._data = None
         gc.collect()
 
-    def has_redshifts(self) -> bool:
+    def has_redshift(self) -> bool:
         """Whether the patch data include redshifts."""
         return self._has_z
 
-    def has_weights(self) -> bool:
+    def has_weight(self) -> bool:
         """Whether the patch data include weights."""
-        return self._has_weights
+        return self._has_w
 
     @property
     def data(self) -> DataFrame:
         """Direct access to the underlying :obj:`pandas.DataFrame` which holds
-        the patch data."""
+        the patch data.
+
+        Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
         return self._data
 
@@ -260,24 +308,24 @@ class PatchCatalog:
         return CoordSky(self.ra, self.dec)
 
     @property
-    def redshifts(self) -> NDArray[np.float_]:
+    def redshift(self) -> NDArray[np.float_]:
         """Get the redshifts as array or ``None`` if not available.
 
         Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
-        if self.has_redshifts():
+        if self.has_redshift():
             return self._data["redshift"].to_numpy()
         else:
             return None
 
     @property
-    def weights(self) -> NDArray[np.float_]:
+    def weight(self) -> NDArray[np.float_]:
         """Get the object weights as array or ``None`` if not available.
 
         Raises a :obj:`CachingError` if data is not loaded."""
         self.require_loaded()
-        if self.has_weights():
-            return self._data["weights"].to_numpy()
+        if self.has_weight():
+            return self._data["weight"].to_numpy()
         else:
             return None
 
@@ -329,13 +377,13 @@ class PatchCatalog:
                 - **cat** (:obj:`PatchCatalog`): instance containing the data
                   for this bin.
         """
-        if not allow_no_redshift and not self.has_redshifts():
+        if not allow_no_redshift and not self.has_redshift():
             raise ValueError("no redshifts for iteration provdided")
         if allow_no_redshift:
             for intv in pd.IntervalIndex.from_breaks(z_bins, closed="left"):
                 yield intv, self
         else:
-            for intv, bin_data in self._data.groupby(pd.cut(self.redshifts, z_bins)):
+            for intv, bin_data in self._data.groupby(pd.cut(self.redshift, z_bins)):
                 yield intv, PatchCatalog(
                     self.id,
                     bin_data,
@@ -346,7 +394,7 @@ class PatchCatalog:
 
     def get_tree(self, **kwargs) -> SphericalKDTree:
         """Build a :obj:`SphericalKDTree` from the patch data coordiantes."""
-        tree = SphericalKDTree(self.pos, self.weights, **kwargs)
+        tree = SphericalKDTree(self.pos, self.weight, **kwargs)
         tree._total = self.total  # no need to recompute this
         return tree
 

@@ -1,26 +1,27 @@
 from __future__ import annotations
 
+import json
 import logging
 import multiprocessing
 import os
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from itertools import repeat
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
-import astropandas as apd
 import numpy as np
 import pandas as pd
+import polars as pl
 
-from yaw.catalogs import utils
+from yaw.catalogs import streaming, utils
 from yaw.catalogs.patches import (
     PatchCatalog,
     assign_patches,
+    check_columns,
     create_patches,
-    patch_id_from_path,
 )
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.logging import TimedLog
-from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
+from yaw.core.utils import job_progress_bar, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -33,6 +34,24 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.redshifts import HistData
 
 __all__ = ["Catalog"]
+
+
+def get_patch_mode(
+    patches: Any, data: DataFrame
+) -> Literal["dividing", "creating", "applying"]:
+    if "patch" in data:
+        patch_mode = "dividing"
+    elif patches is None:
+        raise ValueError(
+            "either 'data' must contain 'patch' column or 'patches' must be provided"
+        )
+    elif isinstance(patches, int):
+        patch_mode = "creating"
+    elif isinstance(patches, (Catalog, Coordinate)):
+        patch_mode = "applying"
+    else:
+        raise TypeError(f"invalid type {type(patches)} for 'patches'")
+    return patch_mode
 
 
 def _worker_correlate(
@@ -55,171 +74,214 @@ class Catalog:
     def __init__(
         self,
         data: DataFrame,
-        ra_name: str,
-        dec_name: str,
-        *,
-        patch_name: str | None = None,
-        patch_centers: Catalog | Coordinate | None = None,
-        n_patches: int | None = None,
-        redshift_name: str | None = None,
-        weight_name: str | None = None,
+        patches: Catalog | Coordinate | int | None = None,
         cache_directory: str | None = None,
         progress: bool = True,
     ) -> None:
-        """TODO: See factory"""
+        # run some prechecks
         if len(data) == 0:
             raise ValueError("data catalog is empty")
-        # check if the columns exist
-        renames = {ra_name: "ra", dec_name: "dec"}
-        if redshift_name is not None:
-            renames[redshift_name] = "redshift"
-        if weight_name is not None:
-            renames[weight_name] = "weights"
-        for col_name, kind in renames.items():
-            if col_name not in data:
-                raise KeyError(f"column {kind}='{col_name}' not found in data")
+        check_columns(data, extra=("patch",))
 
-        # check if patches should be written and unloaded from memory
-        unload = cache_directory is not None
-        if patch_name is not None:
-            patch_mode = "dividing"
-        else:
-            if n_patches is not None:
-                patch_mode = "creating"
-            elif patch_centers is not None:
-                patch_mode = "applying"
-            else:
-                raise ValueError(
-                    "either of 'patch_name', 'patch_centers', or 'n_patches' "
-                    "must be provided"
-                )
-        if unload:
+        # check if data should be cached and dropped from memory
+        cache = cache_directory is not None
+        if cache:
             if not os.path.exists(cache_directory):
                 raise FileNotFoundError(
                     f"patch directory does not exist: '{cache_directory}'"
                 )
             self._logger.debug("using cache directory '%s'", cache_directory)
 
-        # create new patches
-        if patch_mode != "dividing":
-            position = CoordSky.from_array(
-                np.deg2rad(data[[ra_name, dec_name]].to_numpy())
-            )
-            if patch_mode == "creating":
-                patch_centers, patch_ids = create_patches(
-                    position=position, n_patches=n_patches
-                )
-                log_msg = "creating %i patches"
-            else:
-                if isinstance(patch_centers, Catalog):
-                    patch_centers = patch_centers.centers.to_3d()
-                patch_ids = assign_patches(centers=patch_centers, position=position)
-                n_patches = len(patch_centers)
-                log_msg = "applying %i patches from external data"
-            patch_name = "patch"  # the default name
-            data[patch_name] = patch_ids
-            centers = {pid: pos for pid, pos in enumerate(patch_centers)}
-        else:
-            n_patches = len(data[patch_name].unique())
-            log_msg = "dividing data into %i predefined patches"
-            centers = dict()  # this can be empty
-        self._logger.debug(log_msg, n_patches)
+        # create the patch column and get the number of patches
+        data = self.data
+        patch_mode = get_patch_mode(patches, data)
+        if patch_mode == "dividing":
+            n_patches, centers = self._patch_col_divide(data)
+        elif patch_mode == "creating":
+            n_patches, centers = self._patch_col_create(patches, data)
+        else:  # applying
+            n_patches, centers = self._patch_col_apply(patches, data)
+        # NOTE: centers is empty when 'dividing'
 
-        # run groupby first to avoid any intermediate copies of full data
+        # create the patches
+        metadata = []
+        patches: dict[int, PatchCatalog] = {}
+        patch_iter = data.groupby("patch")
+        if progress:
+            patch_iter = job_progress_bar(patch_iter, total=n_patches)
+
         n_obj_str = long_num_format(len(data))
         with TimedLog(self._logger.info, f"processed {n_obj_str} records"):
-            limits = LimitTracker()
-            patches: dict[int, PatchCatalog] = {}
-            patch_iter = data.groupby(patch_name)
-            if progress:
-                patch_iter = job_progress_bar(patch_iter, total=n_patches)
             for patch_id, patch_data in patch_iter:
                 if patch_id < 0:
                     raise ValueError("negative patch IDs are not supported")
-                # drop extra columns
-                patch_data = patch_data.drop(
-                    columns=[col for col in patch_data.columns if col not in renames]
-                )
-                patch_data.rename(columns=renames, inplace=True)
-                patch_data.reset_index(drop=True, inplace=True)
-                # look up the center of the patch if given
-                kwargs = dict(center=centers.get(patch_id))
-                if unload:
-                    # data will be written as feather file and loaded on demand
-                    kwargs["cachefile"] = os.path.join(
-                        cache_directory, f"patch_{patch_id:.0f}.feather"
+                # build the patch
+                if cache:
+                    cachefile = os.path.join(
+                        cache_directory, f"patch_{patch_id:d}.feather"
                     )
-                patch = PatchCatalog(int(patch_id), patch_data, **kwargs)
-                limits.update(patch.redshifts)
-                if unload:
+                else:
+                    cachefile = None
+                patch = PatchCatalog(
+                    patch_id,
+                    data=patch_data.drop(columns="patch").reset_index(drop=True),
+                    cachefile=cachefile,
+                    center=centers.get(patch_id),
+                )
+                patches[patch_id] = patch
+                # get metadata and clean up
+
+                redshift = patch.redshift
+                meta = dict(
+                    id=patch_id,
+                    zmin=redshift.min(),
+                    zmax=redshift.max(),
+                    x=patch._center.x,
+                    y=patch._center.y,
+                    z=patch._center.z,
+                    r=patch.radius.values,
+                )
+                meta.update(
+                    {
+                        attr: getattr(patch, f"_{attr}")
+                        for attr in ("length", "total", "has_z", "has_w")
+                    }
+                )
+                metadata.append(meta)
+                if cache:
                     patch.unload()
-                patches[patch.id] = patch
             if progress:  # clean up if any patch was empty and skipped
                 patch_iter.close()
-            self._zmin, self._zmax = limits.get()
-            self._patches = patches
+        self._patches = patches
 
-        # also store the patch properties
-        if unload:
-            centers = self.centers.to_3d()
-            property_df = pd.DataFrame(
-                dict(
-                    ids=self.ids,
-                    x=centers.x,
-                    y=centers.y,
-                    z=centers.z,
-                    r=self.radii.values,
-                )
-            )
-            fpath = os.path.join(cache_directory, "properties.feather")
-            property_df.to_feather(fpath)
+        # store the patch metadata
+        if cache:
+            fpath = os.path.join(cache_directory, "properties.json")
+            with open(fpath, "w") as f:
+                json.dump(metadata, f)
+        self._set_z_limits(metadata)
+
+    def _patch_col_divide(self, data: DataFrame) -> tuple[int, dict[int, Coord3D]]:
+        # issue log
+        log_msg = "dividing data into %i predefined patches"
+        n_patches = data["patch"].nunique()
+        self._logger.debug(log_msg, n_patches)
+        # 'patch' column already exists
+        return n_patches, dict()
+
+    def _patch_col_apply(
+        self,
+        centers: Catalog | Coordinate,
+        data: DataFrame,
+    ) -> tuple[int, dict[int, Coord3D]]:
+        # get the centers
+        if isinstance(centers, Catalog):
+            centers = centers.centers.to_3d()
+        else:
+            centers = centers.to_3d()
+        # issue log
+        log_msg = "applying %i patches from external data"
+        n_patches = len(centers)
+        self._logger.debug(log_msg, n_patches)
+        # assign patch column
+        positions = CoordSky.from_array(data[["ra", "dec"]].to_numpy())
+        data["patch"] = assign_patches(centers, positions)
+        return n_patches, {pid: pos for pid, pos in enumerate(centers)}
+
+    def _patch_col_create(
+        self,
+        n_patches: int,
+        data: DataFrame,
+    ) -> tuple[int, dict[int, Coord3D]]:
+        # issue log
+        log_msg = "creating %i patches"
+        self._logger.debug(log_msg, n_patches)
+        # compute centers from a sparse sample
+        positions = CoordSky.from_array(data[["ra", "dec"]].to_numpy())
+        SUBSET_SIZE = 1000 * n_patches
+        if len(data) < SUBSET_SIZE:
+            positions_sparse = positions
+        else:
+            rng = np.random.default_rng(seed=12345)
+            take = rng.integers(0, len(data), size=SUBSET_SIZE)
+            positions_sparse = positions[take]
+        centers, _ = create_patches(positions_sparse, n_patches)
+        # assign patch column
+        data["patch"] = assign_patches(centers, positions)
+        return n_patches, {pid: pos for pid, pos in enumerate(centers)}
+
+    def _set_z_limits(self, metadata: dict[str, dict]) -> None:
+        self._zmin = min(meta["zmin"] for meta in metadata.values())
+        self._zmax = max(meta["zmin"] for meta in metadata.values())
 
     @classmethod
-    def from_file(
+    def from_dataframe(
         cls,
-        filepath: str,
-        patches: str | int | Catalog | Coordinate,
-        ra: str,
-        dec: str,
+        data: DataFrame,
+        patches: str | Catalog | Coordinate | int,
         *,
-        redshift: str | None = None,
-        weight: str | None = None,
-        sparse: int | None = None,
+        ra_name: str,
+        dec_name: str,
+        redshift_name: str | None = None,
+        weight_name: str | None = None,
+        degrees: bool = True,
         cache_directory: str | None = None,
-        file_ext: str | None = None,
-        progress: bool = False,
-        **kwargs,
+        progress: bool = True,
     ) -> Catalog:
-        """TODO: See factory"""
-        columns = [c for c in [ra, dec, redshift, weight] if c is not None]
-        if isinstance(patches, str):
-            columns.append(patches)
-            patch_kwarg = dict(patch_name=patches)
-        elif isinstance(patches, int):
-            patch_kwarg = dict(n_patches=patches)
-        elif isinstance(patches, Coordinate):
-            patch_kwarg = dict(patch_centers=patches)
-        elif isinstance(patches, Catalog):
-            patch_kwarg = dict(patch_centers=patches.centers)
-        else:
-            raise TypeError(
-                "'patches' must be either of type 'str' (col. name), 'int' "
-                "(number of patches), or 'Catalog' or 'Coordinate' (specify "
-                "centers)"
-            )
-
-        cls._logger.info("reading catalog file '%s'", filepath)
-        data = apd.read_auto(filepath, columns=columns, ext=file_ext, **kwargs)
-        if sparse is not None:
-            cls._logger.debug("sparse sampling data %ix", sparse)
-            data = data[::sparse]
+        # build a dataframe with correct column names
+        normalised = data.rename(
+            columns={
+                ra_name: "ra",
+                dec_name: "dec",
+                redshift_name: "redshift",
+                weight_name: "weight",
+            }
+        )
+        if degrees:
+            normalised["ra"] = np.deg2rad(normalised["ra"])
+            normalised["dec"] = np.deg2rad(normalised["dec"])
+        # add the patch index column if provided
+        is_patch_col = isinstance(patches, str)
+        if is_patch_col:
+            normalised["patch"] = data[patches]
+        # build the catalog
         return cls(
-            data,
-            ra,
-            dec,
-            **patch_kwarg,
-            redshift_name=redshift,
-            weight_name=weight,
+            data=normalised,
+            patches=None if is_patch_col else patches,
+            cache_directory=cache_directory,
+            progress=progress,
+        )
+
+    @classmethod
+    def from_records(
+        cls,
+        data: DataFrame,
+        patches: Iterable | Catalog | Coordinate | int,
+        *,
+        ra: Iterable,
+        dec: Iterable,
+        redshift: Iterable | None = None,
+        weight: Iterable | None = None,
+        degrees: bool = True,
+        cache_directory: str | None = None,
+        progress: bool = True,
+    ) -> Catalog:
+        # pack the records into a dataframe with correct column names
+        if degrees:
+            ra = np.deg2rad(ra)
+            dec = np.deg2rad(dec)
+        normalised = pd.DataFrame(dict(ra=ra, dec=dec))
+        if redshift is not None:
+            normalised["redshift"] = redshift
+            normalised["weight"] = weight
+        # add the patch index column if provided
+        is_patch_col = not isinstance(patches, (Catalog, Coordinate, int))
+        if is_patch_col:
+            normalised["patch"] = patches
+        # build the catalog
+        return cls(
+            data=normalised,
+            patches=None if is_patch_col else patches,
             cache_directory=cache_directory,
             progress=progress,
         )
@@ -230,36 +292,72 @@ class Catalog:
         cls._logger.info("restoring from cache directory '%s'", cache_directory)
         new = cls.__new__(cls)
         # load the patch properties
-        fpath = os.path.join(cache_directory, "properties.feather")
-        property_df = pd.read_feather(fpath)
-        # transform data frame to dictionaries
-        ids = property_df["ids"]
-        centers = Coord3D.from_array(property_df[["x", "y", "z"]].to_numpy())
-        radii = DistSky(property_df["r"].to_numpy())
-        # transform to dictionary
-        centers = {pid: center for pid, center in zip(ids, centers)}
-        radii = {pid: radius for pid, radius in zip(ids, radii)}
-        # load the patches
-        limits = LimitTracker()
-        new._patches = {}
-        patch_files = list(os.listdir(cache_directory))
+        fpath = os.path.join(cache_directory, "properties.json")
+        with open(fpath) as f:
+            metadata = json.load(f)
+        meta_iter = iter(metadata)
         if progress:
-            patch_files = job_progress_bar(patch_files)
-        for path in patch_files:
-            if not path.startswith("patch"):
-                continue
-            abspath = os.path.join(cache_directory, path)
-            if not os.path.isfile(abspath):
-                continue
-            patch_id = patch_id_from_path(path)
-            patch = PatchCatalog.from_cached(
-                abspath, center=centers.get(patch_id), radius=radii.get(patch_id)
+            meta_iter = job_progress_bar(meta_iter, total=len(metadata))
+        # create the patches without loading the data
+        new._patches = {}
+        for meta in meta_iter:
+            patch_id = meta["id"]
+            cachefile = os.path.join(cache_directory, f"patch_{patch_id:d}.feather")
+            center = Coord3D(meta["x"], meta["y"], meta["z"])
+            radius = DistSky(meta["r"])
+            new._patches[patch_id] = PatchCatalog.from_cached(
+                cachefile,
+                length=meta["length"],
+                total=meta["total"],
+                has_z=meta["has_z"],
+                has_w=meta["has_w"],
+                center=center,
+                radius=radius,
             )
-            limits.update(patch.redshifts)
-            patch.unload()
-            new._patches[patch.id] = patch
-        new._zmin, new._zmax = limits.get()
+        new._set_z_limits(metadata)
         return new
+
+    @classmethod
+    def from_file(
+        cls,
+        path: str,
+        patches: str | int | Catalog | Coordinate,
+        *,
+        ra_name: str,
+        dec_name: str,
+        redshift_name: str | None = None,
+        weight_name: str | None = None,
+        degrees: bool = True,
+        reader: type[streaming.Reader] | None = None,
+        cache_directory: str | None = None,
+        progress: bool = False,
+        **kwargs,
+    ) -> Catalog:
+        """TODO: See factory"""
+        cls._logger.info("reading catalog file '%s'", path)
+        # get the correct reader for the input table file
+        if reader is None:
+            reader = streaming.get_reader(path)
+        # get the columns to load
+        rename = {ra_name: "ra", dec_name: "dec"}
+        extra = []
+        if redshift_name is not None:
+            rename[redshift_name] = "redshift"
+            extra.append("redshift")
+        if weight_name is not None:
+            rename[weight_name] = "weight"
+            extra.append("weight")
+        if isinstance(patches, str):
+            rename[patches] = "patch"
+            extra.append("patch")
+
+        # load the data in chunks
+        loader: streaming.Reader
+        with reader(path, rename.keys()) as loader:
+            for chunk in loader.iter():
+                chunk = chunk.rename(rename).select(
+                    pl.col(["ra", "dec"]).radians(), pl.col(extra)
+                )
 
     def __repr__(self) -> str:
         name = self.__class__.__name__

@@ -269,44 +269,24 @@ class PatchWriter(FileContext):
             self.writers[pid].write(arrow_patch)
 
 
-def read_auto(
+def get_reader(
     path: str,
     columns: Iterable[str] | None = None,
     sparse: int | None = None,
     **kwargs,
-) -> DataFrame:
-    """
-    Read a file by guessing its type from the extension.
-
-    Parameters:
-    -----------
-    fpath : str
-        Path to the FITS file.
-    columns : list of str (optional)
-        Subset of columns to read from the table, defaults to all.
-    sparse: int (optional)
-        Read a sparse row subset.
-    **kwargs
-        Passed on to the specific Reader() constructor
-
-    Returns:
-    -------
-    df : pandas.DataFrame
-        Table data read as DataFrame.
-    """
+) -> type[Reader]:
     # parse the extension
     _, ext = os.path.splitext(path)
     ext = ext.lower()
     # get the correct reader
     if ext in (".csv",):
-        ReaderClass = CSVReader
+        reader = CSVReader
     elif ext in (".fits", ".cat"):
-        ReaderClass = FitsReader
+        reader = FitsReader
     elif ext in (".hdf5", ".hdf", ".h5"):
-        ReaderClass = HDFReader
+        reader = HDFReader
     elif ext in (".pqt", ".parq", ".parquet"):
-        ReaderClass = ParquetReader
+        reader = ParquetReader
     else:
         raise ValueError(f"unrecognized file extesion '{ext}'")
-    with ReaderClass(path, columns=columns, **kwargs) as reader:
-        return reader.read_all(sparse)
+    return reader
