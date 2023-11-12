@@ -9,32 +9,11 @@ import h5py
 import numpy as np
 import polars as pl
 import pyarrow
+from polars import DataFrame
 from pyarrow import parquet
 
 if TYPE_CHECKING:
-    from polars import DataFrame
-    from pyarrow import Table
     from pyarrow.ipc import RecordBatchFileWriter
-
-
-def pyarrow_groupby(
-    table: Table, by: str, rename: dict[str, str] | None = None
-) -> Generator[tuple[Any, Table]]:
-    col_names = table.column_names
-    col_names.remove(by)
-    if rename:
-        out_names = [rename.get(col_name, col_name) for col_name in col_names]
-    else:
-        out_names = col_names
-    aggregates = [(col_name, "list") for col_name in col_names]
-    lists = table.group_by(by).aggregate(aggregates)
-
-    for i, key in enumerate(lists.column(by)):
-        group_col_data = [
-            lists.column(f"{col_name}_list")[i].values for col_name in col_names
-        ]
-        group_table = pyarrow.Table.from_arrays(group_col_data, names=out_names)
-        yield key, group_table
 
 
 class FileContext(ABC):
@@ -50,6 +29,8 @@ class FileContext(ABC):
 
 
 class Reader(FileContext):
+    file: Any
+
     @abstractmethod
     def __init__(self, path: str, columns: Iterable[str] | None, **kwargs) -> None:
         pass
@@ -61,6 +42,7 @@ class Reader(FileContext):
     def iter(self) -> Generator[DataFrame]:
         pass
 
+    @abstractmethod
     def read_all(self, sparse: int | None = None) -> DataFrame:
         total = 0
         chunks = []
@@ -91,6 +73,13 @@ class ParquetReader(Reader):
             group = self.file.read_row_group(gid, self.columns)
             yield pl.from_arrow(group)
 
+    def read_all(self, sparse: int | None = None) -> DataFrame:
+        # reading a sparse sample not directly supported by polars.read_parquet()
+        if sparse is not None:
+            return super().read_all(sparse)
+        else:
+            return pl.read_parquet(self.path, columns=self.columns)
+
 
 class FitsReader(Reader):
     def __init__(
@@ -120,7 +109,15 @@ class FitsReader(Reader):
             coldata = {
                 col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
             }
-            yield pl.DataFrame(coldata)
+            yield DataFrame(coldata)
+
+    def read_all(self, sparse: int | None = None) -> DataFrame:
+        hdu = self.file[self.hdu]
+        data = hdu[self.columns][::sparse]
+        coldata = {
+            col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
+        }
+        return DataFrame(coldata)
 
 
 class HDFReader(Reader):
@@ -147,7 +144,11 @@ class HDFReader(Reader):
                 col: self.file[col][offset : offset + self.chunksize]
                 for col in self.columns
             }
-            yield pl.DataFrame(coldata)
+            yield DataFrame(coldata)
+
+    def read_all(self, sparse: int | None = None) -> DataFrame:
+        coldata = {col: self.file[col][::sparse] for col in self.columns}
+        return DataFrame(coldata)
 
 
 class CSVReader(Reader):
@@ -157,12 +158,14 @@ class CSVReader(Reader):
         columns: Iterable[str] | None = None,
         *,
         chunksize: int = 1_000_000,
+        batchsize: int = 10_000,
         separator: str = ",",
         eol_char: str = "\n",
     ) -> None:
         self.path = path
         self.columns = None if columns is None else list(columns)
         self.chunksize = chunksize
+        self.batchsize = batchsize
         self.separator = separator
         self.eol_char = eol_char
 
@@ -170,20 +173,31 @@ class CSVReader(Reader):
         pass
 
     def iter(self) -> Generator[DataFrame]:
-        n_batch = 10
-        batch_size = int(np.ceil(self.chunksize // n_batch))
+        n_batch = self.chunksize // self.batchsize
         reader = pl.read_csv_batched(
             self.path,
             columns=self.columns,
             separator=self.separator,
             eol_char=self.eol_char,
-            batch_size=batch_size,
+            batch_size=self.batchsize,
         )
         while True:
-            group = reader.next_batches(n_batch)
-            if group is None:
+            batches = reader.next_batches(n_batch)
+            if batches is None:
                 return
-            yield pl.concat(group)
+            yield pl.concat(batches)
+
+    def read_all(self, sparse: int | None = None) -> DataFrame:
+        # reading a sparse sample not directly supported by polars.read_csv()
+        if sparse is not None:
+            return super().read_all(sparse)
+        else:
+            return pl.read_csv(
+                self.path,
+                columns=self.columns,
+                separator=self.separator,
+                eol_char=self.eol_char,
+            )
 
 
 class PatchCollector:
