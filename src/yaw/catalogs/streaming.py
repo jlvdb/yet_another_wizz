@@ -135,6 +135,10 @@ class HDFReader(Reader):
         chunksize: int = 1_000_000,
     ) -> None:
         self.path = path
+        if columns is None:
+            raise ValueError(
+                "columns (data set paths) must be specified for HDF5 files"
+            )
         self.columns = list(columns)
         self.chunksize = chunksize
         self.file = h5py.File(path, mode="r")
@@ -263,3 +267,46 @@ class PatchWriter(FileContext):
                     arrow_patch.schema,
                 )
             self.writers[pid].write(arrow_patch)
+
+
+def read_auto(
+    path: str,
+    columns: Iterable[str] | None = None,
+    sparse: int | None = None,
+    **kwargs,
+) -> DataFrame:
+    """
+    Read a file by guessing its type from the extension.
+
+    Parameters:
+    -----------
+    fpath : str
+        Path to the FITS file.
+    columns : list of str (optional)
+        Subset of columns to read from the table, defaults to all.
+    sparse: int (optional)
+        Read a sparse row subset.
+    **kwargs
+        Passed on to the specific Reader() constructor
+
+    Returns:
+    -------
+    df : pandas.DataFrame
+        Table data read as DataFrame.
+    """
+    # parse the extension
+    _, ext = os.path.splitext(path)
+    ext = ext.lower()
+    # get the correct reader
+    if ext in (".csv",):
+        ReaderClass = CSVReader
+    elif ext in (".fits", ".cat"):
+        ReaderClass = FitsReader
+    elif ext in (".hdf5", ".hdf", ".h5"):
+        ReaderClass = HDFReader
+    elif ext in (".pqt", ".parq", ".parquet"):
+        ReaderClass = ParquetReader
+    else:
+        raise ValueError(f"unrecognized file extesion '{ext}'")
+    with ReaderClass(path, columns=columns, **kwargs) as reader:
+        return reader.read_all(sparse)
