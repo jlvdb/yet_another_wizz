@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generator, Iterable
+from typing import TYPE_CHECKING, Generator, Iterable, Protocol
 
 import fitsio
 import h5py
@@ -13,7 +13,13 @@ from polars import DataFrame
 from pyarrow import parquet
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
     from pyarrow.ipc import RecordBatchFileWriter
+
+
+class Closable(Protocol):
+    def close(self) -> None:
+        pass
 
 
 class FileContext(ABC):
@@ -29,7 +35,7 @@ class FileContext(ABC):
 
 
 class Reader(FileContext):
-    file: Any
+    file: Closable
 
     @abstractmethod
     def __init__(self, path: str, columns: Iterable[str] | None, **kwargs) -> None:
@@ -105,7 +111,7 @@ class FitsReader(Reader):
         n_groups = int(np.ceil(n_rows / self.chunksize))
         for gid in range(n_groups):
             offset = gid * self.chunksize
-            data = hdu[self.columns][offset : offset + self.chunksize]
+            data: NDArray = hdu[self.columns][offset : offset + self.chunksize]
             coldata = {
                 col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
             }
@@ -113,7 +119,7 @@ class FitsReader(Reader):
 
     def read_all(self, sparse: int | None = None) -> DataFrame:
         hdu = self.file[self.hdu]
-        data = hdu[self.columns][::sparse]
+        data: NDArray = hdu[self.columns][::sparse]
         coldata = {
             col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
         }
