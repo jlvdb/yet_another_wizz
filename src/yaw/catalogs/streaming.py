@@ -245,7 +245,18 @@ class CSVReader(Reader):
             )
 
 
-class PatchCollector:
+class Collector(ABC):
+    @abstractmethod
+    def process(
+        self,
+        df: DataFrame,
+        patch_key: str,
+        drop_key: bool = True,
+    ) -> None:
+        pass
+
+
+class PatchCollector(Collector):
     def __init__(self) -> None:
         self._patches: dict[int, list[DataFrame]] = {}
 
@@ -270,8 +281,9 @@ class PatchCollector:
         return patches
 
 
-class PatchWriter(FileContext):
+class PatchWriter(FileContext, Collector):
     def __init__(self, prefix: str) -> None:
+        self.paths = dict[int, str] = {}
         self.files: dict[int, pyarrow.OSFile] = {}
         self.writers: dict[int, RecordBatchFileWriter] = {}
         root = os.path.dirname(prefix)
@@ -296,7 +308,8 @@ class PatchWriter(FileContext):
                 df_patch = df_patch.drop(patch_key)
             arrow_patch = df_patch.to_arrow()
             if pid not in self.writers:
-                self.files[pid] = pyarrow.OSFile(self.template.format(pid), "wb")
+                self.paths[pid] = self.template.format(pid)
+                self.files[pid] = pyarrow.OSFile(self.paths[pid], "wb")
                 self.writers[pid] = pyarrow.ipc.new_file(
                     self.files[pid],
                     arrow_patch.schema,
