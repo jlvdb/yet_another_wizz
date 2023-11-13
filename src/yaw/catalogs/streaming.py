@@ -12,6 +12,8 @@ import pyarrow
 from polars import DataFrame
 from pyarrow import parquet
 
+from yaw.catalogs.patches import PatchMeta
+
 from ._streaming import _count_lines, _estimate_lines
 
 if TYPE_CHECKING:
@@ -88,8 +90,16 @@ class ParquetReader(Reader):
         columns: Iterable[str] | None = None,
     ) -> None:
         self.path = path
-        self.columns = None if columns is None else list(columns)
         self.file = parquet.ParquetFile(path)
+        if columns is None:
+            self.columns = None
+        else:
+            availble = set(self.file.metadata.schema.names)
+            self.columns = []
+            for col in columns:
+                if col not in availble:
+                    raise KeyError(f"column '{col}' not found")
+                self.columns.append(col)
 
     @property
     def n_rows(self) -> int:
@@ -258,7 +268,8 @@ class Collector(ABC):
 
 class PatchCollector(Collector):
     def __init__(self) -> None:
-        self._patches: dict[int, list[DataFrame]] = {}
+        self.metadata: dict[int, PatchMeta] = {}
+        self.patches: dict[int, list[DataFrame]] = {}
 
     def process(
         self,
@@ -269,20 +280,24 @@ class PatchCollector(Collector):
         for pid, df_patch in df.group_by(patch_key):
             if drop_key:
                 df_patch = df_patch.drop(patch_key)
-            if pid not in self._patches:
-                self._patches[pid] = []
-            self._patches[pid].append(df_patch)
+            if pid not in self.patches:
+                self.metadata[pid] = PatchMeta.uninitialised(
+                    has_w="weight" in df, has_z="redshift" in df
+                )
+                self.patches[pid] = []
+            self.metadata[pid].accumulate(df_patch)
+            self.patches[pid].append(df_patch)
 
-    def get_patches(self) -> dict[int, DataFrame]:
+    def get_data(self) -> dict[int, DataFrame]:
         patches = dict()
-        for pid, shards in self._patches.items():
+        for pid, shards in self.patches.items():
             patches[pid] = pl.concat(shards)
-        self._patches = {}
         return patches
 
 
 class PatchWriter(FileContext, Collector):
     def __init__(self, prefix: str) -> None:
+        self.metadata: dict[int, PatchMeta] = {}
         self.paths = dict[int, str] = {}
         self.files: dict[int, pyarrow.OSFile] = {}
         self.writers: dict[int, RecordBatchFileWriter] = {}
@@ -308,12 +323,16 @@ class PatchWriter(FileContext, Collector):
                 df_patch = df_patch.drop(patch_key)
             arrow_patch = df_patch.to_arrow()
             if pid not in self.writers:
+                self.metadata[pid] = PatchMeta.uninitialised(
+                    has_w="weight" in df, has_z="redshift" in df
+                )
                 self.paths[pid] = self.template.format(pid)
                 self.files[pid] = pyarrow.OSFile(self.paths[pid], "wb")
                 self.writers[pid] = pyarrow.ipc.new_file(
                     self.files[pid],
                     arrow_patch.schema,
                 )
+            self.metadata[pid].accumulate(df_patch)
             self.writers[pid].write(arrow_patch)
 
 
@@ -333,3 +352,11 @@ def get_reader(path: str) -> type[Reader]:
     else:
         raise ValueError(f"unrecognized file extesion '{ext}'")
     return reader
+
+
+def init_reader(
+    path: str, columns: Iterable[str], reader: type[Reader] | None = None
+) -> Reader:
+    if reader is None:
+        reader = get_reader(path)
+    return reader(path, columns)

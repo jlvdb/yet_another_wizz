@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from deprecated import deprecated
 
-from yaw.catalogs import PatchLinkage
+from yaw.catalogs.linkage import PatchLinkage
 from yaw.config import OPTIONS, ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData

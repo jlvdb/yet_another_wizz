@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.catalogs import PatchLinkage
+from yaw.catalogs.linkage import PatchLinkage
 from yaw.catalogs.patches import PatchCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs

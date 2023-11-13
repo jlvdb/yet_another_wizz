@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import math
 import os
 from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass, field
@@ -77,7 +78,7 @@ def compute_center_radius(
         else:
             rng = np.random.default_rng(seed=12345)
             take = rng.integers(0, len(data), size=subset_size)
-            ra_dec = data[["ra", "dec"]][take].to_numpy()
+            ra_dec = data[["ra", "dec"]].iloc[take].to_numpy()
         positions = CoordSky.from_array(ra_dec).to_3d()
 
     # compute the patch center
@@ -103,8 +104,8 @@ class PatchMeta:
     has_z: bool
     zmin: float | None
     zmax: float | None
-    center: Coordinate
-    radius: Distance
+    center: Coordinate | None
+    radius: Distance | None
 
     @classmethod
     def build(
@@ -134,7 +135,36 @@ class PatchMeta:
             radius=radius,
         )
 
-    def asdict(self) -> dict:
+    @classmethod
+    def uninitialised(cls, has_w: bool, has_z: bool) -> PatchMeta:
+        return cls(
+            length=0,
+            total=0.0,
+            has_w=has_w,
+            has_z=has_z,
+            zmin=math.inf,
+            zmax=-math.inf,
+            center=None,
+            radius=None,
+        )
+
+    def accumulate(self, data: DataFrame) -> None:
+        if self.has_z != ("redshift" in data):
+            raise ValueError("expected redshifts, but 'data' has no column 'redshift'")
+        if self.has_w != ("weight" in data):
+            raise ValueError("expected weights, but 'data' has no column 'weights'")
+        # update the values
+        self.length += len(data)
+        if self.has_w:
+            self.total += float(data["weight"].sum())
+        else:
+            self.total += len(data)
+        if self.has_z:
+            zmin, zmax = compute_zlims(data)
+            self.zmin = min(zmin, self.zmin)
+            self.zmax = min(zmax, self.zmax)
+
+    def as_dict(self) -> dict:
         metadict = asdict(self)
         # replace center with x/y/z floats
         del metadict["center"]
@@ -145,6 +175,18 @@ class PatchMeta:
         # convert radius to float
         metadict["radius"] = float(self.radius.values)
         return metadict
+
+    @classmethod
+    def from_dict(cls, the_dict: dict) -> PatchMeta:
+        kwargs = {k: v for k, v in the_dict.items()}
+        # reconstruct center
+        x = kwargs.pop("x")
+        y = kwargs.pop("y")
+        z = kwargs.pop("z")
+        kwargs["center"] = Coord3D(x, y, z)
+        # reconstruct radius
+        kwargs["radius"] = Distance(kwargs["radius"])
+        return cls(**kwargs)
 
     def recompute_subset(
         self,

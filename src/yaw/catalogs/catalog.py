@@ -31,28 +31,6 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["Catalog"]
 
 
-class PatchMode(Enum):
-    divide = 0
-    create = 1
-    apply = 2
-
-
-def get_patch_mode(patches: Any, patch_in_data: bool) -> PatchMode:
-    if patch_in_data:
-        patch_mode = PatchMode.divide
-    elif patches is None:
-        raise ValueError(
-            "either 'data' must contain 'patch' column or 'patches' must be provided"
-        )
-    elif isinstance(patches, int):
-        patch_mode = PatchMode.create
-    elif isinstance(patches, (Catalog, Coordinate)):
-        patch_mode = PatchMode.apply
-    else:
-        raise TypeError(f"invalid type {type(patches)} for 'patches'")
-    return patch_mode
-
-
 def setup_cache_directory(cache_directory: str | None) -> bool:
     use_cache = cache_directory is not None
     if use_cache:
@@ -61,6 +39,25 @@ def setup_cache_directory(cache_directory: str | None) -> bool:
                 f"patch directory does not exist: '{cache_directory}'"
             )
     return use_cache
+
+
+class PatchMode(Enum):
+    divide = 0
+    create = 1
+    apply = 2
+
+    @classmethod
+    def get(cls, patches: Any) -> PatchMode:
+        if isinstance(patches, str):
+            return PatchMode.divide
+        elif isinstance(patches, int):
+            if patches < 1:
+                raise ValueError("number or patches must be positive")
+            return PatchMode.create
+        elif isinstance(patches, (Catalog, Coordinate)):
+            return PatchMode.apply
+        else:
+            raise TypeError(f"invalid type {type(patches)} for 'patches'")
 
 
 T = TypeVar("T", pd.DataFrame, pl.DataFrame)
@@ -83,15 +80,21 @@ def normalise_dataframe(
     }
     if isinstance(patches, str):
         renames[patches] = "patch"
+    if None in renames:
+        renames.pop(None)  # drop columns that are not provided
+    # get names of provided optional columns
+    required = ["ra", "dec"]
+    optionals = [col for col in renames.values() if col not in required]
     # transform the input data
     if isinstance(data, pd.DataFrame):
-        normalised = data.rename(columns=renames, errors="ignore")
+        normalised = data.rename(columns=renames)
         if degrees:
             normalised["ra"] = np.deg2rad(normalised["ra"])
             normalised["dec"] = np.deg2rad(normalised["dec"])
+        normalised = normalised[[*required, *optionals]]
     elif isinstance(data, pl.DataFrame):
         normalised = data.rename(renames).select(
-            pl.col(["ra", "dec"]).radians(), pl.col(["redshift", "weight", "patch"])
+            pl.col(required).radians(), pl.col(optionals)
         )
     else:
         raise TypeError("'data' must be a pandas or polars data frame")
@@ -143,14 +146,6 @@ def create_centers_dataframe(
     return create_patches(positions, n_patches)[0]
 
 
-def get_loader(
-    path: str, columns: Iterable[str], reader: type[streaming.Reader] | None = None
-) -> streaming.Reader:
-    if reader is None:
-        reader = streaming.get_reader(path)
-    return reader(path, columns)
-
-
 def create_centers_file(
     path: str,
     ra_name: str,
@@ -161,7 +156,7 @@ def create_centers_file(
 ) -> Coord3D:
     subset_size = n_patches * n_per_patch
     # open the file for reading in chunks
-    with get_loader(path, [ra_name, dec_name], reader) as loader:
+    with streaming.init_reader(path, [ra_name, dec_name], reader) as loader:
         # generate a subset of indices to keep and build a mapping to chunks
         n_records = loader.estimate_nrows()
         take = generate_index_subset(n_records, subset_size)
@@ -174,7 +169,9 @@ def create_centers_file(
             idx = indexmap.map(chunk)
             subset_chunks.append(chunk[idx])
     data_subset = pl.concat(subset_chunks).to_pandas()
-    return create_centers_dataframe(data_subset, n_patches, n_per_patch)
+    return create_centers_dataframe(
+        data=data_subset, n_patches=n_patches, n_per_patch=n_per_patch
+    )
 
 
 def get_centers_dataframe(
@@ -182,23 +179,23 @@ def get_centers_dataframe(
     data: DataFrame,
     patches: str | int | Catalog | Coordinate,
     n_per_patch: int,
-) -> Coord3D | None:
+) -> dict[int, Coord3D]:
     # scan the file and compute patch centers from a sparse sample
     if patch_mode == PatchMode.create:
         if n_per_patch is None:
             kwargs = dict()
         else:
             kwargs = dict(n_per_patch=n_per_patch)
-        centers = create_centers_dataframe(data, patches, **kwargs)
+        centers = dict(enumerate(create_centers_dataframe(data, patches, **kwargs)))
     # extract the patch centers
     elif patch_mode == PatchMode.apply:
         if isinstance(patches, Coordinate):
-            centers = patches.to_3d()
+            centers = dict(enumerate(patches.to_3d()))
         else:  # Catalog
-            centers = patches.centers.to_3d()
+            centers = dict(zip(patches.ids, patches.centers.to_3d()))
     # centers unknown yet, return placeholder
     else:
-        centers = None
+        centers = {}
     return centers
 
 
@@ -210,31 +207,37 @@ def get_centers_file(
     patches: str | int | Catalog | Coordinate,
     reader: type[streaming.Reader] | None,
     n_per_patch: int,
-) -> Coord3D | None:
+) -> dict[int, Coord3D]:
     # scan the file and compute patch centers from a sparse sample
     if patch_mode == PatchMode.create:
         if n_per_patch is None:
             kwargs = dict()
         else:
             kwargs = dict(n_per_patch=n_per_patch)
-        centers = create_centers_file(
-            path, ra_name, dec_name, patches, reader=reader, **kwargs
+        positions = create_centers_file(
+            path=path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            n_patches=patches,
+            reader=reader,
+            **kwargs,
         )
+        centers = dict(enumerate(positions))
     # extract the patch centers
     elif patch_mode == PatchMode.apply:
         if isinstance(patches, Coordinate):
-            centers = patches.to_3d()
+            centers = dict(enumerate(patches.to_3d()))
         else:  # Catalog
-            centers = patches.centers.to_3d()
+            centers = dict(zip(patches.ids, patches.centers.to_3d()))
     # centers unknown yet, return placeholder
     else:
-        centers = None
+        centers = {}
     return centers
 
 
 def compute_patch_indices(
     data: pd.DataFrame | pl.DataFrame,
-    centers: Coordinate,
+    centers: Coord3D,
 ) -> NDArray[np.int_]:
     positions = coord3d_from_dataframe(data)
     return assign_patches(centers, positions)
@@ -242,55 +245,114 @@ def compute_patch_indices(
 
 def finalise_chunk(
     chunk: pl.DataFrame,
-    centers: Coordinate | None,
+    renames: dict[str, str],
+    centers: dict[int, Coord3D],
     degrees: bool,
 ) -> pl.DataFrame:
-    chunk = normalise_dataframe(chunk, degrees=degrees)
+    reversed = {new: old for old, new in renames.items()}
+    chunk = normalise_dataframe(
+        chunk,
+        ra_name=reversed["ra"],
+        dec_name=reversed["dec"],
+        patches=reversed.get("patch"),
+        redshift_name=reversed["redshift"],
+        weight_name=reversed["weight"],
+        degrees=degrees,
+    )
     if "patch" not in chunk:
-        if centers is None:
-            raise ValueError("neither patch column nor patch centers provided")
-        patch_idx = compute_patch_indices(chunk, centers)
-        chunk.with_columns(patch=pl.lit(patch_idx))
+        patch_idx = compute_patch_indices(
+            chunk, centers=Coord3D.from_coords(centers.values())
+        )
+        chunk = chunk.with_columns(patch=pl.lit(patch_idx))
     return chunk
 
 
 def process_chunks(
     loader: streaming.Reader,
     collector: streaming.Collector,
-    centers: Coordinate | None,
+    renames: dict[str, str],
+    centers: dict[int, Coord3D],
     degrees: bool,
 ) -> None:
     for chunk in loader.iter():
-        chunk = finalise_chunk(chunk, centers, degrees)
-        chunk = normalise_dataframe(chunk)
+        chunk = finalise_chunk(
+            chunk=chunk, renames=renames, centers=centers, degrees=degrees
+        )
         collector.process(chunk, "patch")
 
 
-def chunks_to_dataframes(
+def build_patches_memory(
     path: str,
-    columns: Iterable[str],
-    centers: Coordinate | None,
+    renames: dict[str, str],
+    centers: dict[int, Coord3D],
     degrees: bool,
     reader: type[streaming.Reader] | None = None,
-) -> dict[int, DataFrame]:
-    sink = streaming.PatchCollector()
-    with get_loader(path, columns, reader) as loader, sink as collector:
-        process_chunks(loader, collector, centers, degrees)
-        return {pid: df.to_pandas() for pid, df in sink.get_patches().items()}
+) -> dict[int, PatchCatalog]:
+    collector = streaming.PatchCollector()
+    with streaming.init_reader(path, renames.keys(), reader) as loader:
+        process_chunks(
+            loader=loader,
+            collector=collector,
+            renames=renames,
+            centers=centers,
+            degrees=degrees,
+        )
+    # build the patches from the recorded data
+    patches = {}
+    for pid, data_polars in collector.get_data().items():
+        patches[pid] = PatchCatalog(
+            id=pid,
+            data=data_polars.to_pandas(),
+            metadata=collector.metadata[pid],
+        )
+    return patches
 
 
-def chunks_to_files(
+def build_patches_cached(
     path: str,
-    columns: Iterable[str],
+    renames: dict[str, str],
     cache_directory: str,
-    centers: Coordinate | None,
+    centers: dict[int, Coord3D],
     degrees: bool,
     reader: type[streaming.Reader] | None = None,
-) -> dict[int, str]:
-    sink = streaming.PatchWriter(os.path.join(cache_directory, "patch"))
-    with get_loader(path, columns, reader) as loader, sink as collector:
-        process_chunks(loader, collector, centers, degrees)
-        return sink.paths
+) -> dict[int, PatchCatalog]:
+    collector = streaming.PatchWriter(os.path.join(cache_directory, "patch"))
+    with streaming.init_reader(path, renames.keys(), reader) as loader, collector:
+        process_chunks(
+            loader=loader,
+            collector=collector,
+            renames=renames,
+            centers=centers,
+            degrees=degrees,
+        )
+    # build the patches from the recorded data
+    patches = {}
+    for pid, cachefile in collector.metadata.items():
+        patches[pid] = PatchCatalog.from_cached(cachefile, collector.metadata[pid])
+    return patches
+
+
+def write_metadata(
+    patches: dict[int, PatchCatalog],
+    cache_directory: str,
+) -> None:
+    if len(patches) == 0:
+        raise ValueError("no patches were created")
+    meta = None
+    for pid, patch in patches.items():
+        if meta is None:
+            meta = pd.DataFrame(patch.metadata.as_dict(), index=[pid])
+        else:
+            meta.loc[pid] = patch.metadata.as_dict()
+    meta.to_json(os.path.join(cache_directory, "metadata.json"))
+
+
+def read_metadata(cache_directory: str) -> dict[int, PatchMeta]:
+    data = pd.read_json(os.path.join(cache_directory, "metadata.json"))
+    metadata = dict()
+    for pid, meta in data.to_dict():
+        metadata[pid] = PatchMeta.from_dict(meta)
+    return metadata
 
 
 def _worker_correlate(
@@ -309,70 +371,44 @@ class Catalog:
     """TODO: See factory"""
 
     _logger = logging.getLogger("yaw.catalog")
+    _patches: dict[int, PatchCatalog]
 
     def __init__(
         self,
         data: DataFrame,
         patches: Catalog | Coordinate | int | None = None,
         cache_directory: str | None = None,
+        n_per_patch: int | None = None,
         progress: bool = True,
     ) -> None:
-        n_per_patch = ...
         use_cache = setup_cache_directory(cache_directory)
-        use_cache
-        patch_mode = get_patch_mode(patches, isinstance(patches, str))
-        centers = get_centers_dataframe(patch_mode, data, patches, n_per_patch)
-        centers
-        # TODO: continue here
-
-    @classmethod
-    def from_file(
-        cls,
-        path: str,
-        ra_name: str,
-        dec_name: str,
-        patches: str | int | Catalog | Coordinate,
-        *,
-        redshift_name: str | None = None,
-        weight_name: str | None = None,
-        degrees: bool = True,
-        reader: type[streaming.Reader] | None = None,
-        cache_directory: str | None = None,
-        progress: bool = False,
-        n_per_patch: int | None = None,
-    ) -> Catalog:
-        """TODO: See factory"""
-        # gather the columns to read from the input table file
-        columns = [ra_name, dec_name]
-        if redshift_name is not None:
-            columns.append(redshift_name)
-        if weight_name is not None:
-            columns.append(weight_name)
-        if isinstance(patches, str):
-            columns.append(patches)
-
-        use_cache = setup_cache_directory(cache_directory)
-        patch_mode = get_patch_mode(patches, isinstance(patches, str))
-        centers = get_centers_file(
-            patch_mode, path, ra_name, dec_name, patches, n_per_patch
+        patch_mode = PatchMode.get("patch" if patches is None else patches)
+        centers = get_centers_dataframe(
+            patch_mode=patch_mode, data=data, patches=patches, n_per_patch=n_per_patch
         )
-        # TODO: collect patch meta data on the fly
-        metadata = PatchMeta(
-            0, 1.0, True, True, 0.0, 1.0, CoordSky(0.0, 0.0), DistSky(0.1)
-        )
-        if use_cache:
-            files = chunks_to_files(
-                path, columns, cache_directory, centers, degrees, reader
+        # add the patch column
+        if patch_mode in (PatchMode.apply, PatchMode.create):
+            data = data.assign(
+                patch=compute_patch_indices(
+                    data=data, centers=Coord3D.from_coords(centers.values())
+                )
+            )  # returns a copy
+        # process the data and build patches
+        self._patches = {}
+        for pid, patch_data in data.groupby("patch"):
+            metadata = PatchMeta.build(patch_data, centers.get(pid))
+            if use_cache:
+                cachefile = os.path.join(cache_directory, f"patch_{pid}.feather")
+            else:
+                cachefile = None
+            self._patches[pid] = PatchCatalog(
+                id=pid,
+                data=patch_data,
+                metadata=metadata,
+                cachefile=cachefile,
             )
-            for pid, path in files.items():
-                patches[pid] = PatchCatalog.from_cached(path, metadata)
-        else:
-            patchdata = chunks_to_dataframes(path, columns, centers, degrees, reader)
-            patches = {}
-            for pid, data in patchdata.items():
-                patches[pid] = PatchCatalog(pid, data, metadata)
-        # self._patches = patches
-        # TODO: write os.path.join(cache_directory, "properties.json")
+        if use_cache:
+            write_metadata(self._patches, cache_directory)
 
     @classmethod
     def from_dataframe(
@@ -439,7 +475,69 @@ class Catalog:
         )
 
     @classmethod
+    def from_file(
+        cls,
+        path: str,
+        ra_name: str,
+        dec_name: str,
+        patches: str | int | Catalog | Coordinate,
+        *,
+        redshift_name: str | None = None,
+        weight_name: str | None = None,
+        degrees: bool = True,
+        reader: type[streaming.Reader] | None = None,
+        cache_directory: str | None = None,
+        n_per_patch: int | None = None,
+        progress: bool = False,
+    ) -> Catalog:
+        """TODO: See factory"""
+        # gather the columns to read from the input table file
+        renames = {ra_name: "ra", dec_name: "dec"}
+        if redshift_name is not None:
+            renames[redshift_name] = "redshift"
+        if weight_name is not None:
+            renames[weight_name] = "weight"
+        if isinstance(patches, str):
+            renames[patches] = "patch"
+        # set up the full configuration
+        use_cache = setup_cache_directory(cache_directory)
+        patch_mode = PatchMode.get(patches)
+        centers = get_centers_file(
+            patch_mode=patch_mode,
+            path=path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            patches=patches,
+            reader=reader,
+            n_per_patch=n_per_patch,
+        )
+        # process the data and build patches
+        if use_cache:
+            patch_cats = build_patches_cached(
+                path=path,
+                renames=renames,
+                cache_directory=cache_directory,
+                centers=centers,
+                degrees=degrees,
+                reader=reader,
+            )
+            write_metadata(patch_cats, cache_directory)
+        else:
+            patch_cats = build_patches_memory(
+                path=path,
+                renames=renames,
+                centers=centers,
+                degrees=degrees,
+                reader=reader,
+            )
+        # create the new catalog instance
+        new = cls.__new__(cls)
+        new._patches = patch_cats
+        return new
+
+    @classmethod
     def from_cache(cls, cache_directory: str, progress: bool = False) -> Catalog:
+        raise NotImplementedError
         """TODO: See factory"""
         cls._logger.info("restoring from cache directory '%s'", cache_directory)
         new = cls.__new__(cls)
@@ -475,7 +573,7 @@ class Catalog:
             loaded=self.is_loaded(),
             nobjects=len(self),
             npatches=self.n_patches,
-            redshifts=self.has_redshifts(),
+            redshifts=self.has_redshift(),
         )
         arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"{name}({arg_str})"
@@ -483,7 +581,7 @@ class Catalog:
     def __len__(self) -> int:
         return sum(len(patch) for patch in self._patches.values())
 
-    def __getitem__(self, item: int) -> Any:
+    def __getitem__(self, item: int) -> PatchCatalog:
         return self._patches[item]
 
     @property
@@ -494,9 +592,9 @@ class Catalog:
     @property
     def n_patches(self) -> int:
         """The number of spatial patches of this catalogue."""
-        pass
+        return max(self.ids) + 1
 
-    def __iter__(self) -> Iterator:
+    def __iter__(self) -> Iterator[PatchCatalog]:
         for patch_id in self.ids:
             patch = self._patches[patch_id]
             loaded = patch.is_loaded()
@@ -528,13 +626,13 @@ class Catalog:
         for patch in self._patches.values():
             patch.unload()
 
-    def has_redshifts(self) -> bool:
+    def has_redshift(self) -> bool:
         """Indicates whether the :meth:`redshifts` attribute holds data."""
-        return all(patch.has_redshifts() for patch in self._patches.values())
+        return all(patch.has_redshift() for patch in self._patches.values())
 
-    def has_weights(self) -> bool:
+    def has_weight(self) -> bool:
         """Indicates whether the :meth:`weights` attribute holds data."""
-        return all(patch.has_weights() for patch in self._patches.values())
+        return all(patch.has_weight() for patch in self._patches.values())
 
     @property
     def pos(self) -> CoordSky:
@@ -556,23 +654,20 @@ class Catalog:
         return np.concatenate([patch.dec for patch in iter(self)])
 
     @property
-    def redshifts(self) -> NDArray[np.float_] | None:
+    def redshift(self) -> NDArray[np.float_] | None:
         """Get the redshifts as array or ``None`` if not available."""
-        if self.has_redshifts():
-            return np.concatenate([patch.redshifts for patch in iter(self)])
+        if self.has_redshift():
+            return np.concatenate([patch.redshift for patch in iter(self)])
         else:
             return None
 
     @property
-    def weights(self) -> NDArray[np.float_]:
+    def weight(self) -> NDArray[np.float_] | None:
         """Get the object weights as array or ``None`` if not available."""
-        weights = []
-        for patch in iter(self):
-            if patch.has_weights():
-                weights.append(patch.weights)
-            else:
-                weights.append(np.ones(len(patch)))
-        return np.concatenate(weights)
+        if self.has_weight():
+            return np.concatenate([patch.weight for patch in iter(self)])
+        else:
+            return None
 
     @property
     def patch(self) -> NDArray[np.int_]:
@@ -581,11 +676,11 @@ class Catalog:
 
     def get_min_redshift(self) -> float:
         """Get the minimum redshift or ``None`` if not available."""
-        return self._zmin
+        return min(patch.metadata.zmin for patch in self._patches.values())
 
     def get_max_redshift(self) -> float:
         """Get the maximum redshift or ``None`` if not available."""
-        return self._zmax
+        return max(patch.metadata.zmax for patch in self._patches.values())
 
     @property
     def total(self) -> float:
@@ -688,7 +783,7 @@ class Catalog:
 
         # process the patch pairs, add an optional progress bar
         n_jobs = len(patch1_list)
-        bin1 = self.has_redshifts()
+        bin1 = self.has_redshift()
         bin2 = binned if other is not None else True
         iter_args = zip(
             patch1_list, patch2_list, repeat(config), repeat(bin1), repeat(bin2)
@@ -724,7 +819,7 @@ class Catalog:
                 Object holding the redshift histogram
         """
         self._logger.info("computing true redshift distribution")
-        if not self.has_redshifts():
+        if not self.has_redshift():
             raise ValueError("catalog has no redshifts")
 
         # compute the reshift histogram in each patch
