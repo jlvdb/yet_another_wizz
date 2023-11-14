@@ -157,8 +157,9 @@ def create_centers_file(
     ra_name: str,
     dec_name: str,
     n_patches: int,
-    n_per_patch: int = 1000,
+    degrees: bool,
     reader: type[streaming.Reader] | None = None,
+    n_per_patch: int = 1000,
 ) -> Coord3D:
     subset_size = n_patches * n_per_patch
     # open the file for reading in chunks
@@ -174,7 +175,14 @@ def create_centers_file(
         for chunk in loader.iter():
             idx = indexmap.map(chunk)
             subset_chunks.append(chunk[idx])
-    data_subset = pl.concat(subset_chunks).to_pandas()
+    data_subset = (
+        pl.concat(subset_chunks)
+        .to_pandas()
+        .rename(columns={ra_name: "ra", dec_name: "dec"})
+    )
+    if degrees:
+        data_subset["ra"] = np.deg2rad(data_subset["ra"])
+        data_subset["dec"] = np.deg2rad(data_subset["dec"])
     return create_centers_dataframe(
         data=data_subset, n_patches=n_patches, n_per_patch=n_per_patch
     )
@@ -211,6 +219,7 @@ def get_centers_file(
     ra_name: str,
     dec_name: str,
     patches: str | int | Catalog | Coordinate,
+    degrees: bool,
     reader: type[streaming.Reader] | None,
     n_per_patch: int,
 ) -> dict[int, Coord3D]:
@@ -225,6 +234,7 @@ def get_centers_file(
             ra_name=ra_name,
             dec_name=dec_name,
             n_patches=patches,
+            degrees=degrees,
             reader=reader,
             **kwargs,
         )
@@ -528,6 +538,7 @@ class Catalog:
             ra_name=ra_name,
             dec_name=dec_name,
             patches=patches,
+            degrees=degrees,
             reader=reader,
             n_per_patch=n_per_patch,
         )
