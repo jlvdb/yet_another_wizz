@@ -14,7 +14,13 @@ import pandas as pd
 import polars as pl
 
 from yaw.catalogs import streaming, utils
-from yaw.catalogs.patches import PatchCatalog, PatchMeta, assign_patches, create_patches
+from yaw.catalogs.patches import (
+    PatchCatalog,
+    PatchMeta,
+    assign_patches,
+    compute_center_radius,
+    create_patches,
+)
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.utils import job_progress_bar, long_num_format
 
@@ -327,8 +333,22 @@ def build_patches_cached(
         )
     # build the patches from the recorded data
     patches = {}
-    for pid, cachefile in collector.metadata.items():
-        patches[pid] = PatchCatalog.from_cached(cachefile, collector.metadata[pid])
+    for pid, cachefile in collector.paths.items():
+        # TODO: compute sliding mean center and max dist
+        metadata = collector.metadata[pid]
+        # add the missing centers or radii
+        pos = pd.read_feather(cachefile, columns=["ra", "dec"])
+        metadata.center, metadata.radius = compute_center_radius(
+            pos,
+            center=centers.get(pid),
+        )
+        # finalise the patch
+        patches[pid] = PatchCatalog(
+            id=pid,
+            data=None,
+            metadata=metadata,
+            cachefile=cachefile,
+        )
     return patches
 
 

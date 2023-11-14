@@ -298,7 +298,7 @@ class PatchCollector(Collector):
 class PatchWriter(FileContext, Collector):
     def __init__(self, prefix: str) -> None:
         self.metadata: dict[int, PatchMeta] = {}
-        self.paths = dict[int, str] = {}
+        self.paths: dict[int, str] = {}
         self.files: dict[int, pyarrow.OSFile] = {}
         self.writers: dict[int, RecordBatchFileWriter] = {}
         root = os.path.dirname(prefix)
