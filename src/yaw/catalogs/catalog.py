@@ -452,6 +452,7 @@ class Catalog:
         weight_name: str | None = None,
         degrees: bool = True,
         cache_directory: str | None = None,
+        n_per_patch: int | None = None,
         progress: bool = True,
     ) -> Catalog:
         normalised = normalise_dataframe(
@@ -467,6 +468,7 @@ class Catalog:
             data=normalised,
             patches=None if isinstance(patches, str) else patches,
             cache_directory=cache_directory,
+            n_per_patch=n_per_patch,
             progress=progress,
         )
 
@@ -481,6 +483,7 @@ class Catalog:
         weight: Iterable | None = None,
         degrees: bool = True,
         cache_directory: str | None = None,
+        n_per_patch: int | None = None,
         progress: bool = True,
     ) -> Catalog:
         normalised = pd.DataFrame(
@@ -501,6 +504,7 @@ class Catalog:
             data=normalised,
             patches=None if patch_idx_provided else patches,
             cache_directory=cache_directory,
+            n_per_patch=n_per_patch,
             progress=progress,
         )
 
