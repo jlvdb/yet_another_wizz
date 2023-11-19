@@ -46,6 +46,12 @@ class Interval:
         if np.all(self.left >= self.right):
             raise ValueError("'left' must be strictly less than 'right'")
 
+    def __str__(self) -> str:
+        if self.closed == "left":
+            return f"[{self.left}, {self.right})"
+        else:
+            return f"({self.left}, {self.right}]"
+
     @property
     def mid(self) -> NDArray[np.float64]:
         return (self.left + self.right) / 2.0
@@ -56,20 +62,23 @@ class Interval:
 
 
 class IntervalVetor(Interval):
-    left: NDArray[np.float64]
-    right: NDArray[np.float64]
-    closed: Literal["right", "left"] = "right"
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if self.left.ndim != 1 or self.right.ndim != 1:
+    def __init__(
+        self,
+        left: NDArray[np.float64],
+        right: NDArray[np.float64],
+        closed: Literal["right", "left"] = "right",
+    ) -> None:
+        self.closed = closed
+        left = np.asarray(left)
+        right = np.asarray(right)
+        if np.all(left >= right):
+            raise ValueError("'left' must be strictly less than 'right'")
+        if left.ndim != 1 or right.ndim != 1:
             raise ValueError("'left' and 'right' must be one dimensional")
-        elif self.left.shape != self.right.shape:
+        elif left.shape != right.shape:
             raise ValueError("length of 'left' and 'right' does not match")
-
-    @property
-    def edges(self) -> NDArray[np.float64]:
-        return np.append(self.left, self.right[-1])
+        self.left = left
+        self.right = right
 
     def __len__(self) -> int:
         return len(self.left)
@@ -78,8 +87,19 @@ class IntervalVetor(Interval):
         for left, right in zip(self.left, self.right):
             yield Interval(left, right, closed=self.closed)
 
-    def __getitem__(self, idx: int) -> Interval:
-        return Interval(self.left[idx], self.right[idx], self.closed)
+    def __str__(self) -> str:
+        string = ", ".join(str(intv) for intv in iter(self))
+        return f"[{string}]"
+
+    @property
+    def edges(self) -> NDArray[np.float64]:
+        return np.append(self.left, self.right[-1])
+
+    def edges_equal(self, other: Sequence) -> bool:
+        other_edges = np.asarray(other)
+        if self.edges.shape != other_edges.shape:
+            return False
+        return np.all(self.edges == other_edges)
 
     @classmethod
     def from_edges(

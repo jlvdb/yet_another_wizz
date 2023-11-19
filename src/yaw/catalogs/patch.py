@@ -114,6 +114,9 @@ class PatchData:
     def has_redshift(self) -> bool:
         return self.redshift is not None
 
+    def _update_metadata_callback(self) -> None:
+        pass
+
     @property
     def total(self) -> float:
         """Get the sum of weights or the number of objects if weights are not
@@ -122,6 +125,7 @@ class PatchData:
         Available even if no data is loaded."""
         if self.metadata.total is NotSet:
             self.metadata.compute_total(self.weight)
+            self._update_metadata_callback()
         return self.metadata.total
 
     @property
@@ -135,6 +139,7 @@ class PatchData:
         """
         if self.metadata.center is NotSet:
             self.metadata.compute_center_radius(self.ra, self.dec)
+            self._update_metadata_callback()
         return self.metadata.center
 
     @property
@@ -151,6 +156,7 @@ class PatchData:
             if center is NotSet:
                 center = None
             self.metadata.compute_center_radius(self.ra, self.dec, center)
+            self._update_metadata_callback()
         return self.metadata.radius
 
     def iter_bins(
@@ -222,6 +228,7 @@ class PatchDataCached(PatchData):
     weight: NDArray[np.floating] | None
     redshift: NDArray[np.float64] | None
     metadata: PatchMetadata = field(default=None)
+    _binning: IntervalVetor | None | NotSet = field(default=NotSet, init=False)
 
     def __init__(
         self,
@@ -317,6 +324,9 @@ class PatchDataCached(PatchData):
             the_dict = self.metadata.to_dict()
             json.dump(the_dict, f)
 
+    def _update_metadata_callback(self) -> None:
+        self._write_metadata()
+
     def _append_array(
         self, which: Literal["ra", "dec", "weight", "redshift"], array: NDArray
     ) -> None:
@@ -364,46 +374,60 @@ class PatchDataCached(PatchData):
         self.metadata = PatchMetadata(len(self))
 
     @property
-    def total(self) -> float:
-        """Get the sum of weights or the number of objects if weights are not
-        available.
+    def _path_binning(self) -> Path:
+        return self.path / "binning.pickle"
 
-        Available even if no data is loaded."""
-        if self.metadata.total is NotSet:
-            self.metadata.compute_total(self.weight)
-            self._write_metadata()
-        return self.metadata.total
+    def _get_binning(self) -> IntervalVetor | None:
+        if self._binning is NotSet:
+            self._binning = utils.read_pickle(self._path_binning)
+        return self._binning
 
-    @property
-    def center(self) -> CoordSky:
-        """Get the patch centers in radians.
-
-        Available even if no data is loaded.
-
-        Returns:
-            :obj:`yaw.core.coordinates.CoordSky`
-        """
-        if self.metadata.center is NotSet:
-            self.metadata.compute_center_radius(self.ra, self.dec)
-            self._write_metadata()
-        return self.metadata.center
+    def _set_binning(self, z_bins: IntervalVetor | NDArray[np.float64] | None) -> None:
+        if z_bins is not None and not isinstance(z_bins, IntervalVetor):
+            z_bins = IntervalVetor.from_edges(z_bins)
+        utils.write_pickle(self._path_binning, z_bins)
+        self._binning = z_bins
 
     @property
-    def radius(self) -> DistSky:
-        """Get the patch size in radians.
+    def _path_trees(self) -> Path:
+        return self.path / "trees.pickle"
 
-        Available even if no data is loaded.
+    def _read_trees(self) -> list[SphericalKDTree]:
+        return utils.read_pickle(self._path_trees)
 
-        Returns:
-            :obj:`yaw.core.coordinates.DistSky`
-        """
-        if self.metadata.radius is NotSet:
-            center = self.metadata.center
-            if center is NotSet:
-                center = None
-            self.metadata.compute_center_radius(self.ra, self.dec, center=center)
-            self._write_metadata()
-        return self.metadata.radius
+    def _write_trees(self, trees: list[SphericalKDTree]) -> None:
+        utils.write_pickle(self._path_trees, trees)
+
+    def _trees_cached(self, z_bins: IntervalVetor | NDArray[np.float64] | None) -> bool:
+        # check if any data is cached
+        if not self._path_binning.exists() or not self._path_trees.exists():
+            return False
+        # compare the binning
+        binning = self._get_binning()
+        if binning is None:
+            binning_equal = z_bins is None
+        elif z_bins is None:
+            binning_equal = False
+        elif isinstance(z_bins, IntervalVetor):
+            binning_equal = (
+                (z_bins.closed == binning.closed)
+                & np.any(z_bins.left == binning.left)
+                & np.any(z_bins.right == binning.right)
+            )
+        else:
+            binning_equal = binning.edges_equal(z_bins)
+        return binning_equal
+
+    def get_trees(
+        self, z_bins: IntervalVetor | NDArray[np.float64] | None = None, **kwargs
+    ) -> list[SphericalKDTree]:
+        if self._trees_cached(z_bins):
+            trees = self._read_trees()
+        else:
+            trees = super().get_trees(z_bins=z_bins, **kwargs)
+            self._write_trees(trees)
+            self._set_binning(z_bins)
+        return trees
 
 
 # the constructor functions

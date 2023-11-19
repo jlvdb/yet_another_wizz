@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generator
+import pickle
+from typing import TYPE_CHECKING, Any, Generator
 
 import numpy as np
 
 from yaw.core.coordinates import Coord3D, Coordinate, DistSky
+from yaw.core.utils import TypePathStr
 
 from ._utils import _compute_center, _compute_radius, _minmax
 
@@ -101,3 +103,13 @@ def check_arrays_matching_shape(
             continue
         if arr.shape != shape:
             raise IndexError("array lengths do not match")
+
+
+def read_pickle(path: TypePathStr) -> Any:
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
+def write_pickle(path: TypePathStr, data: Any) -> None:
+    with open(path, "wb") as f:
+        pickle.dump(data, f)
