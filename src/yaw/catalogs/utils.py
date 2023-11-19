@@ -24,8 +24,8 @@ def compute_center(ra: NDArray[np.float64], dec: NDArray[np.float64]) -> Coord3D
 def compute_radius(
     ra: NDArray[np.float64], dec: NDArray[np.float64], coord: Coordinate
 ) -> DistSky:
-    x, y, z = coord.to_3d()
-    dist = _compute_radius(ra, dec, x, y, z)
+    coord_3d = coord.to_3d()
+    dist = _compute_radius(ra, dec, coord_3d.x, coord_3d.y, coord_3d.z)
     return DistSky(dist)
 
 

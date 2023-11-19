@@ -9,6 +9,7 @@ import numpy as np
 
 from yaw.catalogs import utils
 from yaw.catalogs.kdtree import SphericalKDTree
+from yaw.config.default import NotSet
 from yaw.core.containers import Interval, IntervalVetor
 from yaw.core.coordinates import CoordSky, DistSky
 from yaw.core.utils import TypePathStr
@@ -21,16 +22,10 @@ if TYPE_CHECKING:
 __all__ = []  # TODO
 
 
-class NotSet:
-    pass
-
-
 @dataclass
 class PatchMetadata:
     length: int
     total: float | NotSet = field(default=NotSet)
-    zmin: float | None | NotSet = field(default=NotSet)
-    zmax: float | None | NotSet = field(default=NotSet)
     center: CoordSky | NotSet = field(default=NotSet)
     radius: DistSky | NotSet = field(default=NotSet)
 
@@ -39,11 +34,6 @@ class PatchMetadata:
             self.total = float(self.length)
         else:
             self.total = float(weight.sum())
-
-    def compute_zlims(self, redshift: NDArray | None) -> None:
-        if redshift is None:
-            return
-        self.zmin, self.zmax = utils.minmax(redshift)
 
     def compute_center_radius(
         self,
@@ -62,7 +52,9 @@ class PatchMetadata:
             self.radius = radius.to_sky()
 
     def to_dict(self) -> dict:
-        metadict = {k: v for k, v in asdict(self).items() if k != NotSet}
+        metadict = {
+            attr: value for attr, value in asdict(self).items() if value is not NotSet
+        }
         # replace center with ra/dec floats
         try:
             center: CoordSky = metadict.pop("center")
@@ -99,8 +91,8 @@ class PatchData:
     id: int
     ra: NDArray[np.float64]
     dec: NDArray[np.float64]
-    weight: NDArray[np.floating] | None
-    redshift: NDArray[np.float64] | None
+    weight: NDArray[np.floating] | None = field(default=None)
+    redshift: NDArray[np.float64] | None = field(default=None)
     metadata: PatchMetadata = field(default=None)
 
     def __post_init__(self) -> None:
@@ -128,7 +120,7 @@ class PatchData:
         available.
 
         Available even if no data is loaded."""
-        if self.metadata.length == NotSet:
+        if self.metadata.total is NotSet:
             self.metadata.compute_total(self.weight)
         return self.metadata.total
 
@@ -141,7 +133,7 @@ class PatchData:
         Returns:
             :obj:`yaw.core.coordinates.CoordSky`
         """
-        if self.metadata.center == NotSet:
+        if self.metadata.center is NotSet:
             self.metadata.compute_center_radius(self.ra, self.dec)
         return self.metadata.center
 
@@ -154,8 +146,11 @@ class PatchData:
         Returns:
             :obj:`yaw.core.coordinates.DistSky`
         """
-        if self.metadata.radius == NotSet:
-            self.metadata.compute_center_radius(self.ra, self.dec, self.metadata.center)
+        if self.metadata.radius is NotSet:
+            center = self.metadata.center
+            if center is NotSet:
+                center = None
+            self.metadata.compute_center_radius(self.ra, self.dec, center)
         return self.metadata.radius
 
     def iter_bins(
@@ -194,6 +189,8 @@ class PatchData:
                 weight=self.weight,
                 redshift=self.redshift,
             ):
+                if index < 0 or index >= len(intervals):
+                    continue
                 intv = index_to_interval[index]
                 yield intv, PatchData(self.id, **bin_data)
 
@@ -226,17 +223,6 @@ class PatchDataCached(PatchData):
     redshift: NDArray[np.float64] | None
     metadata: PatchMetadata = field(default=None)
 
-    def __new__(cls, *args, **kwargs):
-        new = super().__new__(cls, *args, **kwargs)
-        # initialise data arrays as empty
-        new.ra = np.empty(0)
-        new.dec = np.empty(0)
-        new.weight = np.empty(0)
-        new.redshift = np.empty(0)
-        new.metadata = PatchMetadata(0)
-        return new
-
-    @classmethod
     def __init__(
         self,
         path: TypePathStr,
@@ -247,13 +233,9 @@ class PatchDataCached(PatchData):
         redshift: NDArray[np.float64] | None = None,
         metadata: PatchMetadata = None,
     ) -> PatchDataCached:
-        self._create_new_cachedir(path)
+        self._setup_new_cachedir(path)
         self.id = id
-        # initialise data attributes
-        if self.weight is None:
-            self.weight = None
-        if self.redshift is None:
-            self.redshift = None
+        self._init_fields(weight is not None, redshift is not None)
         # write the provided data
         self.append_data(ra, dec, weight, redshift)
         if metadata is not None:
@@ -269,13 +251,9 @@ class PatchDataCached(PatchData):
         has_redshift: bool = False,
     ) -> None:
         new = cls.__new__(cls)
-        new._create_new_cachedir(path)
+        new._setup_new_cachedir(path)
         new.id = id
-        # initialise data attributes
-        if not has_weight:
-            new.weight = None
-        if not has_redshift:
-            new.redshift = None
+        new._init_fields(has_weight, has_redshift)
         return new
 
     @classmethod
@@ -308,11 +286,22 @@ class PatchDataCached(PatchData):
             new.metadata = PatchMetadata(len(new))
         return new
 
-    def _create_new_cachedir(self, path: TypePathStr) -> None:
+    def _setup_new_cachedir(self, path: TypePathStr) -> None:
         self.path = Path(path)
         if self.path.exists():
-            raise FileExistsError(f"directory already exists: {path}")
+            raise FileExistsError(f"directory already exists: {self.path}")
         self.path.mkdir(parents=True)
+
+    def _init_fields(
+        self,
+        has_weight: bool = False,
+        has_redshift: bool = False,
+    ) -> None:
+        self.ra = np.empty(0)
+        self.dec = np.empty(0)
+        self.weight = np.empty(0) if has_weight else None
+        self.redshift = np.empty(0) if has_redshift else None
+        self.metadata = PatchMetadata(0)
 
     @property
     def _path_metadata(self) -> Path:
@@ -380,7 +369,7 @@ class PatchDataCached(PatchData):
         available.
 
         Available even if no data is loaded."""
-        if self.metadata.length == NotSet:
+        if self.metadata.total is NotSet:
             self.metadata.compute_total(self.weight)
             self._write_metadata()
         return self.metadata.total
@@ -394,7 +383,7 @@ class PatchDataCached(PatchData):
         Returns:
             :obj:`yaw.core.coordinates.CoordSky`
         """
-        if self.metadata.center == NotSet:
+        if self.metadata.center is NotSet:
             self.metadata.compute_center_radius(self.ra, self.dec)
             self._write_metadata()
         return self.metadata.center
@@ -408,10 +397,13 @@ class PatchDataCached(PatchData):
         Returns:
             :obj:`yaw.core.coordinates.DistSky`
         """
-        if self.meta.radius == NotSet:
-            self.meta.compute_center_radius(self.ra, self.dec, self.meta.center)
+        if self.metadata.radius is NotSet:
+            center = self.metadata.center
+            if center is NotSet:
+                center = None
+            self.metadata.compute_center_radius(self.ra, self.dec, center=center)
             self._write_metadata()
-        return self.meta.radius
+        return self.metadata.radius
 
 
 # the constructor functions

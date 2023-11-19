@@ -61,6 +61,7 @@ class IntervalVetor(Interval):
     closed: Literal["right", "left"] = "right"
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if self.left.ndim != 1 or self.right.ndim != 1:
             raise ValueError("'left' and 'right' must be one dimensional")
         elif self.left.shape != self.right.shape:
@@ -77,16 +78,19 @@ class IntervalVetor(Interval):
         for left, right in zip(self.left, self.right):
             yield Interval(left, right, closed=self.closed)
 
+    def __getitem__(self, idx: int) -> Interval:
+        return Interval(self.left[idx], self.right[idx], self.closed)
+
     @classmethod
     def from_edges(
-        self,
+        cls,
         edges: NDArray[np.float64],
         closed: Literal["right", "left"] = "right",
     ) -> IntervalVetor:
-        return Interval(edges[:-1], edges[1:], closed)
+        return cls(edges[:-1], edges[1:], closed)
 
     def bin_data(self, data: NDArray) -> NDArray[np.int64]:
-        return np.searchsorted(self.edges, data, side=self.closed)
+        return np.searchsorted(self.edges, data, side=self.closed) - 1
 
 
 _TK = TypeVar("_TK")
