@@ -1,0 +1,484 @@
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Generator, Literal, overload
+
+import numpy as np
+
+from yaw.catalogs import utils
+from yaw.catalogs.kdtree import SphericalKDTree
+from yaw.core.containers import Interval, IntervalVetor
+from yaw.core.coordinates import CoordSky, DistSky
+from yaw.core.utils import TypePathStr
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from yaw.core.coordinates import Coordinate, Distance
+
+__all__ = []  # TODO
+
+
+class NotSet:
+    pass
+
+
+@dataclass
+class PatchMetadata:
+    length: int
+    total: float | NotSet = field(default=NotSet)
+    zmin: float | None | NotSet = field(default=NotSet)
+    zmax: float | None | NotSet = field(default=NotSet)
+    center: CoordSky | NotSet = field(default=NotSet)
+    radius: DistSky | NotSet = field(default=NotSet)
+
+    def compute_total(self, weight: NDArray | None) -> None:
+        if weight is None:
+            self.total = float(self.length)
+        else:
+            self.total = float(weight.sum())
+
+    def compute_zlims(self, redshift: NDArray | None) -> None:
+        if redshift is None:
+            return
+        self.zmin, self.zmax = utils.minmax(redshift)
+
+    def compute_center_radius(
+        self,
+        ra: NDArray,
+        dec: NDArray,
+        center: Coordinate | None = None,
+        radius: Distance | None = None,
+    ) -> None:
+        if center is None:
+            self.center = utils.compute_center(ra, dec).to_sky()
+        else:
+            self.center = center.to_sky()
+        if radius is None:
+            self.radius = utils.compute_radius(ra, dec, self.center)
+        else:
+            self.radius = radius.to_sky()
+
+    def to_dict(self) -> dict:
+        metadict = {k: v for k, v in asdict(self).items() if k != NotSet}
+        # replace center with ra/dec floats
+        try:
+            center: CoordSky = metadict.pop("center")
+            metadict["ra"] = float(center.ra)
+            metadict["dec"] = float(center.dec)
+        except KeyError:
+            pass
+        # convert radius to float
+        try:
+            radius: DistSky = metadict.pop("radius")
+            metadict["radius"] = float(radius.values)
+        except KeyError:
+            pass
+        return metadict
+
+    @classmethod
+    def from_dict(cls, the_dict: dict) -> PatchMetadata:
+        kwargs = {k: v for k, v in the_dict.items()}
+        # reconstruct center
+        try:
+            kwargs["center"] = CoordSky(kwargs.pop("ra"), kwargs.pop("dec"))
+        except KeyError:
+            pass
+        # reconstruct radius
+        try:
+            kwargs["radius"] = DistSky(kwargs["radius"])
+        except KeyError:
+            pass
+        return cls(**kwargs)
+
+
+@dataclass(eq=False)
+class PatchData:
+    id: int
+    ra: NDArray[np.float64]
+    dec: NDArray[np.float64]
+    weight: NDArray[np.floating] | None
+    redshift: NDArray[np.float64] | None
+    metadata: PatchMetadata = field(default=None)
+
+    def __post_init__(self) -> None:
+        utils.check_arrays_matching_shape(self.ra, self.dec, self.weight, self.redshift)
+        if self.metadata is None:
+            self.metadata = PatchMetadata(len(self))
+
+    def __len__(self) -> int:
+        return len(self.ra)
+
+    def __repr__(self) -> str:
+        s = self.__class__.__name__
+        s += f"(id={self.id}, length={len(self)}, redshifts={self.has_redshift()})"
+        return s
+
+    def has_weight(self) -> bool:
+        return self.weight is not None
+
+    def has_redshift(self) -> bool:
+        return self.redshift is not None
+
+    @property
+    def total(self) -> float:
+        """Get the sum of weights or the number of objects if weights are not
+        available.
+
+        Available even if no data is loaded."""
+        if self.metadata.length == NotSet:
+            self.metadata.compute_total(self.weight)
+        return self.metadata.total
+
+    @property
+    def center(self) -> CoordSky:
+        """Get the patch centers in radians.
+
+        Available even if no data is loaded.
+
+        Returns:
+            :obj:`yaw.core.coordinates.CoordSky`
+        """
+        if self.metadata.center == NotSet:
+            self.metadata.compute_center_radius(self.ra, self.dec)
+        return self.metadata.center
+
+    @property
+    def radius(self) -> DistSky:
+        """Get the patch size in radians.
+
+        Available even if no data is loaded.
+
+        Returns:
+            :obj:`yaw.core.coordinates.DistSky`
+        """
+        if self.metadata.radius == NotSet:
+            self.metadata.compute_center_radius(self.ra, self.dec, self.metadata.center)
+        return self.metadata.radius
+
+    def iter_bins(
+        self,
+        z_bins: NDArray[np.float_],
+        allow_no_redshift: bool = False,
+    ) -> Generator[tuple[Interval, PatchData]]:
+        """Iterate the patch in bins of redshift.
+
+        Args:
+            z_bins (:obj:`NDArray`):
+                Edges of the redshift bins.
+            allow_no_redshift (:obj:`bool`):
+                If true and the data has no redshifts, the iterator yields the
+                whole patch at each iteration step.
+
+        Yields:
+            (tuple): tuple containing:
+                - **intv** (:obj:`pandas.Interval`): the selection for this bin.
+                - **cat** (:obj:`PatchCatalog`): instance containing the data
+                  for this bin.
+        """
+        if not allow_no_redshift and not self.has_redshift():
+            raise ValueError("no redshifts for iteration provdided")
+        intervals = IntervalVetor.from_edges(z_bins, closed="left")
+        if allow_no_redshift:
+            for intv in intervals:
+                yield intv, self
+        else:
+            bin_index = intervals.bin_data(self.redshift)
+            index_to_interval = dict(enumerate(intervals))
+            for index, bin_data in utils.groupby(
+                bin_index,
+                ra=self.ra,
+                dec=self.dec,
+                weight=self.weight,
+                redshift=self.redshift,
+            ):
+                intv = index_to_interval[index]
+                yield intv, PatchData(self.id, **bin_data)
+
+    def get_trees(
+        self, z_bins: IntervalVetor | NDArray[np.float64] | None = None, **kwargs
+    ) -> list[SphericalKDTree]:
+        """Build a :obj:`SphericalKDTree` from the patch data coordiantes."""
+        if z_bins is None:
+            tree = SphericalKDTree(self.ra, self.dec, self.weight, **kwargs)
+            tree._total = self.total  # no need to recompute this
+            trees = [tree]
+        else:
+            trees = []
+            for _, bindata in self.iter_bins(z_bins):
+                tree = SphericalKDTree(
+                    bindata.ra, bindata.dec, bindata.weight, **kwargs
+                )
+                tree._total = bindata.total  # will be recomputed for bin subset
+                trees.append(tree)
+        return trees
+
+
+@dataclass(init=False, eq=False)
+class PatchDataCached(PatchData):
+    path: Path
+    id: int
+    ra: NDArray[np.float64]
+    dec: NDArray[np.float64]
+    weight: NDArray[np.floating] | None
+    redshift: NDArray[np.float64] | None
+    metadata: PatchMetadata = field(default=None)
+
+    def __new__(cls, *args, **kwargs):
+        new = super().__new__(cls, *args, **kwargs)
+        # initialise data arrays as empty
+        new.ra = np.empty(0)
+        new.dec = np.empty(0)
+        new.weight = np.empty(0)
+        new.redshift = np.empty(0)
+        new.metadata = PatchMetadata(0)
+        return new
+
+    @classmethod
+    def __init__(
+        self,
+        path: TypePathStr,
+        id: int,
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+        weight: NDArray[np.floating] | None = None,
+        redshift: NDArray[np.float64] | None = None,
+        metadata: PatchMetadata = None,
+    ) -> PatchDataCached:
+        self._create_new_cachedir(path)
+        self.id = id
+        # initialise data attributes
+        if self.weight is None:
+            self.weight = None
+        if self.redshift is None:
+            self.redshift = None
+        # write the provided data
+        self.append_data(ra, dec, weight, redshift)
+        if metadata is not None:
+            self.metadata = metadata
+            self._write_metadata()
+
+    @classmethod
+    def empty(
+        cls,
+        path: TypePathStr,
+        id: int,
+        has_weight: bool = False,
+        has_redshift: bool = False,
+    ) -> None:
+        new = cls.__new__(cls)
+        new._create_new_cachedir(path)
+        new.id = id
+        # initialise data attributes
+        if not has_weight:
+            new.weight = None
+        if not has_redshift:
+            new.redshift = None
+        return new
+
+    @classmethod
+    def restore(cls, id: int, path: TypePathStr) -> PatchDataCached:
+        new = cls.__new__(cls)
+        new.path = Path(path)
+        if not new.path.exists():
+            raise FileNotFoundError(f"cache directory des not exist: {new.path}")
+        new.id = id
+
+        # check that ra and dec exist and load them
+        for which in ("ra", "dec"):
+            mempath = new.path / which
+            if not mempath.exists():
+                raise FileNotFoundError(f"missing '{which}' data: {mempath}")
+            data = utils.memmap_load(mempath, np.float64)
+            setattr(new, which, data)
+
+        # add the optional data
+        for which in ("weight", "redshift"):
+            mempath = new.path / which
+            data = utils.memmap_load(mempath, np.float64) if mempath.exists() else None
+            setattr(new, which, data)
+
+        # run final checks and load metadata
+        utils.check_arrays_matching_shape(new.ra, new.dec, new.weight, new.redshift)
+        if new._path_metadata.exists():
+            new._read_metadata()
+        else:
+            new.metadata = PatchMetadata(len(new))
+        return new
+
+    def _create_new_cachedir(self, path: TypePathStr) -> None:
+        self.path = Path(path)
+        if self.path.exists():
+            raise FileExistsError(f"directory already exists: {path}")
+        self.path.mkdir(parents=True)
+
+    @property
+    def _path_metadata(self) -> Path:
+        return self.path / "metadata.json"
+
+    def _read_metadata(self) -> None:
+        with open(self._path_metadata) as f:
+            the_dict = json.load(f)
+        self.metadata = PatchMetadata.from_dict(the_dict)
+
+    def _write_metadata(self) -> None:
+        with open(self._path_metadata, "w") as f:
+            the_dict = self.metadata.to_dict()
+            json.dump(the_dict, f)
+
+    def _append_array(
+        self, which: Literal["ra", "dec", "weight", "redshift"], array: NDArray
+    ) -> None:
+        memmap_or_array = getattr(self, which)
+        old_size = len(memmap_or_array)
+        new_size = old_size + len(array)
+
+        if isinstance(memmap_or_array, np.memmap):
+            # resize the memmap to fit the data, creates new instance
+            memmap = utils.memmap_resize(memmap_or_array, new_size)
+        else:
+            # create the memmap
+            mempath = self.path / which
+            memmap = utils.memmap_init(mempath, np.float64, new_size)
+
+        # copy the new data
+        memmap[old_size:new_size] = array[:]
+        setattr(self, which, memmap)  # reassign new memmap instance
+
+    def append_data(
+        self,
+        ra: NDArray,
+        dec: NDArray,
+        weight: NDArray | None = None,
+        redshift: NDArray | None = None,
+    ) -> None:
+        # check data consistency
+        has_weight = weight is not None
+        has_redshift = redshift is not None
+        utils.check_optional_args(has_weight, self.has_weight(), "weight")
+        utils.check_optional_args(has_redshift, self.has_redshift(), "redshift")
+        utils.check_arrays_matching_shape(ra, dec, weight, redshift, ndim=1)
+        if len(ra) == 0:
+            return
+
+        # write the data
+        self._append_array("ra", ra)
+        self._append_array("dec", dec)
+        if has_weight:
+            self._append_array("weight", weight)
+        if has_redshift:
+            self._append_array("redshift", redshift)
+
+        # reset the meta data which are now outdated
+        self.metadata = PatchMetadata(len(self))
+
+    @property
+    def total(self) -> float:
+        """Get the sum of weights or the number of objects if weights are not
+        available.
+
+        Available even if no data is loaded."""
+        if self.metadata.length == NotSet:
+            self.metadata.compute_total(self.weight)
+            self._write_metadata()
+        return self.metadata.total
+
+    @property
+    def center(self) -> CoordSky:
+        """Get the patch centers in radians.
+
+        Available even if no data is loaded.
+
+        Returns:
+            :obj:`yaw.core.coordinates.CoordSky`
+        """
+        if self.metadata.center == NotSet:
+            self.metadata.compute_center_radius(self.ra, self.dec)
+            self._write_metadata()
+        return self.metadata.center
+
+    @property
+    def radius(self) -> DistSky:
+        """Get the patch size in radians.
+
+        Available even if no data is loaded.
+
+        Returns:
+            :obj:`yaw.core.coordinates.DistSky`
+        """
+        if self.meta.radius == NotSet:
+            self.meta.compute_center_radius(self.ra, self.dec, self.meta.center)
+            self._write_metadata()
+        return self.meta.radius
+
+
+# the constructor functions
+
+
+@overload
+def patch_from_records(
+    id: int,
+    ra: NDArray[np.float64],
+    dec: NDArray[np.float64],
+    weight: NDArray[np.float64] | None = None,
+    redshift: NDArray[np.float64] | None = None,
+    metadata: PatchMetadata | None = None,
+) -> PatchData:
+    ...
+
+
+@overload
+def patch_from_records(
+    id: int,
+    ra: NDArray[np.float64],
+    dec: NDArray[np.float64],
+    weight: NDArray[np.float64] | None = None,
+    redshift: NDArray[np.float64] | None = None,
+    metadata: PatchMetadata | None = None,
+    cachepath: TypePathStr = ...,
+) -> PatchDataCached:
+    ...
+
+
+@overload
+def patch_from_records(
+    id: int,
+    ra: NDArray[np.float64],
+    dec: NDArray[np.float64],
+    weight: NDArray[np.float64] | None = None,
+    redshift: NDArray[np.float64] | None = None,
+    metadata: PatchMetadata | None = None,
+    cachepath: None = None,
+) -> PatchData:
+    ...
+
+
+def patch_from_records(
+    id: int,
+    ra: NDArray[np.float64],
+    dec: NDArray[np.float64],
+    weight: NDArray[np.float64] | None = None,
+    redshift: NDArray[np.float64] | None = None,
+    metadata: PatchMetadata | None = None,
+    cachepath: TypePathStr | None = None,
+) -> PatchData | PatchDataCached:
+    if cachepath is None:
+        return PatchData(
+            id=id, ra=ra, dec=dec, weight=weight, redshift=redshift, metadata=metadata
+        )
+    else:
+        return PatchDataCached(
+            cachepath,
+            id=id,
+            ra=ra,
+            dec=dec,
+            weight=weight,
+            redshift=redshift,
+            metadata=metadata,
+        )
+
+
+def patch_from_cache(id: int, cachepath: TypePathStr) -> PatchDataCached:
+    return PatchDataCached.restore(id, cachepath)

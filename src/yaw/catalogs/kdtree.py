@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import KDTree
 
-from yaw.core.coordinates import Coordinate, DistSky
+from yaw.core.coordinates import DistSky
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -30,9 +30,12 @@ class SphericalKDTree:
 
     def __init__(
         self,
-        position: Coordinate,
-        weights: NDArray[np.float_] | None = None,
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+        weight: NDArray[np.float_] | None = None,
+        *,
         leafsize: int = 16,
+        copy_data: bool = False,
     ) -> None:
         """Build a new tree from a set of coordinates.
 
@@ -40,28 +43,29 @@ class SphericalKDTree:
             position (:obj:`yaw.coordinates.Coordinate`):
                 A vector of coordinates in either angular or 3D coordiantes, is
                 converted to 3D coordinates if needed.
-            weights (:obj:`NDArray`, optional):
+            weight (:obj:`NDArray`, optional):
                 Individual weights for the points.
             leafsize (:obj:`int`, optional):
                 Size at which branches of the KDTree are considered leaf nodes
                 with no further childs.
         """
-        position = np.atleast_2d(position.to_3d().values)
-        self.tree = KDTree(position, leafsize)
-        if weights is None:
-            self.weights = np.ones(len(position))
+        position = np.column_stack([ra, dec])
+        self.tree = KDTree(position, leafsize, copy_data=copy_data)
+        if weight is None:
+            self.weight = np.ones(len(position))
         else:
-            assert len(weights) == len(position)
-            self.weights = np.asarray(weights)
+            if len(weight) != len(position):
+                raise IndexError("shape of 'weight' does not match positional data")
+            self.weight = np.asarray(weight)
 
     def __len__(self) -> int:
-        return len(self.weights)
+        return len(self.weight)
 
     @property
     def total(self) -> float:
         """Sum of weights or total number of objects if not provided."""
         if self._total is None:
-            self._total = self.weights.sum()
+            self._total = self.weight.sum()
         return self._total
 
     def count(
@@ -129,7 +133,7 @@ class SphericalKDTree:
             counts = self.tree.count_neighbors(
                 other.tree,
                 DistSky(r_edges).to_3d().values,
-                weights=(self.weights, other.weights),
+                weights=(self.weight, other.weight),
                 cumulative=False,
             )
         except IndexError:

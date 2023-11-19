@@ -49,3 +49,4 @@
 - Check for impact of API changes, if too complex, release new major version
   once MPI is implemented
 - Update the documentation and check for outdated text
+- update the `__all__` statements

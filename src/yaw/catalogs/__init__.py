@@ -11,7 +11,7 @@ implementations.
 """
 
 # make backends available and make sure they are registered
-from yaw.catalogs.catalog import Catalog
-from yaw.catalogs.linkage import PatchLinkage
+# from yaw.catalogs.catalog import Catalog
+# from yaw.catalogs.linkage import PatchLinkage
 
-__all__ = ["Catalog", "PatchLinkage"]
+# __all__ = ["Catalog", "PatchLinkage"]

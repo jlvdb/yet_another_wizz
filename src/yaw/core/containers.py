@@ -12,7 +12,15 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Callable, Generic, NamedTuple, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Generator,
+    Generic,
+    Literal,
+    NamedTuple,
+    TypeVar,
+)
 
 import numpy as np
 import pandas as pd
@@ -26,6 +34,59 @@ if TYPE_CHECKING:  # pragma: no cover
     from pandas import DataFrame, IntervalIndex, Series
 
 __all__ = ["Indexer", "PatchIDs", "PatchCorrelationData", "SampledValue", "SampledData"]
+
+
+@dataclass
+class Interval:
+    left: float
+    right: float
+    closed: Literal["right", "left"] = "right"
+
+    def __post_init__(self) -> None:
+        if np.all(self.left >= self.right):
+            raise ValueError("'left' must be strictly less than 'right'")
+
+    @property
+    def mid(self) -> NDArray[np.float64]:
+        return (self.left + self.right) / 2.0
+
+    @property
+    def edges(self) -> NDArray[np.float64]:
+        return np.append([self.left, self.right])
+
+
+class IntervalVetor(Interval):
+    left: NDArray[np.float64]
+    right: NDArray[np.float64]
+    closed: Literal["right", "left"] = "right"
+
+    def __post_init__(self) -> None:
+        if self.left.ndim != 1 or self.right.ndim != 1:
+            raise ValueError("'left' and 'right' must be one dimensional")
+        elif self.left.shape != self.right.shape:
+            raise ValueError("length of 'left' and 'right' does not match")
+
+    @property
+    def edges(self) -> NDArray[np.float64]:
+        return np.append(self.left, self.right[-1])
+
+    def __len__(self) -> int:
+        return len(self.left)
+
+    def __iter__(self) -> Generator[Interval]:
+        for left, right in zip(self.left, self.right):
+            yield Interval(left, right, closed=self.closed)
+
+    @classmethod
+    def from_edges(
+        self,
+        edges: NDArray[np.float64],
+        closed: Literal["right", "left"] = "right",
+    ) -> IntervalVetor:
+        return Interval(edges[:-1], edges[1:], closed)
+
+    def bin_data(self, data: NDArray) -> NDArray[np.int64]:
+        return np.searchsorted(self.edges, data, side=self.closed)
 
 
 _TK = TypeVar("_TK")
