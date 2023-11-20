@@ -93,6 +93,23 @@ class PatchMetadata:
         return cls(**kwargs)
 
 
+class IpcPack:
+    def __init__(self, patch) -> None:
+        if isinstance(patch, PatchData):
+            self.payload = patch
+        elif isinstance(patch, PatchDataCached):
+            self.id = patch.id
+            self.path = patch.path
+        else:
+            raise TypeError
+
+    def restore(self) -> PatchData:
+        if hasattr(self, "payload"):
+            return self.payload
+        else:
+            return PatchDataCached.restore(self.id, self.path)
+
+
 @dataclass(eq=False)
 class PatchData:
     id: int
@@ -165,6 +182,13 @@ class PatchData:
             self.metadata.compute_center_radius(self.ra, self.dec, center)
             self._update_metadata_callback()
         return self.metadata.radius
+
+    def to_ipc(self) -> IpcPack:
+        return IpcPack(self)
+
+    @classmethod
+    def from_ipc(self, ipc: IpcPack) -> PatchData:
+        return ipc.restore()
 
     def iter_bins(
         self,

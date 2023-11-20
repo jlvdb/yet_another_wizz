@@ -197,11 +197,7 @@ def count_histogram_patch(
         :obj:`NDArray[np.float_]`:
             Counts in the provided redshift bins.
     """
-    is_loaded = patch.is_loaded()
-    patch.load()
-    counts, _ = np.histogram(patch.redshifts, z_bins, weights=patch.weights)
-    if not is_loaded:
-        patch.unload()
+    counts, _ = np.histogram(patch.redshift, z_bins, weights=patch.weight)
     return counts
 
 

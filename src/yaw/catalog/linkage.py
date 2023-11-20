@@ -12,7 +12,7 @@ from yaw.core.coordinates import Dist3D, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
 
 if TYPE_CHECKING:  # pragma: no cover
-    from yaw.catalogs import Catalog
+    from yaw.catalog import Catalog
     from yaw.config import Configuration
 
 __all__ = ["PatchLinkage"]
