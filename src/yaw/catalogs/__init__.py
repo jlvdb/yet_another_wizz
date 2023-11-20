@@ -10,4 +10,8 @@ common catalogue interface and must be subclasses by all other backend
 implementations.
 """
 
-__all__ = ["Catalog", "PatchLinkage"]
+from yaw.catalogs.catalog import Catalog
+from yaw.catalogs.linkage import PatchLinkage
+from yaw.catalogs.patch import PatchData, PatchDataCached
+
+__all__ = ["Catalog", "PatchLinkage", "PatchData", "PatchDataCached"]

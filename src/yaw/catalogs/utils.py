@@ -17,7 +17,25 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import DTypeLike, NDArray
     from polars import DataFrame
 
-__all__ = []  # TODO
+__all__ = [
+    "compute_center",
+    "compute_radius",
+    "minmax",
+    "memmap_init",
+    "memmap_load",
+    "memmap_resize",
+    "dataframe_to_numpy_dict",
+    "concat_numpy_dicts",
+    "groupby",
+    "DataChunk",
+    "IndexMapper",
+    "check_optional_args",
+    "check_arrays_matching_shape",
+    "read_pickle",
+    "write_pickle",
+    "patch_path_from_id",
+    "patch_id_from_path",
+]
 
 # type annotations for C code
 

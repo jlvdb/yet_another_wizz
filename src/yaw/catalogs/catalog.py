@@ -26,7 +26,11 @@ if TYPE_CHECKING:  # pragma: no cover
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
 
-__all__ = ["Catalog"]
+__all__ = [
+    "Catalog",
+    "assign_patch_ids",
+    "create_patches",
+]
 
 
 # Determine patch centers with k-means clustering. The implementation in

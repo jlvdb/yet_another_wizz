@@ -23,6 +23,18 @@ from ._streaming import _count_lines, _estimate_lines
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+__all__ = [
+    "count_lines",
+    "estimate_lines",
+    "ParquetReader",
+    "FitsReader",
+    "HDFReader",
+    "CSVReader",
+    "PatchCollector",
+    "PatchWriter",
+    "get_reader",
+]
+
 
 def count_lines(filename: str) -> int:
     return _count_lines(filename)

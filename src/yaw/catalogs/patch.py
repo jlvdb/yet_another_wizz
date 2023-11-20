@@ -20,7 +20,13 @@ if TYPE_CHECKING:
 
     from yaw.core.coordinates import Coordinate, Distance
 
-__all__ = []  # TODO
+__all__ = [
+    "PatchMetadata",
+    "PatchData",
+    "PatchDataCached",
+    "patch_from_records",
+    "patch_from_cache",
+]
 
 
 @dataclass
