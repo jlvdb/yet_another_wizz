@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pickle
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Generator
 
 import numpy as np
@@ -12,6 +13,7 @@ from ._utils import _compute_center, _compute_radius, _minmax
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import DTypeLike, NDArray
+    from polars import DataFrame
 
 __all__ = []  # TODO
 
@@ -60,6 +62,22 @@ def memmap_resize(memmap: np.memmap, new_shape: tuple[int] | int) -> np.memmap:
     readonly = memmap.mode == "r"
     del memmap
     return memmap_load(path, dtype, readonly)
+
+
+def dataframe_to_numpy_dict(dataframe: DataFrame) -> dict[str, NDArray]:
+    the_dict = {}
+    for col in dataframe.columns:
+        the_dict[col] = dataframe[col].to_numpy()
+    return the_dict
+
+
+def concat_numpy_dicts(dicts: Iterable[dict[str, NDArray]]) -> dict[str, NDArray]:
+    chunk_iter = iter(dicts)
+    chunk_dict = {key: [data] for key, data in next(chunk_iter).items()}
+    for chunk in dicts:
+        for col, chunk_list in chunk_dict.items():
+            chunk_list.append(chunk[col])
+    return {col: np.concatenate(data) for col, data in chunk_dict.items()}
 
 
 def groupby(

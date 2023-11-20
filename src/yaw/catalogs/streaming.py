@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Generator, Iterable, Protocol
 
@@ -8,17 +9,16 @@ import fitsio
 import h5py
 import numpy as np
 import polars as pl
-import pyarrow
 from polars import DataFrame
 from pyarrow import parquet
 
-from yaw.catalogs.patches import PatchMeta
+from yaw.catalogs import utils
+from yaw.catalogs.patch import PatchData, PatchDataCached
 
 from ._streaming import _count_lines, _estimate_lines
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-    from pyarrow.ipc import RecordBatchFileWriter
 
 
 def count_lines(filename: str) -> int:
@@ -65,11 +65,11 @@ class Reader(FileContext):
         return self.n_rows
 
     @abstractmethod
-    def iter(self) -> Generator[DataFrame]:
+    def iter(self) -> Generator[dict[str, NDArray]]:
         pass
 
     @abstractmethod
-    def read_all(self, sparse: int | None = None) -> DataFrame:
+    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
         total = 0
         chunks = []
         for chunk in self.iter():
@@ -77,10 +77,10 @@ class Reader(FileContext):
             if sparse is not None:
                 # take a regular subset that factors in the chunk size
                 idx = np.arange(total % sparse, n_chunk, sparse)
-                chunk = chunk.select([pl.all().take(idx)])
+                chunk = {col: data[idx] for col, data in chunk.items()}
             chunks.append(chunk)
             total += n_chunk
-        return pl.concat(chunks)
+        return utils.concat_numpy_dicts(chunks)
 
 
 class ParquetReader(Reader):
@@ -106,18 +106,19 @@ class ParquetReader(Reader):
         metadata = parquet.read_metadata(self.path)
         return metadata.num_rows
 
-    def iter(self) -> Generator[DataFrame]:
+    def iter(self) -> Generator[dict[str, NDArray]]:
         n_groups = self.file.num_row_groups
         for gid in range(n_groups):
             group = self.file.read_row_group(gid, self.columns)
-            yield pl.from_arrow(group)
+            yield {coldata._name: coldata.to_numpy() for coldata in group.columns}
 
-    def read_all(self, sparse: int | None = None) -> DataFrame:
+    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
         # reading a sparse sample not directly supported by polars.read_parquet()
         if sparse is not None:
             return super().read_all(sparse)
         else:
-            return pl.read_parquet(self.path, columns=self.columns)
+            dataframe = pl.read_parquet(self.path, columns=self.columns)
+            return utils.dataframe_to_numpy_dict(dataframe)
 
 
 class FitsReader(Reader):
@@ -142,22 +143,18 @@ class FitsReader(Reader):
     def n_rows(self) -> int:
         return self.hdu.get_nrows()
 
-    def iter(self) -> Generator[DataFrame]:
+    def iter(self) -> Generator[dict[str, NDArray]]:
         n_groups = int(np.ceil(self.n_rows / self.chunksize))
         for gid in range(n_groups):
             offset = gid * self.chunksize
             data: NDArray = self.hdu[self.columns][offset : offset + self.chunksize]
-            coldata = {
+            yield {
                 col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
             }
-            yield DataFrame(coldata)
 
-    def read_all(self, sparse: int | None = None) -> DataFrame:
+    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
         data: NDArray = self.hdu[self.columns][::sparse]
-        coldata = {
-            col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
-        }
-        return DataFrame(coldata)
+        return {col: data[col].byteswap().newbyteorder() for col in data.dtype.fields}
 
 
 class HDFReader(Reader):
@@ -184,19 +181,17 @@ class HDFReader(Reader):
             raise IndexError("columns do not have equal length")
         return n_rows[0]
 
-    def iter(self) -> Generator[DataFrame]:
+    def iter(self) -> Generator[dict[str, NDArray]]:
         n_groups = int(np.ceil(self.n_rows / self.chunksize))
         for gid in range(n_groups):
             offset = gid * self.chunksize
-            coldata = {
+            yield {
                 col: self.file[col][offset : offset + self.chunksize]
                 for col in self.columns
             }
-            yield DataFrame(coldata)
 
-    def read_all(self, sparse: int | None = None) -> DataFrame:
-        coldata = {col: self.file[col][::sparse] for col in self.columns}
-        return DataFrame(coldata)
+    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
+        return {col: self.file[col][::sparse] for col in self.columns}
 
 
 class CSVReader(Reader):
@@ -227,7 +222,7 @@ class CSVReader(Reader):
     def estimate_nrows(self) -> int:
         return estimate_lines(self.path)
 
-    def iter(self) -> Generator[DataFrame]:
+    def iter(self) -> Generator[dict[str, NDArray]]:
         n_batch = self.chunksize // self.batchsize
         reader = pl.read_csv_batched(
             self.path,
@@ -240,19 +235,21 @@ class CSVReader(Reader):
             batches = reader.next_batches(n_batch)
             if batches is None:
                 return
-            yield pl.concat(batches)
+            dataframe = pl.concat(batches)
+            yield utils.dataframe_to_numpy_dict(dataframe)
 
-    def read_all(self, sparse: int | None = None) -> DataFrame:
+    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
         # reading a sparse sample not directly supported by polars.read_csv()
         if sparse is not None:
             return super().read_all(sparse)
         else:
-            return pl.read_csv(
+            dataframe = pl.read_csv(
                 self.path,
                 columns=self.columns,
                 separator=self.separator,
                 eol_char=self.eol_char,
             )
+            return utils.dataframe_to_numpy_dict(dataframe)
 
 
 class Collector(ABC):
@@ -268,72 +265,61 @@ class Collector(ABC):
 
 class PatchCollector(Collector):
     def __init__(self) -> None:
-        self.metadata: dict[int, PatchMeta] = {}
-        self.patches: dict[int, list[DataFrame]] = {}
+        self.patches: dict[int, list[dict[str, NDArray]]] = {}
 
     def process(
         self,
-        df: DataFrame,
+        data: dict[str, NDArray],
         patch_key: str,
         drop_key: bool = True,
     ) -> None:
-        for pid, df_patch in df.group_by(patch_key):
-            if drop_key:
-                df_patch = df_patch.drop(patch_key)
+        coldata = {k: v for k, v in data.items() if (not drop_key) or (k != patch_key)}
+        for pid, patch_dict in utils.groupby(data[patch_key], **coldata):
             if pid not in self.patches:
-                self.metadata[pid] = PatchMeta.uninitialised(
-                    has_w="weight" in df, has_z="redshift" in df
-                )
                 self.patches[pid] = []
-            self.metadata[pid].accumulate(df_patch)
-            self.patches[pid].append(df_patch)
+            self.patches[pid].append(patch_dict)
 
-    def get_data(self) -> dict[int, DataFrame]:
+    def get_patches(self) -> dict[int, PatchData]:
         patches = dict()
-        for pid, shards in self.patches.items():
-            patches[pid] = pl.concat(shards)
+        for pid, chunks in self.patches.items():
+            the_dict = utils.concat_numpy_dicts(chunks)
+            patches[pid] = PatchData(pid, **the_dict)
         return patches
 
 
 class PatchWriter(FileContext, Collector):
     def __init__(self, prefix: str) -> None:
-        self.metadata: dict[int, PatchMeta] = {}
-        self.paths: dict[int, str] = {}
-        self.files: dict[int, pyarrow.OSFile] = {}
-        self.writers: dict[int, RecordBatchFileWriter] = {}
+        self.patches: dict[int, PatchDataCached] = {}
         root = os.path.dirname(prefix)
         if root != "" and not os.path.exists(root):
             os.mkdir(root)
-        self.template = prefix + "_{:d}.feather"
+        self.template = prefix + "_{:d}"
 
     def close(self) -> None:
-        for writer in self.writers.values():
-            writer.close()
-        for f in self.files.values():
-            f.close()
+        pass
 
     def process(
         self,
-        df: DataFrame,
+        data: dict[str, NDArray],
         patch_key: str,
         drop_key: bool = True,
     ) -> None:
-        for pid, df_patch in df.group_by(patch_key):
-            if drop_key:
-                df_patch = df_patch.drop(patch_key)
-            arrow_patch = df_patch.to_arrow()
-            if pid not in self.writers:
-                self.metadata[pid] = PatchMeta.uninitialised(
-                    has_w="weight" in df, has_z="redshift" in df
+        coldata = {k: v for k, v in data.items() if not drop_key or (k != patch_key)}
+        for pid, patch_dict in utils.groupby(data[patch_key], **coldata):
+            if pid not in self.patches:
+                cachepath = self.template.format(pid)
+                if os.path.exists(cachepath):
+                    shutil.rmtree(cachepath)
+                self.patches[pid] = PatchDataCached.empty(
+                    cachepath,
+                    pid,
+                    has_weight="weight" in patch_dict,
+                    has_redshift="redshift" in patch_dict,
                 )
-                self.paths[pid] = self.template.format(pid)
-                self.files[pid] = pyarrow.OSFile(self.paths[pid], "wb")
-                self.writers[pid] = pyarrow.ipc.new_file(
-                    self.files[pid],
-                    arrow_patch.schema,
-                )
-            self.metadata[pid].accumulate(df_patch)
-            self.writers[pid].write(arrow_patch)
+            self.patches[pid].append_data(**patch_dict)
+
+    def get_patches(self) -> dict[int, PatchData]:
+        return self.patches
 
 
 def get_reader(path: str) -> type[Reader]:
