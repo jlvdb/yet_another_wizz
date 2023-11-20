@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from deprecated import deprecated
 
-from yaw.catalogs.linkage import PatchLinkage
+from yaw.catalog.linkage import PatchLinkage
 from yaw.config import OPTIONS, ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData
@@ -35,7 +35,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import IntervalIndex
 
-    from yaw.catalogs import BaseCatalog
+    from yaw.catalog import Catalog
     from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
 
@@ -402,7 +402,7 @@ def check_mergable(cfs: Sequence[CorrFunc | None]) -> None:
 class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     """Container object for measured correlation pair counts.
 
-    Container returned by :meth:`~yaw.catalogs.BaseCatalog.correlate` that
+    Container returned by :meth:`~yaw.catalog.Catalog.correlate` that
     computes the correlations between data catalogs. The correlation function
     can be computed from four kinds of pair counts, data-data (DD), data-random
     (DR), random-data (RD), and random-random (RR).
@@ -810,7 +810,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
 def _create_dummy_counts(counts: Any | dict[str, Any]) -> dict[str, None]:
     """Duplicate a the return values of
-    :meth:`yaw.catalogs.BaseCatalog.correlate`, but replace the :obj:`CorrFunc`
+    :meth:`yaw.catalog.Catalog.correlate`, but replace the :obj:`CorrFunc`
     instances by :obj:`None`."""
     if isinstance(counts, dict):
         dummy = {scale_key: None for scale_key in counts}
@@ -865,7 +865,7 @@ class PatchError(Exception):
     pass
 
 
-def _check_patch_centers(catalogues: Sequence[BaseCatalog]) -> None:
+def _check_patch_centers(catalogues: Sequence[Catalog]) -> None:
     """Check whether the patch centers of a set of data catalogues are seperated
     by no more than the radius of the patches."""
     refcat = catalogues[0]
@@ -881,8 +881,8 @@ def _check_patch_centers(catalogues: Sequence[BaseCatalog]) -> None:
 
 def autocorrelate(
     config: Configuration,
-    data: BaseCatalog,
-    random: BaseCatalog,
+    data: Catalog,
+    random: Catalog,
     *,
     linkage: PatchLinkage | None = None,
     compute_rr: bool = True,
@@ -901,9 +901,9 @@ def autocorrelate(
         config (:obj:`~yaw.config.Configuration`):
             Provides all major run parameters, such as scales, binning, and for
             the correlation measurement backend.
-        data (:obj:`~yaw.catalogs.BaseCatalog`):
+        data (:obj:`~yaw.catalog.Catalog`):
             The data sample catalogue.
-        random (:obj:`~yaw.catalogs.BaseCatalog`):
+        random (:obj:`~yaw.catalog.Catalog`):
             Random catalogue for the data sample.
 
     Keyword Args:
@@ -957,11 +957,11 @@ def autocorrelate(
 
 def crosscorrelate(
     config: Configuration,
-    reference: BaseCatalog,
-    unknown: BaseCatalog,
+    reference: Catalog,
+    unknown: Catalog,
     *,
-    ref_rand: BaseCatalog | None = None,
-    unk_rand: BaseCatalog | None = None,
+    ref_rand: Catalog | None = None,
+    unk_rand: Catalog | None = None,
     linkage: PatchLinkage | None = None,
     progress: bool = False,
 ) -> CorrFunc | dict[str, CorrFunc]:
@@ -985,16 +985,16 @@ def crosscorrelate(
     Args:
         config (:obj:`~yaw.config.Configuration`):
             Provides all major run parameters.
-        reference (:obj:`yaw.catalogs.BaseCatalog`):
+        reference (:obj:`yaw.catalog.Catalog`):
             The reference sample.
-        unknown (:obj:`yaw.catalogs.BaseCatalog`):
+        unknown (:obj:`yaw.catalog.Catalog`):
             The sample with unknown redshift distribution.
 
     Keyword Args:
-        ref_rand (:obj:`yaw.catalogs.BaseCatalog`, optional):
+        ref_rand (:obj:`yaw.catalog.Catalog`, optional):
             Random catalog for the reference sample, requires redshifts
             configured.
-        unk_rand (:obj:`yaw.catalogs.BaseCatalog`, optional):
+        unk_rand (:obj:`yaw.catalog.Catalog`, optional):
             Random catalog for the unknown sample.
         linkage (:obj:`yaw.catalogs.PatchLinkage`, optional):
             Provide a linkage object that determines which spatial patches must

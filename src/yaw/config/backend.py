@@ -18,13 +18,9 @@ class BackendConfig(BaseConfig):
         thread_num (:obj:`int`, optional):
             Number of threads to use for parallel processing.
         crosspatch (:obj:`bool`, optional):
-            Whether to count pairs across patch boundaries (``scipy`` backend
-            only).
-        rbin_slop (:obj:`int`, optional):
-            `TreeCorr` ``rbin_slop`` parameter (``treecorr`` backend only).
+            Whether to count pairs across patch boundaries.
     """
 
-    # general
     thread_num: int | None = field(
         default=DEFAULT.Backend.thread_num,
         metadata=Parameter(
@@ -34,27 +30,14 @@ class BackendConfig(BaseConfig):
         ),
     )
     """Number of threads to use for parallel processing."""
-    # scipy
     crosspatch: bool = field(
         default=DEFAULT.Backend.crosspatch,
         metadata=Parameter(
             type=bool,
-            help="whether to count pairs across patch boundaries (scipy backend only)",
+            help="whether to count pairs across patch boundaries.",
         ),
     )
-    """Whether to count pairs across patch boundaries (``scipy`` backend only).
-    """
-    # treecorr
-    rbin_slop: float = field(
-        default=DEFAULT.Backend.rbin_slop,
-        metadata=Parameter(
-            type=float,
-            help="TreeCorr 'rbin_slop' parameter",
-            default_text="(default: %(default)s), without 'rweight' this just "
-            "a single radial bin, otherwise 'rbin_num'",
-        ),
-    )
-    """`TreeCorr` ``rbin_slop`` parameter (``treecorr`` backend only)."""
+    """Whether to count pairs across patch boundaries."""
 
     def __post_init__(self) -> None:
         if self.thread_num is None:
@@ -64,11 +47,8 @@ class BackendConfig(BaseConfig):
         self,
         thread_num: int | None = DEFAULT.NotSet,
         crosspatch: bool = DEFAULT.NotSet,
-        rbin_slop: float = DEFAULT.NotSet,
     ) -> BackendConfig:
-        return super().modify(
-            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
-        )
+        return super().modify(thread_num=thread_num, crosspatch=crosspatch)
 
     def get_threads(self, max=None) -> int:
         """Get the number of threads for parallel processing.

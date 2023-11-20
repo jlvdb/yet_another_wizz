@@ -10,7 +10,6 @@ __all__ = [
     "Backend",
     "Configuration",
     "Resampling",
-    "backend",
 ]
 
 
@@ -61,6 +60,3 @@ class Resampling:
     n_boot = 500
     global_norm = False
     seed = 12345
-
-
-backend = "scipy"

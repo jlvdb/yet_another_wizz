@@ -10,14 +10,6 @@ __all__ = ["OPTIONS"]
 
 class Options:
     @property
-    def backend(self) -> tuple[str]:
-        """Lists the names of the currently available backends for correlation
-        measurements."""
-        from yaw.catalogs import BaseCatalog
-
-        return tuple(sorted(BaseCatalog._backends.keys()))
-
-    @property
     def binning(self) -> tuple[str]:
         """Lists the currently implemented methods to generate redshift bins
         with the :obj:`~yaw.config.BinningConfig` class.

@@ -22,7 +22,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
 
-    from yaw.catalogs import BaseCatalog
+    from yaw.catalog import Catalog
     from yaw.core.utils import TypePathStr
 
 __all__ = ["Configuration"]
@@ -117,7 +117,6 @@ class Configuration(BaseConfig):
         # BackendConfig
         thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
         crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
-        rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop,
     ) -> Configuration:
         """Create a new configuration object.
 
@@ -165,8 +164,6 @@ class Configuration(BaseConfig):
             crosspatch (:obj:`bool`, optional):
                 whether to count pairs across patch boundaries (scipy backend
                 only)
-            rbin_slop (:obj:`float`, optional):
-                TreeCorr 'rbin_slop' parameter
 
         Returns:
             :obj:`Configuration`
@@ -183,9 +180,7 @@ class Configuration(BaseConfig):
             method=method,
             zbins=zbins,
         )
-        backend = BackendConfig.create(
-            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
-        )
+        backend = BackendConfig.create(thread_num=thread_num, crosspatch=crosspatch)
         return cls(scales=scales, binning=binning, backend=backend, cosmology=cosmology)
 
     def modify(
@@ -206,7 +201,6 @@ class Configuration(BaseConfig):
         # BackendConfig
         thread_num: int | None = DEFAULT.NotSet,
         crosspatch: bool | None = DEFAULT.NotSet,
-        rbin_slop: float | None = DEFAULT.NotSet,
     ) -> Configuration:
         if cosmology is DEFAULT.NotSet:
             cosmology = self.cosmology
@@ -224,7 +218,8 @@ class Configuration(BaseConfig):
             cosmology=cosmology,
         )
         backend = self.backend.modify(
-            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
+            thread_num=thread_num,
+            crosspatch=crosspatch,
         )
         return self.__class__(
             cosmology=cosmology, scales=scales, binning=binning, backend=backend
@@ -232,7 +227,7 @@ class Configuration(BaseConfig):
 
     @deprecated(reason="no longer maintained", version="2.5.3")
     def plot_scales(
-        self, catalog: BaseCatalog, log: bool = True, legend: bool = True
+        self, catalog: Catalog, log: bool = True, legend: bool = True
     ) -> Figure:  # pragma: no cover
         """Plot the configured correlation scales at different redshifts in
         comparison to the size of patches in a data catalogue.

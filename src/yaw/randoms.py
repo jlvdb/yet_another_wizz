@@ -17,7 +17,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
     from pandas import DataFrame
 
-    from yaw.catalogs import BaseCatalog
+    from yaw.catalog import Catalog
 
 __all__ = ["UniformRandoms"]
 
@@ -66,12 +66,12 @@ class UniformRandoms:
         self.rng = np.random.SeedSequence(seed)
 
     @classmethod
-    def from_catalog(cls, cat: BaseCatalog, seed: int = 12345) -> UniformRandoms:
+    def from_catalog(cls, cat: Catalog, seed: int = 12345) -> UniformRandoms:
         """Create a new generator with a rectangular footprint obtained from the
         coordinate range of a given data catalogue.
 
         Args:
-            cat (:obj:`yaw.catalogs.BaseCatalog`):
+            cat (:obj:`yaw.catalogs.Catalog`):
                 Catalog instance from which the right ascension and declination
                 range is computed.
             seed (:obj:`int`, optional):
