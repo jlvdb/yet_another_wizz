@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import pickle
-from collections.abc import Iterable
+from collections.abc import Iterable, Sized
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator
 
 import numpy as np
@@ -144,6 +145,24 @@ class DataChunk:
         return cls(**dataframe_to_numpy_dict(dataframe))
 
 
+class IndexMapper:
+    def __init__(self, indices: NDArray[np.int_]) -> None:
+        self.reset()
+        self.idx = indices
+
+    def reset(self) -> None:
+        self.recorded = 0
+
+    def map(self, data: Sized) -> NDArray[np.int_]:
+        # slide the index window according to the input data sample
+        start = self.recorded
+        end = start + len(data)
+        self.recorded = end  # future state
+        # pick the indices that fall into the current data range
+        indices = np.compress((self.idx >= start) & (self.idx < end), self.idx)
+        return indices - start
+
+
 def check_optional_args(
     optional_expected: bool,
     optional_provided: bool,
@@ -180,3 +199,14 @@ def read_pickle(path: TypePathStr) -> Any:
 def write_pickle(path: TypePathStr, data: Any) -> None:
     with open(path, "wb") as f:
         pickle.dump(data, f)
+
+
+def patch_path_from_id(cache_directory: TypePathStr, patch_id: int) -> Path:
+    return Path(cache_directory) / f"patch_{patch_id:03d}"
+
+
+def patch_id_from_path(directory: TypePathStr) -> int:
+    if not directory.match("patch_"):
+        raise ValueError(f"'directory' does not match 'patch_*': {directory}")
+    _, id_str = directory.name.split("_")
+    return int(id_str)

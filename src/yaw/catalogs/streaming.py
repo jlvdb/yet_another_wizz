@@ -4,7 +4,8 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Generator, Iterable, Protocol
+from pathlib import Path
+from typing import TYPE_CHECKING, Generator, Protocol
 
 import fitsio
 import h5py
@@ -14,7 +15,8 @@ from polars import DataFrame
 from pyarrow import parquet
 
 from yaw.catalogs.patch import PatchData, PatchDataCached
-from yaw.catalogs.utils import DataChunk
+from yaw.catalogs.utils import DataChunk, patch_path_from_id
+from yaw.core.utils import TypePathStr
 
 from ._streaming import _count_lines, _estimate_lines
 
@@ -52,13 +54,13 @@ class Reader(FileContext):
 
     def __init__(
         self,
-        path: str,
+        path: TypePathStr,
         ra_name: str,
         dec_name: str,
         patch_name: str | None = None,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        degrees: bool = False,
+        degrees: bool = True,
         **kwargs,
     ) -> None:
         self._degrees = degrees  # whether conversion to radian is needed
@@ -73,7 +75,7 @@ class Reader(FileContext):
         # get the list of columns to read
         self._colnames = list(self._col_to_chunk_arg.values())
         # open the file, set up reader, etc.
-        self.path = path
+        self.path = Path(path)
         self._init_file(**kwargs)
 
     def _chunk_from_dict(self, data: dict[str, NDArray]) -> DataChunk:
@@ -123,7 +125,7 @@ class Reader(FileContext):
 
 class ParquetReader(Reader):
     def _init_file(self) -> None:
-        self.file = parquet.ParquetFile(self.path)
+        self.file = parquet.ParquetFile(str(self.path))
         availble = set(self.file.metadata.schema.names)
         for col in self._colnames:
             if col not in availble:
@@ -146,7 +148,7 @@ class ParquetReader(Reader):
         if sparse is not None:
             return super().read_all(sparse)
         else:
-            dataframe = pl.read_parquet(self.path, columns=self._colnames)
+            dataframe = pl.read_parquet(str(self.path), columns=self._colnames)
             return self._chunk_from_dataframe(dataframe)
 
 
@@ -159,7 +161,7 @@ class FitsReader(Reader):
         patch_name: str | None = None,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        degrees: bool = False,
+        degrees: bool = True,
         chunksize: int = 1_000_000,
         hdu: int = 1,
     ) -> None:
@@ -178,7 +180,7 @@ class FitsReader(Reader):
 
     def _init_file(self, chunksize: int = 1_000_000, hdu: int = 1) -> None:
         self.chunksize = chunksize
-        self.file = fitsio.FITS(self.path)
+        self.file = fitsio.FITS(str(self.path))
         self.hdu = self.file[hdu]
 
     @property
@@ -210,7 +212,7 @@ class HDFReader(Reader):
         patch_name: str | None = None,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        degrees: bool = False,
+        degrees: bool = True,
         chunksize: int = 1_000_000,
     ) -> None:
         super().__init__(
@@ -227,7 +229,7 @@ class HDFReader(Reader):
 
     def _init_file(self, chunksize: int = 1_000_000) -> None:
         self.chunksize = chunksize
-        self.file = h5py.File(self.path, mode="r")
+        self.file = h5py.File(str(self.path), mode="r")
 
     @property
     def n_rows(self) -> int:
@@ -260,7 +262,7 @@ class CSVReader(Reader):
         patch_name: str | None = None,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        degrees: bool = False,
+        degrees: bool = True,
         chunksize: int = 1_000_000,
         batchsize: int = 10_000,
         separator: str = ",",
@@ -298,15 +300,15 @@ class CSVReader(Reader):
 
     @property
     def n_rows(self) -> int:
-        return count_lines(self.path)
+        return count_lines(str(self.path))
 
     def estimate_nrows(self) -> int:
-        return estimate_lines(self.path)
+        return estimate_lines(str(self.path))
 
     def iter(self) -> Generator[DataChunk]:
         n_batch = self.chunksize // self.batchsize
         reader = pl.read_csv_batched(
-            self.path,
+            str(self.path),
             columns=self._colnames,
             separator=self.separator,
             eol_char=self.eol_char,
@@ -325,7 +327,7 @@ class CSVReader(Reader):
             return super().read_all(sparse)
         else:
             dataframe = pl.read_csv(
-                self.path,
+                str(self.path),
                 columns=self._colnames,
                 separator=self.separator,
                 eol_char=self.eol_char,
@@ -360,12 +362,12 @@ class PatchCollector(Collector):
 
 
 class PatchWriter(FileContext, Collector):
-    def __init__(self, prefix: str) -> None:
+    def __init__(self, cache_directory: TypePathStr) -> None:
         self._patches: dict[int, PatchDataCached] = dict()
-        root = os.path.dirname(prefix)
-        if root != "" and not os.path.exists(root):
-            os.mkdir(root)
-        self.template = prefix + "_{:d}"
+        # set up cache directory
+        self.cache_directory = Path(cache_directory)
+        if not self.cache_directory.exists():
+            self.cache_directory.mkdir(parents=True)
 
     def close(self) -> None:
         pass
@@ -373,7 +375,7 @@ class PatchWriter(FileContext, Collector):
     def process(self, data: DataChunk) -> None:
         for pid, patch_chunk in data.groupby():
             if pid not in self._patches:
-                cachepath = self.template.format(pid)
+                cachepath = patch_path_from_id(self.cache_directory, pid)
                 if os.path.exists(cachepath):
                     shutil.rmtree(cachepath)
                 self._patches[pid] = PatchDataCached.empty(
@@ -384,7 +386,7 @@ class PatchWriter(FileContext, Collector):
                 )
             self._patches[pid].append_data(**patch_chunk.to_dict())
 
-    def get_patches(self) -> dict[int, PatchData]:
+    def get_patches(self) -> dict[int, PatchDataCached]:
         return self._patches
 
 
@@ -404,11 +406,3 @@ def get_reader(path: str) -> type[Reader]:
     else:
         raise ValueError(f"unrecognized file extesion '{ext}'")
     return reader
-
-
-def init_reader(
-    path: str, columns: Iterable[str], reader: type[Reader] | None = None
-) -> Reader:
-    if reader is None:
-        reader = get_reader(path)
-    return reader(path, columns)

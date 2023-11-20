@@ -5,14 +5,18 @@ import multiprocessing
 from collections.abc import Generator, Iterable, Mapping
 from enum import Enum
 from itertools import repeat
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
+from scipy.cluster import vq
 
-from yaw.catalogs import streaming, utils, worker
+from yaw.catalogs import streaming, worker
 from yaw.catalogs.patch import PatchData, PatchDataCached
-from yaw.core.coordinates import Coordinate, CoordSky, DistSky
-from yaw.core.utils import job_progress_bar, long_num_format
+from yaw.catalogs.streaming import Reader
+from yaw.catalogs.utils import DataChunk, IndexMapper, patch_id_from_path
+from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
+from yaw.core.utils import TypePathStr, job_progress_bar, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -25,6 +29,66 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["Catalog"]
 
 
+# Determine patch centers with k-means clustering. The implementation in
+# treecorr is quite good, but might not be available. Implement a fallback using
+# the scipy.cluster module.
+
+
+def assign_patch_ids(centers: Coordinate, position: Coordinate) -> NDArray[np.int_]:
+    """Assign objects based on their coordinate to a list of points based on
+    proximit."""
+    patches, _ = vq.vq(position.to_3d().values, centers.to_3d().values)
+    return patches
+
+
+try:
+    import treecorr
+
+    def _treecorr_create_patches(
+        n_patches: int,
+        position: Coordinate,
+    ) -> tuple[Coord3D, NDArray[np.int_]]:
+        """Use the *k*-means clustering algorithm of :obj:`treecorr.Catalog` to
+        generate spatial patches and assigning objects to those patches.
+        """
+        position = position.to_sky()
+        cat = treecorr.Catalog(
+            ra=position.ra,
+            ra_units="radians",
+            dec=position.dec,
+            dec_units="radians",
+            npatch=n_patches,
+        )
+        xyz = np.atleast_2d(cat.patch_centers)
+        centers = Coord3D.from_array(xyz)
+        if n_patches == 1:
+            patches = np.zeros(len(position), dtype=np.int_)
+        else:
+            patches = assign_patch_ids(centers=centers, position=position)
+        del cat  # might not be necessary
+        return centers, patches
+
+    create_patches = _treecorr_create_patches
+
+except ImportError:
+
+    def _scipy_create_patches(
+        n_patches: int,
+        position: Coordinate,
+    ) -> tuple[Coord3D, NDArray[np.int_]]:
+        """Use the *k*-means clustering algorithm of :obj:`scipy.cluster` to
+        generate spatial patches and assigning objects to those patches.
+        """
+        position = position.to_3d()
+        # place on unit sphere to avoid coordinate distortions
+        centers, _ = vq.kmeans2(position.values, n_patches, minit="points")
+        centers = Coord3D.from_array(centers)
+        patches = assign_patch_ids(centers=centers, position=position)
+        return centers, patches
+
+    create_patches = _scipy_create_patches
+
+
 class PatchMode(Enum):
     divide = 0
     create = 1
@@ -32,7 +96,7 @@ class PatchMode(Enum):
 
     @classmethod
     def get(cls, patches: Any) -> PatchMode:
-        if isinstance(patches, str):
+        if isinstance(patches, (str, NDArray)):
             return PatchMode.divide
         elif isinstance(patches, int):
             if patches < 1:
@@ -44,41 +108,195 @@ class PatchMode(Enum):
             raise TypeError(f"invalid type {type(patches)} for 'patches'")
 
 
-class DataConverter:
-    def __init__(
-        self,
-        ra_name: str,
-        dec_name: str,
-        weight_name: str | None = None,
-        redshift_name: str | None = None,
-        patch_name: str | None = None,
-        degrees: bool = False,
-    ) -> None:
-        self._renames = dict(ra=ra_name, dec=dec_name)
-        if weight_name is not None:
-            self._renames["weight"] = weight_name
-        if redshift_name is not None:
-            self._renames["redshift"] = redshift_name
-        if patch_name is not None:
-            self._renames["patch"] = patch_name
-        self._degrees = degrees
+def generate_index_subset(
+    max_idx: int, size: int, seed: int = 12345
+) -> NDArray[np.int_]:
+    rng = np.random.default_rng(seed=seed)
+    idx = rng.integers(0, max_idx, size=size)
+    idx.sort()
+    return idx
 
-    def __call__(self, data: dict[str, NDArray]) -> dict[str, NDArray]:
-        converted = {new: data[old] for new, old in self._renames.items()}
-        if self._degrees:
-            converted["ra"] = np.deg2rad(converted["ra"])
-            converted["dec"] = np.deg2rad(converted["dec"])
-        return converted
+
+class CreateCenters:
+    @staticmethod
+    def data(
+        data: DataChunk,
+        n_patches: int,
+        n_per_patch: int = 1000,
+    ) -> Coord3D:
+        # take a small subset of the data to compute the patches
+        subset_size = n_patches * n_per_patch
+        if len(data) <= subset_size:
+            positions = CoordSky(data.ra, data.dec)
+        else:
+            take = generate_index_subset(len(data), subset_size)
+            positions = CoordSky(data.ra[take], data.dec[take])
+        return create_patches(n_patches, positions)[0]
+
+    @staticmethod
+    def file(
+        reader: Reader,
+        n_patches: int,
+        n_per_patch: int = 1000,
+    ) -> Coord3D:
+        subset_size = n_patches * n_per_patch
+        with reader:
+            # generate a subset of indices to keep and build a mapping to chunks
+            n_records = reader.estimate_nrows()
+            take = generate_index_subset(n_records, subset_size)
+            indexmap = IndexMapper(take)
+            # read the data and keep the data subset
+            chunk_subsets = []
+            for chunk in reader.iter():
+                idx = indexmap.map(chunk)
+                chunk_subsets.append(chunk[idx])
+        data = DataChunk.from_chunks(chunk_subsets)
+        # compute the centers from the subset
+        return CreateCenters.data(data, n_patches=n_patches, n_per_patch=n_per_patch)
+
+
+class GetCenters:
+    @staticmethod
+    def _get_centers(
+        target: Literal["data", "file"],
+        data_or_reader: DataChunk | Reader,
+        patch_mode: PatchMode,
+        patches: str | int | Catalog | Coordinate,
+        n_per_patch: int | None = None,
+    ) -> dict[int, Coord3D]:
+        # scan the file and compute patch centers from a sparse sample
+        if patch_mode == PatchMode.create:
+            creator = getattr(CreateCenters, target)
+            if n_per_patch is None:
+                kwargs = dict()
+            else:
+                kwargs = dict(n_per_patch=n_per_patch)
+            coords = creator(data_or_reader, n_patches=patches, **kwargs)
+            centers = dict(enumerate(coords))
+
+        # extract the patch centers
+        elif patch_mode == PatchMode.apply:
+            if isinstance(patches, Coordinate):
+                centers = dict(enumerate(patches.to_3d()))
+            else:  # Catalog
+                centers = dict(zip(patches.ids, patches.centers.to_3d()))
+
+        # centers unknown yet, return placeholder
+        else:
+            centers = {}
+        return centers
+
+    @staticmethod
+    def data(
+        data: DataChunk,
+        patch_mode: PatchMode,
+        patches: str | int | Catalog | Coordinate,
+        n_per_patch: int | None = None,
+    ) -> dict[int, Coord3D]:
+        return GetCenters._get_centers("data", data, patch_mode, patches, n_per_patch)
+
+    @staticmethod
+    def file(
+        reader: Reader,
+        patch_mode: PatchMode,
+        patches: str | int | Catalog | Coordinate,
+        n_per_patch: int | None = None,
+    ) -> dict[int, Coord3D]:
+        return GetCenters._get_centers("file", reader, patch_mode, patches, n_per_patch)
+
+
+def assign_patch_centers(
+    patches: dict[int, PatchData],
+    centers: dict[int, Coordinate],
+) -> None:
+    # if the centers have not been computed (PatchMode.divide), this is a no-op
+    patch_ids = set(patches.keys()) & set(centers.keys())
+    for patch_id in patch_ids:
+        patches[patch_id].center = centers[patch_id]
+
+
+class DummyReader(Reader):
+    def __init__(self, *, data: DataChunk, degrees: bool = True, **kwargs) -> None:
+        self.data = data
+        self.degrees = degrees
+
+    @property
+    def n_rows(self) -> int:
+        return len(self.data)
+
+    def iter(self) -> Generator[DataChunk]:
+        yield self.data
+
+    def read_all(self, sparse: int | None = None) -> DataChunk:
+        if sparse is None:
+            return self.data
+        else:
+            return self.data[::sparse]
+
+
+@overload
+def build_patches(
+    reader: Reader,
+    centers: dict[int, Coordinate],
+) -> dict[int, PatchData]:
+    ...
+
+
+@overload
+def build_patches(
+    reader: Reader,
+    centers: dict[int, Coordinate],
+    cache_directory: None = None,
+) -> dict[int, PatchData]:
+    ...
+
+
+@overload
+def build_patches(
+    reader: Reader,
+    centers: dict[int, Coordinate],
+    cache_directory: TypePathStr = ...,
+) -> dict[int, PatchDataCached]:
+    ...
+
+
+def build_patches(
+    reader: Reader,
+    centers: dict[int, Coordinate],
+    cache_directory: TypePathStr | None = None,
+) -> dict[int, PatchData] | dict[int, PatchDataCached]:
+    # set up the collectors that construct the patches on the fly
+    if cache_directory is None:
+        collector = streaming.PatchCollector()
+    else:
+        collector = streaming.PatchWriter(cache_directory / "patch")
+    # iterate the complete file in chunks and distribute the data to the patches
+    with reader, collector:
+        for chunk in reader.iter():
+            # compute patch IDs if necessary
+            if chunk.patch is None:
+                chunk.patch = assign_patch_ids(
+                    centers=Coord3D.from_coords([c.to_3d() for c in centers.values()]),
+                    position=CoordSky(chunk.ra, chunk.dec),
+                )
+            # send the data the collector to run the group-by on the patch IDs
+            collector.process(chunk)
+    # finalise the patch (meta)data
+    patches = collector.get_patches()
+    assign_patch_centers(patches, centers)
+    return patches
 
 
 class Catalog:
     """TODO: See factory"""
 
     _logger = logging.getLogger("yaw.catalog")
+    _cached_directory: Path
 
     def __init__(
         self,
         patches: Mapping[int, PatchData] | Iterable[PatchData],
+        cache_directory: TypePathStr | None = None,
     ) -> None:
         if isinstance(patches, Mapping):
             self._patches = {pid: patch for pid, patch in patches.items()}
@@ -86,22 +304,38 @@ class Catalog:
             self._patches = dict(enumerate(patches))
         else:
             raise TypeError(f"invalid type '{patches.__class__}' for 'patches'")
+        self.cached_directory = cache_directory
 
     @classmethod
     def from_records(
         cls,
-        ra: Iterable,
-        dec: Iterable,
-        patches: Iterable | Catalog | Coordinate | int,
+        ra: NDArray,
+        dec: NDArray,
+        patches: NDArray | Catalog | Coordinate | int,
         *,
-        redshift: Iterable | None = None,
-        weight: Iterable | None = None,
+        redshift: NDArray | None = None,
+        weight: NDArray | None = None,
         degrees: bool = True,
-        cache_directory: str | None = None,
+        cache_directory: TypePathStr | None = None,
         n_per_patch: int | None = None,
         progress: bool = True,
     ) -> Catalog:
-        pass
+        # pack and normalise the input data
+        data = DataChunk(
+            ra=np.deg2rad(ra) if degrees else ra,
+            dec=np.deg2rad(dec) if degrees else dec,
+            weight=weight,
+            redshift=redshift,
+        )
+        # compute the centers add the patch column as needed
+        patch_mode = PatchMode.get(patches)
+        if patch_mode == PatchMode.divide:
+            data.patch = patches
+        centers = GetCenters.data(data, patch_mode, patches, n_per_patch)
+        # process the data and create the patches
+        reader_inst = DummyReader(data=data, degrees=degrees)
+        patches = build_patches(reader_inst, centers, cache_directory)
+        return cls(patches, cache_directory)
 
     @classmethod
     def from_file(
@@ -114,16 +348,45 @@ class Catalog:
         redshift_name: str | None = None,
         weight_name: str | None = None,
         degrees: bool = True,
-        reader: type[streaming.Reader] | None = None,
-        cache_directory: str | None = None,
+        cache_directory: TypePathStr | None = None,
         n_per_patch: int | None = None,
         progress: bool = False,
+        reader: type[streaming.Reader] | None = None,
+        **reader_kwargs,
     ) -> Catalog:
-        pass
+        # set up the file reader
+        if reader is None:
+            reader = streaming.get_reader(path)
+        reader_kwargs.update(
+            dict(
+                ra_name=ra_name,
+                dec_name=dec_name,
+                weight_name=weight_name,
+                redshift_name=redshift_name,
+                degrees=degrees,
+            )
+        )
+        # compute the centers as needed
+        patch_mode = PatchMode.get(patches)
+        if patch_mode == PatchMode.divide:
+            reader_kwargs["patch_name"] = patches
+        reader_inst = reader(path, **reader_kwargs)
+        centers = GetCenters.file(reader_inst, patch_mode, patches, n_per_patch)
+        # process the file and create the patches
+        reader_inst = reader(path, **reader_kwargs)
+        patches = build_patches(reader_inst, centers, cache_directory)
+        return cls(patches, cache_directory)
 
     @classmethod
-    def from_cache(cls, cache_directory: str, progress: bool = False) -> Catalog:
-        pass
+    def from_cache(
+        cls, cache_directory: TypePathStr, progress: bool = False
+    ) -> Catalog:
+        cache_directory = Path(cache_directory)
+        patches = {}
+        for patch_path in cache_directory.glob("patch_"):
+            patch_id = patch_id_from_path(patch_path)
+            patches[patch_id] = PatchDataCached.restore(patch_id, patch_path)
+        return cls(patches, cache_directory)
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -161,9 +424,12 @@ class Catalog:
 
         Always ``True`` if no cache is used. If the catalog is unloaded, data
         will be read from cache every time data is accessed."""
-        return all(
-            isinstance(patch, PatchDataCached) for patch in self._patches.values()
-        )
+        return self.cached_directory is not None
+
+    def drop_cache(self) -> None:
+        for patch in self._patches.values():
+            if hasattr(patch, "drop_data"):
+                patch.drop_data()
 
     def has_redshift(self) -> bool:
         """Indicates whether the :meth:`redshifts` attribute holds data."""
@@ -301,7 +567,7 @@ class Catalog:
         )
 
         auto = other is None
-        patch1_list, patch2_list = utils.get_patch_list(
+        patch1_list, patch2_list = worker.get_patch_list(
             self, other, config, linkage, auto
         )
 
@@ -358,202 +624,3 @@ class Catalog:
         return worker.merge_histogram_patches(
             np.array(hist_counts), config.binning.zbins, sampling_config
         )
-
-    """
-    def __init__(
-        self,
-        data: DataFrame,
-        patches: Catalog | Coordinate | int | None = None,
-        cache_directory: str | None = None,
-        n_per_patch: int | None = None,
-        progress: bool = True,
-    ) -> None:
-        use_cache = setup_cache_directory(cache_directory)
-        patch_mode = PatchMode.get("patch" if patches is None else patches)
-        centers = get_centers_dataframe(
-            patch_mode=patch_mode, data=data, patches=patches, n_per_patch=n_per_patch
-        )
-        # add the patch column
-        if patch_mode in (PatchMode.apply, PatchMode.create):
-            data = data.assign(
-                patch=compute_patch_indices(
-                    data=data, centers=Coord3D.from_coords(centers.values())
-                )
-            )  # returns a copy
-        # process the data and build patches
-        self._patches = {}
-        for pid, patch_data in data.groupby("patch"):
-            metadata = PatchMeta.build(patch_data, centers.get(pid))
-            if use_cache:
-                cachefile = os.path.join(cache_directory, f"patch_{pid}.feather")
-            else:
-                cachefile = None
-            self._patches[pid] = PatchCatalog(
-                id=pid,
-                data=patch_data,
-                metadata=metadata,
-                cachefile=cachefile,
-            )
-        if use_cache:
-            write_metadata(self._patches, cache_directory)
-
-    @classmethod
-    def from_dataframe(
-        cls,
-        data: DataFrame,
-        ra_name: str,
-        dec_name: str,
-        patches: str | Catalog | Coordinate | int,
-        *,
-        redshift_name: str | None = None,
-        weight_name: str | None = None,
-        degrees: bool = True,
-        cache_directory: str | None = None,
-        n_per_patch: int | None = None,
-        progress: bool = True,
-    ) -> Catalog:
-        normalised = normalise_dataframe(
-            data,
-            ra_name,
-            dec_name,
-            patches=patches,
-            redshift_name=redshift_name,
-            weight_name=weight_name,
-            degrees=degrees,
-        )
-        return cls(
-            data=normalised,
-            patches=None if isinstance(patches, str) else patches,
-            cache_directory=cache_directory,
-            n_per_patch=n_per_patch,
-            progress=progress,
-        )
-
-    @classmethod
-    def from_records(
-        cls,
-        ra: Iterable,
-        dec: Iterable,
-        patches: Iterable | Catalog | Coordinate | int,
-        *,
-        redshift: Iterable | None = None,
-        weight: Iterable | None = None,
-        degrees: bool = True,
-        cache_directory: str | None = None,
-        n_per_patch: int | None = None,
-        progress: bool = True,
-    ) -> Catalog:
-        normalised = pd.DataFrame(
-            dict(
-                ra=np.deg2rad(ra) if degrees else ra,
-                dec=np.deg2rad(dec) if degrees else dec,
-            )
-        )
-        if redshift is not None:
-            normalised["redshift"] = redshift
-        if weight is not None:
-            normalised["weight"] = weight
-        patch_idx_provided = not isinstance(patches, (Catalog, Coordinate, int))
-        if patch_idx_provided:
-            normalised["patch"] = patches
-        # build the catalog
-        return cls(
-            data=normalised,
-            patches=None if patch_idx_provided else patches,
-            cache_directory=cache_directory,
-            n_per_patch=n_per_patch,
-            progress=progress,
-        )
-
-    @classmethod
-    def from_file(
-        cls,
-        path: str,
-        ra_name: str,
-        dec_name: str,
-        patches: str | int | Catalog | Coordinate,
-        *,
-        redshift_name: str | None = None,
-        weight_name: str | None = None,
-        degrees: bool = True,
-        reader: type[streaming.Reader] | None = None,
-        cache_directory: str | None = None,
-        n_per_patch: int | None = None,
-        progress: bool = False,
-    ) -> Catalog:
-        # gather the columns to read from the input table file
-        renames = {ra_name: "ra", dec_name: "dec"}
-        if redshift_name is not None:
-            renames[redshift_name] = "redshift"
-        if weight_name is not None:
-            renames[weight_name] = "weight"
-        if isinstance(patches, str):
-            renames[patches] = "patch"
-        # set up the full configuration
-        use_cache = setup_cache_directory(cache_directory)
-        patch_mode = PatchMode.get(patches)
-        centers = get_centers_file(
-            patch_mode=patch_mode,
-            path=path,
-            ra_name=ra_name,
-            dec_name=dec_name,
-            patches=patches,
-            degrees=degrees,
-            reader=reader,
-            n_per_patch=n_per_patch,
-        )
-        # process the data and build patches
-        if use_cache:
-            patch_cats = build_patches_cached(
-                path=path,
-                renames=renames,
-                cache_directory=cache_directory,
-                centers=centers,
-                degrees=degrees,
-                reader=reader,
-            )
-            write_metadata(patch_cats, cache_directory)
-        else:
-            patch_cats = build_patches_memory(
-                path=path,
-                renames=renames,
-                centers=centers,
-                degrees=degrees,
-                reader=reader,
-            )
-        # create the new catalog instance
-        new = cls.__new__(cls)
-        new._patches = patch_cats
-        return new
-
-    @classmethod
-    def from_cache(cls, cache_directory: str, progress: bool = False) -> Catalog:
-        raise NotImplementedError
-        cls._logger.info("restoring from cache directory '%s'", cache_directory)
-        new = cls.__new__(cls)
-        # load the patch properties
-        fpath = os.path.join(cache_directory, "properties.json")
-        with open(fpath) as f:
-            metadata = json.load(f)
-        meta_iter = iter(metadata)
-        if progress:
-            meta_iter = job_progress_bar(meta_iter, total=len(metadata))
-        # create the patches without loading the data
-        new._patches = {}
-        for meta in meta_iter:
-            patch_id = meta["id"]
-            cachefile = os.path.join(cache_directory, f"patch_{patch_id:d}.feather")
-            center = Coord3D(meta["x"], meta["y"], meta["z"])
-            radius = DistSky(meta["r"])
-            new._patches[patch_id] = PatchCatalog.from_cached(
-                cachefile,
-                length=meta["length"],
-                total=meta["total"],
-                has_z=meta["has_z"],
-                has_w=meta["has_w"],
-                center=center,
-                radius=radius,
-            )
-        new._set_z_limits(metadata)
-        return new
-        """

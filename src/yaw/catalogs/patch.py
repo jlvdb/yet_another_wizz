@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Literal, overload
@@ -372,6 +373,16 @@ class PatchDataCached(PatchData):
 
         # reset the meta data which are now outdated
         self.metadata = PatchMetadata(len(self))
+
+    def drop_data(self):
+        # delete all memory-mapped data
+        for attr in ("ra", "dec", "weight", "redshift"):
+            values = getattr(self, attr)
+            if values is not None:
+                delattr(self, attr)
+                setattr(self, np.empty(0))
+        # delete the memory maps
+        shutil.rmtree(self.path)
 
     @property
     def _path_binning(self) -> Path:
