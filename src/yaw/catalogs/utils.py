@@ -76,7 +76,7 @@ def dataframe_to_numpy_dict(dataframe: DataFrame) -> dict[str, NDArray]:
 def concat_numpy_dicts(dicts: Iterable[dict[str, NDArray]]) -> dict[str, NDArray]:
     chunk_iter = iter(dicts)
     chunk_dict = {key: [data] for key, data in next(chunk_iter).items()}
-    for chunk in dicts:
+    for chunk in chunk_iter:
         for col, chunk_list in chunk_dict.items():
             chunk_list.append(chunk[col])
     return {col: np.concatenate(data) for col, data in chunk_dict.items()}
@@ -206,7 +206,7 @@ def patch_path_from_id(cache_directory: TypePathStr, patch_id: int) -> Path:
 
 
 def patch_id_from_path(directory: TypePathStr) -> int:
-    if not directory.match("patch_"):
+    if not directory.match("patch_*"):
         raise ValueError(f"'directory' does not match 'patch_*': {directory}")
     _, id_str = directory.name.split("_")
     return int(id_str)

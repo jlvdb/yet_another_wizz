@@ -89,6 +89,14 @@ except ImportError:
     create_patches = _scipy_create_patches
 
 
+def is_iterable(obj) -> bool:
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False
+
+
 class PatchMode(Enum):
     divide = 0
     create = 1
@@ -96,14 +104,14 @@ class PatchMode(Enum):
 
     @classmethod
     def get(cls, patches: Any) -> PatchMode:
-        if isinstance(patches, (str, NDArray)):
-            return PatchMode.divide
-        elif isinstance(patches, int):
+        if isinstance(patches, int):
             if patches < 1:
                 raise ValueError("number or patches must be positive")
             return PatchMode.create
         elif isinstance(patches, (Catalog, Coordinate)):
             return PatchMode.apply
+        elif isinstance(patches, str) or is_iterable(patches):
+            return PatchMode.divide
         else:
             raise TypeError(f"invalid type {type(patches)} for 'patches'")
 
@@ -212,13 +220,19 @@ def assign_patch_centers(
     # if the centers have not been computed (PatchMode.divide), this is a no-op
     patch_ids = set(patches.keys()) & set(centers.keys())
     for patch_id in patch_ids:
-        patches[patch_id].center = centers[patch_id]
+        patches[patch_id].metadata.center = centers[patch_id]
 
 
 class DummyReader(Reader):
     def __init__(self, *, data: DataChunk, degrees: bool = True, **kwargs) -> None:
         self.data = data
         self.degrees = degrees
+
+    def _init_file(self, **kwargs) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
 
     @property
     def n_rows(self) -> int:
@@ -269,7 +283,7 @@ def build_patches(
     if cache_directory is None:
         collector = streaming.PatchCollector()
     else:
-        collector = streaming.PatchWriter(cache_directory / "patch")
+        collector = streaming.PatchWriter(cache_directory)
     # iterate the complete file in chunks and distribute the data to the patches
     with reader, collector:
         for chunk in reader.iter():
@@ -287,11 +301,25 @@ def build_patches(
     return patches
 
 
+@overload
+def parse_path_or_none(path: None) -> None:
+    ...
+
+
+@overload
+def parse_path_or_none(path: TypePathStr) -> Path:
+    ...
+
+
+def parse_path_or_none(path: TypePathStr) -> Path | None:
+    if path is not None:
+        return Path(path)
+
+
 class Catalog:
     """TODO: See factory"""
 
     _logger = logging.getLogger("yaw.catalog")
-    _cached_directory: Path
 
     def __init__(
         self,
@@ -304,7 +332,7 @@ class Catalog:
             self._patches = dict(enumerate(patches))
         else:
             raise TypeError(f"invalid type '{patches.__class__}' for 'patches'")
-        self.cached_directory = cache_directory
+        self._cache_directory = parse_path_or_none(cache_directory)
 
     @classmethod
     def from_records(
@@ -322,19 +350,21 @@ class Catalog:
     ) -> Catalog:
         # pack and normalise the input data
         data = DataChunk(
-            ra=np.deg2rad(ra) if degrees else ra,
-            dec=np.deg2rad(dec) if degrees else dec,
-            weight=weight,
-            redshift=redshift,
+            ra=np.asarray(np.deg2rad(ra) if degrees else ra),
+            dec=np.asarray(np.deg2rad(dec) if degrees else dec),
+            weight=np.asarray(weight),
+            redshift=np.asarray(redshift),
         )
         # compute the centers add the patch column as needed
         patch_mode = PatchMode.get(patches)
         if patch_mode == PatchMode.divide:
-            data.patch = patches
+            data.patch = np.asarray(patches)
         centers = GetCenters.data(data, patch_mode, patches, n_per_patch)
         # process the data and create the patches
         reader_inst = DummyReader(data=data, degrees=degrees)
-        patches = build_patches(reader_inst, centers, cache_directory)
+        patches = build_patches(
+            reader_inst, centers, parse_path_or_none(cache_directory)
+        )
         return cls(patches, cache_directory)
 
     @classmethod
@@ -374,7 +404,9 @@ class Catalog:
         centers = GetCenters.file(reader_inst, patch_mode, patches, n_per_patch)
         # process the file and create the patches
         reader_inst = reader(path, **reader_kwargs)
-        patches = build_patches(reader_inst, centers, cache_directory)
+        patches = build_patches(
+            reader_inst, centers, parse_path_or_none(cache_directory)
+        )
         return cls(patches, cache_directory)
 
     @classmethod
@@ -383,7 +415,7 @@ class Catalog:
     ) -> Catalog:
         cache_directory = Path(cache_directory)
         patches = {}
-        for patch_path in cache_directory.glob("patch_"):
+        for patch_path in cache_directory.glob("patch_*"):
             patch_id = patch_id_from_path(patch_path)
             patches[patch_id] = PatchDataCached.restore(patch_id, patch_path)
         return cls(patches, cache_directory)
@@ -424,7 +456,7 @@ class Catalog:
 
         Always ``True`` if no cache is used. If the catalog is unloaded, data
         will be read from cache every time data is accessed."""
-        return self.cached_directory is not None
+        return self._cache_directory is not None
 
     def drop_cache(self) -> None:
         for patch in self._patches.values():

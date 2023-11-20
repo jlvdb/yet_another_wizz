@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from yaw.catalogs.linkage import PatchLinkage
-from yaw.catalogs.patch import PatchCatalog
+from yaw.catalogs.patch import PatchData
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.correlation.paircounts import (
@@ -34,7 +34,7 @@ def get_patch_list(
     config: Configuration,
     linkage: PatchLinkage | None,
     auto: bool,
-) -> tuple[list[PatchCatalog], list[PatchCatalog]]:
+) -> tuple[list[PatchData], list[PatchData]]:
     """Generate a two lists of patch pairs to correlate.
 
     Generate the listing from two catalogs either from a given linkage or from
@@ -67,8 +67,8 @@ def get_patch_list(
 
 
 def count_pairs_patches(
-    patch1: PatchCatalog,
-    patch2: PatchCatalog,
+    patch1: PatchData,
+    patch2: PatchData,
     config: Configuration,
     bin1: bool = True,
     bin2: bool = False,
@@ -81,9 +81,9 @@ def count_pairs_patches(
     in a PatchCorrelationData object.
 
     Args:
-        patch1 (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+        patch1 (:obj:`yaw.catalogs.scipy.PatchData`):
             The first input patch catalogue.
-        patch2 (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+        patch2 (:obj:`yaw.catalogs.scipy.PatchData`):
             The second input patch catalogue.
         config (:obj:`yaw.config.Configuration`):
             The configuration used for the correlation measurement.
@@ -183,12 +183,12 @@ def merge_pairs_patches(
 
 
 def count_histogram_patch(
-    patch: PatchCatalog, z_bins: NDArray[np.float_]
+    patch: PatchData, z_bins: NDArray[np.float_]
 ) -> NDArray[np.float_]:
     """Compute a histogram of redshifts in a single patch.
 
     Args:
-        patch (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+        patch (:obj:`yaw.catalogs.scipy.PatchData`):
             The input patch catalogue.
         z_bins (:obj:`NDArray[np.float_]`):
             The bin edges including the right-most edge.
@@ -240,10 +240,10 @@ def merge_histogram_patches(
 
 
 def correlate(
-    args: tuple[PatchCatalog, PatchCatalog, Configuration, bool, bool]
+    args: tuple[PatchData, PatchData, Configuration, bool, bool]
 ) -> PatchCorrelationData:
     return count_pairs_patches(*args)
 
 
-def true_redshifts(args: tuple[PatchCatalog, NDArray[np.float_]]) -> NDArray[np.float_]:
+def true_redshifts(args: tuple[PatchData, NDArray[np.float_]]) -> NDArray[np.float_]:
     return count_histogram_patch(*args)

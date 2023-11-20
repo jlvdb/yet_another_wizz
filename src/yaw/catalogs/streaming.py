@@ -335,7 +335,7 @@ class CSVReader(Reader):
             return self._chunk_from_dataframe(dataframe)
 
 
-class Collector(ABC):
+class Collector(FileContext):
     @abstractmethod
     def process(
         self,
@@ -343,6 +343,9 @@ class Collector(ABC):
         patch_key: str,
         drop_key: bool = True,
     ) -> None:
+        pass
+
+    def close(self) -> None:
         pass
 
 
@@ -361,16 +364,13 @@ class PatchCollector(Collector):
         return {pid: PatchData(pid, **data.to_dict()) for pid, data in data.items()}
 
 
-class PatchWriter(FileContext, Collector):
+class PatchWriter(Collector):
     def __init__(self, cache_directory: TypePathStr) -> None:
         self._patches: dict[int, PatchDataCached] = dict()
         # set up cache directory
         self.cache_directory = Path(cache_directory)
         if not self.cache_directory.exists():
             self.cache_directory.mkdir(parents=True)
-
-    def close(self) -> None:
-        pass
 
     def process(self, data: DataChunk) -> None:
         for pid, patch_chunk in data.groupby():

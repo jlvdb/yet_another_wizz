@@ -37,7 +37,7 @@ from yaw.deprecated.correlation.paircounts import PairCountResult
 from yaw.deprecated.redshifts import HistogramData
 
 __all__ = [
-    # "Catalog",
+    "Catalog",
     "Configuration",
     "ResamplingConfig",
     "Scale",
