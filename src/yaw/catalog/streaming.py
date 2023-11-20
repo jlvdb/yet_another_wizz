@@ -14,8 +14,8 @@ import polars as pl
 from polars import DataFrame
 from pyarrow import parquet
 
-from yaw.catalogs.patch import PatchData, PatchDataCached
-from yaw.catalogs.utils import DataChunk, patch_path_from_id
+from yaw.catalog.patch import PatchData, PatchDataCached
+from yaw.catalog.utils import DataChunk, patch_path_from_id
 from yaw.core.utils import TypePathStr
 
 from ._streaming import _count_lines, _estimate_lines

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.catalogs.linkage import PatchLinkage
-from yaw.catalogs.patch import PatchData
+from yaw.catalog.linkage import PatchLinkage
+from yaw.catalog.patch import PatchData
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.correlation.paircounts import (
@@ -22,7 +22,7 @@ from yaw.redshifts import HistData
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-    from yaw.catalogs.catalog import Catalog
+    from yaw.catalog.catalog import Catalog
 
 
 __all__ = []  # TODO
@@ -41,13 +41,13 @@ def get_patch_list(
     a newly constructed one.
 
     Args:
-        catalog1 (:obj:`yaw.catalogs.scipy.Catalog`):
+        catalog1 (:obj:`yaw.catalog.Catalog`):
             The first input data catalogue.
-        catalog2 (:obj:`yaw.catalogs.scipy.Catalog`, :obj:`None`):
+        catalog2 (:obj:`yaw.catalog.Catalog`, :obj:`None`):
             The second input data catalogue, can be `None`.
         config (:obj:`yaw.config.Configuration`):
             The configuration used for the correlation measurement.
-        linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, :obj:`None`):
+        linkage (:obj:`~yaw.catalog.linkage.PatchLinkage`, :obj:`None`):
             Linkage object that defines with patches must be correlated for
             a given scales and which patch combinations can be skipped.
         auto (:obj:`bool`):
@@ -81,9 +81,9 @@ def count_pairs_patches(
     in a PatchCorrelationData object.
 
     Args:
-        patch1 (:obj:`yaw.catalogs.scipy.PatchData`):
+        patch1 (:obj:`yaw.catalog.PatchData`):
             The first input patch catalogue.
-        patch2 (:obj:`yaw.catalogs.scipy.PatchData`):
+        patch2 (:obj:`yaw.catalog.PatchData`):
             The second input patch catalogue.
         config (:obj:`yaw.config.Configuration`):
             The configuration used for the correlation measurement.
@@ -188,7 +188,7 @@ def count_histogram_patch(
     """Compute a histogram of redshifts in a single patch.
 
     Args:
-        patch (:obj:`yaw.catalogs.scipy.PatchData`):
+        patch (:obj:`yaw.catalog.PatchData`):
             The input patch catalogue.
         z_bins (:obj:`NDArray[np.float_]`):
             The bin edges including the right-most edge.

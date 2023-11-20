@@ -11,12 +11,12 @@ ext_module_core_math = Extension(
     extra_compile_args=fast_args,
 )
 ext_module_catalog_streaming = Extension(
-    "yaw.catalogs._streaming",
-    ["src/yaw/catalogs/streaming.c"],
+    "yaw.catalog._streaming",
+    ["src/yaw/catalog/streaming.c"],
 )
 ext_module_catalog_utils = Extension(
-    "yaw.catalogs._utils",
-    ["src/yaw/catalogs/utils.c"],
+    "yaw.catalog._utils",
+    ["src/yaw/catalog/utils.c"],
     include_dirs=[np.get_include()],
     extra_compile_args=fast_args,
 )

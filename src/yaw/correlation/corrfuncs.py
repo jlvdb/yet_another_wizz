@@ -907,7 +907,7 @@ def autocorrelate(
             Random catalogue for the data sample.
 
     Keyword Args:
-        linkage (:obj:`~yaw.catalogs.PatchLinkage`, optional):
+        linkage (:obj:`~yaw.catalog.PatchLinkage`, optional):
             Provide a linkage object that determines which spatial patches must
             be correlated given the measurement scales. Ensures consistency
             when measuring correlations repeatedly for a fixed set of input
@@ -996,7 +996,7 @@ def crosscorrelate(
             configured.
         unk_rand (:obj:`yaw.catalog.Catalog`, optional):
             Random catalog for the unknown sample.
-        linkage (:obj:`yaw.catalogs.PatchLinkage`, optional):
+        linkage (:obj:`yaw.catalog.PatchLinkage`, optional):
             Provide a linkage object that determines which spatial patches must
             be correlated given the measurement scales. Ensures consistency
             when measuring multiple correlations, otherwise generated

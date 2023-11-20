@@ -71,7 +71,7 @@ class UniformRandoms:
         coordinate range of a given data catalogue.
 
         Args:
-            cat (:obj:`yaw.catalogs.Catalog`):
+            cat (:obj:`yaw.catalog.Catalog`):
                 Catalog instance from which the right ascension and declination
                 range is computed.
             seed (:obj:`int`, optional):

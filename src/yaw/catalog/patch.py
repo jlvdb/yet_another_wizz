@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Generator, Literal, overload
 
 import numpy as np
 
-from yaw.catalogs import utils
-from yaw.catalogs.kdtree import SphericalKDTree
+from yaw.catalog import utils
+from yaw.catalog.kdtree import SphericalKDTree
 from yaw.config.default import NotSet
 from yaw.core.containers import Interval, IntervalVetor
 from yaw.core.coordinates import CoordSky, DistSky

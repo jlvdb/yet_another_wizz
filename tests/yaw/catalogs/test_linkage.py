@@ -2,8 +2,8 @@ import numpy as np
 import numpy.testing as npt
 from pytest import fixture
 
-from yaw.catalogs import PatchLinkage
-from yaw.catalogs.linkage import LINK_ZMIN
+from yaw.catalog import PatchLinkage
+from yaw.catalog.linkage import LINK_ZMIN
 from yaw.config import Configuration
 from yaw.core.coordinates import CoordSky, DistSky
 

@@ -11,17 +11,17 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 import numpy as np
 from scipy.cluster import vq
 
-from yaw.catalogs import streaming, worker
-from yaw.catalogs.patch import PatchData, PatchDataCached
-from yaw.catalogs.streaming import Reader
-from yaw.catalogs.utils import DataChunk, IndexMapper, patch_id_from_path
+from yaw.catalog import streaming, worker
+from yaw.catalog.patch import PatchData, PatchDataCached
+from yaw.catalog.streaming import Reader
+from yaw.catalog.utils import DataChunk, IndexMapper, patch_id_from_path
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.utils import TypePathStr, job_progress_bar, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-    from yaw.catalogs.linkage import PatchLinkage
+    from yaw.catalog.linkage import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
@@ -570,7 +570,7 @@ class Catalog:
             other (Catalog instance, optional):
                 Second catalog instance used for cross-catalogue pair counting.
                 Catalogue must use the same backend.
-            linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, optional):
+            linkage (:obj:`~yaw.catalog.linkage.PatchLinkage`, optional):
                 Linkage object that defines with patches must be correlated for
                 a given scales and which patch combinations can be skipped. Can
                 be used for the ``scipy`` backend to count pairs consistently
