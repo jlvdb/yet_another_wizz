@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pickle
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Generator
 
 import numpy as np
@@ -93,6 +94,54 @@ def groupby(
     }
     for i, key in enumerate(items):
         yield key, {col: gdata[i] for col, gdata in grouped.items()}
+
+
+@dataclass
+class DataChunk:
+    ra: NDArray
+    dec: NDArray
+    weight: NDArray | None = field(default=None)
+    redshift: NDArray | None = field(default=None)
+    patch: NDArray | None = field(default=None)
+
+    @classmethod
+    def from_chunks(cls, chunks: Iterable[DataChunk]) -> DataChunk:
+        merged = concat_numpy_dicts([chunk.to_dict() for chunk in chunks])
+        return cls(**merged)
+
+    def __len__(self) -> int:
+        return len(self.ra)
+
+    @property
+    def size(self) -> int:
+        return sum(val.size for val in self.to_dict().values())
+
+    def __getitem__(self, index) -> DataChunk:
+        kwargs = {key: values[index] for key, values in self.to_dict().items()}
+        return DataChunk(**kwargs)
+
+    def groupby(self) -> Generator[tuple[int, DataChunk]]:
+        col_kwargs = self.to_dict(drop_patch=True)
+        for patch_id, patch_data in groupby(self.patch, **col_kwargs):
+            yield patch_id, self.__class__(**patch_data)
+
+    def to_dict(self, drop_patch: bool = False) -> DataChunk:
+        the_dict = dict(ra=self.ra, dec=self.dec)
+        if self.weight is not None:
+            the_dict["weight"] = self.weight
+        if self.redshift is not None:
+            the_dict["redshift"] = self.redshift
+        if not drop_patch and self.patch is not None:
+            the_dict["patch"] = self.patch
+        return the_dict
+
+    @classmethod
+    def from_dict(cls, the_dict: DataChunk) -> DataChunk:
+        return cls(**the_dict)
+
+    @classmethod
+    def from_dataframe(cls, dataframe: DataFrame) -> DataChunk:
+        return cls(**dataframe_to_numpy_dict(dataframe))
 
 
 def check_optional_args(

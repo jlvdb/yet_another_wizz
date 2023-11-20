@@ -3,17 +3,16 @@ from __future__ import annotations
 import logging
 import multiprocessing
 from collections.abc import Generator, Iterable, Mapping
+from enum import Enum
 from itertools import repeat
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from yaw.catalogs import streaming, utils, worker
-from yaw.catalogs.patch import PatchData
-from yaw.core.containers import IntervalVetor
+from yaw.catalogs.patch import PatchData, PatchDataCached
 from yaw.core.coordinates import Coordinate, CoordSky, DistSky
-from yaw.core.utils import TypePathStr, job_progress_bar, long_num_format
+from yaw.core.utils import job_progress_bar, long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -26,45 +25,50 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["Catalog"]
 
 
-class CacheManager:
-    _name_prefix = "patch_{id:4d}{ext:}"
-    _tree_ext = ".tree"
+class PatchMode(Enum):
+    divide = 0
+    create = 1
+    apply = 2
 
-    def __init__(self, path: TypePathStr):
-        self.path = Path(path)
-        if not self.path.exists():
-            self.path.mkdir(parents=True)
+    @classmethod
+    def get(cls, patches: Any) -> PatchMode:
+        if isinstance(patches, str):
+            return PatchMode.divide
+        elif isinstance(patches, int):
+            if patches < 1:
+                raise ValueError("number or patches must be positive")
+            return PatchMode.create
+        elif isinstance(patches, (Catalog, Coordinate)):
+            return PatchMode.apply
+        else:
+            raise TypeError(f"invalid type {type(patches)} for 'patches'")
 
-    def cleanup(self) -> None:
-        import shutil
 
-        shutil.rmtree(self.path)
+class DataConverter:
+    def __init__(
+        self,
+        ra_name: str,
+        dec_name: str,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        patch_name: str | None = None,
+        degrees: bool = False,
+    ) -> None:
+        self._renames = dict(ra=ra_name, dec=dec_name)
+        if weight_name is not None:
+            self._renames["weight"] = weight_name
+        if redshift_name is not None:
+            self._renames["redshift"] = redshift_name
+        if patch_name is not None:
+            self._renames["patch"] = patch_name
+        self._degrees = degrees
 
-    def get_patch_path(self, patch_id: str) -> Path:
-        return self.path / self._name_prefix.format(id=patch_id, ext="")
-
-    def get_tree_path(self, patch_id: str) -> Path:
-        return self.path / self._name_prefix.format(id=patch_id, ext=self._tree_ext)
-
-    @property
-    def binning_path(self) -> Path:
-        return self.path / "binning.dat"
-
-    def load_binning(self) -> IntervalVetor | None:
-        if not self.binning_path.exists():
-            return None
-        edges = np.loadtxt(self.binning_path)
-        return IntervalVetor.from_edges(edges)
-
-    def reset_binning(self) -> None:
-        self.binning_path.unlink()
-        # delete the pickled trees
-        for fpath in self.path.iterdir():
-            if fpath.match(self._tree_ext):
-                fpath.unlink()
-
-    def set_binning(self, binning: IntervalVetor) -> None:
-        np.savetxt(self.binning_path, binning.edges)
+    def __call__(self, data: dict[str, NDArray]) -> dict[str, NDArray]:
+        converted = {new: data[old] for new, old in self._renames.items()}
+        if self._degrees:
+            converted["ra"] = np.deg2rad(converted["ra"])
+            converted["dec"] = np.deg2rad(converted["dec"])
+        return converted
 
 
 class Catalog:
@@ -75,13 +79,11 @@ class Catalog:
     def __init__(
         self,
         patches: Mapping[int, PatchData] | Iterable[PatchData],
-        cache: CacheManager | None,
     ) -> None:
-        self.cache = cache
         if isinstance(patches, Mapping):
-            self.patches = dict(patches)
+            self._patches = {pid: patch for pid, patch in patches.items()}
         elif isinstance(patches, Iterable):
-            self.patches = dict(enumerate(patches))
+            self._patches = dict(enumerate(patches))
         else:
             raise TypeError(f"invalid type '{patches.__class__}' for 'patches'")
 
@@ -122,6 +124,240 @@ class Catalog:
     @classmethod
     def from_cache(cls, cache_directory: str, progress: bool = False) -> Catalog:
         pass
+
+    def __repr__(self) -> str:
+        name = self.__class__.__name__
+        args = dict(
+            cached=self.is_cached(),
+            nobjects=len(self),
+            npatches=self.n_patches,
+            redshifts=self.has_redshift(),
+        )
+        arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
+        return f"{name}({arg_str})"
+
+    def __len__(self) -> int:
+        return sum(len(patch) for patch in self._patches.values())
+
+    def __getitem__(self, patch_id: int) -> PatchData:
+        return self._patches[patch_id]
+
+    @property
+    def ids(self) -> list[int]:
+        """Return a list of unique patch indices in the catalog."""
+        return sorted(self._patches.keys())
+
+    @property
+    def n_patches(self) -> int:
+        """The number of spatial patches of this catalogue."""
+        return max(self.ids) + 1
+
+    def __iter__(self) -> Generator[PatchData]:
+        for patch_id in self.ids:
+            yield self._patches[patch_id]
+
+    def is_cached(self) -> bool:
+        """Indicates whether the catalog data is loaded.
+
+        Always ``True`` if no cache is used. If the catalog is unloaded, data
+        will be read from cache every time data is accessed."""
+        return all(
+            isinstance(patch, PatchDataCached) for patch in self._patches.values()
+        )
+
+    def has_redshift(self) -> bool:
+        """Indicates whether the :meth:`redshifts` attribute holds data."""
+        return all(patch.has_redshift() for patch in self._patches.values())
+
+    def has_weight(self) -> bool:
+        """Indicates whether the :meth:`weights` attribute holds data."""
+        return all(patch.has_weight() for patch in self._patches.values())
+
+    @property
+    def ra(self) -> NDArray[np.float_]:
+        """Get an array of the right ascension values in radians."""
+        return np.concatenate([self._patches[pid].ra for pid in self.ids])
+
+    @property
+    def dec(self) -> NDArray[np.float_]:
+        """Get an array of the declination values in radians."""
+        return np.concatenate([self._patches[pid].dec for pid in self.ids])
+
+    @property
+    def weight(self) -> NDArray[np.float_] | None:
+        """Get the object weights as array or ``None`` if not available."""
+        if self.has_weight():
+            return np.concatenate([self._patches[pid].weight for pid in self.ids])
+        else:
+            return None
+
+    @property
+    def redshift(self) -> NDArray[np.float_] | None:
+        """Get the redshifts as array or ``None`` if not available."""
+        if self.has_redshift():
+            return np.concatenate([self._patches[pid].redshift for pid in self.ids])
+        else:
+            return None
+
+    @property
+    def patch(self) -> NDArray[np.int_]:
+        """Get the patch indices of each object as array."""
+        return np.concatenate(
+            [np.full(len(self._patches[pid]), pid) for pid in self.ids]
+        )
+
+    @property
+    def total(self) -> float:
+        """Get the sum of weights or the number of objects if weights are not
+        available."""
+        return float(self.get_totals().sum())
+
+    def get_totals(self) -> NDArray[np.float_]:
+        """Get an array of the sum of weights or number of objects in each
+        patch."""
+        return np.array([self._patches[pid].total for pid in self.ids])
+
+    @property
+    def centers(self) -> CoordSky:
+        """Get a vector of sky coordinates of the patch centers in radians.
+
+        Returns:
+            :obj:`yaw.core.coordinates.CoordSky`
+        """
+        return CoordSky.from_coords([self._patches[pid].center for pid in self.ids])
+
+    @property
+    def radii(self) -> DistSky:
+        """Get a vector of angular separations in radians that describe the
+        patch sizes.
+
+        The radius of the patch is defined as the maximum angular distance of
+        any object from the patch center.
+
+        Returns:
+            :obj:`yaw.core.coordinates.DistSky`
+        """
+        return DistSky.from_dists([self._patches[pid].radius for pid in self.ids])
+
+    def correlate(
+        self,
+        config: Configuration,
+        binned: bool,
+        other: Catalog | None = None,
+        linkage: PatchLinkage | None = None,
+        progress: bool = False,
+    ) -> NormalisedCounts | dict[str, NormalisedCounts]:
+        """Count pairs between objects at a given separation and in bins of
+        redshift.
+
+        If another catalog instance is passed to ``other``, then pairs are
+        formed between these catalogues (cross), otherwise pairs are formed with
+        the catalog (auto). Pairs are counted in bins of redshift, as defined in
+        the configuration object (``config``). Pairs are only considered within
+        fixed angular scales that are computed from the physical scales in the
+        configuration and the mid of the current redshift bin.
+
+        Args:
+            config (:obj:`yaw.Configuration`):
+                Configuration object that defines measurement scales, redshift
+                binning, cosmological model, and various backend specific
+                parameters.
+            binned (:obj:`bool`):
+                Whether to apply the redshift binning to the second catalogue
+                (see ``other``).
+            other (Catalog instance, optional):
+                Second catalog instance used for cross-catalogue pair counting.
+                Catalogue must use the same backend.
+            linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, optional):
+                Linkage object that defines with patches must be correlated for
+                a given scales and which patch combinations can be skipped. Can
+                be used for the ``scipy`` backend to count pairs consistently
+                between multiple catalogue instances.
+            progress (:obj:`bool`):
+                Show a progress indication, depends on backend.
+
+        There are three different modes of operation that are determined by the
+        combination of the ``binned`` and ``other`` parameters:
+
+        1. If no second catalogue is provided, pairs are counted within the
+           catalogue while applying the redshift binning.
+        2. If a second catalogue is provided and ``binned=True``, pairs are
+           counted between the catalogues and the binning is applied to both
+           cataluges.
+        3. If a second catalogue is provided and ``binned=False``, the redshift
+           binning is not applied to the second catalogue, otherwise above.
+
+        The catalogue from the calling instance of :meth:`correlate` has always
+        redshift binning applied.
+        """
+        n1 = long_num_format(len(self))
+        n2 = long_num_format(len(self) if other is None else len(other))
+        self._logger.debug(
+            "correlating with %sbinned catalog (%sx%s) in %d redshift bins",
+            "" if binned else "un",
+            n1,
+            n2,
+            config.binning.zbin_num,
+        )
+
+        auto = other is None
+        patch1_list, patch2_list = utils.get_patch_list(
+            self, other, config, linkage, auto
+        )
+
+        # process the patch pairs, add an optional progress bar
+        n_jobs = len(patch1_list)
+        bin1 = self.has_redshift()
+        bin2 = binned if other is not None else True
+        iter_args = zip(
+            patch1_list, patch2_list, repeat(config), repeat(bin1), repeat(bin2)
+        )
+        if progress:
+            iter_args = job_progress_bar(iter_args, total=n_jobs)
+        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
+            patch_datasets = list(pool.imap_unordered(worker.correlate, iter_args))
+
+        # merge the pair counts from all patch combinations
+        return worker.merge_pairs_patches(patch_datasets, config, self.n_patches, auto)
+
+    def true_redshifts(
+        self,
+        config: Configuration,
+        sampling_config: ResamplingConfig | None = None,
+        progress: bool = False,
+    ) -> HistData:
+        """
+        Compute a histogram of the object redshifts from the binning defined in
+        the provided configuration.
+
+        Args:
+            config (:obj:`~yaw.config.Configuration`):
+                Defines the bin edges used for the histogram.
+            sampling_config (:obj:`~yaw.config.ResamplingConfig`, optional):
+                Specifies the spatial resampling for error estimates.
+            progress (:obj:`bool`):
+                Show a progress bar.
+
+        Returns:
+            HistData:
+                Object holding the redshift histogram
+        """
+        self._logger.info("computing true redshift distribution")
+        if not self.has_redshift():
+            raise ValueError("catalog has no redshifts")
+
+        # compute the reshift histogram in each patch
+        n_jobs = self.n_patches
+        iter_args = zip(self.patches.values(), repeat(config.binning.zbins))
+        if progress:
+            iter_args = job_progress_bar(iter_args, total=n_jobs)
+        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
+            hist_counts = list(pool.imap_unordered(worker.true_redshifts, iter_args))
+
+        # construct the output data samples
+        return worker.merge_histogram_patches(
+            np.array(hist_counts), config.binning.zbins, sampling_config
+        )
 
     """
     def __init__(
@@ -321,243 +557,3 @@ class Catalog:
         new._set_z_limits(metadata)
         return new
         """
-
-    def __repr__(self) -> str:
-        name = self.__class__.__name__
-        args = dict(
-            cached=self.is_cached(),
-            nobjects=len(self),
-            npatches=self.n_patches,
-            redshifts=self.has_redshift(),
-        )
-        arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
-        return f"{name}({arg_str})"
-
-    def __len__(self) -> int:
-        return sum(len(patch) for patch in self.patches.values())
-
-    def __getitem__(self, patch_id: int) -> PatchData:
-        return self.patches[patch_id]
-
-    @property
-    def ids(self) -> list[int]:
-        """Return a list of unique patch indices in the catalog."""
-        return sorted(self.patches.keys())
-
-    @property
-    def n_patches(self) -> int:
-        """The number of spatial patches of this catalogue."""
-        return max(self.ids) + 1
-
-    def __iter__(self) -> Generator[PatchData]:
-        for patch_id in self.ids:
-            yield self.patches[patch_id]
-
-    def is_cached(self) -> bool:
-        """Indicates whether the catalog data is loaded.
-
-        Always ``True`` if no cache is used. If the catalog is unloaded, data
-        will be read from cache every time data is accessed."""
-        return self.cache is not None
-
-    def has_redshift(self) -> bool:
-        """Indicates whether the :meth:`redshifts` attribute holds data."""
-        return all(patch.has_redshift() for patch in self.patches.values())
-
-    def has_weight(self) -> bool:
-        """Indicates whether the :meth:`weights` attribute holds data."""
-        return all(patch.has_weight() for patch in self.patches.values())
-
-    @property
-    def ra(self) -> NDArray[np.float_]:
-        """Get an array of the right ascension values in radians."""
-        return np.concatenate([self.patches[pid].ra for pid in self.ids])
-
-    @property
-    def dec(self) -> NDArray[np.float_]:
-        """Get an array of the declination values in radians."""
-        return np.concatenate([self.patches[pid].dec for pid in self.ids])
-
-    @property
-    def weight(self) -> NDArray[np.float_] | None:
-        """Get the object weights as array or ``None`` if not available."""
-        if self.has_weight():
-            return np.concatenate([self.patches[pid].weight for pid in self.ids])
-        else:
-            return None
-
-    @property
-    def redshift(self) -> NDArray[np.float_] | None:
-        """Get the redshifts as array or ``None`` if not available."""
-        if self.has_redshift():
-            return np.concatenate([self.patches[pid].redshift for pid in self.ids])
-        else:
-            return None
-
-    @property
-    def patch(self) -> NDArray[np.int_]:
-        """Get the patch indices of each object as array."""
-        return np.concatenate(
-            [np.full(len(self.patches[pid]), pid) for pid in self.ids]
-        )
-
-    def get_min_redshift(self) -> float:
-        """Get the minimum redshift or ``None`` if not available."""
-        return min(patch.metadata.zmin for patch in self.patches.values())
-
-    def get_max_redshift(self) -> float:
-        """Get the maximum redshift or ``None`` if not available."""
-        return max(patch.metadata.zmax for patch in self.patches.values())
-
-    @property
-    def total(self) -> float:
-        """Get the sum of weights or the number of objects if weights are not
-        available."""
-        return float(self.get_totals().sum())
-
-    def get_totals(self) -> NDArray[np.float_]:
-        """Get an array of the sum of weights or number of objects in each
-        patch."""
-        return np.array([patch.total for patch in self.patches.values()])
-
-    @property
-    def centers(self) -> CoordSky:
-        """Get a vector of sky coordinates of the patch centers in radians.
-
-        Returns:
-            :obj:`yaw.core.coordinates.CoordSky`
-        """
-        return CoordSky.from_coords([self.patches[pid].center for pid in self.ids])
-
-    @property
-    def radii(self) -> DistSky:
-        """Get a vector of angular separations in radians that describe the
-        patch sizes.
-
-        The radius of the patch is defined as the maximum angular distance of
-        any object from the patch center.
-
-        Returns:
-            :obj:`yaw.core.coordinates.DistSky`
-        """
-        return DistSky.from_dists([self.patches[pid].radius for pid in self.ids])
-
-    def correlate(
-        self,
-        config: Configuration,
-        binned: bool,
-        other: Catalog | None = None,
-        linkage: PatchLinkage | None = None,
-        progress: bool = False,
-    ) -> NormalisedCounts | dict[str, NormalisedCounts]:
-        """Count pairs between objects at a given separation and in bins of
-        redshift.
-
-        If another catalog instance is passed to ``other``, then pairs are
-        formed between these catalogues (cross), otherwise pairs are formed with
-        the catalog (auto). Pairs are counted in bins of redshift, as defined in
-        the configuration object (``config``). Pairs are only considered within
-        fixed angular scales that are computed from the physical scales in the
-        configuration and the mid of the current redshift bin.
-
-        Args:
-            config (:obj:`yaw.Configuration`):
-                Configuration object that defines measurement scales, redshift
-                binning, cosmological model, and various backend specific
-                parameters.
-            binned (:obj:`bool`):
-                Whether to apply the redshift binning to the second catalogue
-                (see ``other``).
-            other (Catalog instance, optional):
-                Second catalog instance used for cross-catalogue pair counting.
-                Catalogue must use the same backend.
-            linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, optional):
-                Linkage object that defines with patches must be correlated for
-                a given scales and which patch combinations can be skipped. Can
-                be used for the ``scipy`` backend to count pairs consistently
-                between multiple catalogue instances.
-            progress (:obj:`bool`):
-                Show a progress indication, depends on backend.
-
-        There are three different modes of operation that are determined by the
-        combination of the ``binned`` and ``other`` parameters:
-
-        1. If no second catalogue is provided, pairs are counted within the
-           catalogue while applying the redshift binning.
-        2. If a second catalogue is provided and ``binned=True``, pairs are
-           counted between the catalogues and the binning is applied to both
-           cataluges.
-        3. If a second catalogue is provided and ``binned=False``, the redshift
-           binning is not applied to the second catalogue, otherwise above.
-
-        The catalogue from the calling instance of :meth:`correlate` has always
-        redshift binning applied.
-        """
-        n1 = long_num_format(len(self))
-        n2 = long_num_format(len(self) if other is None else len(other))
-        self._logger.debug(
-            "correlating with %sbinned catalog (%sx%s) in %d redshift bins",
-            "" if binned else "un",
-            n1,
-            n2,
-            config.binning.zbin_num,
-        )
-
-        auto = other is None
-        patch1_list, patch2_list = utils.get_patch_list(
-            self, other, config, linkage, auto
-        )
-
-        # process the patch pairs, add an optional progress bar
-        n_jobs = len(patch1_list)
-        bin1 = self.has_redshift()
-        bin2 = binned if other is not None else True
-        iter_args = zip(
-            patch1_list, patch2_list, repeat(config), repeat(bin1), repeat(bin2)
-        )
-        if progress:
-            iter_args = job_progress_bar(iter_args, total=n_jobs)
-        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
-            patch_datasets = list(pool.imap_unordered(worker.correlate, iter_args))
-
-        # merge the pair counts from all patch combinations
-        return worker.merge_pairs_patches(patch_datasets, config, self.n_patches, auto)
-
-    def true_redshifts(
-        self,
-        config: Configuration,
-        sampling_config: ResamplingConfig | None = None,
-        progress: bool = False,
-    ) -> HistData:
-        """
-        Compute a histogram of the object redshifts from the binning defined in
-        the provided configuration.
-
-        Args:
-            config (:obj:`~yaw.config.Configuration`):
-                Defines the bin edges used for the histogram.
-            sampling_config (:obj:`~yaw.config.ResamplingConfig`, optional):
-                Specifies the spatial resampling for error estimates.
-            progress (:obj:`bool`):
-                Show a progress bar.
-
-        Returns:
-            HistData:
-                Object holding the redshift histogram
-        """
-        self._logger.info("computing true redshift distribution")
-        if not self.has_redshift():
-            raise ValueError("catalog has no redshifts")
-
-        # compute the reshift histogram in each patch
-        n_jobs = self.n_patches
-        iter_args = zip(self.patches.values(), repeat(config.binning.zbins))
-        if progress:
-            iter_args = job_progress_bar(iter_args, total=n_jobs)
-        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
-            hist_counts = list(pool.imap_unordered(worker.true_redshifts, iter_args))
-
-        # construct the output data samples
-        return worker.merge_histogram_patches(
-            np.array(hist_counts), config.binning.zbins, sampling_config
-        )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from typing import TYPE_CHECKING, Generator, Iterable, Protocol
 
 import fitsio
@@ -12,8 +13,8 @@ import polars as pl
 from polars import DataFrame
 from pyarrow import parquet
 
-from yaw.catalogs import utils
 from yaw.catalogs.patch import PatchData, PatchDataCached
+from yaw.catalogs.utils import DataChunk
 
 from ._streaming import _count_lines, _estimate_lines
 
@@ -49,8 +50,45 @@ class FileContext(ABC):
 class Reader(FileContext):
     file: Closable
 
+    def __init__(
+        self,
+        path: str,
+        ra_name: str,
+        dec_name: str,
+        patch_name: str | None = None,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        degrees: bool = False,
+        **kwargs,
+    ) -> None:
+        self._degrees = degrees  # whether conversion to radian is needed
+        # determine how to map columns
+        self._col_to_chunk_arg = dict(ra=ra_name, dec=dec_name)
+        if weight_name is not None:
+            self._col_to_chunk_arg["weight"] = weight_name
+        if redshift_name is not None:
+            self._col_to_chunk_arg["redshift"] = redshift_name
+        if patch_name is not None:
+            self._col_to_chunk_arg["patch"] = patch_name
+        # get the list of columns to read
+        self._colnames = list(self._col_to_chunk_arg.values())
+        # open the file, set up reader, etc.
+        self.path = path
+        self._init_file(**kwargs)
+
+    def _chunk_from_dict(self, data: dict[str, NDArray]) -> DataChunk:
+        converted = {new: data[old] for new, old in self._col_to_chunk_arg.items()}
+        if self._degrees:
+            converted["ra"] = np.deg2rad(converted["ra"])
+            converted["dec"] = np.deg2rad(converted["dec"])
+        return DataChunk(**converted)
+
+    def _chunk_from_dataframe(self, data: DataFrame) -> DataChunk:
+        data_dict = {col: data[col].to_numpy() for col in data.columns}
+        return self._chunk_from_dict(data_dict)
+
     @abstractmethod
-    def __init__(self, path: str, columns: Iterable[str] | None, **kwargs) -> None:
+    def _init_file(self, **kwargs) -> None:
         pass
 
     def close(self) -> None:
@@ -65,11 +103,11 @@ class Reader(FileContext):
         return self.n_rows
 
     @abstractmethod
-    def iter(self) -> Generator[dict[str, NDArray]]:
+    def iter(self) -> Generator[DataChunk]:
         pass
 
     @abstractmethod
-    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
+    def read_all(self, sparse: int | None = None) -> DataChunk:
         total = 0
         chunks = []
         for chunk in self.iter():
@@ -77,136 +115,179 @@ class Reader(FileContext):
             if sparse is not None:
                 # take a regular subset that factors in the chunk size
                 idx = np.arange(total % sparse, n_chunk, sparse)
-                chunk = {col: data[idx] for col, data in chunk.items()}
+                chunk = chunk[idx]
             chunks.append(chunk)
             total += n_chunk
-        return utils.concat_numpy_dicts(chunks)
+        return DataChunk.from_chunks(chunks)
 
 
 class ParquetReader(Reader):
-    def __init__(
-        self,
-        path: str,
-        columns: Iterable[str] | None = None,
-    ) -> None:
-        self.path = path
-        self.file = parquet.ParquetFile(path)
-        if columns is None:
-            self.columns = None
-        else:
-            availble = set(self.file.metadata.schema.names)
-            self.columns = []
-            for col in columns:
-                if col not in availble:
-                    raise KeyError(f"column '{col}' not found")
-                self.columns.append(col)
+    def _init_file(self) -> None:
+        self.file = parquet.ParquetFile(self.path)
+        availble = set(self.file.metadata.schema.names)
+        for col in self._colnames:
+            if col not in availble:
+                raise KeyError(f"column '{col}' not found")
 
     @property
     def n_rows(self) -> int:
-        metadata = parquet.read_metadata(self.path)
+        metadata = self.file.metadata
         return metadata.num_rows
 
-    def iter(self) -> Generator[dict[str, NDArray]]:
+    def iter(self) -> Generator[DataChunk]:
         n_groups = self.file.num_row_groups
         for gid in range(n_groups):
-            group = self.file.read_row_group(gid, self.columns)
-            yield {coldata._name: coldata.to_numpy() for coldata in group.columns}
+            group = self.file.read_row_group(gid, self._colnames)
+            data = {column._name: column.to_numpy() for column in group.columns}
+            yield self._chunk_from_dict(data)
 
-    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
+    def read_all(self, sparse: int | None = None) -> DataChunk:
         # reading a sparse sample not directly supported by polars.read_parquet()
         if sparse is not None:
             return super().read_all(sparse)
         else:
-            dataframe = pl.read_parquet(self.path, columns=self.columns)
-            return utils.dataframe_to_numpy_dict(dataframe)
+            dataframe = pl.read_parquet(self.path, columns=self._colnames)
+            return self._chunk_from_dataframe(dataframe)
 
 
 class FitsReader(Reader):
     def __init__(
         self,
         path: str,
-        columns: Iterable[str] | None = None,
-        *,
+        ra_name: str,
+        dec_name: str,
+        patch_name: str | None = None,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        degrees: bool = False,
         chunksize: int = 1_000_000,
         hdu: int = 1,
     ) -> None:
-        self.path = path
+        super().__init__(
+            path=path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            patch_name=patch_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            degrees=degrees,
+            # backend specific
+            chunksize=chunksize,
+            hdu=hdu,
+        )
+
+    def _init_file(self, chunksize: int = 1_000_000, hdu: int = 1) -> None:
         self.chunksize = chunksize
-        self.file = fitsio.FITS(path)
+        self.file = fitsio.FITS(self.path)
         self.hdu = self.file[hdu]
-        if columns is None:
-            self.columns = self.fits.get_colnames()
-        else:
-            self.columns = list(columns)
 
     @property
     def n_rows(self) -> int:
         return self.hdu.get_nrows()
 
-    def iter(self) -> Generator[dict[str, NDArray]]:
+    def iter(self) -> Generator[DataChunk]:
         n_groups = int(np.ceil(self.n_rows / self.chunksize))
         for gid in range(n_groups):
             offset = gid * self.chunksize
-            data: NDArray = self.hdu[self.columns][offset : offset + self.chunksize]
-            yield {
+            data: NDArray = self.hdu[self._colnames][offset : offset + self.chunksize]
+            data = {
                 col: data[col].byteswap().newbyteorder() for col in data.dtype.fields
             }
+            yield self._chunk_from_dict(data)
 
-    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
-        data: NDArray = self.hdu[self.columns][::sparse]
-        return {col: data[col].byteswap().newbyteorder() for col in data.dtype.fields}
+    def read_all(self, sparse: int | None = None) -> DataChunk:
+        data: NDArray = self.hdu[self._colnames][::sparse]
+        data = {col: data[col].byteswap().newbyteorder() for col in data.dtype.fields}
+        return self._chunk_from_dict(data)
 
 
 class HDFReader(Reader):
     def __init__(
         self,
         path: str,
-        columns: Iterable[str],
-        *,
+        ra_name: str,
+        dec_name: str,
+        patch_name: str | None = None,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        degrees: bool = False,
         chunksize: int = 1_000_000,
     ) -> None:
-        self.path = path
-        if columns is None:
-            raise ValueError(
-                "columns (data set paths) must be specified for HDF5 files"
-            )
-        self.columns = list(columns)
+        super().__init__(
+            path=path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            patch_name=patch_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            degrees=degrees,
+            # backend specific
+            chunksize=chunksize,
+        )
+
+    def _init_file(self, chunksize: int = 1_000_000) -> None:
         self.chunksize = chunksize
-        self.file = h5py.File(path, mode="r")
+        self.file = h5py.File(self.path, mode="r")
 
     @property
     def n_rows(self) -> int:
-        n_rows = [self.file[col].shape[0] for col in self.columns]
+        n_rows = [self.file[col].shape[0] for col in self._colnames]
         if len(set(n_rows)) != 1:
             raise IndexError("columns do not have equal length")
         return n_rows[0]
 
-    def iter(self) -> Generator[dict[str, NDArray]]:
+    def iter(self) -> Generator[DataChunk]:
         n_groups = int(np.ceil(self.n_rows / self.chunksize))
         for gid in range(n_groups):
             offset = gid * self.chunksize
-            yield {
+            data = {
                 col: self.file[col][offset : offset + self.chunksize]
-                for col in self.columns
+                for col in self._colnames
             }
+            yield self._chunk_from_dict(data)
 
-    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
-        return {col: self.file[col][::sparse] for col in self.columns}
+    def read_all(self, sparse: int | None = None) -> DataChunk:
+        data = {col: self.file[col][::sparse] for col in self._colnames}
+        return self._chunk_from_dict(data)
 
 
 class CSVReader(Reader):
     def __init__(
         self,
         path: str,
-        columns: Iterable[str] | None = None,
-        *,
+        ra_name: str,
+        dec_name: str,
+        patch_name: str | None = None,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        degrees: bool = False,
         chunksize: int = 1_000_000,
         batchsize: int = 10_000,
         separator: str = ",",
         eol_char: str = "\n",
     ) -> None:
-        self.path = path
-        self.columns = None if columns is None else list(columns)
+        super().__init__(
+            path=path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            patch_name=patch_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            degrees=degrees,
+            # backend specific
+            chunksize=chunksize,
+            batchsize=batchsize,
+            separator=separator,
+            eol_char=eol_char,
+        )
+
+    def _init_file(
+        self,
+        chunksize: int = 1_000_000,
+        batchsize: int = 10_000,
+        separator: str = ",",
+        eol_char: str = "\n",
+    ) -> None:
         self.chunksize = chunksize
         self.batchsize = batchsize
         self.separator = separator
@@ -222,11 +303,11 @@ class CSVReader(Reader):
     def estimate_nrows(self) -> int:
         return estimate_lines(self.path)
 
-    def iter(self) -> Generator[dict[str, NDArray]]:
+    def iter(self) -> Generator[DataChunk]:
         n_batch = self.chunksize // self.batchsize
         reader = pl.read_csv_batched(
             self.path,
-            columns=self.columns,
+            columns=self._colnames,
             separator=self.separator,
             eol_char=self.eol_char,
             batch_size=self.batchsize,
@@ -236,20 +317,20 @@ class CSVReader(Reader):
             if batches is None:
                 return
             dataframe = pl.concat(batches)
-            yield utils.dataframe_to_numpy_dict(dataframe)
+            yield self._chunk_from_dataframe(dataframe)
 
-    def read_all(self, sparse: int | None = None) -> dict[str, NDArray]:
+    def read_all(self, sparse: int | None = None) -> DataChunk:
         # reading a sparse sample not directly supported by polars.read_csv()
         if sparse is not None:
             return super().read_all(sparse)
         else:
             dataframe = pl.read_csv(
                 self.path,
-                columns=self.columns,
+                columns=self._colnames,
                 separator=self.separator,
                 eol_char=self.eol_char,
             )
-            return utils.dataframe_to_numpy_dict(dataframe)
+            return self._chunk_from_dataframe(dataframe)
 
 
 class Collector(ABC):
@@ -265,31 +346,22 @@ class Collector(ABC):
 
 class PatchCollector(Collector):
     def __init__(self) -> None:
-        self.patches: dict[int, list[dict[str, NDArray]]] = {}
+        self._chunks: dict[int, list[DataChunk]] = defaultdict(list)
 
-    def process(
-        self,
-        data: dict[str, NDArray],
-        patch_key: str,
-        drop_key: bool = True,
-    ) -> None:
-        coldata = {k: v for k, v in data.items() if (not drop_key) or (k != patch_key)}
-        for pid, patch_dict in utils.groupby(data[patch_key], **coldata):
-            if pid not in self.patches:
-                self.patches[pid] = []
-            self.patches[pid].append(patch_dict)
+    def process(self, data: DataChunk) -> None:
+        for pid, patch_chunk in data.groupby():
+            self._chunks[pid].append(patch_chunk)
 
     def get_patches(self) -> dict[int, PatchData]:
-        patches = dict()
-        for pid, chunks in self.patches.items():
-            the_dict = utils.concat_numpy_dicts(chunks)
-            patches[pid] = PatchData(pid, **the_dict)
-        return patches
+        data = {
+            pid: DataChunk.from_chunks(chunks) for pid, chunks in self._chunks.items()
+        }
+        return {pid: PatchData(pid, **data.to_dict()) for pid, data in data.items()}
 
 
 class PatchWriter(FileContext, Collector):
     def __init__(self, prefix: str) -> None:
-        self.patches: dict[int, PatchDataCached] = {}
+        self._patches: dict[int, PatchDataCached] = dict()
         root = os.path.dirname(prefix)
         if root != "" and not os.path.exists(root):
             os.mkdir(root)
@@ -298,28 +370,22 @@ class PatchWriter(FileContext, Collector):
     def close(self) -> None:
         pass
 
-    def process(
-        self,
-        data: dict[str, NDArray],
-        patch_key: str,
-        drop_key: bool = True,
-    ) -> None:
-        coldata = {k: v for k, v in data.items() if not drop_key or (k != patch_key)}
-        for pid, patch_dict in utils.groupby(data[patch_key], **coldata):
-            if pid not in self.patches:
+    def process(self, data: DataChunk) -> None:
+        for pid, patch_chunk in data.groupby():
+            if pid not in self._patches:
                 cachepath = self.template.format(pid)
                 if os.path.exists(cachepath):
                     shutil.rmtree(cachepath)
-                self.patches[pid] = PatchDataCached.empty(
+                self._patches[pid] = PatchDataCached.empty(
                     cachepath,
                     pid,
-                    has_weight="weight" in patch_dict,
-                    has_redshift="redshift" in patch_dict,
+                    has_weight=patch_chunk.weight is not None,
+                    has_redshift=patch_chunk.redshift is not None,
                 )
-            self.patches[pid].append_data(**patch_dict)
+            self._patches[pid].append_data(**patch_chunk.to_dict())
 
     def get_patches(self) -> dict[int, PatchData]:
-        return self.patches
+        return self._patches
 
 
 def get_reader(path: str) -> type[Reader]:

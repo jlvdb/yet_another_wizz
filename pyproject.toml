@@ -24,8 +24,9 @@ dependencies = [
     "deprecated",
     "tqdm",
     "numpy",
-    "pandas",
-    "astropandas>=1.2.1",
+    "polars",
+    "pandas",  # deprecated soon
+    "astropandas>=1.2.1",  # deprecated soon
     "scipy",
     "astropy",
     "pyarrow",
