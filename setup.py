@@ -20,6 +20,12 @@ ext_module_catalog_utils = Extension(
     include_dirs=[np.get_include()],
     extra_compile_args=fast_args,
 )
+ext_module_catalog_groupby = Extension(
+    "yaw.catalog._groupby",
+    sources=["src/yaw/catalog/groupby.cpp"],
+    include_dirs=[np.get_include()],
+    extra_compile_args=[*fast_args, "-fopenmp", "-std=c++11"],
+)
 
 
 if __name__ == "__main__":
@@ -28,6 +34,7 @@ if __name__ == "__main__":
             ext_module_core_math,
             ext_module_catalog_streaming,
             ext_module_catalog_utils,
+            ext_module_catalog_groupby,
         ],
         url="https://github.com/jlvdb/yet_another_wizz.git",
     )
