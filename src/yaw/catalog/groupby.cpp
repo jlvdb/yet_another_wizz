@@ -124,11 +124,33 @@ PyObject* map_to_dict(const std::unordered_map<int64_t, std::vector<double>>& da
 }
 
 
+PyObject* groupby_array_pywrapped(PyArrayObject *dataObj, const std::vector<int64_t> &indices) {
+    if (dataObj == nullptr) {
+        Py_RETURN_NONE;
+    }
+    else {
+        if (numpy_array_check_type<double>(dataObj)) {
+            PyErr_SetString(PyExc_TypeError, "data array must be of type float64");
+            Py_RETURN_NONE;
+        }
+        std::vector<double> data = numpy_array_to_vector<double>(dataObj);
+        if (indices.size() != data.size()) {
+            PyErr_SetString(PyExc_IndexError, "length of 'ra' does not match 'patch'");
+            Py_RETURN_NONE;
+        }
+        auto result = groupby_array(data, indices);
+        return map_to_dict(result);
+    }
+}
+
+
 extern "C" PyObject *groupby_arrays(PyObject *self, PyObject *args) {
     // Parse the input arguments
-    PyArrayObject *patchObj, *raObj, *decObj, *weightObj, *redshiftObj;
+    PyArrayObject *patchObj, *raObj, *decObj;
+    PyArrayObject *weightObj = nullptr;
+    PyArrayObject *redshiftObj = nullptr;
     if (!PyArg_ParseTuple(
-            args, "O!O!O!OO",
+            args, "O!O!O!|OO",
             &PyArray_Type, &patchObj,
             &PyArray_Type, &raObj,
             &PyArray_Type, &decObj,
@@ -138,41 +160,33 @@ extern "C" PyObject *groupby_arrays(PyObject *self, PyObject *args) {
         return nullptr;
     }
 
+    // convert arrays
     if (numpy_array_check_type<int64_t>(patchObj)) {
         PyErr_SetString(PyExc_TypeError, "'patch' must be of type int64");
         return nullptr;
     }
     std::vector<int64_t> patch = numpy_array_to_vector<int64_t>(patchObj);
-
     if (numpy_array_check_type<double>(raObj)) {
         PyErr_SetString(PyExc_TypeError, "'ra' must be of type float64");
         return nullptr;
     }
-
     std::vector<double> ra = numpy_array_to_vector<double>(raObj);
     if (numpy_array_check_type<double>(decObj)) {
         PyErr_SetString(PyExc_TypeError, "'dec' must be of type float64");
         return nullptr;
     }
     std::vector<double> dec = numpy_array_to_vector<double>(decObj);
-
-    if (weightObj == Py_None) {
-        std::cout << "is None" << std::endl;
-    }
     if (numpy_array_check_type<double>(weightObj)) {
         PyErr_SetString(PyExc_TypeError, "'weight' must be of type float64");
         return nullptr;
     }
     std::vector<double> weight = numpy_array_to_vector<double>(weightObj);
-
-    if (redshiftObj == Py_None) {
-        std::cout << "is None" << std::endl;
-    }
     if (numpy_array_check_type<double>(redshiftObj)) {
         PyErr_SetString(PyExc_TypeError, "'redshift' must be of type float64");
         return nullptr;
     }
     std::vector<double> redshift = numpy_array_to_vector<double>(redshiftObj);
+
     // check the array sizes
     if (patch.size() == 0) {
         PyErr_SetString(PyExc_ValueError, "'patch' must have non-zero length");
@@ -216,7 +230,7 @@ extern "C" PyObject *groupby_arrays(PyObject *self, PyObject *args) {
 
 // Module method table
 static PyMethodDef module_methods[] = {
-    {"groupby_arrays", groupby_arrays, METH_VARARGS, "TODO"},
+    {"_groupby_arrays", groupby_arrays, METH_VARARGS, "TODO"},
     {nullptr, nullptr, 0, nullptr} // Sentinel
 };
 

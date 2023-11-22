@@ -11,6 +11,7 @@ import numpy as np
 from yaw.core.coordinates import Coord3D, Coordinate, DistSky
 from yaw.core.utils import TypePathStr
 
+from ._groupby import _groupby_arrays
 from ._utils import _compute_center, _compute_radius, _minmax
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -55,6 +56,40 @@ def compute_radius(
 
 def minmax(array: NDArray[np.float64 | np.float32]) -> tuple[float, float]:
     return _minmax(array)
+
+
+def groupby_arrays(
+    patch: NDArray[np.float64],
+    ra: NDArray[np.float64],
+    dec: NDArray[np.float64],
+    weight: NDArray[np.float64] | None = None,
+    redshift: NDArray[np.float64] | None = None,
+) -> tuple[
+    dict[int, NDArray[np.float64]],
+    dict[int, NDArray[np.float64]],
+    dict[int, NDArray[np.float64]] | None,
+    dict[int, NDArray[np.float64]] | None,
+]:
+    # ensure types
+    patch = patch.astype(np.int64, copy=False, casting="same_kind")
+    ra = ra.astype(np.float64, copy=False)
+    dec = dec.astype(np.float64, copy=False)
+    # TODO: handling of optional arguments
+    if weight is None:
+        weight = np.empty(len(patch))
+    else:
+        weight = weight.astype(np.float64, copy=False)
+    if redshift is None:
+        redshift = np.empty(len(patch))
+    else:
+        redshift = redshift.astype(np.float64, copy=False)
+    result = _groupby_arrays(patch, ra, dec, weight, redshift)
+    return (
+        result[0],
+        result[1],
+        result[2] if weight is not None else None,
+        result[3] if weight is not None else None,
+    )
 
 
 # python functions
@@ -139,10 +174,23 @@ class DataChunk:
         kwargs = {key: values[index] for key, values in self.to_dict().items()}
         return DataChunk(**kwargs)
 
-    def groupby(self) -> Generator[tuple[int, DataChunk]]:
-        col_kwargs = self.to_dict(drop_patch=True)
-        for patch_id, patch_data in groupby(self.patch, **col_kwargs):
-            yield patch_id, self.__class__(**patch_data)
+    def groupby(self, ordered: bool = False) -> Generator[tuple[int, DataChunk]]:
+        # run the groupby and construct the final result
+        grp_ra, grp_dec, grp_weight, grp_redshift = groupby_arrays(
+            self.patch, self.ra, self.dec, self.weight, self.redshift
+        )
+        # the keys are guaranteed to be the same
+        patch_ids = sorted(grp_ra.keys()) if ordered else grp_ra.keys()
+        for patch_id in patch_ids:
+            weight = None if self.weight is None else grp_weight[patch_id]
+            redshift = None if self.redshift is None else grp_redshift[patch_id]
+            chunk = self.__class__(
+                ra=grp_ra[patch_id],
+                dec=grp_dec[patch_id],
+                weight=weight,
+                redshift=redshift,
+            )
+            yield patch_id, chunk
 
     def to_dict(self, drop_patch: bool = False) -> DataChunk:
         the_dict = dict(ra=self.ra, dec=self.dec)
