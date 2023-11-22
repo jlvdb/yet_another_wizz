@@ -15,7 +15,7 @@ from ._groupby import _groupby_arrays
 from ._utils import _compute_center, _compute_radius, _minmax
 
 if TYPE_CHECKING:  # pragma: no cover
-    from numpy.typing import DTypeLike, NDArray
+    from numpy.typing import ArrayLike, DTypeLike, NDArray
     from polars import DataFrame
 
 __all__ = [
@@ -173,6 +173,14 @@ class DataChunk:
     def __getitem__(self, index) -> DataChunk:
         kwargs = {key: values[index] for key, values in self.to_dict().items()}
         return DataChunk(**kwargs)
+
+    def set_patch(self, patch: ArrayLike) -> None:
+        patch_ids = np.asarray(patch)
+        if patch_ids.shape != (len(self),):
+            raise ValueError(
+                f"failed to convert patch IDs to array with shape ({len(self)},)"
+            )
+        self.patch = patch_ids
 
     def groupby(self, ordered: bool = False) -> Generator[tuple[int, DataChunk]]:
         # run the groupby and construct the final result

@@ -46,6 +46,7 @@ def assign_patch_ids(centers: Coordinate, position: Coordinate) -> NDArray[np.in
 
 
 try:
+    # raise ImportError
     import treecorr
 
     def _treecorr_create_patches(
@@ -108,16 +109,17 @@ class PatchMode(Enum):
 
     @classmethod
     def get(cls, patches: Any) -> PatchMode:
-        if isinstance(patches, int):
-            if patches < 1:
-                raise ValueError("number or patches must be positive")
-            return PatchMode.create
+        if isinstance(patches, (int, np.integer)):
+            if patches <= 1:
+                raise ValueError("number or patches must be greater than 1")
+            patch_mode = PatchMode.create
         elif isinstance(patches, (Catalog, Coordinate)):
-            return PatchMode.apply
+            patch_mode = PatchMode.apply
         elif isinstance(patches, str) or is_iterable(patches):
-            return PatchMode.divide
+            patch_mode = PatchMode.divide
         else:
             raise TypeError(f"invalid type {type(patches)} for 'patches'")
+        return patch_mode
 
 
 def generate_index_subset(
@@ -362,7 +364,7 @@ class Catalog:
         # compute the centers add the patch column as needed
         patch_mode = PatchMode.get(patches)
         if patch_mode == PatchMode.divide:
-            data.patch = np.asarray(patches)
+            data.set_patch(patches)
         centers = GetCenters.data(data, patch_mode, patches, n_per_patch)
         # process the data and create the patches
         reader_inst = DummyReader(data=data, degrees=degrees)

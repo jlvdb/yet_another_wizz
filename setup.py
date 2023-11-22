@@ -24,7 +24,7 @@ ext_module_catalog_groupby = Extension(
     "yaw.catalog._groupby",
     sources=["src/yaw/catalog/groupby.cpp"],
     include_dirs=[np.get_include()],
-    extra_compile_args=[*fast_args, "-fopenmp", "-std=c++11"],
+    extra_compile_args=[*fast_args, "-std=c++11"],
 )
 
 
