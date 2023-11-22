@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
 from scipy.cluster import vq
+from scipy.spatial import KDTree
 
 from yaw.catalog import streaming, worker
 from yaw.catalog.patch import PatchData, PatchDataCached
@@ -41,12 +42,12 @@ __all__ = [
 def assign_patch_ids(centers: Coordinate, position: Coordinate) -> NDArray[np.int_]:
     """Assign objects based on their coordinate to a list of points based on
     proximit."""
-    patches, _ = vq.vq(position.to_3d().values, centers.to_3d().values)
+    tree = KDTree(centers.to_3d().values)  # this is much faster than vq.vq
+    _, patches = tree.query(position.to_3d().values, k=1, workers=-1)
     return patches
 
 
 try:
-    # raise ImportError
     import treecorr
 
     def _treecorr_create_patches(
