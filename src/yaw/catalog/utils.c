@@ -7,65 +7,6 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 
-static PyObject* minmax(PyObject* self, PyObject* args) {
-    // pyargs: array (array f32/f64)
-    PyArrayObject *np_array;
-
-    // Parse the argument
-    if (!PyArg_ParseTuple(args, "O", &np_array)) {
-        return NULL;
-    }
-    // Check if inputs are NumPy arrays
-    if (!PyArray_Check(np_array)) {
-        PyErr_SetString(PyExc_TypeError, "expected a NumPy array for 'array'");
-        return NULL;
-    }
-    // Get the array size and type
-    npy_intp size = PyArray_SIZE(np_array);
-    int numpy_dtype = PyArray_TYPE(np_array);
-    if (size == 0) {
-        PyErr_SetString(PyExc_ValueError, "data is empty");
-        return NULL;
-    }
-
-    // compute the minimum and maximum
-    if (numpy_dtype == NPY_DOUBLE) {
-        double minval, maxval;
-        double* array = PyArray_DATA(np_array);
-
-        minval = maxval = array[0];
-        for (npy_intp i = 1; i < size; i++) {
-            double value = array[i];
-            minval = MIN(value, minval);
-            maxval = MAX(value, maxval);
-        }
-        // Create and return Python tuple
-        PyObject *tuple = PyTuple_Pack(2, PyFloat_FromDouble(minval), PyFloat_FromDouble(maxval));
-        return tuple;
-    }
-
-    else if (numpy_dtype == NPY_FLOAT) {
-        float minval, maxval;
-        float* array = PyArray_DATA(np_array);
-
-        minval = maxval = array[0];
-        for (npy_intp i = 1; i < size; i++) {
-            float value = array[i];
-            minval = MIN(value, minval);
-            maxval = MAX(value, maxval);
-        }
-        // Create and return Python tuple
-        PyObject *tuple = PyTuple_Pack(2, PyFloat_FromDouble(minval), PyFloat_FromDouble(maxval));
-        return tuple;
-    }
-
-    else {
-        PyErr_SetString(PyExc_TypeError, "unsupported data type, expected 'float32' or 'float64'");
-        return NULL;
-    }
-}
-
-
 struct Point3D {
     double x;
     double y;
@@ -197,12 +138,6 @@ static PyObject* compute_radius(PyObject* self, PyObject* args) {
 
 
 static PyMethodDef utils_methods[] = {
-    {
-        "_minmax",
-        minmax,
-        METH_VARARGS,
-        "Simultanously compute mininum and maximum of array"
-    },
     {
         "_compute_center",
         compute_center,
