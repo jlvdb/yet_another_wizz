@@ -46,7 +46,7 @@ def estimate_lines(filename: str) -> int:
 
 class Closable(Protocol):
     def close(self) -> None:
-        pass
+        ...
 
 
 class FileContext(ABC):
@@ -61,7 +61,56 @@ class FileContext(ABC):
         self.close()
 
 
-class Reader(FileContext):
+class Reader(Protocol):
+    def _init_file(self, **kwargs) -> None:
+        ...
+
+    def close(self) -> None:
+        ...
+
+    @property
+    def n_rows(self) -> int:
+        ...
+
+    def estimate_nrows(self) -> int:
+        ...
+
+    def iter(self) -> Generator[DataChunk]:
+        ...
+
+    def read_all(self, sparse: int | None = None) -> DataChunk:
+        ...
+
+
+class ChunkReader(Reader, FileContext):
+    def __init__(self, data: DataChunk, degrees: bool = True, **kwargs) -> None:
+        self.data = data
+        self.degrees = degrees
+
+    def _init_file(self, **kwargs) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    @property
+    def n_rows(self) -> int:
+        return len(self.data)
+
+    def estimate_nrows(self) -> int:
+        return self.n_rows
+
+    def iter(self) -> Generator[DataChunk]:
+        yield self.data
+
+    def read_all(self, sparse: int | None = None) -> DataChunk:
+        if sparse is None:
+            return self.data
+        else:
+            return self.data[::sparse]
+
+
+class BaseReader(Reader, FileContext):
     file: Closable
 
     def __init__(
@@ -135,7 +184,7 @@ class Reader(FileContext):
         return DataChunk.from_chunks(chunks)
 
 
-class ParquetReader(Reader):
+class ParquetReader(BaseReader):
     def _init_file(self) -> None:
         self.file = parquet.ParquetFile(str(self.path))
         availble = set(self.file.metadata.schema.names)
@@ -164,7 +213,7 @@ class ParquetReader(Reader):
             return self._chunk_from_dataframe(dataframe)
 
 
-class FitsReader(Reader):
+class FitsReader(BaseReader):
     def __init__(
         self,
         path: str,
@@ -215,7 +264,7 @@ class FitsReader(Reader):
         return self._chunk_from_dict(data)
 
 
-class HDFReader(Reader):
+class HDFReader(BaseReader):
     def __init__(
         self,
         path: str,
@@ -265,7 +314,7 @@ class HDFReader(Reader):
         return self._chunk_from_dict(data)
 
 
-class CSVReader(Reader):
+class CSVReader(BaseReader):
     def __init__(
         self,
         path: str,

@@ -6,7 +6,7 @@ from collections.abc import Generator, Iterable, Mapping
 from enum import Enum
 from itertools import repeat
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
 from scipy.cluster import vq
@@ -132,92 +132,54 @@ def generate_index_subset(
     return idx
 
 
-class CreateCenters:
-    @staticmethod
-    def data(
-        data: DataChunk,
-        n_patches: int,
-        n_per_patch: int = 1000,
-    ) -> Coord3D:
-        # take a small subset of the data to compute the patches
-        subset_size = n_patches * n_per_patch
-        if len(data) <= subset_size:
-            positions = CoordSky(data.ra, data.dec)
+def create_centers(
+    reader: Reader,
+    n_patches: int,
+    n_per_patch: int = 1000,
+) -> Coord3D:
+    subset_size = n_patches * n_per_patch
+    with reader:
+        # generate a subset of indices to keep and build a mapping to chunks
+        n_records = reader.estimate_nrows()
+        take = generate_index_subset(n_records, subset_size)
+        indexmap = IndexMapper(take)
+        # read the data and keep the data subset
+        chunk_subsets = []
+        for chunk in reader.iter():
+            idx = indexmap.map(chunk)
+            chunk_subsets.append(chunk[idx])
+    data = DataChunk.from_chunks(chunk_subsets)
+    # compute the centers from the subset
+    positions = CoordSky(data.ra, data.dec)
+    return create_patches(n_patches, positions)[0]
+
+
+def get_centers(
+    reader: Reader,
+    patch_mode: PatchMode,
+    patch_data: str | int | Catalog | Coordinate,
+    n_per_patch: int | None = None,
+) -> dict[int, Coord3D]:
+    # scan the file and compute patch centers from a sparse sample
+    if patch_mode == PatchMode.create:
+        if n_per_patch is None:
+            kwargs = dict()
         else:
-            take = generate_index_subset(len(data), subset_size)
-            positions = CoordSky(data.ra[take], data.dec[take])
-        return create_patches(n_patches, positions)[0]
+            kwargs = dict(n_per_patch=n_per_patch)
+        coords = create_centers(reader, n_patches=patch_data, **kwargs)
+        centers = dict(enumerate(coords))
 
-    @staticmethod
-    def file(
-        reader: Reader,
-        n_patches: int,
-        n_per_patch: int = 1000,
-    ) -> Coord3D:
-        subset_size = n_patches * n_per_patch
-        with reader:
-            # generate a subset of indices to keep and build a mapping to chunks
-            n_records = reader.estimate_nrows()
-            take = generate_index_subset(n_records, subset_size)
-            indexmap = IndexMapper(take)
-            # read the data and keep the data subset
-            chunk_subsets = []
-            for chunk in reader.iter():
-                idx = indexmap.map(chunk)
-                chunk_subsets.append(chunk[idx])
-        data = DataChunk.from_chunks(chunk_subsets)
-        # compute the centers from the subset
-        return CreateCenters.data(data, n_patches=n_patches, n_per_patch=n_per_patch)
+    # extract the patch centers
+    elif patch_mode == PatchMode.apply:
+        if isinstance(patch_data, Coordinate):
+            centers = dict(enumerate(patch_data.to_3d()))
+        else:  # Catalog
+            centers = dict(zip(patch_data.ids, patch_data.centers.to_3d()))
 
-
-class GetCenters:
-    @staticmethod
-    def _get_centers(
-        target: Literal["data", "file"],
-        data_or_reader: DataChunk | Reader,
-        patch_mode: PatchMode,
-        patches: str | int | Catalog | Coordinate,
-        n_per_patch: int | None = None,
-    ) -> dict[int, Coord3D]:
-        # scan the file and compute patch centers from a sparse sample
-        if patch_mode == PatchMode.create:
-            creator = getattr(CreateCenters, target)
-            if n_per_patch is None:
-                kwargs = dict()
-            else:
-                kwargs = dict(n_per_patch=n_per_patch)
-            coords = creator(data_or_reader, n_patches=patches, **kwargs)
-            centers = dict(enumerate(coords))
-
-        # extract the patch centers
-        elif patch_mode == PatchMode.apply:
-            if isinstance(patches, Coordinate):
-                centers = dict(enumerate(patches.to_3d()))
-            else:  # Catalog
-                centers = dict(zip(patches.ids, patches.centers.to_3d()))
-
-        # centers unknown yet, return placeholder
-        else:
-            centers = {}
-        return centers
-
-    @staticmethod
-    def data(
-        data: DataChunk,
-        patch_mode: PatchMode,
-        patches: str | int | Catalog | Coordinate,
-        n_per_patch: int | None = None,
-    ) -> dict[int, Coord3D]:
-        return GetCenters._get_centers("data", data, patch_mode, patches, n_per_patch)
-
-    @staticmethod
-    def file(
-        reader: Reader,
-        patch_mode: PatchMode,
-        patches: str | int | Catalog | Coordinate,
-        n_per_patch: int | None = None,
-    ) -> dict[int, Coord3D]:
-        return GetCenters._get_centers("file", reader, patch_mode, patches, n_per_patch)
+    # centers unknown yet, return placeholder
+    else:
+        centers = {}
+    return centers
 
 
 def assign_patch_centers(
@@ -228,31 +190,6 @@ def assign_patch_centers(
     patch_ids = set(patches.keys()) & set(centers.keys())
     for patch_id in patch_ids:
         patches[patch_id].metadata.center = centers[patch_id]
-
-
-class DummyReader(Reader):
-    def __init__(self, *, data: DataChunk, degrees: bool = True, **kwargs) -> None:
-        self.data = data
-        self.degrees = degrees
-
-    def _init_file(self, **kwargs) -> None:
-        pass
-
-    def close(self) -> None:
-        pass
-
-    @property
-    def n_rows(self) -> int:
-        return len(self.data)
-
-    def iter(self) -> Generator[DataChunk]:
-        yield self.data
-
-    def read_all(self, sparse: int | None = None) -> DataChunk:
-        if sparse is None:
-            return self.data
-        else:
-            return self.data[::sparse]
 
 
 @overload
@@ -342,6 +279,26 @@ class Catalog:
         self._cache_directory = parse_path_or_none(cache_directory)
 
     @classmethod
+    def _from_reader(
+        cls,
+        reader: Reader,
+        reader_kwargs: dict,
+        patch_mode: PatchMode,
+        patch_data: NDArray | Catalog | Coordinate | int | str,
+        cache_directory: TypePathStr | None = None,
+        n_per_patch: int | None = None,
+    ) -> Catalog:
+        # compute the centers as needed
+        reader_inst = reader(**reader_kwargs)
+        centers = get_centers(reader_inst, patch_mode, patch_data, n_per_patch)
+        # process the file and create the patches
+        reader_inst = reader(**reader_kwargs)
+        patches = build_patches(
+            reader_inst, centers, parse_path_or_none(cache_directory)
+        )
+        return cls(patches, cache_directory)
+
+    @classmethod
     def from_records(
         cls,
         ra: NDArray,
@@ -362,17 +319,19 @@ class Catalog:
             weight=np.asarray(weight),
             redshift=np.asarray(redshift),
         )
-        # compute the centers add the patch column as needed
+        reader_kwargs = dict(data=data, patch_name=patches, degrees=degrees)
+        # compute centers and build patches
         patch_mode = PatchMode.get(patches)
         if patch_mode == PatchMode.divide:
             data.set_patch(patches)
-        centers = GetCenters.data(data, patch_mode, patches, n_per_patch)
-        # process the data and create the patches
-        reader_inst = DummyReader(data=data, degrees=degrees)
-        patches = build_patches(
-            reader_inst, centers, parse_path_or_none(cache_directory)
+        return cls._from_reader(
+            reader=streaming.ChunkReader,
+            reader_kwargs=reader_kwargs,
+            patch_mode=patch_mode,
+            patch_data=patches,
+            cache_directory=cache_directory,
+            n_per_patch=n_per_patch,
         )
-        return cls(patches, cache_directory)
 
     @classmethod
     def from_file(
@@ -396,6 +355,7 @@ class Catalog:
             reader = streaming.get_reader(path)
         reader_kwargs.update(
             dict(
+                path=path,
                 ra_name=ra_name,
                 dec_name=dec_name,
                 weight_name=weight_name,
@@ -403,18 +363,18 @@ class Catalog:
                 degrees=degrees,
             )
         )
-        # compute the centers as needed
+        # compute centers and build patches
         patch_mode = PatchMode.get(patches)
         if patch_mode == PatchMode.divide:
             reader_kwargs["patch_name"] = patches
-        reader_inst = reader(path, **reader_kwargs)
-        centers = GetCenters.file(reader_inst, patch_mode, patches, n_per_patch)
-        # process the file and create the patches
-        reader_inst = reader(path, **reader_kwargs)
-        patches = build_patches(
-            reader_inst, centers, parse_path_or_none(cache_directory)
+        return cls._from_reader(
+            reader=reader,
+            reader_kwargs=reader_kwargs,
+            patch_mode=patch_mode,
+            patch_data=patches,
+            cache_directory=cache_directory,
+            n_per_patch=n_per_patch,
         )
-        return cls(patches, cache_directory)
 
     @classmethod
     def from_cache(
