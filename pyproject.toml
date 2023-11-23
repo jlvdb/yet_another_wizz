@@ -22,16 +22,13 @@ dependencies = [
     "typing_extensions;python_version<'3.10'",
     "more_itertools;python_version<'3.10'",
     "deprecated",
-    "tqdm",
     "numpy",
-    "polars",
-    "pandas",  # deprecated soon
-    "astropandas>=1.2.1",  # deprecated soon
-    "scipy",
-    "astropy",
     "pyarrow",
     "h5py",
     "pyyaml",
+    "scipy",
+    "astropy",
+    "tqdm",
     "treecorr>=4.3",
 ]
 

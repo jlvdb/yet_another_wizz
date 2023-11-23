@@ -10,10 +10,6 @@ ext_module_core_math = Extension(
     include_dirs=[np.get_include()],
     extra_compile_args=fast_args,
 )
-ext_module_catalog_streaming = Extension(
-    "yaw.catalog._streaming",
-    ["src/yaw/catalog/streaming.c"],
-)
 ext_module_catalog_utils = Extension(
     "yaw.catalog._utils",
     ["src/yaw/catalog/utils.c"],
@@ -32,7 +28,6 @@ if __name__ == "__main__":
     setup(
         ext_modules=[
             ext_module_core_math,
-            ext_module_catalog_streaming,
             ext_module_catalog_utils,
             ext_module_catalog_groupby,
         ],

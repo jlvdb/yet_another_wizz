@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Generator, Protocol
 import fitsio
 import h5py
 import numpy as np
-import polars as pl
 from polars import DataFrame
 from pyarrow import parquet
 
@@ -18,30 +17,17 @@ from yaw.catalog.patch import PatchData, PatchDataCached
 from yaw.catalog.utils import DataChunk, patch_path_from_id
 from yaw.core.utils import TypePathStr
 
-from ._streaming import _count_lines, _estimate_lines
-
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 __all__ = [
-    "count_lines",
-    "estimate_lines",
     "ParquetReader",
     "FitsReader",
     "HDFReader",
-    "CSVReader",
     "PatchCollector",
     "PatchWriter",
     "get_reader",
 ]
-
-
-def count_lines(filename: str) -> int:
-    return _count_lines(filename)
-
-
-def estimate_lines(filename: str) -> int:
-    return _estimate_lines(filename)
 
 
 class Closable(Protocol):
@@ -72,9 +58,6 @@ class Reader(Protocol):
     def n_rows(self) -> int:
         ...
 
-    def estimate_nrows(self) -> int:
-        ...
-
     def iter(self) -> Generator[DataChunk]:
         ...
 
@@ -96,9 +79,6 @@ class ChunkReader(Reader, FileContext):
     @property
     def n_rows(self) -> int:
         return len(self.data)
-
-    def estimate_nrows(self) -> int:
-        return self.n_rows
 
     def iter(self) -> Generator[DataChunk]:
         yield self.data
@@ -209,8 +189,9 @@ class ParquetReader(BaseReader):
         if sparse is not None:
             return super().read_all(sparse)
         else:
-            dataframe = pl.read_parquet(str(self.path), columns=self._colnames)
-            return self._chunk_from_dataframe(dataframe)
+            table = self.file.read(self.file)
+            data = {column._name: column.to_numpy() for column in table.columns}
+            return self._chunk_from_dict(data)
 
 
 class FitsReader(BaseReader):
@@ -314,88 +295,6 @@ class HDFReader(BaseReader):
         return self._chunk_from_dict(data)
 
 
-class CSVReader(BaseReader):
-    def __init__(
-        self,
-        path: str,
-        ra_name: str,
-        dec_name: str,
-        patch_name: str | None = None,
-        weight_name: str | None = None,
-        redshift_name: str | None = None,
-        degrees: bool = True,
-        chunksize: int = 1_000_000,
-        batchsize: int = 10_000,
-        separator: str = ",",
-        eol_char: str = "\n",
-    ) -> None:
-        super().__init__(
-            path=path,
-            ra_name=ra_name,
-            dec_name=dec_name,
-            patch_name=patch_name,
-            weight_name=weight_name,
-            redshift_name=redshift_name,
-            degrees=degrees,
-            # backend specific
-            chunksize=chunksize,
-            batchsize=batchsize,
-            separator=separator,
-            eol_char=eol_char,
-        )
-
-    def _init_file(
-        self,
-        chunksize: int = 1_000_000,
-        batchsize: int = 10_000,
-        separator: str = ",",
-        eol_char: str = "\n",
-    ) -> None:
-        self.chunksize = chunksize
-        self.batchsize = batchsize
-        self.separator = separator
-        self.eol_char = eol_char
-
-    def close(self) -> None:
-        pass
-
-    @property
-    def n_rows(self) -> int:
-        return count_lines(str(self.path))
-
-    def estimate_nrows(self) -> int:
-        return estimate_lines(str(self.path))
-
-    def iter(self) -> Generator[DataChunk]:
-        n_batch = self.chunksize // self.batchsize
-        reader = pl.read_csv_batched(
-            str(self.path),
-            columns=self._colnames,
-            separator=self.separator,
-            eol_char=self.eol_char,
-            batch_size=self.batchsize,
-        )
-        while True:
-            batches = reader.next_batches(n_batch)
-            if batches is None:
-                return
-            dataframe = pl.concat(batches)
-            yield self._chunk_from_dataframe(dataframe)
-
-    def read_all(self, sparse: int | None = None) -> DataChunk:
-        # reading a sparse sample not directly supported by polars.read_csv()
-        if sparse is not None:
-            return super().read_all(sparse)
-        else:
-            dataframe = pl.read_csv(
-                str(self.path),
-                columns=self._colnames,
-                separator=self.separator,
-                eol_char=self.eol_char,
-            )
-            return self._chunk_from_dataframe(dataframe)
-
-
 class Collector(FileContext):
     @abstractmethod
     def process(
@@ -456,9 +355,7 @@ def get_reader(path: str) -> type[Reader]:
     _, ext = os.path.splitext(path)
     ext = ext.lower()
     # get the correct reader
-    if ext in (".csv",):
-        reader = CSVReader
-    elif ext in (".fits", ".cat"):
+    if ext in (".fits", ".cat"):
         reader = FitsReader
     elif ext in (".hdf5", ".hdf", ".h5"):
         reader = HDFReader
