@@ -5,13 +5,12 @@ import shutil
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Generator, Protocol
+from typing import TYPE_CHECKING, Generator, Literal, Protocol
 
 import fitsio
 import h5py
 import numpy as np
-from polars import DataFrame
-from pyarrow import parquet
+from pyarrow import csv, parquet
 
 from yaw.catalog.patch import PatchData, PatchDataCached
 from yaw.catalog.utils import DataChunk, patch_path_from_id
@@ -24,6 +23,7 @@ __all__ = [
     "ParquetReader",
     "FitsReader",
     "HDFReader",
+    "CsvReader",
     "PatchCollector",
     "PatchWriter",
     "get_reader",
@@ -126,10 +126,6 @@ class BaseReader(Reader, FileContext):
             converted["dec"] = np.deg2rad(converted["dec"])
         return DataChunk(**converted)
 
-    def _chunk_from_dataframe(self, data: DataFrame) -> DataChunk:
-        data_dict = {col: data[col].to_numpy() for col in data.columns}
-        return self._chunk_from_dict(data_dict)
-
     @abstractmethod
     def _init_file(self, **kwargs) -> None:
         pass
@@ -165,6 +161,8 @@ class BaseReader(Reader, FileContext):
 
 
 class ParquetReader(BaseReader):
+    file: parquet.ParquetFile
+
     def _init_file(self) -> None:
         self.file = parquet.ParquetFile(str(self.path))
         availble = set(self.file.metadata.schema.names)
@@ -185,16 +183,17 @@ class ParquetReader(BaseReader):
             yield self._chunk_from_dict(data)
 
     def read_all(self, sparse: int | None = None) -> DataChunk:
-        # reading a sparse sample not directly supported by polars.read_parquet()
         if sparse is not None:
             return super().read_all(sparse)
         else:
-            table = self.file.read(self.file)
+            table = self.file.read(self._colnames)
             data = {column._name: column.to_numpy() for column in table.columns}
             return self._chunk_from_dict(data)
 
 
 class FitsReader(BaseReader):
+    file: fitsio.FITS
+
     def __init__(
         self,
         path: str,
@@ -220,7 +219,7 @@ class FitsReader(BaseReader):
             hdu=hdu,
         )
 
-    def _init_file(self, chunksize: int = 1_000_000, hdu: int = 1) -> None:
+    def _init_file(self, chunksize: int, hdu: int) -> None:
         self.chunksize = chunksize
         self.file = fitsio.FITS(str(self.path))
         self.hdu = self.file[hdu]
@@ -246,6 +245,8 @@ class FitsReader(BaseReader):
 
 
 class HDFReader(BaseReader):
+    file: h5py.File
+
     def __init__(
         self,
         path: str,
@@ -269,7 +270,7 @@ class HDFReader(BaseReader):
             chunksize=chunksize,
         )
 
-    def _init_file(self, chunksize: int = 1_000_000) -> None:
+    def _init_file(self, chunksize: int) -> None:
         self.chunksize = chunksize
         self.file = h5py.File(str(self.path), mode="r")
 
@@ -295,11 +296,95 @@ class HDFReader(BaseReader):
         return self._chunk_from_dict(data)
 
 
+class CsvReader(BaseReader):
+    file: csv.CSVStreamingReader
+
+    def __init__(
+        self,
+        path: str,
+        ra_name: str,
+        dec_name: str,
+        patch_name: str | None = None,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        degrees: bool = True,
+        chunksize: int = 1_000_000,
+        skip_rows: int | None = None,
+        delimiter: str | None = None,
+        quote_char: str | Literal[False] = '"',
+        escape_char: str | Literal[False] = False,
+    ) -> None:
+        super().__init__(
+            path=path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            patch_name=patch_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            degrees=degrees,
+            # backend specific
+            chunksize=chunksize,
+            skip_rows=skip_rows,
+            delimiter=delimiter,
+            quote_char=quote_char,
+            escape_char=escape_char,
+        )
+
+    def _init_file(
+        self,
+        chunksize: int,
+        skip_rows: int | None,
+        delimiter: str | None,
+        quote_char: str | Literal[False],
+        escape_char: str | Literal[False],
+    ) -> None:
+        self.chunksize = chunksize
+        self.read_options = csv.ReadOptions(
+            use_threads=True,
+            skip_rows=skip_rows,
+        )
+        self.parse_options = csv.ParseOptions(
+            delimiter=delimiter,
+            quote_char=quote_char,
+            escape_char=escape_char,
+        )
+        self._reopen_file()  # run any checks that pyarrow might do
+
+    def _reopen_file(self) -> csv.CSVStreamingReader:
+        self.file = csv.open_csv(
+            str(self.path),
+            read_options=self.read_options,
+            parse_options=self.parse_options,
+        )
+
+    @property
+    def n_rows(self) -> int:
+        # this is not very fast, but there is no other way and nobody should use
+        # CSV for large numerical datasets in the first place in 2023
+        with open(self.path) as file:
+            return sum(1 for _ in file)
+
+    def iter(self) -> Generator[DataChunk]:
+        self._reopen_file()
+        for group in self.file:
+            data = {colname: group[colname].to_numpy() for colname in self._colnames}
+            yield self._chunk_from_dict(data)
+
+    def read_all(self, sparse: int | None = None) -> DataChunk:
+        if sparse is not None:
+            return super().read_all(sparse)
+        else:
+            self._reopen_file()
+            table = self.file.read_all()
+            data = {column._name: column.to_numpy() for column in table.columns}
+            return self._chunk_from_dict(data)
+
+
 class Collector(FileContext):
     @abstractmethod
     def process(
         self,
-        df: DataFrame,
+        chunk: DataChunk,
         patch_key: str,
         drop_key: bool = True,
     ) -> None:
@@ -313,8 +398,8 @@ class PatchCollector(Collector):
     def __init__(self) -> None:
         self._chunks: dict[int, list[DataChunk]] = defaultdict(list)
 
-    def process(self, data: DataChunk) -> None:
-        for pid, patch_chunk in data.groupby():
+    def process(self, chunk: DataChunk) -> None:
+        for pid, patch_chunk in chunk.groupby():
             self._chunks[pid].append(patch_chunk)
 
     def get_patches(self) -> dict[int, PatchData]:
@@ -332,8 +417,8 @@ class PatchWriter(Collector):
         if not self.cache_directory.exists():
             self.cache_directory.mkdir(parents=True)
 
-    def process(self, data: DataChunk) -> None:
-        for pid, patch_chunk in data.groupby():
+    def process(self, chunk: DataChunk) -> None:
+        for pid, patch_chunk in chunk.groupby():
             if pid not in self._patches:
                 cachepath = patch_path_from_id(self.cache_directory, pid)
                 if os.path.exists(cachepath):
@@ -355,7 +440,9 @@ def get_reader(path: str) -> type[Reader]:
     _, ext = os.path.splitext(path)
     ext = ext.lower()
     # get the correct reader
-    if ext in (".fits", ".cat"):
+    if ext in (".csv"):
+        reader = CsvReader
+    elif ext in (".fits", ".cat"):
         reader = FitsReader
     elif ext in (".hdf5", ".hdf", ".h5"):
         reader = HDFReader

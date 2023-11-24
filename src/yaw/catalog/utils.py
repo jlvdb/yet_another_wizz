@@ -12,20 +12,17 @@ from yaw.core.coordinates import Coord3D, Coordinate, DistSky
 from yaw.core.utils import TypePathStr
 
 from ._groupby import _groupby_arrays
-from ._utils import _compute_center, _compute_radius, _minmax
+from ._utils import _compute_center, _compute_radius
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, DTypeLike, NDArray
-    from polars import DataFrame
 
 __all__ = [
     "compute_center",
     "compute_radius",
-    "minmax",
     "memmap_init",
     "memmap_load",
     "memmap_resize",
-    "dataframe_to_numpy_dict",
     "concat_numpy_dicts",
     "groupby",
     "DataChunk",
@@ -52,10 +49,6 @@ def compute_radius(
     coord_3d = coord.to_3d()
     dist = _compute_radius(ra, dec, coord_3d.x, coord_3d.y, coord_3d.z)
     return DistSky(dist)
-
-
-def minmax(array: NDArray[np.float64 | np.float32]) -> tuple[float, float]:
-    return _minmax(array)
 
 
 def groupby_arrays(
@@ -117,13 +110,6 @@ def memmap_resize(memmap: np.memmap, new_shape: tuple[int] | int) -> np.memmap:
     readonly = memmap.mode == "r"
     del memmap
     return memmap_load(path, dtype, readonly)
-
-
-def dataframe_to_numpy_dict(dataframe: DataFrame) -> dict[str, NDArray]:
-    the_dict = {}
-    for col in dataframe.columns:
-        the_dict[col] = dataframe[col].to_numpy()
-    return the_dict
 
 
 def concat_numpy_dicts(dicts: Iterable[dict[str, NDArray]]) -> dict[str, NDArray]:
@@ -213,10 +199,6 @@ class DataChunk:
     @classmethod
     def from_dict(cls, the_dict: DataChunk) -> DataChunk:
         return cls(**the_dict)
-
-    @classmethod
-    def from_dataframe(cls, dataframe: DataFrame) -> DataChunk:
-        return cls(**dataframe_to_numpy_dict(dataframe))
 
 
 class IndexMapper:
