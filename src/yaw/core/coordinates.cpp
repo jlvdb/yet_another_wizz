@@ -11,7 +11,7 @@
 npy_intp get_size_checked(PyArrayObject *arr_obj) {
     // check that the array is 1-dim
     if (PyArray_NDIM(arr_obj) != 1) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must be 1-dimensional");
+        PyErr_SetString(PyExc_IndexError, "input arrays must be 1-dimensional");
         return -1;
     }
     // check the array contains elements
@@ -22,12 +22,12 @@ npy_intp get_size_checked(PyArrayObject *arr_obj) {
     }
     // check if the arrays are of type float64
     if (PyArray_TYPE(arr_obj) != NPY_FLOAT64) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must be of type float64");
+        PyErr_SetString(PyExc_TypeError, "input arrays must be of type float64");
         return -1;
     }
     // check if the arrays are contiguous
     if (!PyArray_ISCONTIGUOUS(arr_obj)) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must be contiguous");
+        PyErr_SetString(PyExc_IndexError, "input arrays must be contiguous");
         return -1;
     }
     return size;
@@ -56,7 +56,7 @@ extern "C" PyObject *coord_sky_to_sphere(PyObject *self, PyObject *args) {
     PyObject *y_obj = PyArray_EMPTY(1, &size_ra, NPY_FLOAT64, 0);
     PyObject *z_obj = PyArray_EMPTY(1, &size_ra, NPY_FLOAT64, 0);
     if (!x_obj || !y_obj || !z_obj) {
-        PyErr_SetString(PyExc_TypeError, "Failed to allocate output arrays");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to allocate output arrays");
         Py_XDECREF(x_obj);
         Py_XDECREF(y_obj);
         Py_XDECREF(z_obj);
@@ -107,7 +107,7 @@ extern "C" PyObject *coord_sphere_to_sky(PyObject *self, PyObject *args) {
     npy_intp size_z = get_size_checked(z_arrobj);
     if (size_z == -1) return nullptr;
     if (size_x != size_y || size_x != size_z) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must have equal size");
+        PyErr_SetString(PyExc_IndexError, "input arrays must have equal size");
         return nullptr;
     }
 
@@ -115,7 +115,7 @@ extern "C" PyObject *coord_sphere_to_sky(PyObject *self, PyObject *args) {
     PyObject *ra_obj = PyArray_EMPTY(1, &size_x, NPY_FLOAT64, 0);
     PyObject *dec_obj = PyArray_EMPTY(1, &size_x, NPY_FLOAT64, 0);
     if (!ra_obj || !dec_obj) {
-        PyErr_SetString(PyExc_TypeError, "Failed to allocate output arrays");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to allocate output arrays");
         Py_XDECREF(ra_obj);
         Py_XDECREF(dec_obj);
         return nullptr;
@@ -175,7 +175,7 @@ extern "C" PyObject *radius_from_coord_sky(PyObject *self, PyObject *args) {
     npy_intp size_dec = get_size_checked(dec_arrobj);
     if (size_ra == -1) return nullptr;
     if (size_ra != size_dec) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must have equal size");
+        PyErr_SetString(PyExc_IndexError, "input arrays must have equal size");
         return nullptr;
     }
 
@@ -227,7 +227,7 @@ extern "C" PyObject *radius_from_coord_sphere(PyObject *self, PyObject *args) {
     npy_intp size_z = get_size_checked(z_arrobj);
     if (size_z == -1) return nullptr;
     if (size_x != size_y || size_x != size_z) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must have equal size");
+        PyErr_SetString(PyExc_IndexError, "input arrays must have equal size");
         return nullptr;
     }
 

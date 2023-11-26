@@ -90,7 +90,7 @@ PyObject* vector_to_numpy_array(const std::vector<T>& vec) {
 
     PyObject* array = PyArray_SimpleNewFromData(1, &size, dtype, vec_copy);
     if (array == nullptr) {
-        PyErr_SetString(PyExc_TypeError, "failed to allocate memory for numpy array");
+        PyErr_SetString(PyExc_RuntimeError, "failed to allocate memory for numpy array");
         delete[] vec_copy;  // Release memory in case of failure
         return nullptr;
     }
@@ -103,14 +103,14 @@ PyObject* vector_to_numpy_array(const std::vector<T>& vec) {
 PyObject* map_to_dict(const std::unordered_map<int64_t, std::vector<double>>& data) {
     PyObject* pyDict = PyDict_New();
     if (!pyDict) {
-        PyErr_SetString(PyExc_TypeError, "failed to create output dictionary");
+        PyErr_SetString(PyExc_RuntimeError, "failed to create output dictionary");
         return nullptr;
     }
     for (const auto& entry : data) {
         PyObject* key = PyLong_FromLong(entry.first);
         PyObject* value = vector_to_numpy_array(entry.second);
         if (!key || !value) {
-            PyErr_SetString(PyExc_TypeError, "create patch key/value pair");
+            PyErr_SetString(PyExc_RuntimeError, "create patch key/value pair");
             Py_XDECREF(key);
             Py_XDECREF(value);
             Py_DECREF(pyDict);
@@ -194,10 +194,6 @@ extern "C" PyObject *groupby_arrays(PyObject *self, PyObject *args) {
     auto result2 = future2.get();
     auto result3 = future3.get();
     auto result4 = future4.get();
-    if (!result1 || !result2 || !result3 || !result4) {
-        PyErr_SetString(PyExc_IndexError, "failed to retrieve results from threads");
-        return nullptr;
-    }
 
     // convert to python tuple of dicts
     PyObject* pydict1 = map_to_dict(result1);

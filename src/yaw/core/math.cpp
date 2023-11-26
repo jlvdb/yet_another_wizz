@@ -10,7 +10,7 @@
 npy_intp get_size_checked(PyArrayObject *arr_obj) {
     // check that the array is 1-dim
     if (PyArray_NDIM(arr_obj) != 1) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must be 1-dimensional");
+        PyErr_SetString(PyExc_IndexError, "input arrays must be 1-dimensional");
         return -1;
     }
     // check the array contains elements
@@ -21,12 +21,12 @@ npy_intp get_size_checked(PyArrayObject *arr_obj) {
     }
     // check if the arrays are of type float64
     if (PyArray_TYPE(arr_obj) != NPY_FLOAT64) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must be of type float64");
+        PyErr_SetString(PyExc_TypeError, "input arrays must be of type float64");
         return -1;
     }
     // check if the arrays are contiguous
     if (!PyArray_ISCONTIGUOUS(arr_obj)) {
-        PyErr_SetString(PyExc_ValueError, "input arrays must be contiguous");
+        PyErr_SetString(PyExc_IndexError, "input arrays must be contiguous");
         return -1;
     }
     return size;
@@ -56,14 +56,14 @@ static PyObject* _rebin(PyObject* self, PyObject* args) {
     npy_intp size_counts = get_size_checked(counts_old_arrobj);
     if (size_counts == -1) return nullptr;
     if (size_counts != n_bins_old) {
-        PyErr_SetString(PyExc_ValueError, "Number of bins and counts does not match");
+        PyErr_SetString(PyExc_IndexError, "Number of bins and counts does not match");
         return nullptr;
     }
 
     // create the output numpy arrays with the same size and datatype
     PyObject *counts_new_obj = PyArray_EMPTY(1, &n_bins_new, NPY_FLOAT64, 0);
     if (!counts_new_obj) {
-        PyErr_SetString(PyExc_TypeError, "Failed to allocate output arrays");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to allocate output arrays");
         Py_XDECREF(counts_new_obj);
         return nullptr;
     }
