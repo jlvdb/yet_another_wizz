@@ -138,9 +138,6 @@ class BaseReader(Reader, FileContext):
     def n_rows(self) -> int:
         pass
 
-    def estimate_nrows(self) -> int:
-        return self.n_rows
-
     @abstractmethod
     def iter(self) -> Generator[DataChunk]:
         pass

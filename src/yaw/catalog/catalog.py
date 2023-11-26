@@ -140,7 +140,7 @@ def create_centers(
     subset_size = n_patches * n_per_patch
     with reader:
         # generate a subset of indices to keep and build a mapping to chunks
-        n_records = reader.estimate_nrows()
+        n_records = reader.n_rows
         take = generate_index_subset(n_records, subset_size)
         indexmap = IndexMapper(take)
         # read the data and keep the data subset
