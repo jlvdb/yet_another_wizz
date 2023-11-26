@@ -100,12 +100,12 @@ def binning_to_hdf(binning: IntervalIndex, dest: h5py.Group) -> None:
     dset.attrs["closed"] = binning.closed
 
 
-def patch_idx_offset(patched: Iterable[PatchedArray]) -> NDArray[np.int_]:
+def patch_idx_offset(patched: Iterable[PatchedArray]) -> NDArray[np.int64]:
     """Compute the offsets for patch indices of a set of :obj:`PatchedArray` if
     they were merged into one large :obj:`PatchedArray`."""
     idx_offset = np.fromiter(
         accumulate((p.n_patches for p in patched), initial=0),
-        dtype=np.int_,
+        dtype=np.int64,
         count=len(patched),
     )
     return idx_offset
@@ -131,7 +131,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
     @property
     def dtype(self) -> DTypeLike:
         """The numpy data type of the underlying data."""
-        return np.float_
+        return np.float64
 
     @property
     def shape(self) -> tuple[int]:
@@ -615,7 +615,7 @@ class PatchedCount(PatchedArray):
         n_patches: int,
         *,
         auto: bool,
-        dtype: DTypeLike = np.float_,
+        dtype: DTypeLike = np.float64,
     ) -> PatchedCount:
         """Create a new instance where all elements of the counts array are
         initialised to zero.

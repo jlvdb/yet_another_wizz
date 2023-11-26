@@ -87,7 +87,7 @@ class UniformRandoms:
 
     @staticmethod
     def sky2cylinder(
-        ra: float | NDArray[np.float_], dec: float | NDArray[np.float_]
+        ra: float | NDArray[np.float64], dec: float | NDArray[np.float64]
     ) -> NDArray:
         """Conversion from spherical to cylindrical coordinates.
 
@@ -108,8 +108,8 @@ class UniformRandoms:
 
     @staticmethod
     def cylinder2sky(
-        x: float | NDArray[np.float_], y: float | NDArray[np.float_]
-    ) -> float | NDArray[np.float_]:
+        x: float | NDArray[np.float64], y: float | NDArray[np.float64]
+    ) -> float | NDArray[np.float64]:
         """Conversion from cylindrical to spherical coordinates.
 
         Args:

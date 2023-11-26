@@ -32,7 +32,7 @@ class SphericalKDTree:
         self,
         ra: NDArray[np.float64],
         dec: NDArray[np.float64],
-        weight: NDArray[np.float_] | None = None,
+        weight: NDArray[np.float64] | None = None,
         *,
         leafsize: int = 16,
         copy_data: bool = False,
@@ -71,7 +71,7 @@ class SphericalKDTree:
     def count(
         self,
         other: SphericalKDTree,
-        scales: NDArray[np.float_],
+        scales: NDArray[np.float64],
         dist_weight_scale: float | None = None,
         weight_res: int = 50,
     ) -> NDArray:

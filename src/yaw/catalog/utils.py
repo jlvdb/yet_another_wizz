@@ -185,14 +185,14 @@ class DataChunk:
 
 
 class IndexMapper:
-    def __init__(self, indices: NDArray[np.int_]) -> None:
+    def __init__(self, indices: NDArray[np.int64]) -> None:
         self.reset()
         self.idx = indices
 
     def reset(self) -> None:
         self.recorded = 0
 
-    def map(self, data: Sized) -> NDArray[np.int_]:
+    def map(self, data: Sized) -> NDArray[np.int64]:
         # slide the index window according to the input data sample
         start = self.recorded
         end = start + len(data)

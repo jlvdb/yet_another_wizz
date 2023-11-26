@@ -39,7 +39,7 @@ __all__ = [
 # the scipy.cluster module.
 
 
-def assign_patch_ids(centers: Coordinate, position: Coordinate) -> NDArray[np.int_]:
+def assign_patch_ids(centers: Coordinate, position: Coordinate) -> NDArray[np.int64]:
     """Assign objects based on their coordinate to a list of points based on
     proximit."""
     tree = KDTree(centers.to_3d().values)  # this is much faster than vq.vq
@@ -53,7 +53,7 @@ try:
     def _treecorr_create_patches(
         n_patches: int,
         position: Coordinate,
-    ) -> tuple[Coord3D, NDArray[np.int_]]:
+    ) -> tuple[Coord3D, NDArray[np.int64]]:
         """Use the *k*-means clustering algorithm of :obj:`treecorr.Catalog` to
         generate spatial patches and assigning objects to those patches.
         """
@@ -68,7 +68,7 @@ try:
         xyz = np.atleast_2d(cat.patch_centers)
         centers = Coord3D.from_array(xyz)
         if n_patches == 1:
-            patches = np.zeros(len(position), dtype=np.int_)
+            patches = np.zeros(len(position), dtype=np.int64)
         else:
             patches = assign_patch_ids(centers=centers, position=position)
         del cat  # might not be necessary
@@ -81,7 +81,7 @@ except ImportError:
     def _scipy_create_patches(
         n_patches: int,
         position: Coordinate,
-    ) -> tuple[Coord3D, NDArray[np.int_]]:
+    ) -> tuple[Coord3D, NDArray[np.int64]]:
         """Use the *k*-means clustering algorithm of :obj:`scipy.cluster` to
         generate spatial patches and assigning objects to those patches.
         """
@@ -125,7 +125,7 @@ class PatchMode(Enum):
 
 def generate_index_subset(
     max_idx: int, size: int, seed: int = 12345
-) -> NDArray[np.int_]:
+) -> NDArray[np.int64]:
     rng = np.random.default_rng(seed=seed)
     idx = rng.integers(0, max_idx, size=size)
     idx.sort()
@@ -439,17 +439,17 @@ class Catalog:
         return all(patch.has_weight() for patch in self._patches.values())
 
     @property
-    def ra(self) -> NDArray[np.float_]:
+    def ra(self) -> NDArray[np.float64]:
         """Get an array of the right ascension values in radians."""
         return np.concatenate([self._patches[pid].ra for pid in self.ids])
 
     @property
-    def dec(self) -> NDArray[np.float_]:
+    def dec(self) -> NDArray[np.float64]:
         """Get an array of the declination values in radians."""
         return np.concatenate([self._patches[pid].dec for pid in self.ids])
 
     @property
-    def weight(self) -> NDArray[np.float_] | None:
+    def weight(self) -> NDArray[np.float64] | None:
         """Get the object weights as array or ``None`` if not available."""
         if self.has_weight():
             return np.concatenate([self._patches[pid].weight for pid in self.ids])
@@ -457,7 +457,7 @@ class Catalog:
             return None
 
     @property
-    def redshift(self) -> NDArray[np.float_] | None:
+    def redshift(self) -> NDArray[np.float64] | None:
         """Get the redshifts as array or ``None`` if not available."""
         if self.has_redshift():
             return np.concatenate([self._patches[pid].redshift for pid in self.ids])
@@ -465,7 +465,7 @@ class Catalog:
             return None
 
     @property
-    def patch(self) -> NDArray[np.int_]:
+    def patch(self) -> NDArray[np.int64]:
         """Get the patch indices of each object as array."""
         return np.concatenate(
             [np.full(len(self._patches[pid]), pid) for pid in self.ids]
@@ -477,7 +477,7 @@ class Catalog:
         available."""
         return float(self.get_totals().sum())
 
-    def get_totals(self) -> NDArray[np.float_]:
+    def get_totals(self) -> NDArray[np.float64]:
         """Get an array of the sum of weights or number of objects in each
         patch."""
         return np.array([self._patches[pid].total for pid in self.ids])

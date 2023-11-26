@@ -74,7 +74,7 @@ class ResamplingConfig(BaseConfig):
         metadata=Parameter(type=int, help="random seed to use"),
     )
     """Random seed to use."""
-    _resampling_idx: NDArray[np.int_] | None = field(
+    _resampling_idx: NDArray[np.int64] | None = field(
         default=None, init=False, repr=False
     )
 
@@ -117,7 +117,7 @@ class ResamplingConfig(BaseConfig):
         else:
             return self._resampling_idx.shape[0]
 
-    def _generate_bootstrap(self, n_patches: int) -> NDArray[np.int_]:
+    def _generate_bootstrap(self, n_patches: int) -> NDArray[np.int64]:
         """Generate samples for the bootstrap resampling method.
 
         For N patches, draw M realisations each containing N randomly chosen
@@ -127,7 +127,7 @@ class ResamplingConfig(BaseConfig):
         rng = np.random.default_rng(seed=self.seed)
         return rng.integers(0, N, size=(self.n_boot, N))
 
-    def _generate_jackknife(self, n_patches: int) -> NDArray[np.int_]:
+    def _generate_jackknife(self, n_patches: int) -> NDArray[np.int64]:
         """Generate samples for the jackknife resampling method.
 
         For N patches, draw N realisations by leaving out one of the N patches.
@@ -136,7 +136,7 @@ class ResamplingConfig(BaseConfig):
         idx = np.delete(np.tile(np.arange(0, N), N), np.s_[:: N + 1])
         return idx.reshape((N, N - 1))
 
-    def get_samples(self, n_patches: int) -> NDArray[np.int_]:
+    def get_samples(self, n_patches: int) -> NDArray[np.int64]:
         """Generate a list of patch indices that produces samples for the
         selected resampling method.
 

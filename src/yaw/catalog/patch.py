@@ -193,7 +193,7 @@ class PatchData:
 
     def iter_bins(
         self,
-        z_bins: NDArray[np.float_],
+        z_bins: NDArray[np.float64],
         allow_no_redshift: bool = False,
     ) -> Generator[tuple[Interval, PatchData]]:
         """Iterate the patch in bins of redshift.

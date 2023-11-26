@@ -183,18 +183,18 @@ def merge_pairs_patches(
 
 
 def count_histogram_patch(
-    patch: PatchData, z_bins: NDArray[np.float_]
-) -> NDArray[np.float_]:
+    patch: PatchData, z_bins: NDArray[np.float64]
+) -> NDArray[np.float64]:
     """Compute a histogram of redshifts in a single patch.
 
     Args:
         patch (:obj:`yaw.catalog.PatchData`):
             The input patch catalogue.
-        z_bins (:obj:`NDArray[np.float_]`):
+        z_bins (:obj:`NDArray[np.float64]`):
             The bin edges including the right-most edge.
 
     Returns:
-        :obj:`NDArray[np.float_]`:
+        :obj:`NDArray[np.float64]`:
             Counts in the provided redshift bins.
     """
     counts, _ = np.histogram(patch.redshift, z_bins, weights=patch.weight)
@@ -202,17 +202,17 @@ def count_histogram_patch(
 
 
 def merge_histogram_patches(
-    hist_counts: NDArray[np.float_],
-    z_bins: NDArray[np.float_],
+    hist_counts: NDArray[np.float64],
+    z_bins: NDArray[np.float64],
     sampling_config: ResamplingConfig | None = None,
 ) -> HistData:
     """Merge redshift histogram from patches into a histogram data container.
 
     Args:
-        hist_counts (:obj:`NDArray[np.float_]`):
+        hist_counts (:obj:`NDArray[np.float64]`):
             A two-dimensional array with histogram counts with shape
             `(n_patches, n_bins)`.
-        z_bins (:obj:`NDArray[np.float_]`):
+        z_bins (:obj:`NDArray[np.float64]`):
             The bin edges including the right-most edge.
         sampling_config: (:obj:`yaw.config.ResamplingConfig`, optional):
             Specify the resampling method and its configuration.
@@ -241,5 +241,5 @@ def correlate(
     return count_pairs_patches(*args)
 
 
-def true_redshifts(args: tuple[PatchData, NDArray[np.float_]]) -> NDArray[np.float_]:
+def true_redshifts(args: tuple[PatchData, NDArray[np.float64]]) -> NDArray[np.float64]:
     return count_histogram_patch(*args)
