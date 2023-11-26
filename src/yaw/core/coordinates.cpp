@@ -56,7 +56,7 @@ extern "C" PyObject *coord_sky_to_sphere(PyObject *self, PyObject *args) {
     PyObject *y_obj = PyArray_EMPTY(1, &size_ra, NPY_FLOAT64, 0);
     PyObject *z_obj = PyArray_EMPTY(1, &size_ra, NPY_FLOAT64, 0);
     if (!x_obj || !y_obj || !z_obj) {
-        // Cleanup in case of an error
+        PyErr_SetString(PyExc_TypeError, "Failed to allocate output arrays");
         Py_XDECREF(x_obj);
         Py_XDECREF(y_obj);
         Py_XDECREF(z_obj);
@@ -115,7 +115,7 @@ extern "C" PyObject *coord_sphere_to_sky(PyObject *self, PyObject *args) {
     PyObject *ra_obj = PyArray_EMPTY(1, &size_x, NPY_FLOAT64, 0);
     PyObject *dec_obj = PyArray_EMPTY(1, &size_x, NPY_FLOAT64, 0);
     if (!ra_obj || !dec_obj) {
-        // Cleanup in case of an error
+        PyErr_SetString(PyExc_TypeError, "Failed to allocate output arrays");
         Py_XDECREF(ra_obj);
         Py_XDECREF(dec_obj);
         return nullptr;

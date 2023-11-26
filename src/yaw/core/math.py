@@ -273,10 +273,10 @@ def corr_from_cov(covariance: NDArray) -> NDArray:
 
 
 def rebin(
-    bins_new: NDArray[np.float_],
-    bins_old: NDArray[np.float_],
-    counts_old: NDArray[np.float_],
-) -> NDArray[np.float_]:
+    bins_new: NDArray[np.float64],
+    bins_old: NDArray[np.float64],
+    counts_old: NDArray[np.float64],
+) -> NDArray[np.float64]:
     """Recompute compute histogram counts for a new binning.
 
     The new counts are computed by summing the fractional contribution of the
@@ -299,9 +299,9 @@ def rebin(
         Implemented as C extension.
     """
     return _rebin(
-        bins_new.astype(np.float_),
-        bins_old.astype(np.float_),
-        counts_old.astype(np.float_),
+        np.ascontiguousarray(bins_new, np.float64),
+        np.ascontiguousarray(bins_old, np.float64),
+        np.ascontiguousarray(counts_old, np.float64),
     )
 
 
@@ -330,6 +330,7 @@ def shift_histogram(
         :obj:`NDArray`:
             The shifted histogram counts.
     """
-    bins_old = bins.astype(np.float_)
+    bins_old = np.ascontiguousarray(bins, np.float64)
     bins_new = bins_old + dx
-    return A * _rebin(bins_new, bins_old, counts.astype(np.float_))
+    counts_old = np.ascontiguousarray(counts, np.float64)
+    return A * _rebin(bins_new, bins_old, counts_old)
