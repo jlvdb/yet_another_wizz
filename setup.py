@@ -4,6 +4,7 @@ from setuptools import Extension, setup
 fast_args = ["-O3", "-march=native", "-funroll-all-loops", "-std=c++11"]
 
 
+# TODO: handle failing extension builds, see e.g. https://github.com/pallets/markupsafe/blob/main/setup.py
 ext_module_core_coordinates = Extension(
     "yaw.core._coordinates",
     ["src/yaw/core/coordinates.cpp"],
