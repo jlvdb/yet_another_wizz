@@ -9,12 +9,20 @@ from typing import TYPE_CHECKING, TypeVar
 import numpy as np
 from numpy.typing import NDArray
 
-from ._math import _rebin
-
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike
 
     from yaw.core.containers import SampledData
+
+try:
+    from ._math import _rebin
+except ImportError:
+    import warnings
+
+    warnings.warn("compiled ._math extension not availble, performance degraded")
+    # TODO: implement fallback for:
+    #  - _rebin
+    raise NotImplementedError("no fallback code for ._math extension available")
 
 __all__ = [
     "array_equal",

@@ -12,15 +12,26 @@ from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
 
-from ._coordinates import (
-    _coord_sky_to_sphere,
-    _coord_sphere_to_sky,
-    _radius_from_coord_sky,
-    _radius_from_coord_sphere,
-)
-
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
+
+try:
+    from ._coordinates import (
+        _coord_sky_to_sphere,
+        _coord_sphere_to_sky,
+        _radius_from_coord_sky,
+        _radius_from_coord_sphere,
+    )
+except ImportError:
+    import warnings
+
+    warnings.warn("compiled ._coordinates extension not availble, performance degraded")
+    # TODO: implement fallback for:
+    #  - _coord_sky_to_sphere
+    #  - _coord_sphere_to_sky
+    #  - _radius_from_coord_sky
+    #  - _radius_from_coord_sphere
+    raise NotImplementedError("no fallback code for ._coordinates extension available")
 
 __all__ = ["Coord3D", "CoordSky", "Dist3D", "DistSky"]
 

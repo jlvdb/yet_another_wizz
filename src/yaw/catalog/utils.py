@@ -10,10 +10,18 @@ import numpy as np
 
 from yaw.core.utils import TypePathStr
 
-from ._groupby import _groupby_arrays
-
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, DTypeLike, NDArray
+
+try:
+    from ._groupby import _groupby_arrays
+except ImportError:
+    import warnings
+
+    warnings.warn("compiled ._groupby extension not availble, performance degraded")
+    # TODO: implement fallback for:
+    #  - _groupby_arrays
+    raise NotImplementedError("no fallback code for ._groupby extension available")
 
 __all__ = [
     "memmap_init",
