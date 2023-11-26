@@ -1,6 +1,6 @@
-#include <math.h>
 #include <Python.h>
 #include <numpy/arrayobject.h>
+#include <math.h>
 
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

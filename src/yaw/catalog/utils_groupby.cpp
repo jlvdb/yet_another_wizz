@@ -124,26 +124,6 @@ PyObject* map_to_dict(const std::unordered_map<int64_t, std::vector<double>>& da
 }
 
 
-PyObject* groupby_array_pywrapped(PyArrayObject *dataObj, const std::vector<int64_t> &indices) {
-    if (dataObj == nullptr) {
-        Py_RETURN_NONE;
-    }
-    else {
-        if (numpy_array_check_type<double>(dataObj)) {
-            PyErr_SetString(PyExc_TypeError, "data array must be of type float64");
-            Py_RETURN_NONE;
-        }
-        std::vector<double> data = numpy_array_to_vector<double>(dataObj);
-        if (indices.size() != data.size()) {
-            PyErr_SetString(PyExc_IndexError, "length of 'ra' does not match 'patch'");
-            Py_RETURN_NONE;
-        }
-        auto result = groupby_array(data, indices);
-        return map_to_dict(result);
-    }
-}
-
-
 extern "C" PyObject *groupby_arrays(PyObject *self, PyObject *args) {
     // Parse the input arguments
     PyArrayObject *patchObj, *raObj, *decObj;
