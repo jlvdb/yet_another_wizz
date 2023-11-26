@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
 
-from yaw.core.math import sgn
+from ._coordinates import (
+    _coord_sky_to_sphere,
+    _coord_sphere_to_sky,
+    _radius_from_coord_sky,
+    _radius_from_coord_sphere,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
@@ -82,6 +87,10 @@ class Coordinate(ABC):
 
     @abstractmethod
     def distance(self, other: Coordinate) -> Distance:
+        pass
+
+    @abstractmethod
+    def max_dist(self, other: Coordinate) -> Distance:
         pass
 
 
@@ -158,17 +167,10 @@ class Coord3D(Coordinate):
         return self
 
     def to_sky(self) -> CoordSky:
-        x = self.x
-        y = self.y
-        z = self.z
-        r_d2 = np.sqrt(x * x + y * y)
-        r_d3 = np.sqrt(x * x + y * y + z * z)
-        # transform
-        x_normed = np.ones_like(x)  # fallback for zero-division, arccos(1)=0.0
-        np.divide(x, r_d2, where=r_d2 > 0.0, out=x_normed)
-        ra = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
-        dec = np.arcsin(self.z / r_d3)
-        return CoordSky(ra, dec)
+        x = np.ascontiguousarray(self.x, dtype=np.float64)
+        y = np.ascontiguousarray(self.y, dtype=np.float64)
+        z = np.ascontiguousarray(self.z, dtype=np.float64)
+        return CoordSky(*_coord_sphere_to_sky(x, y, z))
 
     def distance(self, other: Coordinate) -> Dist3D:
         """Compute the Euclidean distance between two coordinate vectors.
@@ -188,6 +190,13 @@ class Coord3D(Coordinate):
         return Dist3D(
             np.sqrt((c1.x - c2.x) ** 2 + (c1.y - c2.y) ** 2 + (c1.z - c2.z) ** 2)
         )
+
+    def max_dist(self, other: Coordinate) -> Dist3D:
+        c = other.to_3d().values
+        x = np.ascontiguousarray(self.x, dtype=np.float64)
+        y = np.ascontiguousarray(self.y, dtype=np.float64)
+        z = np.ascontiguousarray(self.z, dtype=np.float64)
+        return Dist3D(_radius_from_coord_sphere(x, y, z, *c))
 
 
 class CoordSky(Coordinate):
@@ -254,14 +263,13 @@ class CoordSky(Coordinate):
     def values(self) -> NDArray[np.float_]:
         return np.squeeze(np.transpose([self.ra, self.dec]))
 
-    def mean(self) -> Coord3D:
+    def mean(self) -> CoordSky:
         return self.to_3d().mean().to_sky()
 
     def to_3d(self) -> Coord3D:
-        cos_dec = np.cos(self.dec)
-        return Coord3D(
-            x=np.cos(self.ra) * cos_dec, y=np.sin(self.ra) * cos_dec, z=np.sin(self.dec)
-        )
+        ra = np.ascontiguousarray(self.ra, dtype=np.float64)
+        dec = np.ascontiguousarray(self.dec, dtype=np.float64)
+        return Coord3D(*_coord_sky_to_sphere(ra, dec))
 
     def to_sky(self) -> CoordSky:
         return self
@@ -286,6 +294,12 @@ class CoordSky(Coordinate):
         other_3D = other.to_3d()
         dist = self_3D.distance(other_3D)
         return dist.to_sky()
+
+    def max_dist(self, other: Coordinate) -> DistSky:
+        c = other.to_3d().values
+        ra = np.ascontiguousarray(self.ra, dtype=np.float64)
+        dec = np.ascontiguousarray(self.dec, dtype=np.float64)
+        return Dist3D(_radius_from_coord_sky(ra, dec, *c)).to_sky()
 
 
 _Tdist = TypeVar("_Tdist", bound="Distance")

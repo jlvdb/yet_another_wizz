@@ -8,18 +8,14 @@ from typing import TYPE_CHECKING, Any, Generator
 
 import numpy as np
 
-from yaw.core.coordinates import Coord3D, Coordinate, DistSky
 from yaw.core.utils import TypePathStr
 
 from ._groupby import _groupby_arrays
-from ._utils import _compute_center, _compute_radius
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 __all__ = [
-    "compute_center",
-    "compute_radius",
     "memmap_init",
     "memmap_load",
     "memmap_resize",
@@ -36,19 +32,6 @@ __all__ = [
 ]
 
 # type annotations for C code
-
-
-def compute_center(ra: NDArray[np.float64], dec: NDArray[np.float64]) -> Coord3D:
-    xyz = _compute_center(ra, dec)
-    return Coord3D(*xyz)
-
-
-def compute_radius(
-    ra: NDArray[np.float64], dec: NDArray[np.float64], coord: Coordinate
-) -> DistSky:
-    coord_3d = coord.to_3d()
-    dist = _compute_radius(ra, dec, coord_3d.x, coord_3d.y, coord_3d.z)
-    return DistSky(dist)
 
 
 def groupby_arrays(

@@ -49,12 +49,13 @@ class PatchMetadata:
         center: Coordinate | None = None,
         radius: Distance | None = None,
     ) -> None:
+        coords = CoordSky(ra, dec)
         if center is None:
-            self.center = utils.compute_center(ra, dec).to_sky()
+            self.center = coords.mean()
         else:
             self.center = center.to_sky()
         if radius is None:
-            self.radius = utils.compute_radius(ra, dec, self.center)
+            self.radius = coords.max_dist(self.center)
         else:
             self.radius = radius.to_sky()
 

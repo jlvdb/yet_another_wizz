@@ -34,71 +34,7 @@ npy_intp get_size_checked(PyArrayObject *arr_obj) {
 }
 
 
-extern "C" PyObject *__radec_to_xyz(PyObject *self, PyObject *args) {
-    // Parse the input arguments
-    PyArrayObject *ra_arrobj, *dec_arrobj;
-    if (!PyArg_ParseTuple(args, "O!O!", &PyArray_Type, &ra_arrobj, &PyArray_Type, &dec_arrobj)) {
-        PyErr_SetString(PyExc_TypeError, "invalid arguments, expected two numpy arrays");
-        return nullptr;
-    }
-    // skipping checks that would ensure:
-    // dtype==float64, dim==1, len()>0 and equal for inputs, data or contiguous
-    npy_intp size = PyArray_SIZE(ra_arrobj);
-
-    // create the output numpy array with the same size and datatype
-    PyObject *x_obj = PyArray_EMPTY(1, &size, NPY_FLOAT64, 0);
-    if (!x_obj) return nullptr;
-    Py_XINCREF(x_obj);
-
-    // get pointers to the arrays
-    double *ra_array = static_cast<double *>(PyArray_DATA(ra_arrobj));
-    double *dec_array = static_cast<double *>(PyArray_DATA(dec_arrobj));
-    double *x_array = static_cast<double *>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(x_obj)));
-
-    // compute the new coordinates
-    for (npy_intp i = 0; i < size; ++i) {
-        double cos_ra = cos(ra_array[i]);
-        double cos_dec = cos(dec_array[i]);
-        // compute final coordinates
-        x_array[i] = cos_ra * cos_dec;
-    }
-    // return the arrays holding the new coordinates
-    return Py_BuildValue("O", x_obj);
-}
-
-
-extern "C" PyObject *_radec_to_xyz(PyObject *self, PyObject *args) {
-    // Parse the input arguments
-    PyArrayObject *ra_arrobj, *dec_arrobj, *x_arrobj, *y_arrobj, *z_arrobj;
-    if (!PyArg_ParseTuple(args, "O!O!O!O!O!", &PyArray_Type, &ra_arrobj, &PyArray_Type, &dec_arrobj, &PyArray_Type, &x_arrobj, &PyArray_Type, &y_arrobj, &PyArray_Type, &z_arrobj)) {
-        PyErr_SetString(PyExc_TypeError, "invalid arguments, expected two numpy arrays");
-        return nullptr;
-    }
-    // get pointers to the arrays
-    double *ra_array = static_cast<double *>(PyArray_DATA(ra_arrobj));
-    double *dec_array = static_cast<double *>(PyArray_DATA(dec_arrobj));
-    double *x_array = static_cast<double *>(PyArray_DATA(x_arrobj));
-    double *y_array = static_cast<double *>(PyArray_DATA(y_arrobj));
-    double *z_array = static_cast<double *>(PyArray_DATA(z_arrobj));
-
-    // compute the new coordinates
-    npy_intp size = PyArray_SIZE(ra_arrobj);
-    double sin_ra, sin_dec, cos_ra, cos_dec;
-    for (npy_intp i = 0; i < size; ++i) {
-        sin_ra = sin(ra_array[i]);
-        sin_dec = sin(dec_array[i]);
-        cos_ra = sqrt(1 - sin_ra * sin_ra);
-        cos_dec = sqrt(1 - sin_dec * sin_dec);
-        // compute final coordinates
-        x_array[i] = cos_ra * cos_dec;
-        y_array[i] = sin_ra * cos_dec;
-        z_array[i] = sin_dec;
-    }
-    Py_RETURN_NONE;
-}
-
-
-extern "C" PyObject *radec_to_xyz(PyObject *self, PyObject *args) {
+extern "C" PyObject *coord_sky_to_sphere(PyObject *self, PyObject *args) {
     // Parse the input arguments
     PyArrayObject *ra_arrobj, *dec_arrobj;
     if (!PyArg_ParseTuple(args, "O!O!", &PyArray_Type, &ra_arrobj, &PyArray_Type, &dec_arrobj)) {
@@ -148,15 +84,15 @@ extern "C" PyObject *radec_to_xyz(PyObject *self, PyObject *args) {
     }
 
     // return the arrays holding the new coordinates
-    PyObject *result = Py_BuildValue("OOO", x_obj, y_obj, z_obj);
+    PyObject *pyresult = Py_BuildValue("OOO", x_obj, y_obj, z_obj);
     Py_XDECREF(x_obj);
     Py_XDECREF(y_obj);
     Py_XDECREF(z_obj);
-    return result;
+    return pyresult;
 }
 
 
-extern "C" PyObject *xyz_to_radec(PyObject *self, PyObject *args) {
+extern "C" PyObject *coord_sphere_to_sky(PyObject *self, PyObject *args) {
     // Parse the input arguments
     PyArrayObject *x_arrobj, *y_arrobj, *z_arrobj;
     if (!PyArg_ParseTuple(args, "O!O!O!", &PyArray_Type, &x_arrobj, &PyArray_Type, &y_arrobj, &PyArray_Type, &z_arrobj)) {
@@ -215,17 +151,137 @@ extern "C" PyObject *xyz_to_radec(PyObject *self, PyObject *args) {
     }
 
     // return the arrays holding the new coordinates
-    PyObject *result = Py_BuildValue("OO", ra_obj, dec_obj);
+    PyObject *pyresult = Py_BuildValue("OO", ra_obj, dec_obj);
     Py_XDECREF(ra_obj);
     Py_XDECREF(dec_obj);
+    return pyresult;
+}
+
+
+extern "C" PyObject *radius_from_coord_sky(PyObject *self, PyObject *args) {
+    // Parse the input arguments
+    PyArrayObject *ra_arrobj, *dec_arrobj;
+    double x_center, y_center, z_center;
+    if (!PyArg_ParseTuple(
+            args, "O!O!ddd",
+            &PyArray_Type, &ra_arrobj, &PyArray_Type, &dec_arrobj,
+            &x_center, &y_center, &z_center)) {
+        PyErr_SetString(PyExc_TypeError, "invalid arguments, expected two numpy arrays and three doubles");
+        return nullptr;
+    }
+    // check the input data
+    npy_intp size_ra = get_size_checked(ra_arrobj);
+    if (size_ra == -1) return nullptr;
+    npy_intp size_dec = get_size_checked(dec_arrobj);
+    if (size_ra == -1) return nullptr;
+    if (size_ra != size_dec) {
+        PyErr_SetString(PyExc_ValueError, "input arrays must have equal size");
+        return nullptr;
+    }
+
+    // get pointers to the arrays
+    double *ra_array = static_cast<double *>(PyArray_DATA(ra_arrobj));
+    double *dec_array = static_cast<double *>(PyArray_DATA(dec_arrobj));
+
+    // compute convert to cartesian coordinates and compute maximum Euclidean distance
+    double maxdist = 0.0;
+    double dist;
+    double sin_ra, sin_dec, cos_ra, cos_dec;
+    double x, dx, y, dy, z, dz;
+    for (npy_intp i = 0; i < size_ra; ++i) {
+        sin_ra = sin(ra_array[i]);
+        sin_dec = sin(dec_array[i]);
+        cos_ra = sqrt(1 - sin_ra * sin_ra);
+        cos_dec = sqrt(1 - sin_dec * sin_dec);
+        // compute the distance
+        x = cos_ra * cos_dec;
+        y = sin_ra * cos_dec;
+        z = sin_dec;
+        dx = x - x_center;
+        dy = y - y_center;
+        dz = z - z_center;
+        dist = sqrt(dx*dx + dy*dy + dz*dz);
+        maxdist = MAX(dist, maxdist);
+    }
+    PyObject* result = PyFloat_FromDouble(maxdist);
+    return result;
+}
+
+
+extern "C" PyObject *radius_from_coord_sphere(PyObject *self, PyObject *args) {
+    // Parse the input arguments
+    PyArrayObject *x_arrobj, *y_arrobj, *z_arrobj;
+    double x_center, y_center, z_center;
+    if (!PyArg_ParseTuple(
+            args, "O!O!O!ddd",
+            &PyArray_Type, &x_arrobj, &PyArray_Type, &y_arrobj, &PyArray_Type, &z_arrobj,
+            &x_center, &y_center, &z_center)) {
+        PyErr_SetString(PyExc_TypeError, "invalid arguments, expected three numpy arrays and three doubles");
+        return nullptr;
+    }
+    // check the input data
+    npy_intp size_x = get_size_checked(x_arrobj);
+    if (size_x == -1) return nullptr;
+    npy_intp size_y = get_size_checked(y_arrobj);
+    if (size_y == -1) return nullptr;
+    npy_intp size_z = get_size_checked(z_arrobj);
+    if (size_z == -1) return nullptr;
+    if (size_x != size_y || size_x != size_z) {
+        PyErr_SetString(PyExc_ValueError, "input arrays must have equal size");
+        return nullptr;
+    }
+
+    // get pointers to the arrays
+    double *x_array = static_cast<double *>(PyArray_DATA(x_arrobj));
+    double *y_array = static_cast<double *>(PyArray_DATA(y_arrobj));
+    double *z_array = static_cast<double *>(PyArray_DATA(z_arrobj));
+
+    // compute the new coordinates
+    double maxdist = 0.0;
+    double dist;
+    double x, dx, y, dy, z, dz;
+    for (npy_intp i = 0; i < size_x; ++i) {
+        // compute the distance
+        x = x_array[i];
+        y = y_array[i];
+        z = z_array[i];
+        dx = x - x_center;
+        dy = y - y_center;
+        dz = z - z_center;
+        dist = sqrt(dx*dx + dy*dy + dz*dz);
+        maxdist = MAX(dist, maxdist);
+    }
+    PyObject* result = PyFloat_FromDouble(maxdist);
     return result;
 }
 
 
 // Module method table
 static PyMethodDef module_methods[] = {
-    {"_radec_to_xyz", radec_to_xyz, METH_VARARGS, "Convert right ascension and declination in radians to Euclidean xyz coordinates"},
-    {"_xyz_to_radec", xyz_to_radec, METH_VARARGS, "Convert Euclidean xyz coordinates to right ascension and declination in radians"},
+    {
+        "_coord_sky_to_sphere",
+        coord_sky_to_sphere,
+        METH_VARARGS,
+        "Convert right ascension and declination in radians to Euclidean xyz coordinates.",
+    },
+    {
+        "_coord_sphere_to_sky",
+        coord_sphere_to_sky,
+        METH_VARARGS,
+        "Convert Euclidean xyz coordinates to right ascension and declination in radians.",
+    },
+    {
+        "_radius_from_coord_sky",
+        radius_from_coord_sky,
+        METH_VARARGS,
+        "Compute the Euclidean distance from a center point for points given in right ascension and declination in radians.",
+    },
+    {
+        "_radius_from_coord_sphere",
+        radius_from_coord_sphere,
+        METH_VARARGS,
+        "Compute the Euclidean distance from a center point for points given in Euclidean xyz coordinates.",
+    },
     {nullptr, nullptr, 0, nullptr} // Sentinel
 };
 
