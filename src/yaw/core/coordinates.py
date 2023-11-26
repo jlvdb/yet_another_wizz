@@ -15,6 +15,11 @@ import numpy as np
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
+__all__ = ["Coord3D", "CoordSky", "Dist3D", "DistSky"]
+
+
+# wrap C extensions and define python fallback function
+
 try:
     from ._coordinates import (
         _coord_sky_to_sphere,
@@ -22,18 +27,51 @@ try:
         _radius_from_coord_sky,
         _radius_from_coord_sphere,
     )
+
 except ImportError:
     import warnings
 
     warnings.warn("compiled ._coordinates extension not availble, performance degraded")
-    # TODO: implement fallback for:
-    #  - _coord_sky_to_sphere
-    #  - _coord_sphere_to_sky
-    #  - _radius_from_coord_sky
-    #  - _radius_from_coord_sphere
-    raise NotImplementedError("no fallback code for ._coordinates extension available")
 
-__all__ = ["Coord3D", "CoordSky", "Dist3D", "DistSky"]
+    def _coord_sky_to_sphere(
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+        cos_dec = np.cos(dec)
+        x = np.cos(ra) * cos_dec
+        y = np.sin(ra) * cos_dec
+        z = np.sin(dec)
+        return x, y, z
+
+    def _coord_sphere_to_sky(
+        x: NDArray[np.float64],
+        y: NDArray[np.float64],
+        z: NDArray[np.float64],
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        ra = np.arctan2(np.sqrt(x * x + y * y), z)
+        dec = np.arctan2(y, z)
+        return ra, dec
+
+    def _radius_from_coord_sky(
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+        x_center: float,
+        y_center: float,
+        z_center: float,
+    ) -> float:
+        center = Coord3D(x_center, y_center, z_center)
+        return CoordSky(ra, dec).to_3d().distance(center).max().values
+
+    def _radius_from_coord_sphere(
+        x: NDArray[np.float64],
+        y: NDArray[np.float64],
+        z: NDArray[np.float64],
+        x_center: float,
+        y_center: float,
+        z_center: float,
+    ) -> float:
+        center = Coord3D(x_center, y_center, z_center)
+        return Coord3D(x, y, z).distance(center).max().values
 
 
 class Coordinate(ABC):

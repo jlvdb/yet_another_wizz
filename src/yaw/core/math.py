@@ -14,16 +14,6 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from yaw.core.containers import SampledData
 
-try:
-    from ._math import _rebin
-except ImportError:
-    import warnings
-
-    warnings.warn("compiled ._math extension not availble, performance degraded")
-    # TODO: implement fallback for:
-    #  - _rebin
-    raise NotImplementedError("no fallback code for ._math extension available")
-
 __all__ = [
     "array_equal",
     "outer_triu_sum",
@@ -36,6 +26,53 @@ __all__ = [
     "rebin",
     "shift_histogram",
 ]
+
+try:
+    from ._math import _rebin
+
+except ImportError:
+    import warnings
+
+    warnings.warn("compiled ._math extension not availble, performance degraded")
+
+    def _rebin(
+        bins_new: NDArray[np.float64],
+        bins_old: NDArray[np.float64],
+        counts_old: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        n_bins_old = len(bins_old) - 1
+        n_bins_new = len(bins_new) - 1
+
+        # ensure numpy
+        counts_old = np.asarray(counts_old)
+        counts_new = np.zeros(n_bins_new, dtype=np.float64)
+
+        # iterate the new bins and check which of the old bins overlap with it
+        for i_new in range(n_bins_new):
+            zmin_n = bins_new[i_new]
+            zmax_n = bins_new[i_new + 1]
+
+            for i_old in range(n_bins_old):
+                zmin_o = bins_old[i_old]
+                zmax_o = bins_old[i_old + 1]
+                count = counts_old[i_old]
+
+                # check for full or partial overlap
+                contains = (zmin_n >= zmin_o) & (zmax_n < zmax_o)
+                overlaps_min = (zmin_n <= zmin_o) & (zmax_n > zmin_o)
+                overlaps_max = (zmin_n <= zmax_o) & (zmax_n > zmax_o)
+
+                if contains | overlaps_min | overlaps_max:
+                    # compute fractional bin overlap
+                    zmin_overlap = max(zmin_o, zmin_n)
+                    zmax_overlap = min(zmax_o, zmax_n)
+                    fraction = (zmax_overlap - zmin_overlap) / (zmax_o - zmin_o)
+
+                    # assume uniform distribution of data in bin and increment
+                    # counts by the bin count weighted by the overlap fraction
+                    counts_new[i_new] += count * fraction
+
+        return counts_new
 
 
 _Tarr = TypeVar("_Tarr", bound=NDArray)

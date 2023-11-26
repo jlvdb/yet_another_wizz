@@ -13,22 +13,12 @@ from yaw.core.utils import TypePathStr
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-try:
-    from ._groupby import _groupby_arrays
-except ImportError:
-    import warnings
-
-    warnings.warn("compiled ._groupby extension not availble, performance degraded")
-    # TODO: implement fallback for:
-    #  - _groupby_arrays
-    raise NotImplementedError("no fallback code for ._groupby extension available")
-
 __all__ = [
     "memmap_init",
     "memmap_load",
     "memmap_resize",
     "concat_numpy_dicts",
-    "groupby",
+    "groupby_arrays",
     "DataChunk",
     "IndexMapper",
     "check_optional_args",
@@ -39,44 +29,74 @@ __all__ = [
     "patch_id_from_path",
 ]
 
-# type annotations for C code
 
+# wrap C extensions and define python fallback function
 
-def groupby_arrays(
-    patch: NDArray[np.float64],
-    ra: NDArray[np.float64],
-    dec: NDArray[np.float64],
-    weight: NDArray[np.float64] | None = None,
-    redshift: NDArray[np.float64] | None = None,
-) -> tuple[
-    dict[int, NDArray[np.float64]],
-    dict[int, NDArray[np.float64]],
-    dict[int, NDArray[np.float64]] | None,
-    dict[int, NDArray[np.float64]] | None,
-]:
-    # ensure types
-    patch = patch.astype(np.int64, copy=False, casting="same_kind")
-    ra = ra.astype(np.float64, copy=False)
-    dec = dec.astype(np.float64, copy=False)
-    # TODO: handling of optional arguments
-    if weight is None:
-        weight = np.empty(len(patch))
-    else:
-        weight = weight.astype(np.float64, copy=False)
-    if redshift is None:
-        redshift = np.empty(len(patch))
-    else:
-        redshift = redshift.astype(np.float64, copy=False)
-    result = _groupby_arrays(patch, ra, dec, weight, redshift)
-    return (
-        result[0],
-        result[1],
-        result[2] if weight is not None else None,
-        result[3] if weight is not None else None,
-    )
+try:
+    from ._groupby import _groupby_arrays
 
+    def groupby_arrays(
+        patch: NDArray[np.float64],
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+        weight: NDArray[np.float64] | None = None,
+        redshift: NDArray[np.float64] | None = None,
+    ) -> tuple[
+        dict[int, NDArray[np.float64]],
+        dict[int, NDArray[np.float64]],
+        dict[int, NDArray[np.float64]] | None,
+        dict[int, NDArray[np.float64]] | None,
+    ]:
+        # ensure types
+        patch = patch.astype(np.int64, copy=False, casting="same_kind")
+        ra = ra.astype(np.float64, copy=False)
+        dec = dec.astype(np.float64, copy=False)
+        # TODO: handling of optional arguments
+        if weight is None:
+            weight = np.empty(len(patch))
+        else:
+            weight = weight.astype(np.float64, copy=False)
+        if redshift is None:
+            redshift = np.empty(len(patch))
+        else:
+            redshift = redshift.astype(np.float64, copy=False)
+        result = _groupby_arrays(patch, ra, dec, weight, redshift)
+        return (
+            result[0],
+            result[1],
+            result[2] if weight is not None else None,
+            result[3] if weight is not None else None,
+        )
 
-# python functions
+except ImportError:
+    import warnings
+
+    warnings.warn("compiled ._groupby extension not availble, performance degraded")
+
+    def groupby_arrays(
+        patch: NDArray[np.float64],
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+        weight: NDArray[np.float64] | None = None,
+        redshift: NDArray[np.float64] | None = None,
+    ) -> tuple[
+        dict[int, NDArray[np.float64]],
+        dict[int, NDArray[np.float64]],
+        dict[int, NDArray[np.float64]] | None,
+        dict[int, NDArray[np.float64]] | None,
+    ]:
+        order = patch.argsort()
+        items, _split = np.unique(patch[order], return_index=True)
+        split = _split[1:]
+        grouped = [
+            {pid: pdata for pid, pdata in zip(split, ra[order])},
+            {pid: pdata for pid, pdata in zip(split, dec[order])},
+        ]
+        if weight is not None:
+            grouped.append({pid: pdata for pid, pdata in zip(split, weight[order])})
+        if redshift is not None:
+            grouped.append({pid: pdata for pid, pdata in zip(split, redshift[order])})
+        return tuple(grouped)
 
 
 def memmap_init(path: str, dtype: DTypeLike, shape: tuple[int] | int) -> np.memmap:
@@ -110,21 +130,6 @@ def concat_numpy_dicts(dicts: Iterable[dict[str, NDArray]]) -> dict[str, NDArray
         for col, chunk_list in chunk_dict.items():
             chunk_list.append(chunk[col])
     return {col: np.concatenate(data) for col, data in chunk_dict.items()}
-
-
-def groupby(
-    index: NDArray[np.int64], **arrays: NDArray | None
-) -> Generator[tuple[int, dict[str, NDArray]]]:
-    order = index.argsort()
-    items, _split = np.unique(index[order], return_index=True)
-    split = _split[1:]
-    grouped = {
-        col: np.split(data[order], split)
-        for col, data in arrays.items()
-        if data is not None
-    }
-    for i, key in enumerate(items):
-        yield key, {col: gdata[i] for col, gdata in grouped.items()}
 
 
 @dataclass

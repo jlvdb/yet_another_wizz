@@ -220,13 +220,14 @@ class PatchData:
         else:
             bin_index = intervals.bin_data(self.redshift)
             index_to_interval = dict(enumerate(intervals))
-            for index, bin_data in utils.groupby(
-                bin_index,
+            data = utils.DataChunk(
                 ra=self.ra,
                 dec=self.dec,
                 weight=self.weight,
                 redshift=self.redshift,
-            ):
+                patch=bin_index,  # this is currently required by the implementation
+            )
+            for index, bin_data in data.groupby():
                 if index < 0 or index >= len(intervals):
                     continue
                 intv = index_to_interval[index]
