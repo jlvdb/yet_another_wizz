@@ -9,56 +9,49 @@
 #include <future>
 
 
-std::unordered_map<int64_t, std::vector<double>> groupby_array(const std::vector<double> &data, const std::vector<int64_t> &indices) {
+npy_intp get_size_checked(const PyArrayObject *arr_obj, int argidx, int dtype , const std::string &typestr) {
+    // check that the array is 1-dim
+    if (PyArray_NDIM(arr_obj) != 1) {
+        PyErr_SetString(PyExc_IndexError, "input arrays must be 1-dimensional");
+        return -1;
+    }
+    // check the array contains elements
+    npy_intp size = PyArray_SIZE(arr_obj);
+    if (size <= 0) {
+        PyErr_SetString(PyExc_ValueError, "input arrays must have size greater than 0");
+        return -1;
+    }
+    // check if the array is of the requested type
+    if (PyArray_TYPE(arr_obj) != dtype) {
+        const std::string message = "input array " + std::to_string(argidx) + " must be of type " + typestr;
+        PyErr_SetString(PyExc_TypeError, message.c_str());
+        return -1;
+    }    // check if the array is contiguous
+    if (!PyArray_ISCONTIGUOUS(arr_obj)) {
+        PyErr_SetString(PyExc_IndexError, "input arrays must be contiguous");
+        return -1;
+    }
+    return size;
+}
+
+
+std::unordered_map<int64_t, std::vector<double>> groupby(const std::vector<int64_t> &indices, const std::vector<double> &data) {
     int64_t size = data.size();
     std::unordered_map<int64_t, std::vector<double>> groupedData;
-    groupedData.reserve(size); // Reserve space for better performance
+    groupedData.reserve(size);  // Reserve space for better performance
 
     for (int64_t i = 0; i < size; ++i) {
         int64_t index = indices[i];
         groupedData[index].push_back(data[i]);
     }
-
     return groupedData;
 }
 
 
-// Helper struct to map C++ types to NumPy data types
 template <typename T>
-struct npy_traits {};
-
-// Specializations for supported types
-template <>
-struct npy_traits<double> {
-    static constexpr int dtype = NPY_FLOAT64;
-};
-template <>
-struct npy_traits<float> {
-    static constexpr int dtype = NPY_FLOAT32;
-};
-template <>
-struct npy_traits<int64_t> {
-    static constexpr int dtype = NPY_INT64;
-};
-template <>
-struct npy_traits<int32_t> {
-    static constexpr int dtype = NPY_INT32;
-};
-
-
-template <typename T>
-int numpy_array_check_type(PyArrayObject *array) {
-    if (PyArray_TYPE(array) != npy_traits<T>::dtype || !PyArray_ISCONTIGUOUS(array)) {
-        return 1;
-    }
-    return 0;
-}
-
-
-template <typename T>
-std::vector<T> numpy_array_to_vector(PyArrayObject *array) {
+std::vector<T> numpy_array_to_vector(const PyArrayObject *array) {
     npy_intp size = PyArray_SIZE(array);
-    T* buffer = static_cast<T*>(PyArray_DATA(array));
+    T *buffer = static_cast<T*>(PyArray_DATA(array));
     if (size <= 0 || buffer == nullptr) {
         PyErr_SetString(PyExc_RuntimeError, "failed to retrieve array size or data pointer");
         return std::vector<T>();
@@ -70,25 +63,21 @@ std::vector<T> numpy_array_to_vector(PyArrayObject *array) {
 template <typename T>
 PyObject* vector_to_numpy_array(const std::vector<T>& vec) {
     npy_intp size = vec.size();
-    T* vec_copy = new T[size];
+    T *vec_copy = new T[size];
     std::copy(vec.begin(), vec.end(), vec_copy);
 
     int dtype;
     if (std::is_same<T, double>::value) {
         dtype = NPY_DOUBLE;
-    } else if (std::is_same<T, float>::value) {
-        dtype = NPY_FLOAT;
     } else if (std::is_same<T, int64_t>::value) {
         dtype = NPY_INT64;
-    } else if (std::is_same<T, int32_t>::value) {
-        dtype = NPY_INT32;
     } else {
         PyErr_SetString(PyExc_TypeError, "encountered unsupported output data type");
         delete[] vec_copy;
         return nullptr;
     }
 
-    PyObject* array = PyArray_SimpleNewFromData(1, &size, dtype, vec_copy);
+    PyObject *array = PyArray_SimpleNewFromData(1, &size, dtype, vec_copy);
     if (array == nullptr) {
         PyErr_SetString(PyExc_RuntimeError, "failed to allocate memory for numpy array");
         delete[] vec_copy;  // Release memory in case of failure
@@ -101,16 +90,16 @@ PyObject* vector_to_numpy_array(const std::vector<T>& vec) {
 
 
 PyObject* map_to_dict(const std::unordered_map<int64_t, std::vector<double>>& data) {
-    PyObject* pyDict = PyDict_New();
+    PyObject *pyDict = PyDict_New();
     if (!pyDict) {
         PyErr_SetString(PyExc_RuntimeError, "failed to create output dictionary");
         return nullptr;
     }
     for (const auto& entry : data) {
-        PyObject* key = PyLong_FromLong(entry.first);
-        PyObject* value = vector_to_numpy_array(entry.second);
+        PyObject *key = PyLong_FromLong(entry.first);
+        PyObject *value = vector_to_numpy_array<double>(entry.second);
         if (!key || !value) {
-            PyErr_SetString(PyExc_RuntimeError, "create patch key/value pair");
+            PyErr_SetString(PyExc_RuntimeError, "failed to create patch key/value pair");
             Py_XDECREF(key);
             Py_XDECREF(value);
             Py_DECREF(pyDict);
@@ -125,96 +114,95 @@ PyObject* map_to_dict(const std::unordered_map<int64_t, std::vector<double>>& da
 
 
 extern "C" PyObject *groupby_arrays(PyObject *self, PyObject *args) {
-    // Parse the input arguments
-    PyArrayObject *patchObj, *raObj, *decObj;
-    PyArrayObject *weightObj = nullptr;
-    PyArrayObject *redshiftObj = nullptr;
+    // pyargs: patch (array i64), ra (array f64), dec (array f64), weight (array f64), redshift (array f64)
+    PyArrayObject *patch_arrobj, *ra_arrobj, *dec_arrobj, *weight_arrobj, *redshift_arrobj;
     if (!PyArg_ParseTuple(
-            args, "O!O!O!|OO",
-            &PyArray_Type, &patchObj,
-            &PyArray_Type, &raObj,
-            &PyArray_Type, &decObj,
-            &weightObj,
-            &redshiftObj)) {
+            args, "O!O!O!O!O!",
+            &PyArray_Type, &patch_arrobj,
+            &PyArray_Type, &ra_arrobj,
+            &PyArray_Type, &dec_arrobj,
+            &PyArray_Type, &weight_arrobj,
+            &PyArray_Type, &redshift_arrobj
+    )) {
         PyErr_SetString(PyExc_TypeError, "invalid argument, expected a numpy array");
         return nullptr;
     }
 
-    // convert arrays
-    if (numpy_array_check_type<int64_t>(patchObj)) {
-        PyErr_SetString(PyExc_TypeError, "'patch' must be of type int64");
+    // check the input data
+    npy_intp size_patch = get_size_checked(patch_arrobj, 1, NPY_INT64, "int64");
+    if (size_patch == -1) return nullptr;
+    npy_intp size_ra = get_size_checked(ra_arrobj, 2, NPY_FLOAT64, "float64");
+    if (size_ra == -1) return nullptr;
+    npy_intp size_dec = get_size_checked(dec_arrobj, 3, NPY_FLOAT64, "float64");
+    if (size_dec == -1) return nullptr;
+    npy_intp size_weight = get_size_checked(weight_arrobj, 4, NPY_FLOAT64, "float64");
+    if (size_weight == -1) return nullptr;
+    npy_intp size_redshift = get_size_checked(redshift_arrobj, 5, NPY_FLOAT64, "float64");
+    if (size_redshift == -1) return nullptr;
+    // ensure that the arrays have matching size
+    if (size_patch != size_ra || size_patch != size_dec || size_patch != size_weight || size_patch != size_redshift) {
+        PyErr_SetString(PyExc_ValueError, "input arrays must have equal size");
         return nullptr;
     }
-    std::vector<int64_t> patch = numpy_array_to_vector<int64_t>(patchObj);
-    if (numpy_array_check_type<double>(raObj)) {
-        PyErr_SetString(PyExc_TypeError, "'ra' must be of type float64");
-        return nullptr;
-    }
-    std::vector<double> ra = numpy_array_to_vector<double>(raObj);
-    if (numpy_array_check_type<double>(decObj)) {
-        PyErr_SetString(PyExc_TypeError, "'dec' must be of type float64");
-        return nullptr;
-    }
-    std::vector<double> dec = numpy_array_to_vector<double>(decObj);
-    if (numpy_array_check_type<double>(weightObj)) {
-        PyErr_SetString(PyExc_TypeError, "'weight' must be of type float64");
-        return nullptr;
-    }
-    std::vector<double> weight = numpy_array_to_vector<double>(weightObj);
-    if (numpy_array_check_type<double>(redshiftObj)) {
-        PyErr_SetString(PyExc_TypeError, "'redshift' must be of type float64");
-        return nullptr;
-    }
-    std::vector<double> redshift = numpy_array_to_vector<double>(redshiftObj);
 
-    // check the array sizes
-    if (patch.size() == 0) {
-        PyErr_SetString(PyExc_ValueError, "'patch' must have non-zero length");
-        return nullptr;
-    } else if (patch.size() != ra.size()) {
-        PyErr_SetString(PyExc_IndexError, "length of 'ra' does not match 'patch'");
-        return nullptr;
-    } else if (patch.size() != dec.size()) {
-        PyErr_SetString(PyExc_IndexError, "length of 'dec' does not match 'patch'");
-        return nullptr;
-    } else if (patch.size() != weight.size()) {
-        PyErr_SetString(PyExc_IndexError, "length of 'weight' does not match 'patch'");
-        return nullptr;
-    } else if (patch.size() != redshift.size()) {
-        PyErr_SetString(PyExc_IndexError, "length of 'redshift' does not match 'patch'");
+    // get data as vectors
+    std::vector<int64_t> patch_vec = numpy_array_to_vector<int64_t>(patch_arrobj);
+    std::vector<double> ra_vec = numpy_array_to_vector<double>(ra_arrobj);
+    std::vector<double> dec_vec = numpy_array_to_vector<double>(dec_arrobj);
+    std::vector<double> weight_vec = numpy_array_to_vector<double>(weight_arrobj);
+    std::vector<double> redshift_vec = numpy_array_to_vector<double>(redshift_arrobj);
+    if (patch_vec.size() == 0 || ra_vec.size() == 0 || dec_vec.size() == 0 || weight_vec.size() == 0 || redshift_vec.size() == 0) {
+        PyErr_SetString(PyExc_ValueError, "failed to access numpy array data");
         return nullptr;
     }
 
     // Use std::async to process each data array on a separate thread
-    auto future1 = std::async(std::launch::async, groupby_array, std::ref(ra), std::ref(patch));
-    auto future2 = std::async(std::launch::async, groupby_array, std::ref(dec), std::ref(patch));
-    auto future3 = std::async(std::launch::async, groupby_array, std::ref(weight), std::ref(patch));
-    auto future4 = std::async(std::launch::async, groupby_array, std::ref(redshift), std::ref(patch));
-    auto result1 = future1.get();
-    auto result2 = future2.get();
-    auto result3 = future3.get();
-    auto result4 = future4.get();
+    auto future_ra = std::async(
+        std::launch::async, groupby, std::ref(patch_vec), std::ref(ra_vec)
+    );
+    auto future_dec = std::async(
+        std::launch::async, groupby, std::ref(patch_vec), std::ref(dec_vec)
+    );
+    auto future_weight = std::async(
+        std::launch::async, groupby, std::ref(patch_vec), std::ref(weight_vec)
+    );
+    auto future_redshift = std::async(
+        std::launch::async, groupby, std::ref(patch_vec), std::ref(redshift_vec)
+    );
+    auto result_ra = future_ra.get();
+    auto result_dec = future_dec.get();
+    auto result_weight = future_weight.get();
+    auto result_redshift = future_redshift.get();
 
-    // convert to python tuple of dicts
-    PyObject* pydict1 = map_to_dict(result1);
-    PyObject* pydict2 = map_to_dict(result2);
-    PyObject* pydict3 = map_to_dict(result3);
-    PyObject* pydict4 = map_to_dict(result4);
-    if (!pydict1 || !pydict2 || !pydict3 || !pydict4) {
+    // convert to python tuple of dicts[int, array]
+    PyObject *dict_ra = map_to_dict(result_ra);
+    PyObject *dict_dec = map_to_dict(result_dec);
+    PyObject *dict_weight = map_to_dict(result_weight);
+    PyObject *dict_redshift = map_to_dict(result_redshift);
+    if (!dict_ra || !dict_dec || !dict_weight || !dict_redshift) {
+        Py_XDECREF(dict_ra);
+        Py_XDECREF(dict_dec);
+        Py_XDECREF(dict_weight);
+        Py_XDECREF(dict_redshift);
         return nullptr;
     }
-    PyObject *pyresult = Py_BuildValue("OOOO", pydict1, pydict2, pydict3, pydict4);
-    Py_XDECREF(pydict1);
-    Py_XDECREF(pydict2);
-    Py_XDECREF(pydict3);
-    Py_XDECREF(pydict4);
+    PyObject *pyresult = Py_BuildValue("OOOO", dict_ra, dict_dec, dict_weight, dict_redshift);
+    Py_DECREF(dict_ra);
+    Py_DECREF(dict_dec);
+    Py_DECREF(dict_weight);
+    Py_DECREF(dict_redshift);
     return pyresult;
 }
 
 
 // Module method table
 static PyMethodDef module_methods[] = {
-    {"_groupby_arrays", groupby_arrays, METH_VARARGS, "TODO"},
+    {
+        "_groupby_arrays",
+        groupby_arrays,
+        METH_VARARGS,
+        "Run a groupby operation based on a patch index array applied to a ra, dec, weight and redshift array"
+    },
     {nullptr, nullptr, 0, nullptr} // Sentinel
 };
 

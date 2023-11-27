@@ -65,7 +65,7 @@ try:
             result[0],
             result[1],
             result[2] if weight is not None else None,
-            result[3] if weight is not None else None,
+            result[3] if redshift is not None else None,
         )
 
 except ImportError:
