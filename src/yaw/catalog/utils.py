@@ -36,7 +36,7 @@ try:
     from ._groupby import _groupby_arrays
 
     def groupby_arrays(
-        patch: NDArray[np.float64],
+        patch: NDArray[np.int64],
         ra: NDArray[np.float64],
         dec: NDArray[np.float64],
         weight: NDArray[np.float64] | None = None,
@@ -48,18 +48,18 @@ try:
         dict[int, NDArray[np.float64]] | None,
     ]:
         # ensure types
-        patch = patch.astype(np.int64, copy=False, casting="same_kind")
-        ra = ra.astype(np.float64, copy=False)
-        dec = dec.astype(np.float64, copy=False)
+        patch = np.ascontiguousarray(patch, dtype=np.int64)
+        ra = np.ascontiguousarray(ra, dtype=np.float64)
+        dec = np.ascontiguousarray(dec, dtype=np.float64)
         # TODO: handling of optional arguments
         if weight is None:
-            weight = np.empty(len(patch))
+            weight = np.empty(len(patch), dtype=np.float64)
         else:
-            weight = weight.astype(np.float64, copy=False)
+            weight = np.ascontiguousarray(weight, dtype=np.float64)
         if redshift is None:
-            redshift = np.empty(len(patch))
+            redshift = np.empty(len(patch), dtype=np.float64)
         else:
-            redshift = redshift.astype(np.float64, copy=False)
+            redshift = np.ascontiguousarray(redshift, dtype=np.float64)
         result = _groupby_arrays(patch, ra, dec, weight, redshift)
         return (
             result[0],
@@ -74,7 +74,7 @@ except ImportError:
     warnings.warn("compiled ._groupby extension not availble, performance degraded")
 
     def groupby_arrays(
-        patch: NDArray[np.float64],
+        patch: NDArray[np.int64],
         ra: NDArray[np.float64],
         dec: NDArray[np.float64],
         weight: NDArray[np.float64] | None = None,
