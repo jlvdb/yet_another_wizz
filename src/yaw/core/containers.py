@@ -64,7 +64,7 @@ class Interval:
             raise ValueError("'left' must be strictly less than 'right'")
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.__repr__()})"
+        return f"{self.__class__.__name__}({self.__str__()})"
 
     def __str__(self) -> str:
         if self.closed == "left":
@@ -130,7 +130,7 @@ class Binning:
         return len(self._intervals)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.__repr__()})"
+        return f"{self.__class__.__name__}({self.__str__()})"
 
     def __str__(self) -> str:
         string = ", ".join(str(intv) for intv in self._intervals)
