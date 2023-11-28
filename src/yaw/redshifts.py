@@ -21,15 +21,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
 import scipy.optimize
 from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
-from yaw.core.containers import SampledValue
-from yaw.core.logging import TimedLog
+from yaw.core.containers import Binning, SampledValue
 from yaw.core.math import rebin, shift_histogram
-from yaw.core.utils import TypePathStr
+from yaw.core.utils import TimedLog, TypePathStr
 from yaw.correlation import CorrData
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -337,7 +335,7 @@ class RedshiftData(CorrData):
                 sigma=1 / y_to[mask],
             )[0][0]
         return self.__class__(
-            binning=self.get_binning(),
+            binning=self.binning,
             data=self.data / norm,
             samples=self.samples / norm,
             method=self.method,
@@ -387,7 +385,7 @@ class RedshiftData(CorrData):
             samples[i] = rebin(bins, old_bins, sample)
 
         return self.__class__(
-            binning=pd.IntervalIndex.from_breaks(bins),
+            binning=Binning.from_edges(bins),
             data=data,
             samples=samples,
             method=self.method,
@@ -440,7 +438,7 @@ class RedshiftData(CorrData):
             samples[i] = shift_histogram(bins, sample, A=amplitude, dx=dz)
 
         return self.__class__(
-            binning=self.get_binning(),
+            binning=self.binning,
             data=data,
             samples=samples,
             method=self.method,
@@ -505,7 +503,7 @@ class HistData(RedshiftData):
             line = f.readline()
             density = "normalised" in line
         return cls(
-            binning=new.get_binning(),
+            binning=new.binning,
             data=new.data,
             samples=new.samples,
             method=new.method,
@@ -529,7 +527,7 @@ class HistData(RedshiftData):
         samples = self.samples * width_correction
         norm = np.nansum(self.dz * data)
         return self.__class__(
-            binning=self.get_binning(),
+            binning=self.binning,
             data=data / norm,
             samples=samples / norm,
             method=self.method,

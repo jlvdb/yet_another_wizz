@@ -9,8 +9,8 @@ from deprecated import deprecated
 
 from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
+from yaw.config.abc import DictRepresentation
 from yaw.config.utils import ConfigError
-from yaw.core.abc import DictRepresentation
 from yaw.core.cosmology import BinFactory, TypeCosmology
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal

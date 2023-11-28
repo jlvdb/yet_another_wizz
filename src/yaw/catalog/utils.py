@@ -3,6 +3,7 @@ from __future__ import annotations
 import pickle
 from collections.abc import Iterable, Sized
 from dataclasses import dataclass, field
+from math import ceil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator
 
@@ -123,6 +124,64 @@ def memmap_resize(memmap: np.memmap, new_shape: tuple[int] | int) -> np.memmap:
     return memmap_load(path, dtype, readonly)
 
 
+class MemmapManager:
+    def __init__(
+        self,
+        path: TypePathStr,
+        dtype: DTypeLike = np.float64,
+        readonly: bool | None = False,
+        chunking: int | None = None,
+    ) -> None:
+        self.path = Path(path)
+        self.readonly = readonly
+        if chunking is None:
+            chunking = 128 * 1024
+        self.chunking = int(chunking)
+        # setup file
+        if self.path.exists():
+            self.readonly = True if readonly is None else readonly
+            self.memmap = memmap_load(str(path), dtype, readonly=readonly)
+            self.data_size = len(self)
+        else:
+            self.readonly = False
+            self.memmap = memmap_init(str(path), dtype, shape=self.chunking)
+            self.data_size = 0
+
+    def __getitem__(
+        self,
+        index: int
+        | slice
+        | ellipsis  # noqa
+        | tuple[int | slice | ellipsis | None, ...]  # noqa
+        | NDArray,
+    ) -> np.memmap:
+        return self.memmap[index]
+
+    @property
+    def buffer_size(self) -> int:
+        return len(self.memmap)
+
+    def append(self, data: Sized) -> None:
+        if self.readonly:
+            raise PermissionError("memory mapped array is in readonly mode")
+        n_add = len(data)
+        n_current = self.data_size
+        # grow the data as needed
+        if n_current + n_add > self.buffer_size:
+            n_chunks_add = ceil(n_add / self.chunking)
+            new_buffer_size = self.buffer_size + self.chunking * n_chunks_add
+            # perform the actual I/O tasks, includes flushing to disk
+            self.memmap = memmap_resize(self.memmap, new_buffer_size)
+        # insert the data
+        self.memmap[n_current : n_current + n_add] = data[:]
+        self.data_size += n_add
+
+    def finalise(self) -> None:
+        # free any unused disk space
+        self.memmap = memmap_resize(self.memmap, self.data_size)
+        self.readonly = True  # disable writing more data through this class
+
+
 def concat_numpy_dicts(dicts: Iterable[dict[str, NDArray]]) -> dict[str, NDArray]:
     chunk_iter = iter(dicts)
     chunk_dict = {key: [data] for key, data in next(chunk_iter).items()}
@@ -152,7 +211,14 @@ class DataChunk:
     def size(self) -> int:
         return sum(val.size for val in self.to_dict().values())
 
-    def __getitem__(self, index) -> DataChunk:
+    def __getitem__(
+        self,
+        index: int
+        | slice
+        | ellipsis  # noqa
+        | tuple[int | slice | ellipsis | None, ...]  # noqa
+        | NDArray,
+    ) -> DataChunk:
         kwargs = {key: values[index] for key, values in self.to_dict().items()}
         return DataChunk(**kwargs)
 

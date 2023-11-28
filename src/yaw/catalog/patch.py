@@ -11,7 +11,7 @@ import numpy as np
 from yaw.catalog import utils
 from yaw.catalog.kdtree import SphericalKDTree
 from yaw.config.default import NotSet
-from yaw.core.containers import Interval, IntervalVetor
+from yaw.core.containers import Binning, Interval
 from yaw.core.coordinates import CoordSky, DistSky
 from yaw.core.utils import TypePathStr
 
@@ -213,12 +213,12 @@ class PatchData:
         """
         if not allow_no_redshift and not self.has_redshift():
             raise ValueError("no redshifts for iteration provdided")
-        intervals = IntervalVetor.from_edges(z_bins, closed="left")
+        intervals = Binning.from_edges(z_bins, closed="left")
         if allow_no_redshift:
             for intv in intervals:
                 yield intv, self
         else:
-            bin_index = intervals.bin_data(self.redshift)
+            bin_index = intervals.apply(self.redshift)
             index_to_interval = dict(enumerate(intervals))
             data = utils.DataChunk(
                 ra=self.ra,
@@ -234,7 +234,7 @@ class PatchData:
                 yield intv, PatchData(self.id, **bin_data)
 
     def get_trees(
-        self, z_bins: IntervalVetor | NDArray[np.float64] | None = None, **kwargs
+        self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
     ) -> list[SphericalKDTree]:
         """Build a :obj:`SphericalKDTree` from the patch data coordiantes."""
         if z_bins is None:
@@ -261,7 +261,7 @@ class PatchDataCached(PatchData):
     weight: NDArray[np.floating] | None
     redshift: NDArray[np.float64] | None
     metadata: PatchMetadata = field(default=None)
-    _binning: IntervalVetor | None | NotSet = field(default=NotSet, init=False)
+    _binning: Binning | None | NotSet = field(default=NotSet, init=False)
 
     def __init__(
         self,
@@ -420,14 +420,14 @@ class PatchDataCached(PatchData):
     def _path_binning(self) -> Path:
         return self.path / "binning.pickle"
 
-    def _get_binning(self) -> IntervalVetor | None:
+    def _get_binning(self) -> Binning | None:
         if self._binning is NotSet:
             self._binning = utils.read_pickle(self._path_binning)
         return self._binning
 
-    def _set_binning(self, z_bins: IntervalVetor | NDArray[np.float64] | None) -> None:
-        if z_bins is not None and not isinstance(z_bins, IntervalVetor):
-            z_bins = IntervalVetor.from_edges(z_bins)
+    def _set_binning(self, z_bins: Binning | NDArray[np.float64] | None) -> None:
+        if z_bins is not None and not isinstance(z_bins, Binning):
+            z_bins = Binning.from_edges(z_bins)
         utils.write_pickle(self._path_binning, z_bins)
         self._binning = z_bins
 
@@ -441,7 +441,7 @@ class PatchDataCached(PatchData):
     def _write_trees(self, trees: list[SphericalKDTree]) -> None:
         utils.write_pickle(self._path_trees, trees)
 
-    def _trees_cached(self, z_bins: IntervalVetor | NDArray[np.float64] | None) -> bool:
+    def _trees_cached(self, z_bins: Binning | NDArray[np.float64] | None) -> bool:
         # check if any data is cached
         if not self._path_binning.exists() or not self._path_trees.exists():
             return False
@@ -451,7 +451,7 @@ class PatchDataCached(PatchData):
             binning_equal = z_bins is None
         elif z_bins is None:
             binning_equal = False
-        elif isinstance(z_bins, IntervalVetor):
+        elif isinstance(z_bins, Binning):
             binning_equal = (
                 (z_bins.closed == binning.closed)
                 & np.any(z_bins.left == binning.left)
@@ -462,7 +462,7 @@ class PatchDataCached(PatchData):
         return binning_equal
 
     def get_trees(
-        self, z_bins: IntervalVetor | NDArray[np.float64] | None = None, **kwargs
+        self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
     ) -> list[SphericalKDTree]:
         if self._trees_cached(z_bins):
             trees = self._read_trees()

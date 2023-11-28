@@ -5,12 +5,11 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
 
 from yaw.catalog.linkage import PatchLinkage
 from yaw.catalog.patch import PatchData
 from yaw.config import Configuration, ResamplingConfig
-from yaw.core.containers import PatchCorrelationData, PatchIDs
+from yaw.core.containers import Binning, PatchCorrelationData, PatchIDs
 from yaw.correlation.paircounts import (
     NormalisedCounts,
     PatchedCount,
@@ -98,7 +97,7 @@ def count_pairs_patches(
     """
     scales = list(config.scales)
     z_bins = config.binning.zbins
-    z_intervals = pd.IntervalIndex.from_breaks(z_bins)
+    z_intervals = Binning.from_edges(z_bins)
     # build trees
     patch1.load(use_threads=False)
     if bin1:
@@ -157,7 +156,7 @@ def merge_pairs_patches(
         A :obj:`~yaw.correlation.paircounts.NormalisedCounts` instance if a
         single measurement scale is used, otherwise a dictionary of scales.
     """
-    binning = pd.IntervalIndex.from_breaks(config.binning.zbins)
+    binning = Binning.from_edges(config.binning.zbins)
     n_bins = len(binning)
     # set up data to repack task results from [ids->scale] to [scale->ids]
     totals1 = np.zeros((n_patches, n_bins))
@@ -223,7 +222,7 @@ def merge_histogram_patches(
     """
     if sampling_config is None:
         sampling_config = ResamplingConfig()  # default values
-    binning = pd.IntervalIndex.from_breaks(z_bins)
+    binning = Binning.from_edges(z_bins)
     patch_idx = sampling_config.get_samples(len(hist_counts))
     nz_data = hist_counts.sum(axis=0)
     nz_samp = np.sum(hist_counts[patch_idx], axis=1)

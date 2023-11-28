@@ -5,8 +5,10 @@ formatting numbers.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import timedelta
 from pathlib import Path
-from typing import TypeVar, Union
+from timeit import default_timer
+from typing import Callable, TypeVar, Union
 
 import tqdm
 
@@ -15,6 +17,7 @@ __all__ = [
     "long_num_format",
     "bytes_format",
     "format_float_fixed_width",
+    "TimedLog",
 ]
 
 
@@ -66,3 +69,30 @@ def format_float_fixed_width(value: float, width: int) -> str:
     if "nan" in string or "inf" in string:
         string = f"{string.strip():>{width}s}"
     return string
+
+
+class TimedLog:
+    """Context wrapper that measures the elapsed time and emits a log message on
+    exit.
+
+    Emits a log in the format ``{message} - done {elapsed time}``.
+
+    Args:
+        logging_callback (Callable):
+            Function that processes the log message on context wrapper exit.
+        msg (:obj:`str`, optional):
+            The log message body.
+    """
+
+    def __init__(self, logging_callback: Callable, msg: str | None = None) -> None:
+        self.callback = logging_callback
+        self.msg = msg
+
+    def __enter__(self) -> TimedLog:
+        self.t = default_timer()
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+        delta = default_timer() - self.t
+        time = str(timedelta(seconds=round(delta)))
+        self.callback(f"{self.msg} - done {time}")

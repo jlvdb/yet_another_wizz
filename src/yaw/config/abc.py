@@ -1,10 +1,44 @@
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
+from dataclasses import asdict
 from typing import Any, Type, TypeVar
 
 from yaw.config import DEFAULT
-from yaw.core.abc import DictRepresentation
+
+__all__ = ["DictRepresentation", "BaseConfig"]
+
+_Tdict = TypeVar("_Tdict", bound="DictRepresentation")
+
+
+class DictRepresentation(ABC):
+    """Base class for an object that can be serialised into a dictionary."""
+
+    @classmethod
+    def from_dict(
+        cls: Type[_Tdict],
+        the_dict: dict[str, Any],
+        **kwargs: dict[str, Any],  # passing additional constructor data
+    ) -> _Tdict:
+        """Create a class instance from a dictionary representation of the
+        minimally required data.
+
+        Args:
+            the_dict (:obj:`dict`):
+                Dictionary containing the data.
+            **kwargs: Additional data needed to construct the class instance.
+        """
+        return cls(**the_dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise the class instance to a dictionary containing a minimal set
+        of required data.
+
+        Returns:
+            :obj:`dict`
+        """
+        return asdict(self)
+
 
 T = TypeVar("T", bound="BaseConfig")
 

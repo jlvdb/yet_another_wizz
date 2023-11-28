@@ -12,15 +12,19 @@ from typing import TYPE_CHECKING, Any, Type, TypeVar
 
 import h5py
 import numpy as np
-import pandas as pd
 from deprecated import deprecated
 
 from yaw.catalog.linkage import PatchLinkage
 from yaw.config import OPTIONS, ResamplingConfig
-from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
-from yaw.core.containers import Indexer, SampledData
-from yaw.core.logging import TimedLog
-from yaw.core.utils import TypePathStr
+from yaw.core.containers import (
+    BinnedQuantity,
+    Binning,
+    HDFSerializable,
+    Indexer,
+    PatchedQuantity,
+    SampledData,
+)
+from yaw.core.utils import TimedLog, TypePathStr
 from yaw.core.utils import format_float_fixed_width as fmt_num
 from yaw.correlation.estimators import (
     CorrelationEstimator,
@@ -33,7 +37,6 @@ from yaw.correlation.paircounts import NormalisedCounts, TypeIndex
 if TYPE_CHECKING:  # pragma: no cover
     from matplotlib.axis import Axis
     from numpy.typing import NDArray
-    from pandas import IntervalIndex
 
     from yaw.catalog import Catalog
     from yaw.config import Configuration
@@ -88,7 +91,7 @@ class CorrData(SampledData):
     array([0.3175, 0.3625, 0.4075, 0.4525])
 
     Args:
-        binning (:obj:`pandas.IntervalIndex`):
+        binning (:obj:`~yaw.core.containers.Binning`):
             The redshift bin edges used for this correlation function.
         data (:obj:`NDArray`):
             The correlation function values.
@@ -133,7 +136,7 @@ class CorrData(SampledData):
         ext = "dat"
         data_error = np.loadtxt(f"{path_prefix}.{ext}")
         # restore index
-        binning = pd.IntervalIndex.from_arrays(data_error[:, 0], data_error[:, 1])
+        binning = Binning.from_arrays(data_error[:, 0], data_error[:, 1])
         # load samples
         ext = "smp"
         samples = np.loadtxt(f"{path_prefix}.{ext}")
@@ -587,9 +590,6 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
         return Indexer(self, builder)
 
-    def get_binning(self) -> IntervalIndex:
-        return self.dd.get_binning()
-
     @property
     def n_patches(self) -> int:
         return self.dd.n_patches
@@ -744,7 +744,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         data = est_fun.eval(**required_data, **optional_data)
         samples = est_fun.eval(**required_samples, **optional_samples)
         return CorrData(
-            binning=self.get_binning(),
+            binning=self.binning,
             data=data,
             samples=samples,
             method=config.method,

@@ -26,22 +26,23 @@ except ImportError:  # pragma: no cover
 
 import h5py
 import numpy as np
-import pandas as pd
 from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
-from yaw.core.abc import (
+from yaw.core.containers import (
     BinnedQuantity,
+    Binning,
     HDFSerializable,
+    Indexer,
     PatchedQuantity,
+    PatchIDs,
+    SampledData,
     concatenate_bin_edges,
 )
-from yaw.core.containers import Indexer, PatchIDs, SampledData
 from yaw.core.math import apply_slice_ndim, outer_triu_sum
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import DTypeLike, NDArray
-    from pandas import IntervalIndex
 
 __all__ = ["PatchedTotal", "PatchedCount", "NormalisedCounts"]
 
@@ -81,16 +82,16 @@ def check_mergable(patched_arrays: Sequence[PatchedArray], *, patches: bool) -> 
             raise ValueError("cannot merge, patch numbers do not match")
 
 
-def binning_from_hdf(source: h5py.Group) -> IntervalIndex:
-    """Construct a :obj:`pandas.IntervalIndex` from a group in an HDF5 file."""
+def binning_from_hdf(source: h5py.Group) -> Binning:
+    """Construct a :obj:`Binning` from a group in an HDF5 file."""
     dset = source["binning"]
     left, right = dset[:].T
     closed = dset.attrs["closed"]
-    return pd.IntervalIndex.from_arrays(left, right, closed=closed)
+    return Binning.from_edges(left, right, closed=closed)
 
 
-def binning_to_hdf(binning: IntervalIndex, dest: h5py.Group) -> None:
-    """Serialise a :obj:`pandas.IntervalIndex` into a group of an HDF5 file.
+def binning_to_hdf(binning: Binning, dest: h5py.Group) -> None:
+    """Serialise a :obj:`Binning` into a group of an HDF5 file.
 
     Stores the left and right edges for each interval, as well as on which side
     the intervals are closed as group attribute.
@@ -214,7 +215,7 @@ class PatchedArray(BinnedQuantity, PatchedQuantity, HDFSerializable):
         else:
             samples = np.atleast_2d(data)
         return SampledData(
-            binning=self.get_binning(), data=data, samples=samples, method=config.method
+            binning=self.binning, data=data, samples=samples, method=config.method
         )
 
 
@@ -281,13 +282,13 @@ class PatchedTotal(PatchedArray):
     """
 
     def __init__(
-        self, binning: IntervalIndex, totals1: NDArray, totals2: NDArray, *, auto: bool
+        self, binning: Binning, totals1: NDArray, totals2: NDArray, *, auto: bool
     ) -> None:
         """Construct a new instance from the total number of objects in the
         first and second catalog.
 
         Args:
-            binning (:obj:`pandas.IntervalIndex`):
+            binning (:obj:`Binning`):
                 The redshift binning applied to the data.
             totals1 (:obj:`NDArray`):
                 The total number of objects from the first data catalogue per
@@ -326,7 +327,7 @@ class PatchedTotal(PatchedArray):
             return (
                 self.n_bins == other.n_bins
                 and self.n_patches == other.n_patches
-                and (self.get_binning() == other.get_binning()).all()
+                and (self.binning == other.binning).all()
                 and np.all(self.totals1 == other.totals1)
                 and np.all(self.totals2 == other.totals2)
                 and self.auto == other.auto
@@ -364,9 +365,6 @@ class PatchedTotal(PatchedArray):
 
         return Indexer(self, builder)
 
-    def get_binning(self) -> IntervalIndex:
-        return self._binning
-
     @property
     def n_patches(self) -> int:
         return self.totals1.shape[0]
@@ -383,7 +381,7 @@ class PatchedTotal(PatchedArray):
 
     def to_hdf(self, dest: h5py.Group) -> None:
         # store the binning
-        binning_to_hdf(self.get_binning(), dest)
+        binning_to_hdf(self.binning, dest)
         # store the data
         dest.create_dataset("totals1", data=self.totals1, **_compression)
         dest.create_dataset("totals2", data=self.totals2, **_compression)
@@ -394,7 +392,7 @@ class PatchedTotal(PatchedArray):
         all_totals: list[PatchedTotal] = [self, *data]
         check_mergable(all_totals, patches=True)
         return self.__class__(
-            binning=self.get_binning().copy(),
+            binning=self.binning.copy(),
             totals1=np.concatenate([t.totals1 for t in all_totals], axis=0),
             totals2=np.concatenate([t.totals2 for t in all_totals], axis=0),
             auto=self.auto,
@@ -512,10 +510,10 @@ class PatchedCount(PatchedArray):
 
     Create a redshift binning:
 
-    >>> import pandas as pd
-    >>> bins = pd.IntervalIndex.from_breaks([0.1, 0.2, 0.3])
+    >>> from yaw.core.containers import Binning
+    >>> bins = Binning.from_edges([0.1, 0.2, 0.3])
     >>> bins
-    IntervalIndex([(0.1, 0.2], (0.2, 0.3]], dtype='interval[float64, right]')
+    Binning([(0.1, 0.2], (0.2, 0.3]])
 
     Create two data containers with some dummy values:
 
@@ -580,7 +578,7 @@ class PatchedCount(PatchedArray):
 
     def __init__(
         self,
-        binning: IntervalIndex,
+        binning: Binning,
         counts: NDArray,
         *,
         auto: bool,
@@ -588,7 +586,7 @@ class PatchedCount(PatchedArray):
         """Construct a new instance from an existing pair count array.
 
         Args:
-            binning (:obj:`pandas.IntervalIndex`):
+            binning (:obj:`Binning`):
                 The redshift binning applied to the data.
             counts (:obj:`NDArray`):
                 Internal data array containing the pair counts between spatial
@@ -611,7 +609,7 @@ class PatchedCount(PatchedArray):
     @classmethod
     def zeros(
         cls,
-        binning: IntervalIndex,
+        binning: Binning,
         n_patches: int,
         *,
         auto: bool,
@@ -621,7 +619,7 @@ class PatchedCount(PatchedArray):
         initialised to zero.
 
         Args:
-            binning (:obj:`pandas.IntervalIndex`):
+            binning (:obj:`Binning`):
                 Redshift binning for the container, determines size of last data
                 array dimension.
             n_patches (:obj:`int`):
@@ -643,7 +641,7 @@ class PatchedCount(PatchedArray):
             return (
                 self.n_bins == other.n_bins
                 and self.n_patches == other.n_patches
-                and (self.get_binning() == other.get_binning()).all()
+                and (self.binning == other.binning).all()
                 and np.all(self.counts == other.counts)
                 and (self.auto == other.auto)
             )
@@ -655,7 +653,7 @@ class PatchedCount(PatchedArray):
             if self.n_patches != other.n_patches:
                 raise ValueError("number of patches does not agree")
             return self.__class__(
-                self.get_binning(), self.counts + other.counts, auto=self.auto
+                self.binning, self.counts + other.counts, auto=self.auto
             )
         return NotImplemented
 
@@ -666,9 +664,7 @@ class PatchedCount(PatchedArray):
 
     def __mul__(self, other: object) -> PatchedCount:
         if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
-            return self.__class__(
-                self.get_binning(), self.counts * other, auto=self.auto
-            )
+            return self.__class__(self.binning, self.counts * other, auto=self.auto)
         return NotImplemented
 
     def set_measurement(self, key: PatchIDs | tuple[int, int], item: NDArray):
@@ -735,16 +731,13 @@ class PatchedCount(PatchedArray):
 
         return Indexer(self, builder)
 
-    def get_binning(self) -> IntervalIndex:
-        return self._binning
-
     @property
     def n_patches(self) -> int:
         return self.counts.shape[0]
 
     @property
     def n_bins(self) -> int:
-        return len(self.get_binning())
+        return len(self.binning)
 
     def keys(self) -> NDArray:
         """Array of patch index pairs with non-zero pair counts.
@@ -784,7 +777,7 @@ class PatchedCount(PatchedArray):
 
     def to_hdf(self, dest: h5py.Group) -> None:
         # store the binning
-        binning_to_hdf(self.get_binning(), dest)
+        binning_to_hdf(self.binning, dest)
         # store the data
         dest.create_dataset("keys", data=self.keys(), **_compression)
         dest.create_dataset("data", data=self.values(), **_compression)
@@ -798,7 +791,7 @@ class PatchedCount(PatchedArray):
         offsets = patch_idx_offset(all_counts)
         n_patches = [count.n_patches for count in all_counts]
         merged = self.__class__.zeros(
-            binning=self.get_binning(),
+            binning=self.binning,
             n_patches=sum(n_patches),
             auto=self.auto,
         )
@@ -1016,9 +1009,6 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
         return Indexer(self, builder)
 
-    def get_binning(self) -> IntervalIndex:
-        return self.total.get_binning()
-
     @property
     def n_patches(self) -> int:
         return self.total.n_patches
@@ -1045,7 +1035,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         counts = self.count.sample_sum(config)
         totals = self.total.sample_sum(config)
         samples = SampledData(
-            binning=self.get_binning(),
+            binning=self.binning,
             data=(counts.data / totals.data),
             samples=(counts.samples / totals.samples),
             method=config.method,

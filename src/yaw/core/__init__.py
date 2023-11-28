@@ -1,6 +1,6 @@
 """This module implements the core library, which defines a number of utilities:
 
-* the (abstract) API of the main data containers (:mod:`yaw.core.abc`,
+* the (abstract) API of the main data containers (:mod:`yaw.core.containers`,
   :obj:`yaw.core.SampledData`, and :obj:`yaw.core.SampledValue`),
 
 * coordinate systems and distance computation on the sphere
@@ -14,7 +14,7 @@
 * a few other convenience functions in various submodules.
 """
 
-from yaw.core.containers import SampledData, SampledValue
+from yaw.core.containers import Binning, SampledData, SampledValue
 from yaw.core.math import global_covariance
 
-__all__ = ["SampledData", "SampledValue", "global_covariance"]
+__all__ = ["Binning", "SampledData", "SampledValue", "global_covariance"]

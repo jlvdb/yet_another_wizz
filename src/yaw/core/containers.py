@@ -10,33 +10,50 @@ with redshift binning.
 from __future__ import annotations
 
 import warnings
+from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
+from copy import copy
 from dataclasses import dataclass, field, fields
 from typing import (
     TYPE_CHECKING,
     Callable,
     Generator,
     Generic,
+    Iterable,
     Literal,
     NamedTuple,
+    Type,
     TypeVar,
 )
 
+import h5py
 import numpy as np
-import pandas as pd
 
 from yaw.config import OPTIONS
-from yaw.core.abc import BinnedQuantity, concatenate_bin_edges
 from yaw.core.math import cov_from_samples
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
-    from pandas import DataFrame, IntervalIndex, Series
 
-__all__ = ["Indexer", "PatchIDs", "PatchCorrelationData", "SampledValue", "SampledData"]
+    from yaw.core.utils import TypePathStr
+
+__all__ = [
+    "Indexer",
+    "PatchIDs",
+    "PatchCorrelationData",
+    "PatchedQuantity",
+    "BinnedQuantity",
+    "SampledValue",
+    "SampledData",
+    "concatenate_bin_edges",
+    "HDFSerializable",
+]
 
 
-@dataclass
+_Tindex = TypeVar("_Tindex", bound=np.number)
+
+
+@dataclass(eq=True)
 class Interval:
     left: float
     right: float
@@ -45,6 +62,9 @@ class Interval:
     def __post_init__(self) -> None:
         if np.all(self.left >= self.right):
             raise ValueError("'left' must be strictly less than 'right'")
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.__repr__()})"
 
     def __str__(self) -> str:
         if self.closed == "left":
@@ -60,36 +80,84 @@ class Interval:
     def edges(self) -> NDArray[np.float64]:
         return np.append([self.left, self.right])
 
+    def copy(self: _Tindex) -> _Tindex:
+        return copy(self)
 
-class IntervalVetor(Interval):
+
+class Binning:
     def __init__(
         self,
-        left: NDArray[np.float64],
-        right: NDArray[np.float64],
+        intervals: Iterable[Interval],
         closed: Literal["right", "left"] = "right",
     ) -> None:
         self.closed = closed
-        left = np.asarray(left)
-        right = np.asarray(right)
-        if np.all(left >= right):
-            raise ValueError("'left' must be strictly less than 'right'")
+        self._intervals: tuple[Interval] = tuple(
+            sorted(intervals, key=lambda intv: intv.mid)
+        )
+        self._check()
+
+    def _check(self):
+        right = None
+        for intv in self._intervals:
+            if right is not None and intv.left != right:
+                raise ValueError("intervals must cover a contiguous range")
+            right = intv.right
+
+    @classmethod
+    def from_edges(
+        cls,
+        edges: NDArray[np.float64],
+        closed: Literal["right", "left"] = "right",
+    ) -> Binning:
+        return cls.from_arrays(edges[:-1], edges[1:], closed)
+
+    @classmethod
+    def from_arrays(
+        cls,
+        left: NDArray[np.float64],
+        right: NDArray[np.float64],
+        closed: Literal["right", "left"] = "right",
+    ) -> Binning:
         if left.ndim != 1 or right.ndim != 1:
             raise ValueError("'left' and 'right' must be one dimensional")
         elif left.shape != right.shape:
             raise ValueError("length of 'left' and 'right' does not match")
-        self.left = left
-        self.right = right
+        # pack edges
+        intervals = [Interval(il, ir, closed) for il, ir in zip(left, right)]
+        return cls(intervals, closed)
 
     def __len__(self) -> int:
-        return len(self.left)
+        return len(self._intervals)
 
-    def __iter__(self) -> Generator[Interval]:
-        for left, right in zip(self.left, self.right):
-            yield Interval(left, right, closed=self.closed)
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.__repr__()})"
 
     def __str__(self) -> str:
-        string = ", ".join(str(intv) for intv in iter(self))
+        string = ", ".join(str(intv) for intv in self._intervals)
         return f"[{string}]"
+
+    def __iter__(self) -> Generator[Interval]:
+        for intv in self._intervals:
+            yield intv
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Binning):
+            if len(self) != len(other):
+                return False
+            return all(s_intv == o_intv for s_intv, o_intv in zip(self, other))
+        return NotImplemented
+
+    @property
+    def left(self) -> NDArray:
+        return np.array([intv.left for intv in self._intervals])
+
+    @property
+    def right(self) -> NDArray:
+        return np.array([intv.right for intv in self._intervals])
+
+    @property
+    def mids(self) -> NDArray:
+        return np.array([intv.mid for intv in self._intervals])
 
     @property
     def edges(self) -> NDArray[np.float64]:
@@ -101,15 +169,7 @@ class IntervalVetor(Interval):
             return False
         return np.all(self.edges == other_edges)
 
-    @classmethod
-    def from_edges(
-        cls,
-        edges: NDArray[np.float64],
-        closed: Literal["right", "left"] = "right",
-    ) -> IntervalVetor:
-        return cls(edges[:-1], edges[1:], closed)
-
-    def bin_data(self, data: NDArray) -> NDArray[np.int64]:
+    def apply(self, data: NDArray) -> NDArray[np.int64]:
         return np.searchsorted(self.edges, data, side=self.closed) - 1
 
 
@@ -195,6 +255,173 @@ class PatchCorrelationData:
     totals1: NDArray
     totals2: NDArray
     counts: dict[str, NDArray]
+
+
+_Tpatched = TypeVar("_Tpatched", bound="PatchedQuantity")
+
+
+class PatchedQuantity(ABC):
+    """Base class for an object that has data organised in spatial patches."""
+
+    @property
+    @abstractmethod
+    def n_patches(self) -> int:
+        """Get the number of spatial patches."""
+        pass
+
+    @property
+    @abstractmethod
+    def patches(self) -> Indexer:
+        """An :obj:`~yaw.core.containers.Indexer` attribute that supports
+        iteration over the spatial patches or selecting a subset of the patches.
+
+        The indexer always returns new container instances with the indexed
+        data subset or the current item when iterating.
+
+        .. Note::
+            Indexing rules for a one-dimensional numpy array apply.
+
+        Returns:
+            :obj:`yaw.core.containers.Indexer`
+        """
+        pass
+
+    @abstractmethod
+    def concatenate_patches(self: _Tpatched, *data: _Tpatched) -> _Tpatched:
+        """Concatenate pair count data containers with equal redshift binning.
+
+        The data is merged by extending the dimension of the patch axes. The
+        resulting data array will be a block matrix of the input data arrays,
+        i.e. all elements with correlations between different inputs set to
+        zero.
+
+        .. Note::
+            Necessary condition for merging is that the the redshift binning of
+            all inputs is identical. Cannot merge cross- with autocorrelation
+            containers.
+
+        Args:
+            *data:
+                Containers of same type that are appended to the patch dimension
+                of this container.
+
+        Returns:
+            New instance of this container with combined data.
+        """
+        pass
+
+
+_Tbinned = TypeVar("_Tbinned", bound="BinnedQuantity")
+
+
+class BinnedQuantity(ABC):
+    """Base class for an object that has data organised in redshift bins."""
+
+    binning: Binning
+
+    def __repr__(self) -> str:
+        name = self.__class__.__name__
+        n_bins = self.n_bins
+        z = f"{self.binning[0].left:.3f}...{self.binning[-1].right:.3f}"
+        return f"{name}({n_bins=}, {z=})"
+
+    @property
+    def n_bins(self) -> int:
+        """Get the number of redshift bins."""
+        return len(self.binning)
+
+    @property
+    def mids(self) -> NDArray[np.float64]:
+        """Get the centers of the redshift bins as array."""
+        return np.array([z.mid for z in self.binning])
+
+    @property
+    def edges(self) -> NDArray[np.float64]:
+        """Get the edges of the redshift bins as flat array."""
+        return np.append(self.binning.left, self.binning.right[-1])
+
+    @property
+    def dz(self) -> NDArray[np.float64]:
+        """Get the width of the redshift bins as array."""
+        return np.diff(self.edges)
+
+    @property
+    def closed(self) -> str:
+        """Specifies on which side the redshift bin intervals are closed, can
+        be: ``left``, ``right``, ``both``, ``neither``."""
+        return self.binning.closed
+
+    @property
+    @abstractmethod
+    def bins(self) -> Indexer:
+        """An :obj:`~yaw.core.containers.Indexer` attribute that supports
+        iteration over the bins or selecting a subset of the bins.
+
+        The indexer always returns new container instances with the indexed
+        data subset or the current item when iterating.
+
+        .. Warning::
+            Indexing rules for a one-dimensional numpy array apply, however if
+            the resulting binning is not contiguous or contains repeated bins,
+            some operations on the returned container may fail.
+
+        Returns:
+            :obj:`yaw.core.containers.Indexer`
+        """
+        pass
+
+    def is_compatible(self: _Tbinned, other: _Tbinned, require: bool = False) -> bool:
+        """Check whether this instance is compatible with another instance.
+
+        Ensures that both objects are instances of the same class and that the
+        redshift binning is identical.
+
+        Args:
+            other (:obj:`BinnedQuantity`):
+                Object instance to compare to.
+            require (:obj:`bool`, optional)
+                Raise a ValueError if any of the checks fail.
+
+        Returns:
+            :obj:`bool`
+        """
+        if not isinstance(other, self.__class__):
+            raise TypeError(
+                f"object of type {type(other)} is not compatible with "
+                f"{self.__class__}"
+            )
+        if self.n_bins != other.n_bins:
+            if require:
+                raise ValueError("number of bins do not agree")
+            return False
+        if np.any(self.binning != other.binning):
+            if require:
+                raise ValueError("binning is not identical")
+            return False
+        return True
+
+    @abstractmethod
+    def concatenate_bins(self: _Tbinned, *data: _Tbinned) -> _Tbinned:
+        """Concatenate pair count data containers with equal patches.
+
+        The data is merged by appending the data along the redshift binning
+        axis.
+
+        .. Note::
+            Necessary condition for merging is that the patch numbers are
+            identical and that the merged binning is contiguous and
+            non-overlapping. Cannot merge cross- with autocorrelation
+            containers.
+
+        Args:
+            *data:
+                Containers of same type that are appended to the patch dimension
+                of this container.
+
+        Returns:
+            New instance of this container with combined data.
+        """
+        pass
 
 
 _Tscalar = TypeVar("_Tscalar", bound=np.number)
@@ -312,10 +539,10 @@ class SampledData(BinnedQuantity):
 
     Create a redshift binning:
 
-    >>> import pandas as pd
-    >>> bins = pd.IntervalIndex.from_breaks([0.1, 0.2, 0.3])
+    >>> from yaw.core.containers import Binning
+    >>> bins = Binning.from_edges([0.1, 0.2, 0.3])
     >>> bins
-    IntervalIndex([(0.1, 0.2], (0.2, 0.3]], dtype='interval[float64, right]')
+    Binning([(0.1, 0.2], (0.2, 0.3]])
 
     Create some sample data for the bins with value 1 and five assumed jackknife
     samples normal-distributed around 1.
@@ -347,7 +574,7 @@ class SampledData(BinnedQuantity):
            [2., 2.]])
     """
 
-    binning: IntervalIndex
+    binning: Binning
     """The redshift bin intervals."""
     data: NDArray
     """The data values, one for each redshift bin."""
@@ -390,7 +617,7 @@ class SampledData(BinnedQuantity):
         if not isinstance(other, self.__class__):
             self.is_compatible(other, require=True)
             return self.__class__(
-                binning=self.get_binning(),
+                binning=self.binning,
                 data=self.data + other.data,
                 samples=self.samples + other.samples,
                 method=self.method,
@@ -401,7 +628,7 @@ class SampledData(BinnedQuantity):
         if isinstance(other, self.__class__):
             self.is_compatible(other, require=True)
             return self.__class__(
-                binning=self.get_binning(),
+                binning=self.binning,
                 data=self.data - other.data,
                 samples=self.samples - other.samples,
                 method=self.method,
@@ -414,7 +641,7 @@ class SampledData(BinnedQuantity):
             if isinstance(item, int):
                 item = [item]
             # try to take subsets along bin axis
-            binning = inst.get_binning()[item]
+            binning = inst.binning[item]
             data = inst.data[item]
             samples = inst.samples[:, item]
             # determine which extra attributes need to be copied
@@ -440,9 +667,6 @@ class SampledData(BinnedQuantity):
             :obj:`NDArray`
         """
         return np.sqrt(np.diag(self.covariance))
-
-    def get_binning(self) -> IntervalIndex:
-        return self.binning
 
     def is_compatible(self, other: SampledData, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
@@ -488,37 +712,8 @@ class SampledData(BinnedQuantity):
         kwargs.update({attr: getattr(self, attr) for attr in copy_attrs})
         return self.__class__(**kwargs)
 
-    def get_data(self) -> Series:
-        """Get the data as :obj:`pandas.Series` with the binning as index."""
-        return pd.Series(self.data, index=self.binning)
-
-    def get_samples(self) -> DataFrame:
-        """Get the data as :obj:`pandas.DataFrame` with the binning as index.
-        The columns are labelled numerically and each represent one of the
-        samples."""
-        return pd.DataFrame(self.samples.T, index=self.binning)
-
-    def get_error(self) -> Series:
-        """Get value error estimate (diagonal of covariance matrix) as series
-        with its corresponding redshift bin intervals as index.
-
-        Returns:
-            :obj:`pandas.Series`
-        """
-        return pd.Series(self.error, index=self.binning)
-
-    def get_covariance(self) -> DataFrame:
-        """Get value covariance matrix as data frame with its corresponding
-        redshift bin intervals as index and column labels.
-
-        Returns:
-            :obj:`pandas.DataFrame`
-        """
-        return pd.DataFrame(
-            data=self.covariance, index=self.binning, columns=self.binning
-        )
-
-    def get_correlation(self) -> DataFrame:
+    @property
+    def correlation(self) -> NDArray:
         """Get value correlation matrix as data frame with its corresponding
         redshift bin intervals as index and column labels.
 
@@ -530,4 +725,79 @@ class SampledData(BinnedQuantity):
             warnings.simplefilter("ignore")
             corr = self.covariance / np.outer(stdev, stdev)
         corr[self.covariance == 0] = 0
-        return pd.DataFrame(data=corr, index=self.binning, columns=self.binning)
+        return corr
+
+
+def concatenate_bin_edges(*patched: BinnedQuantity) -> Binning:
+    """Concatenate the binning a set of data containers.
+
+    The input containers are automatically sorted by the lowest edge of the
+    redshift binning. Necessary condidtions for mergning are are that the patch
+    numbers are identical and that the resulting is contiguous and
+    non-overlapping, i.e. the final edge of the previous binning must be
+    identical to the lowest edge of the next binning.
+    """
+    patched = sorted([p for p in patched], key=lambda p: p.edges[0])
+    reference = patched[0]
+    edges = reference.edges
+    for other in patched[1:]:
+        if edges[-1] == other.edges[0]:
+            edges = np.concatenate([edges, other.edges[1:]])
+        else:
+            raise ValueError("cannot merge, bins are not contiguous")
+    return Binning.from_edges(edges, closed=reference.closed)
+
+
+_Thdf = TypeVar("_Thdf", bound="HDFSerializable")
+
+
+class HDFSerializable(ABC):
+    """Base class for an object that can be serialised into a HDF5 file."""
+
+    @classmethod
+    @abstractmethod
+    def from_hdf(cls: Type[_Thdf], source: h5py.Group) -> _Thdf:
+        """Create a class instance by deserialising data from a HDF5 group.
+
+        Args:
+            source (:obj:`h5py.Group`):
+                Group in an opened HDF5 file that contains the serialised data.
+
+        Returns:
+            :obj:`HDFSerializablep`
+        """
+        pass
+
+    @abstractmethod
+    def to_hdf(self, dest: h5py.Group) -> None:
+        """Serialise the class instance into an existing HDF5 group.
+
+        Args:
+            dest (:obj:`h5py.Group`):
+                Group in which the serialised data structures are created.
+        """
+        pass
+
+    @classmethod
+    def from_file(cls: Type[_Thdf], path: TypePathStr) -> _Thdf:
+        """Create a class instance by deserialising data from a HDF5 file.
+
+        Args:
+            path (:obj:`pathlib.Path`, :obj:`str`):
+                Group in an opened HDF5 file that contains the necessary data.
+
+        Returns:
+            :obj:`HDFSerializable`
+        """
+        with h5py.File(str(path)) as f:
+            return cls.from_hdf(f)
+
+    def to_file(self, path: TypePathStr) -> None:
+        """Serialise the class instance to a new HDF5 file.
+
+        Args:
+            path (:obj:`pathlib.Path`, :obj:`str`):
+                Path at which the HDF5 file is created.
+        """
+        with h5py.File(str(path), mode="w") as f:
+            self.to_hdf(f)
