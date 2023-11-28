@@ -10,6 +10,21 @@
 
 
 npy_intp get_size_checked(const PyArrayObject *arr_obj, int argidx, int dtype , const std::string &typestr) {
+    /**
+     * Get the size of a numpy array and check memory layout.
+     *
+     * Checks that the array is one dimensional, contains at least a single
+     * element, elements have a specific datatype and the data is contiguous in
+     * memory.
+     *
+     * @param arr_obj The numpy array object.
+     * @param argidx The index in the functions argument list, used to format
+     *               error messages.
+     * @param dtype Data type the array elements should have, expressed as numpy
+     *              datatype numerical code (e.g. NPY_DOUBLE).
+     * @param typestr Descriptive name of the data type (e.g. 'float64').
+     * @return Number of array elements (==length) or -1 if any check fails.
+     */
     // check that the array is 1-dim
     if (PyArray_NDIM(arr_obj) != 1) {
         PyErr_SetString(PyExc_IndexError, "input arrays must be 1-dimensional");
@@ -36,6 +51,17 @@ npy_intp get_size_checked(const PyArrayObject *arr_obj, int argidx, int dtype , 
 
 
 std::unordered_map<int64_t, std::vector<double>> groupby(const std::vector<int64_t> &indices, const std::vector<double> &data) {
+    /**
+     * Split a data vector into subvectors based on grouping indices.
+     *
+     * Implements a simple group-by using a hashmap with a new vector for each
+     * unique grouping index value. Data elements with the same grouping index
+     * are collected in the same vector in the hashmap.
+     *
+     * @param indices Grouping index that determines how the data is split.
+     * @param data Data vector to be split in groups.
+     * @return Mapping from group index to data of group, stored as vector.
+     */
     int64_t size = data.size();
     std::unordered_map<int64_t, std::vector<double>> groupedData;
     groupedData.reserve(size);  // Reserve space for better performance
@@ -50,6 +76,14 @@ std::unordered_map<int64_t, std::vector<double>> groupby(const std::vector<int64
 
 template <typename T>
 std::vector<T> numpy_array_to_vector(const PyArrayObject *array) {
+    /**
+     * Convert a 1-dim, contiguous numpy array with non-zero size to a vector
+     * without copying.
+     *
+     * @param array The numpy array.
+     * @return A vector pointing to the data of the numpy array. The vector is
+     *         empty if the construction failed.
+     */
     npy_intp size = PyArray_SIZE(array);
     T *buffer = static_cast<T*>(PyArray_DATA(array));
     if (size <= 0 || buffer == nullptr) {
@@ -62,6 +96,13 @@ std::vector<T> numpy_array_to_vector(const PyArrayObject *array) {
 
 template <typename T>
 PyObject* vector_to_numpy_array(const std::vector<T>& vec) {
+    /**
+     * Copy a vector to a newly created numpy array.
+     *
+     * @param vec The vector to copy.
+     * @return Numpy arrow object holing a copy of the data or a null pointer if
+     *         an error occured.
+     */
     npy_intp size = vec.size();
     T *vec_copy = new T[size];
     std::copy(vec.begin(), vec.end(), vec_copy);
@@ -84,12 +125,27 @@ PyObject* vector_to_numpy_array(const std::vector<T>& vec) {
         return nullptr;
     }
     // Set the flag to manage the memory
+    // NOTE: this step may not be necessary anymore since the data is now copied
     PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(array), NPY_ARRAY_OWNDATA);
     return array;
 }
 
 
 PyObject* map_to_dict(const std::unordered_map<int64_t, std::vector<double>>& data) {
+    /**
+     * Convert an unordered map holding vectors to a python dict holding numpy
+     * arrays.
+     *
+     * NOTE: This function seems to contain a memory leak, potentially related
+     *       to reference couting of python dictionary keys. With each run, the
+     *       memory profile of the python interpreter is slightly growing. When
+     *       running `sys.getrefcount(result) - 1`, the reference count for the
+     *       arrays is 1 as expected but for the keys as high as a few thousand.
+     *
+     * @param data The unordered map to repack.
+     * @return A python dictionary containing copies of the array data contained
+     *         in the input map.
+     */
     PyObject *pyDict = PyDict_New();
     if (!pyDict) {
         PyErr_SetString(PyExc_RuntimeError, "failed to create output dictionary");
@@ -114,6 +170,23 @@ PyObject* map_to_dict(const std::unordered_map<int64_t, std::vector<double>>& da
 
 
 extern "C" PyObject *groupby_arrays(PyObject *self, PyObject *args) {
+    /**
+     * Python-callable function that implements the groupby algorithm for an
+     * index array and four data arrays, right ascension, declincation, weights
+     * and redshift.
+     *
+     * The four data arrays are grouped by the index array values. The function
+     * returns at tuple of python dictionaries, one for each data array. Each
+     * dictionary maps from unique index values to a numpy array of the data
+     * values in that group.
+     *
+     * NOTE: It was easier to implement a function with fixed parameters here
+     *       and wrap them in an external python function. The external function
+     *       also ensures that the arrays are contiguous and cast to the correct
+     *       datatype.
+     *
+     * @return 4-tuple of dictionaries with mapping from int to numpy array.
+     */
     // pyargs: patch (array i64), ra (array f64), dec (array f64), weight (array f64), redshift (array f64)
     PyArrayObject *patch_arrobj, *ra_arrobj, *dec_arrobj, *weight_arrobj, *redshift_arrobj;
     if (!PyArg_ParseTuple(

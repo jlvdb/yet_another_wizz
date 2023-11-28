@@ -9,6 +9,9 @@
 
 
 double euclidean_distance(double x, double y, double z, double x_c, double y_c, double z_c) {
+    /**
+     * TODO
+     */
     double dx = x - x_c;
     double dy = y - y_c;
     double dz = z - z_c;
@@ -17,6 +20,9 @@ double euclidean_distance(double x, double y, double z, double x_c, double y_c, 
 
 
 npy_intp get_size_checked(const PyArrayObject *arr_obj) {
+    /**
+     * TODO
+     */
     // check that the array is 1-dim
     if (PyArray_NDIM(arr_obj) != 1) {
         PyErr_SetString(PyExc_IndexError, "input arrays must be 1-dimensional");
@@ -43,6 +49,9 @@ npy_intp get_size_checked(const PyArrayObject *arr_obj) {
 
 
 extern "C" PyObject* coord_sky_to_sphere(PyObject *self, PyObject *args) {
+    /**
+     * TODO
+     */
     // pyargs: ra (array f64), dec (array f64)
     PyArrayObject *ra_arrobj, *dec_arrobj;
     if (!PyArg_ParseTuple(
@@ -112,6 +121,9 @@ extern "C" PyObject* coord_sky_to_sphere(PyObject *self, PyObject *args) {
 
 
 extern "C" PyObject *coord_sphere_to_sky(PyObject *self, PyObject *args) {
+    /**
+     * TODO
+     */
     // pyargs: x (array f64), y (array f64), z (array f64)
     PyArrayObject *x_arrobj, *y_arrobj, *z_arrobj;
     if (!PyArg_ParseTuple(
@@ -189,6 +201,9 @@ extern "C" PyObject *coord_sphere_to_sky(PyObject *self, PyObject *args) {
 
 
 extern "C" PyObject *radius_from_coord_sky(PyObject *self, PyObject *args) {
+    /**
+     * TODO
+     */
     // pyargs: ra (array f64), dec (array f64), x_center (double), y_center (double), z_center (double)
     PyArrayObject *ra_arrobj, *dec_arrobj;
     double x_center, y_center, z_center;
@@ -244,6 +259,9 @@ extern "C" PyObject *radius_from_coord_sky(PyObject *self, PyObject *args) {
 
 
 extern "C" PyObject *radius_from_coord_sphere(PyObject *self, PyObject *args) {
+    /**
+     * TODO
+     */
     // pyargs: x (array f64), y (array f64), z (array f64), x_center (double), y_center (double), z_center (double)
     PyArrayObject *x_arrobj, *y_arrobj, *z_arrobj;
     double x_center, y_center, z_center;

@@ -8,6 +8,9 @@
 
 
 npy_intp get_size_checked(const PyArrayObject *arr_obj) {
+    /**
+     * TODO
+     */
     // check that the array is 1-dim
     if (PyArray_NDIM(arr_obj) != 1) {
         PyErr_SetString(PyExc_IndexError, "input arrays must be 1-dimensional");
@@ -34,6 +37,9 @@ npy_intp get_size_checked(const PyArrayObject *arr_obj) {
 
 
 extern "C" PyObject* rebin(PyObject* self, PyObject* args) {
+    /**
+     * TODO
+     */
     // pyargs: bins_new (array f64), bins_old (array f64), counts_old (array f64)
     PyArrayObject *bins_new_arrobj, *bins_old_arrobj, *counts_old_arrobj;
     if (!PyArg_ParseTuple(
