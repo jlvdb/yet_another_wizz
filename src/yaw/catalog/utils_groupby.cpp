@@ -1,3 +1,12 @@
+// utils_groupby.cpp
+
+/**
+ * This file implements a simple groupby algorithm using a hashmap. Multiple
+ * input arrays are processed in parallel threads for better performance. The
+ * implementation is currently (depending on the architecture) about 2x faster
+ * than running pandas.groupby on a dataframe with 4+1 data+index columns.
+ */
+
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <numpy/arrayobject.h>
