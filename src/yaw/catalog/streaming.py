@@ -12,7 +12,7 @@ import h5py
 import numpy as np
 from pyarrow import csv, parquet
 
-from yaw.catalog.patch import PatchData, PatchDataCached
+from yaw.catalog.patch import CacheWriter, PatchData, PatchDataCached
 from yaw.catalog.utils import DataChunk, patch_path_from_id
 from yaw.core.utils import TypePathStr
 
@@ -408,7 +408,7 @@ class PatchCollector(Collector):
 
 class PatchWriter(Collector):
     def __init__(self, cache_directory: TypePathStr) -> None:
-        self._patches: dict[int, PatchDataCached] = dict()
+        self._writers: dict[int, CacheWriter] = dict()
         # set up cache directory
         self.cache_directory = Path(cache_directory)
         if not self.cache_directory.exists():
@@ -416,20 +416,24 @@ class PatchWriter(Collector):
 
     def process(self, chunk: DataChunk) -> None:
         for pid, patch_chunk in chunk.groupby():
-            if pid not in self._patches:
+            if pid not in self._writers:
                 cachepath = patch_path_from_id(self.cache_directory, pid)
                 if os.path.exists(cachepath):
                     shutil.rmtree(cachepath)
-                self._patches[pid] = PatchDataCached.empty(
+                self._writers[pid] = CacheWriter(
                     cachepath,
-                    pid,
                     has_weight=patch_chunk.weight is not None,
                     has_redshift=patch_chunk.redshift is not None,
                 )
-            self._patches[pid].append_data(**patch_chunk.to_dict())
+            self._writers[pid].append_chunk(patch_chunk)
 
     def get_patches(self) -> dict[int, PatchDataCached]:
-        return self._patches
+        for writer in self._writers.values():
+            writer.finalize()
+        return {
+            pid: PatchDataCached.restore(pid, writer.path)
+            for pid, writer in self._writers.items()
+        }
 
 
 def get_reader(path: str) -> type[Reader]:

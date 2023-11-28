@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pickle
-from collections.abc import Iterable, Sized
+from collections.abc import Iterable, Sequence, Sized
 from dataclasses import dataclass, field
 from math import ceil
 from pathlib import Path
@@ -161,7 +161,7 @@ class MemmapManager:
     def buffer_size(self) -> int:
         return len(self.memmap)
 
-    def append(self, data: Sized) -> None:
+    def append(self, data: Sequence) -> None:
         if self.readonly:
             raise PermissionError("memory mapped array is in readonly mode")
         n_add = len(data)
@@ -248,7 +248,7 @@ class DataChunk:
             )
             yield patch_id, chunk
 
-    def to_dict(self, drop_patch: bool = False) -> DataChunk:
+    def to_dict(self, drop_patch: bool = False) -> dict[str, NDArray]:
         the_dict = dict(ra=self.ra, dec=self.dec)
         if self.weight is not None:
             the_dict["weight"] = self.weight
@@ -259,7 +259,7 @@ class DataChunk:
         return the_dict
 
     @classmethod
-    def from_dict(cls, the_dict: DataChunk) -> DataChunk:
+    def from_dict(cls, the_dict: dict[str, NDArray]) -> DataChunk:
         return cls(**the_dict)
 
 

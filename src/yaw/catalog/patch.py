@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Generator, Literal, overload
+from typing import TYPE_CHECKING, Generator, overload
 
 import numpy as np
 
 from yaw.catalog import utils
 from yaw.catalog.kdtree import SphericalKDTree
+from yaw.catalog.utils import DataChunk, MemmapManager
 from yaw.config.default import NotSet
 from yaw.core.containers import Binning, Interval
 from yaw.core.coordinates import CoordSky, DistSky
@@ -211,6 +211,7 @@ class PatchData:
                 - **cat** (:obj:`PatchCatalog`): instance containing the data
                   for this bin.
         """
+        z_bins = np.asarray(z_bins)
         if not allow_no_redshift and not self.has_redshift():
             raise ValueError("no redshifts for iteration provdided")
         intervals = Binning.from_edges(z_bins, closed="left")
@@ -231,7 +232,7 @@ class PatchData:
                 if index < 0 or index >= len(intervals):
                     continue
                 intv = index_to_interval[index]
-                yield intv, PatchData(self.id, **bin_data)
+                yield intv, PatchData(self.id, **bin_data.to_dict())
 
     def get_trees(
         self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
@@ -250,6 +251,75 @@ class PatchData:
                 tree._total = bindata.total  # will be recomputed for bin subset
                 trees.append(tree)
         return trees
+
+
+class CacheWriter:
+    def __init__(
+        self,
+        path: Path,
+        has_weight: bool = False,
+        has_redshift: bool = False,
+    ) -> None:
+        self.path = Path(path)
+        self.has_weight = has_weight
+        self.has_redshift = has_redshift
+        # create the memory mapped files
+        self._setup_new_cachedir(self.path)
+        self.files = {
+            "ra": MemmapManager(self.path / "ra", np.float64),
+            "dec": MemmapManager(self.path / "dec", np.float64),
+        }
+        if has_weight:
+            self.files["weight"] = MemmapManager(self.path / "weight", np.float64)
+        if has_redshift:
+            self.files["redshift"] = MemmapManager(self.path / "redshift", np.float64)
+
+    def _setup_new_cachedir(self, path: TypePathStr) -> None:
+        self.path = Path(path)
+        if self.path.exists():
+            raise FileExistsError(f"directory already exists: {self.path}")
+        self.path.mkdir(parents=True)
+
+    def append_chunk(self, chunk: DataChunk) -> None:
+        # check the data inputs
+        chunk_dict = chunk.to_dict(drop_patch=True)
+        has_weight = "weight" in chunk_dict
+        if has_weight != self.has_weight:
+            raise ValueError(
+                f"writer has_weights={self.has_weight}, but chunk {has_weight=}"
+            )
+        has_redshift = "redshift" in chunk_dict
+        if has_redshift != self.has_redshift:
+            raise ValueError(
+                f"writer has_weights={self.has_redshift}, but chunk {has_redshift=}"
+            )
+        # send data to memory maps
+        for key, data in chunk_dict.items():
+            self.files[key].append(data)
+
+    def append_data(
+        self,
+        ra: NDArray,
+        dec: NDArray,
+        weight: NDArray | None = None,
+        redshift: NDArray | None = None,
+    ) -> None:
+        self.append_chunk(DataChunk(ra=ra, dec=dec, weight=weight, redshift=redshift))
+
+    def finalize(self) -> None:
+        for memmap in self.files.values():
+            memmap.finalise()
+
+
+def load_attribute(
+    path: TypePathStr, which: str, require: bool = True
+) -> np.memmap | None:
+    mempath = path / which
+    try:
+        return utils.memmap_load(mempath, np.float64)
+    except FileNotFoundError as err:
+        if require:
+            raise FileNotFoundError(f"missing '{which}' data: {mempath}") from err
 
 
 @dataclass(init=False, eq=False)
@@ -271,30 +341,38 @@ class PatchDataCached(PatchData):
         dec: NDArray[np.float64],
         weight: NDArray[np.floating] | None = None,
         redshift: NDArray[np.float64] | None = None,
-        metadata: PatchMetadata = None,
+        metadata: PatchMetadata | None = None,
     ) -> PatchDataCached:
-        self._setup_new_cachedir(path)
         self.id = id
-        self._init_fields(weight is not None, redshift is not None)
-        # write the provided data
-        self.append_data(ra, dec, weight, redshift)
+        has_weight = weight is not None
+        has_redshift = redshift is not None
+        # create memory maps for the input data
+        writer = CacheWriter(path, has_weight, has_redshift)
+        writer.append_data(ra, dec, weight, redshift)
+        writer.finalize()
+        self.path = writer.path
+        # populate the data attributes
+        self._init_data(metadata)
+
+    def _init_data(self, metadata: PatchMetadata | None) -> None:
+        # check that ra and dec exist and load them
+        self.ra = load_attribute(self.path, "ra", require=True)
+        self.dec = load_attribute(self.path, "dec", require=True)
+        # add the optional data, otherwise initialised to None
+        self.weight = load_attribute(self.path, "weight", require=False)
+        self.redshift = load_attribute(self.path, "redshift", require=False)
+        # run final checks and load metadata
+        utils.check_arrays_matching_shape(self.ra, self.dec, self.weight, self.redshift)
         if metadata is not None:
             self.metadata = metadata
             self._write_metadata()
-
-    @classmethod
-    def empty(
-        cls,
-        path: TypePathStr,
-        id: int,
-        has_weight: bool = False,
-        has_redshift: bool = False,
-    ) -> None:
-        new = cls.__new__(cls)
-        new._setup_new_cachedir(path)
-        new.id = id
-        new._init_fields(has_weight, has_redshift)
-        return new
+        elif self._path_metadata.exists():
+            with open(self._path_metadata) as f:
+                the_dict = json.load(f)
+            self.metadata = PatchMetadata.from_dict(the_dict)
+        else:
+            self.metadata = PatchMetadata(len(self))
+            self._write_metadata()
 
     @classmethod
     def restore(cls, id: int, path: TypePathStr) -> PatchDataCached:
@@ -303,54 +381,13 @@ class PatchDataCached(PatchData):
         if not new.path.exists():
             raise FileNotFoundError(f"cache directory des not exist: {new.path}")
         new.id = id
-
-        # check that ra and dec exist and load them
-        for which in ("ra", "dec"):
-            mempath = new.path / which
-            if not mempath.exists():
-                raise FileNotFoundError(f"missing '{which}' data: {mempath}")
-            data = utils.memmap_load(mempath, np.float64)
-            setattr(new, which, data)
-
-        # add the optional data
-        for which in ("weight", "redshift"):
-            mempath = new.path / which
-            data = utils.memmap_load(mempath, np.float64) if mempath.exists() else None
-            setattr(new, which, data)
-
-        # run final checks and load metadata
-        utils.check_arrays_matching_shape(new.ra, new.dec, new.weight, new.redshift)
-        if new._path_metadata.exists():
-            new._read_metadata()
-        else:
-            new.metadata = PatchMetadata(len(new))
+        # populate the data attributes
+        new._init_data(None)
         return new
-
-    def _setup_new_cachedir(self, path: TypePathStr) -> None:
-        self.path = Path(path)
-        if self.path.exists():
-            raise FileExistsError(f"directory already exists: {self.path}")
-        self.path.mkdir(parents=True)
-
-    def _init_fields(
-        self,
-        has_weight: bool = False,
-        has_redshift: bool = False,
-    ) -> None:
-        self.ra = np.empty(0)
-        self.dec = np.empty(0)
-        self.weight = np.empty(0) if has_weight else None
-        self.redshift = np.empty(0) if has_redshift else None
-        self.metadata = PatchMetadata(0)
 
     @property
     def _path_metadata(self) -> Path:
         return self.path / "metadata.json"
-
-    def _read_metadata(self) -> None:
-        with open(self._path_metadata) as f:
-            the_dict = json.load(f)
-        self.metadata = PatchMetadata.from_dict(the_dict)
 
     def _write_metadata(self) -> None:
         with open(self._path_metadata, "w") as f:
@@ -359,62 +396,6 @@ class PatchDataCached(PatchData):
 
     def _update_metadata_callback(self) -> None:
         self._write_metadata()
-
-    def _append_array(
-        self, which: Literal["ra", "dec", "weight", "redshift"], array: NDArray
-    ) -> None:
-        memmap_or_array = getattr(self, which)
-        old_size = len(memmap_or_array)
-        new_size = old_size + len(array)
-
-        if isinstance(memmap_or_array, np.memmap):
-            # resize the memmap to fit the data, creates new instance
-            memmap = utils.memmap_resize(memmap_or_array, new_size)
-        else:
-            # create the memmap
-            mempath = self.path / which
-            memmap = utils.memmap_init(mempath, np.float64, new_size)
-
-        # copy the new data
-        memmap[old_size:new_size] = array[:]
-        setattr(self, which, memmap)  # reassign new memmap instance
-
-    def append_data(
-        self,
-        ra: NDArray,
-        dec: NDArray,
-        weight: NDArray | None = None,
-        redshift: NDArray | None = None,
-    ) -> None:
-        # check data consistency
-        has_weight = weight is not None
-        has_redshift = redshift is not None
-        utils.check_optional_args(has_weight, self.has_weight(), "weight")
-        utils.check_optional_args(has_redshift, self.has_redshift(), "redshift")
-        utils.check_arrays_matching_shape(ra, dec, weight, redshift, ndim=1)
-        if len(ra) == 0:
-            return
-
-        # write the data
-        self._append_array("ra", ra)
-        self._append_array("dec", dec)
-        if has_weight:
-            self._append_array("weight", weight)
-        if has_redshift:
-            self._append_array("redshift", redshift)
-
-        # reset the meta data which are now outdated
-        self.metadata = PatchMetadata(len(self))
-
-    def drop_data(self):
-        # delete all memory-mapped data
-        for attr in ("ra", "dec", "weight", "redshift"):
-            values = getattr(self, attr)
-            if values is not None:
-                delattr(self, attr)
-                setattr(self, np.empty(0))
-        # delete the memory maps
-        shutil.rmtree(self.path)
 
     @property
     def _path_binning(self) -> Path:
