@@ -90,13 +90,26 @@ except ImportError:
         items, _split = np.unique(patch[order], return_index=True)
         split = _split[1:]
         grouped = [
-            {pid: pdata for pid, pdata in zip(split, ra[order])},
-            {pid: pdata for pid, pdata in zip(split, dec[order])},
+            {pid: pdata for pid, pdata in zip(items, np.array_split(ra[order], split))},
+            {
+                pid: pdata
+                for pid, pdata in zip(items, np.array_split(dec[order], split))
+            },
         ]
         if weight is not None:
-            grouped.append({pid: pdata for pid, pdata in zip(split, weight[order])})
+            grouped.append(
+                {
+                    pid: pdata
+                    for pid, pdata in zip(items, np.array_split(weight[order], split))
+                }
+            )
         if redshift is not None:
-            grouped.append({pid: pdata for pid, pdata in zip(split, redshift[order])})
+            grouped.append(
+                {
+                    pid: pdata
+                    for pid, pdata in zip(items, np.array_split(redshift[order], split))
+                }
+            )
         return tuple(grouped)
 
 
