@@ -7,8 +7,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Literal, Protocol
 
-import fitsio
-import h5py
 import numpy as np
 from pyarrow import csv, parquet
 
@@ -28,6 +26,10 @@ __all__ = [
     "PatchWriter",
     "get_reader",
 ]
+
+
+class OptionalDependencyError(Exception):
+    pass
 
 
 class Closable(Protocol):
@@ -189,8 +191,6 @@ class ParquetReader(BaseReader):
 
 
 class FitsReader(BaseReader):
-    file: fitsio.FITS
-
     def __init__(
         self,
         path: str,
@@ -217,6 +217,12 @@ class FitsReader(BaseReader):
         )
 
     def _init_file(self, chunksize: int, hdu: int) -> None:
+        try:
+            import fitsio
+        except ImportError:
+            raise OptionalDependencyError(
+                "reading FITS files requires installing 'fitsio'"
+            )
         self.chunksize = chunksize
         self.file = fitsio.FITS(str(self.path))
         self.hdu = self.file[hdu]
@@ -242,8 +248,6 @@ class FitsReader(BaseReader):
 
 
 class HDFReader(BaseReader):
-    file: h5py.File
-
     def __init__(
         self,
         path: str,
@@ -268,6 +272,12 @@ class HDFReader(BaseReader):
         )
 
     def _init_file(self, chunksize: int) -> None:
+        try:
+            import h5py
+        except ImportError:
+            raise OptionalDependencyError(
+                "reading HDF files requires installing 'h5py'"
+            )
         self.chunksize = chunksize
         self.file = h5py.File(str(self.path), mode="r")
 
