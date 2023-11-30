@@ -48,7 +48,7 @@ docs = [
 test = [
     "yet_another_wizz[plot]",
     "yet_another_wizz[fits]",
-    "yet_another_wizz[h5py]",
+    "yet_another_wizz[hdf]",
     "typing_extensions",
     "more_itertools",
     "coverage",
