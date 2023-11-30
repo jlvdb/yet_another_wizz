@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, overload
@@ -9,7 +13,7 @@ import numpy as np
 
 from yaw.catalog import utils
 from yaw.catalog.kdtree import SphericalKDTree
-from yaw.catalog.utils import DataChunk, MemmapManager
+from yaw.catalog.utils import DataChunk, patch_path_from_id
 from yaw.config.default import NotSet
 from yaw.core.containers import Binning, Interval
 from yaw.core.coordinates import CoordSky, DistSky
@@ -26,6 +30,8 @@ __all__ = [
     "PatchDataCached",
     "patch_from_records",
     "patch_from_cache",
+    "PatchCollector",
+    "PatchWriter",
 ]
 
 
@@ -259,26 +265,29 @@ class CacheWriter:
         path: Path,
         has_weight: bool = False,
         has_redshift: bool = False,
+        chunksize: int = 65_536,
     ) -> None:
-        self.path = Path(path)
+        self.cache = {"ra": utils.ArrayCache(), "dec": utils.ArrayCache()}
         self.has_weight = has_weight
-        self.has_redshift = has_redshift
-        # create the memory mapped files
-        self._setup_new_cachedir(self.path)
-        self.files = {
-            "ra": MemmapManager(self.path / "ra", np.float64),
-            "dec": MemmapManager(self.path / "dec", np.float64),
-        }
         if has_weight:
-            self.files["weight"] = MemmapManager(self.path / "weight", np.float64)
+            self.cache["weight"] = utils.ArrayCache()
+        self.has_redshift = has_redshift
         if has_redshift:
-            self.files["redshift"] = MemmapManager(self.path / "redshift", np.float64)
-
-    def _setup_new_cachedir(self, path: TypePathStr) -> None:
+            self.cache["redshift"] = utils.ArrayCache()
+        self.cachesize = 0
+        self.chunksize = chunksize
+        # create the cache directory
         self.path = Path(path)
         if self.path.exists():
             raise FileExistsError(f"directory already exists: {self.path}")
         self.path.mkdir(parents=True)
+
+    def flush(self):
+        for key, cache in self.cache.items():
+            with open(self.path / key, mode="a") as f:
+                cache.get_values().tofile(f)
+            cache.clear()
+        self.cachesize = 0
 
     def append_chunk(self, chunk: DataChunk) -> None:
         # check the data inputs
@@ -293,9 +302,13 @@ class CacheWriter:
             raise ValueError(
                 f"writer has_weights={self.has_redshift}, but chunk {has_redshift=}"
             )
-        # send data to memory maps
-        for key, data in chunk_dict.items():
-            self.files[key].append(data)
+        # send data to cache
+        self.cachesize += len(chunk)
+        for key, cache in self.cache.items():
+            cache.append(chunk_dict[key])
+        # flush to disk
+        if self.cachesize > self.chunksize:
+            self.flush()
 
     def append_data(
         self,
@@ -307,8 +320,7 @@ class CacheWriter:
         self.append_chunk(DataChunk(ra=ra, dec=dec, weight=weight, redshift=redshift))
 
     def finalize(self) -> None:
-        for memmap in self.files.values():
-            memmap.finalise()
+        self.flush()
 
 
 def load_attribute(
@@ -522,3 +534,62 @@ def patch_from_records(
 
 def patch_from_cache(id: int, cachepath: TypePathStr) -> PatchDataCached:
     return PatchDataCached.restore(id, cachepath)
+
+
+class Collector(ABC):
+    @abstractmethod
+    def process(
+        self,
+        chunk: DataChunk,
+        patch_key: str,
+        drop_key: bool = True,
+    ) -> None:
+        pass
+
+
+class PatchCollector(Collector):
+    def __init__(self) -> None:
+        self._chunks: dict[int, list[DataChunk]] = defaultdict(list)
+
+    def process(self, chunk: DataChunk) -> None:
+        for pid, patch_chunk in chunk.groupby():
+            self._chunks[pid].append(patch_chunk)
+
+    def close(self) -> None:
+        pass
+
+    def get_patches(self) -> dict[int, PatchData]:
+        data = {
+            pid: DataChunk.from_chunks(chunks) for pid, chunks in self._chunks.items()
+        }
+        return {pid: PatchData(pid, **data.to_dict()) for pid, data in data.items()}
+
+
+class PatchWriter(Collector):
+    def __init__(self, cache_directory: TypePathStr) -> None:
+        self._writers: dict[int, CacheWriter] = dict()
+        # set up cache directory
+        self.cache_directory = Path(cache_directory)
+        if not self.cache_directory.exists():
+            self.cache_directory.mkdir(parents=True)
+
+    def process(self, chunk: DataChunk) -> None:
+        for pid, patch_chunk in chunk.groupby():
+            if pid not in self._writers:
+                cachepath = patch_path_from_id(self.cache_directory, pid)
+                if os.path.exists(cachepath):
+                    shutil.rmtree(cachepath)
+                self._writers[pid] = CacheWriter(
+                    cachepath,
+                    has_weight=patch_chunk.weight is not None,
+                    has_redshift=patch_chunk.redshift is not None,
+                )
+            self._writers[pid].append_chunk(patch_chunk)
+
+    def get_patches(self) -> dict[int, PatchDataCached]:
+        for writer in self._writers.values():
+            writer.finalize()
+        return {
+            pid: PatchDataCached.restore(pid, writer.path)
+            for pid, writer in self._writers.items()
+        }

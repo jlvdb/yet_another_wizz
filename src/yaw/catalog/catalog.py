@@ -12,9 +12,9 @@ import numpy as np
 from scipy.cluster import vq
 from scipy.spatial import KDTree
 
-from yaw.catalog import streaming, worker
-from yaw.catalog.patch import PatchData, PatchDataCached
-from yaw.catalog.streaming import Reader
+from yaw.catalog import worker
+from yaw.catalog.patch import PatchCollector, PatchData, PatchDataCached, PatchWriter
+from yaw.catalog.readers import ChunkReader, Reader, get_reader
 from yaw.catalog.utils import DataChunk, IndexMapper, patch_id_from_path
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.utils import TypePathStr, job_progress_bar, long_num_format
@@ -225,11 +225,11 @@ def build_patches(
 ) -> dict[int, PatchData] | dict[int, PatchDataCached]:
     # set up the collectors that construct the patches on the fly
     if cache_directory is None:
-        collector = streaming.PatchCollector()
+        collector = PatchCollector()
     else:
-        collector = streaming.PatchWriter(cache_directory)
+        collector = PatchWriter(cache_directory)
     # iterate the complete file in chunks and distribute the data to the patches
-    with reader, collector:
+    with reader:
         for chunk in reader.iter():
             # compute patch IDs if necessary
             if chunk.patch is None:
@@ -325,7 +325,7 @@ class Catalog:
         if patch_mode == PatchMode.divide:
             data.set_patch(patches)
         return cls._from_reader(
-            reader=streaming.ChunkReader,
+            reader=ChunkReader,
             reader_kwargs=reader_kwargs,
             patch_mode=patch_mode,
             patch_data=patches,
@@ -347,12 +347,12 @@ class Catalog:
         cache_directory: TypePathStr | None = None,
         n_per_patch: int | None = None,
         progress: bool = False,
-        reader: type[streaming.Reader] | None = None,
+        reader: type[Reader] | None = None,
         **reader_kwargs,
     ) -> Catalog:
         # set up the file reader
         if reader is None:
-            reader = streaming.get_reader(path)
+            reader = get_reader(path)
         reader_kwargs.update(
             dict(
                 path=path,
@@ -381,6 +381,10 @@ class Catalog:
         cls, cache_directory: TypePathStr, progress: bool = False
     ) -> Catalog:
         cache_directory = Path(cache_directory)
+        if not cache_directory.exists():
+            raise FileNotFoundError(
+                f"cache directory does not exist: {cache_directory}"
+            )
         patches = {}
         for patch_path in cache_directory.glob("patch_*"):
             patch_id = patch_id_from_path(patch_path)

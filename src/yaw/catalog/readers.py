@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import os
-import shutil
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Literal, Protocol
 
 import numpy as np
 from pyarrow import csv, parquet
 
-from yaw.catalog.patch import CacheWriter, PatchData, PatchDataCached
-from yaw.catalog.utils import DataChunk, patch_path_from_id
+from yaw.catalog.utils import DataChunk
 from yaw.core.utils import TypePathStr
 
 if TYPE_CHECKING:
@@ -22,8 +19,6 @@ __all__ = [
     "FitsReader",
     "HDFReader",
     "CsvReader",
-    "PatchCollector",
-    "PatchWriter",
     "get_reader",
 ]
 
@@ -385,65 +380,6 @@ class CsvReader(BaseReader):
             table = self.file.read_all()
             data = {column._name: column.to_numpy() for column in table.columns}
             return self._chunk_from_dict(data)
-
-
-class Collector(FileContext):
-    @abstractmethod
-    def process(
-        self,
-        chunk: DataChunk,
-        patch_key: str,
-        drop_key: bool = True,
-    ) -> None:
-        pass
-
-    def close(self) -> None:
-        pass
-
-
-class PatchCollector(Collector):
-    def __init__(self) -> None:
-        self._chunks: dict[int, list[DataChunk]] = defaultdict(list)
-
-    def process(self, chunk: DataChunk) -> None:
-        for pid, patch_chunk in chunk.groupby():
-            self._chunks[pid].append(patch_chunk)
-
-    def get_patches(self) -> dict[int, PatchData]:
-        data = {
-            pid: DataChunk.from_chunks(chunks) for pid, chunks in self._chunks.items()
-        }
-        return {pid: PatchData(pid, **data.to_dict()) for pid, data in data.items()}
-
-
-class PatchWriter(Collector):
-    def __init__(self, cache_directory: TypePathStr) -> None:
-        self._writers: dict[int, CacheWriter] = dict()
-        # set up cache directory
-        self.cache_directory = Path(cache_directory)
-        if not self.cache_directory.exists():
-            self.cache_directory.mkdir(parents=True)
-
-    def process(self, chunk: DataChunk) -> None:
-        for pid, patch_chunk in chunk.groupby():
-            if pid not in self._writers:
-                cachepath = patch_path_from_id(self.cache_directory, pid)
-                if os.path.exists(cachepath):
-                    shutil.rmtree(cachepath)
-                self._writers[pid] = CacheWriter(
-                    cachepath,
-                    has_weight=patch_chunk.weight is not None,
-                    has_redshift=patch_chunk.redshift is not None,
-                )
-            self._writers[pid].append_chunk(patch_chunk)
-
-    def get_patches(self) -> dict[int, PatchDataCached]:
-        for writer in self._writers.values():
-            writer.finalize()
-        return {
-            pid: PatchDataCached.restore(pid, writer.path)
-            for pid, writer in self._writers.items()
-        }
 
 
 def get_reader(path: str) -> type[Reader]:
