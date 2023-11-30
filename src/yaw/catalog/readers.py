@@ -63,9 +63,16 @@ class Reader(Protocol):
 
 
 class ChunkReader(Reader, FileContext):
-    def __init__(self, data: DataChunk, degrees: bool = True, **kwargs) -> None:
+    def __init__(
+        self,
+        data: DataChunk,
+        degrees: bool = True,
+        chunksize: int = 1_000_000,
+        **kwargs,
+    ) -> None:
         self.data = data
         self.degrees = degrees
+        self.chunksize = chunksize
 
     def _init_file(self, **kwargs) -> None:
         pass
@@ -78,7 +85,8 @@ class ChunkReader(Reader, FileContext):
         return len(self.data)
 
     def iter(self) -> Generator[DataChunk]:
-        yield self.data
+        for offset in range(0, len(self.data), self.chunksize):
+            yield self.data[offset : offset + self.chunksize]
 
     def read_all(self, sparse: int | None = None) -> DataChunk:
         if sparse is None:
