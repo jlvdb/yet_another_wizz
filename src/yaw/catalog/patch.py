@@ -5,6 +5,7 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from copy import copy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, overload
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "PatchMetadata",
-    "PatchData",
+    "PatchDataBuffered",
     "PatchDataCached",
     "patch_from_records",
     "patch_from_cache",
@@ -100,48 +101,37 @@ class PatchMetadata:
         return cls(**kwargs)
 
 
-class IpcPack:
-    def __init__(self, patch) -> None:
-        if isinstance(patch, PatchData):
-            self.payload = patch
-        elif isinstance(patch, PatchDataCached):
-            self.id = patch.id
-            self.path = patch.path
-        else:
-            raise TypeError
+class PatchIpc:
+    @abstractmethod
+    def __init__(self, patch: PatchData) -> None:
+        pass
 
-    def restore(self) -> PatchData:
-        if hasattr(self, "payload"):
-            return self.payload
-        else:
-            return PatchDataCached.restore(self.id, self.path)
+    @abstractmethod
+    def unpack(self) -> PatchData:
+        pass
 
 
-@dataclass(eq=False)
-class PatchData:
+class PatchData(ABC):
     id: int
     ra: NDArray[np.float64]
     dec: NDArray[np.float64]
-    weight: NDArray[np.floating] | None = field(default=None)
-    redshift: NDArray[np.float64] | None = field(default=None)
-    metadata: PatchMetadata = field(default=None)
-
-    def __post_init__(self) -> None:
-        utils.check_arrays_matching_shape(self.ra, self.dec, self.weight, self.redshift)
-        if self.metadata is None:
-            self.metadata = PatchMetadata(len(self))
+    weight: NDArray[np.floating] | None
+    redshift: NDArray[np.float64] | None
+    metadata: PatchMetadata
 
     def __len__(self) -> int:
         return len(self.ra)
 
     def __repr__(self) -> str:
         s = self.__class__.__name__
-        s += f"(id={self.id}, length={len(self)}, redshifts={self.has_redshift()})"
+        s += f"(id={self.id}, length={len(self)}, redshifts={self.has_redshift})"
         return s
 
+    @property
     def has_weight(self) -> bool:
         return self.weight is not None
 
+    @property
     def has_redshift(self) -> bool:
         return self.redshift is not None
 
@@ -190,18 +180,11 @@ class PatchData:
             self._update_metadata_callback()
         return self.metadata.radius
 
-    def to_ipc(self) -> IpcPack:
-        return IpcPack(self)
-
-    @classmethod
-    def from_ipc(self, ipc: IpcPack) -> PatchData:
-        return ipc.restore()
-
     def iter_bins(
         self,
         z_bins: NDArray[np.float64],
         allow_no_redshift: bool = False,
-    ) -> Generator[tuple[Interval, PatchData]]:
+    ) -> Generator[tuple[Interval, PatchDataBuffered]]:
         """Iterate the patch in bins of redshift.
 
         Args:
@@ -218,7 +201,7 @@ class PatchData:
                   for this bin.
         """
         z_bins = np.asarray(z_bins)
-        if not allow_no_redshift and not self.has_redshift():
+        if not allow_no_redshift and not self.has_redshift:
             raise ValueError("no redshifts for iteration provdided")
         intervals = Binning.from_edges(z_bins, closed="left")
         if allow_no_redshift:
@@ -238,7 +221,43 @@ class PatchData:
                 if index < 0 or index >= len(intervals):
                     continue
                 intv = index_to_interval[index]
-                yield intv, PatchData(self.id, **bin_data.to_dict())
+                metadata = copy(self.metadata)
+                yield intv, PatchDataBuffered(
+                    self.id, metadata=metadata, **bin_data.to_dict()
+                )
+
+    @abstractmethod
+    def get_trees(
+        self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
+    ) -> list[SphericalKDTree]:
+        pass
+
+    @abstractmethod
+    def to_ipc(self) -> PatchIpc:
+        pass
+
+
+class PatchIpcBuffered:
+    def __init__(self, patch: PatchDataBuffered) -> None:
+        self.payload = patch
+
+    def unpack(self) -> PatchDataBuffered:
+        return self.payload
+
+
+@dataclass(eq=False)
+class PatchDataBuffered(PatchData):
+    id: int
+    ra: NDArray[np.float64]
+    dec: NDArray[np.float64]
+    weight: NDArray[np.floating] | None = field(default=None)
+    redshift: NDArray[np.float64] | None = field(default=None)
+    metadata: PatchMetadata = field(default=None)
+
+    def __post_init__(self) -> None:
+        utils.check_arrays_matching_shape(self.ra, self.dec, self.weight, self.redshift)
+        if self.metadata is None:
+            self.metadata = PatchMetadata(len(self))
 
     def get_trees(
         self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
@@ -257,6 +276,9 @@ class PatchData:
                 tree._total = bindata.total  # will be recomputed for bin subset
                 trees.append(tree)
         return trees
+
+    def to_ipc(self) -> PatchIpcBuffered:
+        return PatchIpcBuffered(self)
 
 
 class CacheWriter:
@@ -334,7 +356,15 @@ def load_attribute(
             raise FileNotFoundError(f"missing '{which}' data: {mempath}") from err
 
 
-@dataclass(init=False, eq=False)
+class PatchIpcCached:
+    def __init__(self, patch: PatchDataCached) -> None:
+        self.id = patch.id
+        self.path = patch.path
+
+    def unpack(self) -> PatchDataCached:
+        return PatchDataCached.restore(self.id, self.path)
+
+
 class PatchDataCached(PatchData):
     path: Path
     id: int
@@ -465,6 +495,9 @@ class PatchDataCached(PatchData):
             self._set_binning(z_bins)
         return trees
 
+    def to_ipc(self) -> PatchIpcCached:
+        return PatchIpcCached(self)
+
 
 # the constructor functions
 
@@ -477,7 +510,7 @@ def patch_from_records(
     weight: NDArray[np.float64] | None = None,
     redshift: NDArray[np.float64] | None = None,
     metadata: PatchMetadata | None = None,
-) -> PatchData:
+) -> PatchDataBuffered:
     ...
 
 
@@ -503,7 +536,7 @@ def patch_from_records(
     redshift: NDArray[np.float64] | None = None,
     metadata: PatchMetadata | None = None,
     cachepath: None = None,
-) -> PatchData:
+) -> PatchDataBuffered:
     ...
 
 
@@ -515,9 +548,9 @@ def patch_from_records(
     redshift: NDArray[np.float64] | None = None,
     metadata: PatchMetadata | None = None,
     cachepath: TypePathStr | None = None,
-) -> PatchData | PatchDataCached:
+) -> PatchDataBuffered | PatchDataCached:
     if cachepath is None:
-        return PatchData(
+        return PatchDataBuffered(
             id=id, ra=ra, dec=dec, weight=weight, redshift=redshift, metadata=metadata
         )
     else:
@@ -546,6 +579,10 @@ class Collector(ABC):
     ) -> None:
         pass
 
+    @abstractmethod
+    def get_patches(self) -> dict[int, PatchData]:
+        pass
+
 
 class PatchCollector(Collector):
     def __init__(self) -> None:
@@ -558,11 +595,13 @@ class PatchCollector(Collector):
     def close(self) -> None:
         pass
 
-    def get_patches(self) -> dict[int, PatchData]:
+    def get_patches(self) -> dict[int, PatchDataBuffered]:
         data = {
             pid: DataChunk.from_chunks(chunks) for pid, chunks in self._chunks.items()
         }
-        return {pid: PatchData(pid, **data.to_dict()) for pid, data in data.items()}
+        return {
+            pid: PatchDataBuffered(pid, **data.to_dict()) for pid, data in data.items()
+        }
 
 
 class PatchWriter(Collector):

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from yaw.catalog.linkage import PatchLinkage
-from yaw.catalog.patch import PatchData
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import Binning, PatchCorrelationData, PatchIDs
 from yaw.correlation.paircounts import (
@@ -22,6 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
     from yaw.catalog.catalog import Catalog
+    from yaw.catalog.patch import PatchData
 
 
 __all__ = []  # TODO

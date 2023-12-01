@@ -13,7 +13,12 @@ from scipy.cluster import vq
 from scipy.spatial import KDTree
 
 from yaw.catalog import worker
-from yaw.catalog.patch import PatchCollector, PatchData, PatchDataCached, PatchWriter
+from yaw.catalog.patch import (
+    PatchCollector,
+    PatchDataBuffered,
+    PatchDataCached,
+    PatchWriter,
+)
 from yaw.catalog.readers import ChunkReader, Reader, get_reader
 from yaw.catalog.utils import DataChunk, IndexMapper, patch_id_from_path
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
@@ -23,6 +28,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
     from yaw.catalog.linkage import PatchLinkage
+    from yaw.catalog.patch import PatchData
     from yaw.config import Configuration, ResamplingConfig
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
@@ -196,7 +202,7 @@ def assign_patch_centers(
 def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
-) -> dict[int, PatchData]:
+) -> dict[int, PatchDataBuffered]:
     ...
 
 
@@ -205,7 +211,7 @@ def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
     cache_directory: None = None,
-) -> dict[int, PatchData]:
+) -> dict[int, PatchDataBuffered]:
     ...
 
 
@@ -222,7 +228,7 @@ def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
     cache_directory: TypePathStr | None = None,
-) -> dict[int, PatchData] | dict[int, PatchDataCached]:
+) -> dict[int, PatchDataBuffered] | dict[int, PatchDataCached]:
     # set up the collectors that construct the patches on the fly
     if cache_directory is None:
         collector = PatchCollector()
@@ -397,7 +403,7 @@ class Catalog:
             cached=self.is_cached(),
             nobjects=len(self),
             npatches=self.n_patches,
-            redshifts=self.has_redshift(),
+            redshifts=self.has_redshift,
         )
         arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"{name}({arg_str})"
@@ -434,13 +440,15 @@ class Catalog:
             if hasattr(patch, "drop_data"):
                 patch.drop_data()
 
+    @property
     def has_redshift(self) -> bool:
         """Indicates whether the :meth:`redshifts` attribute holds data."""
-        return all(patch.has_redshift() for patch in self._patches.values())
+        return all(patch.has_redshift for patch in self._patches.values())
 
+    @property
     def has_weight(self) -> bool:
         """Indicates whether the :meth:`weights` attribute holds data."""
-        return all(patch.has_weight() for patch in self._patches.values())
+        return all(patch.has_weight for patch in self._patches.values())
 
     @property
     def ra(self) -> NDArray[np.float64]:
@@ -455,7 +463,7 @@ class Catalog:
     @property
     def weight(self) -> NDArray[np.float64] | None:
         """Get the object weights as array or ``None`` if not available."""
-        if self.has_weight():
+        if self.has_weight:
             return np.concatenate([self._patches[pid].weight for pid in self.ids])
         else:
             return None
@@ -463,7 +471,7 @@ class Catalog:
     @property
     def redshift(self) -> NDArray[np.float64] | None:
         """Get the redshifts as array or ``None`` if not available."""
-        if self.has_redshift():
+        if self.has_redshift:
             return np.concatenate([self._patches[pid].redshift for pid in self.ids])
         else:
             return None
@@ -576,7 +584,7 @@ class Catalog:
 
         # process the patch pairs, add an optional progress bar
         n_jobs = len(patch1_list)
-        bin1 = self.has_redshift()
+        bin1 = self.has_redshift
         bin2 = binned if other is not None else True
         iter_args = zip(
             patch1_list, patch2_list, repeat(config), repeat(bin1), repeat(bin2)
@@ -612,7 +620,7 @@ class Catalog:
                 Object holding the redshift histogram
         """
         self._logger.info("computing true redshift distribution")
-        if not self.has_redshift():
+        if not self.has_redshift:
             raise ValueError("catalog has no redshifts")
 
         # compute the reshift histogram in each patch
