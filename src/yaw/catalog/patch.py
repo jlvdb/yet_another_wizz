@@ -13,24 +13,22 @@ from typing import TYPE_CHECKING, Generator, overload
 import numpy as np
 
 from yaw.catalog import utils
-from yaw.catalog.kdtree import SphericalKDTree
 from yaw.catalog.utils import DataChunk, patch_path_from_id
 from yaw.config.default import NotSet
 from yaw.core.containers import Binning, Interval
 from yaw.core.coordinates import CoordSky, DistSky
-from yaw.core.utils import TypePathStr
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
     from yaw.core.coordinates import Coordinate, Distance
+    from yaw.core.utils import TypePathStr
 
 __all__ = [
     "PatchMetadata",
-    "PatchDataBuffered",
+    "PatchDataResident",
     "PatchDataCached",
     "patch_from_records",
-    "patch_from_cache",
     "PatchCollector",
     "PatchWriter",
 ]
@@ -65,6 +63,15 @@ class PatchMetadata:
             self.radius = coords.max_dist(self.center)
         else:
             self.radius = radius.to_sky()
+
+    @classmethod
+    def new_with_length(self, length: int) -> PatchMetadata:
+        return PatchMetadata(
+            length=length,
+            total=NotSet,
+            center=copy(self.center),
+            radius=copy(self.radius),
+        )
 
     def to_dict(self) -> dict:
         metadict = {
@@ -101,26 +108,30 @@ class PatchMetadata:
         return cls(**kwargs)
 
 
-class PatchIpc:
-    @abstractmethod
-    def __init__(self, patch: PatchData) -> None:
-        pass
-
-    @abstractmethod
-    def unpack(self) -> PatchData:
-        pass
-
-
-class PatchData(ABC):
-    id: int
-    ra: NDArray[np.float64]
-    dec: NDArray[np.float64]
-    weight: NDArray[np.floating] | None
-    redshift: NDArray[np.float64] | None
-    metadata: PatchMetadata
+class PatchData:
+    def __init__(
+        self,
+        id: int,
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+        weight: NDArray[np.floating] | None = None,
+        redshift: NDArray[np.float64] | None = None,
+        metadata: PatchMetadata | None = None,
+    ) -> None:
+        self.id = id
+        # set data fields
+        utils.check_arrays_matching_shape(ra, dec, weight, redshift)
+        self.ra = ra
+        self.dec = dec
+        self.weight = weight
+        self.redshift = redshift
+        # set metadata
+        if metadata is None:
+            metadata = PatchMetadata(len(ra))
+        self.metadata = metadata
 
     def __len__(self) -> int:
-        return len(self.ra)
+        return self.metadata.length
 
     def __repr__(self) -> str:
         s = self.__class__.__name__
@@ -184,7 +195,7 @@ class PatchData(ABC):
         self,
         z_bins: NDArray[np.float64],
         allow_no_redshift: bool = False,
-    ) -> Generator[tuple[Interval, PatchDataBuffered]]:
+    ) -> Generator[tuple[Interval, PatchData]]:
         """Iterate the patch in bins of redshift.
 
         Args:
@@ -208,77 +219,143 @@ class PatchData(ABC):
             for intv in intervals:
                 yield intv, self
         else:
-            bin_index = intervals.apply(self.redshift)
+            redshift = self.redshift
+            bin_index = intervals.apply(redshift)
             index_to_interval = dict(enumerate(intervals))
             data = utils.DataChunk(
                 ra=self.ra,
                 dec=self.dec,
                 weight=self.weight,
-                redshift=self.redshift,
+                redshift=redshift,
                 patch=bin_index,  # this is currently required by the implementation
             )
             for index, bin_data in data.groupby():
                 if index < 0 or index >= len(intervals):
                     continue
                 intv = index_to_interval[index]
-                metadata = copy(self.metadata)
-                yield intv, PatchDataBuffered(
-                    self.id, metadata=metadata, **bin_data.to_dict()
+                yield intv, PatchData(
+                    self.id,
+                    metadata=self.metadata.new_with_length(len(bin_data)),
+                    **bin_data.to_dict(),
                 )
 
-    @abstractmethod
-    def get_trees(
-        self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
-    ) -> list[SphericalKDTree]:
-        pass
 
-    @abstractmethod
-    def to_ipc(self) -> PatchIpc:
-        pass
+class PatchDataResident(PatchData):
+    pass
 
 
-class PatchIpcBuffered:
-    def __init__(self, patch: PatchDataBuffered) -> None:
-        self.payload = patch
+def load_attribute(
+    path: TypePathStr, which: str, require: bool = True
+) -> np.memmap | None:
+    mempath = path / which
+    try:
+        return utils.memmap_load(mempath, np.float64)
+    except FileNotFoundError as err:
+        if require:
+            raise FileNotFoundError(f"missing '{which}' data: {mempath}") from err
 
-    def unpack(self) -> PatchDataBuffered:
-        return self.payload
 
+class PatchDataCached(PatchData):
+    def __init__(
+        self,
+        path: TypePathStr,
+        id: int,
+        ra: NDArray[np.float64],
+        dec: NDArray[np.float64],
+        weight: NDArray[np.floating] | None = None,
+        redshift: NDArray[np.float64] | None = None,
+        metadata: PatchMetadata | None = None,
+    ) -> None:
+        self.id = id
+        has_weight = weight is not None
+        has_redshift = redshift is not None
+        # create memory maps for the input data
+        writer = CacheWriter(path, has_weight, has_redshift)
+        writer.append_data(ra, dec, weight, redshift)
+        writer.finalize()
+        self.path = writer.path
+        # populate the data attributes
+        self._init_data(metadata)
 
-@dataclass(eq=False)
-class PatchDataBuffered(PatchData):
-    id: int
-    ra: NDArray[np.float64]
-    dec: NDArray[np.float64]
-    weight: NDArray[np.floating] | None = field(default=None)
-    redshift: NDArray[np.float64] | None = field(default=None)
-    metadata: PatchMetadata = field(default=None)
+    @property
+    def _path_metadata(self) -> Path:
+        return self.path / "metadata.json"
 
-    def __post_init__(self) -> None:
-        utils.check_arrays_matching_shape(self.ra, self.dec, self.weight, self.redshift)
-        if self.metadata is None:
-            self.metadata = PatchMetadata(len(self))
+    def _write_metadata(self) -> None:
+        with open(self._path_metadata, "w") as f:
+            the_dict = self.metadata.to_dict()
+            json.dump(the_dict, f)
 
-    def get_trees(
-        self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
-    ) -> list[SphericalKDTree]:
-        """Build a :obj:`SphericalKDTree` from the patch data coordiantes."""
-        if z_bins is None:
-            tree = SphericalKDTree(self.ra, self.dec, self.weight, **kwargs)
-            tree._total = self.total  # no need to recompute this
-            trees = [tree]
+    def _update_metadata_callback(self) -> None:
+        self._write_metadata()
+
+    def _check_attr_size(
+        self, attr: str, must_exist: bool, size: int | None = None
+    ) -> int:
+        try:
+            fsize = os.path.getsize(self.path / attr) // 8  # is 8 byte double
+        except FileNotFoundError:
+            if must_exist:
+                raise
+        if size is None:
+            return fsize
+        elif fsize != size:
+            raise ValueError(
+                f"'{attr}' size ({fsize}) does not match expected size ({size})"
+            )
+        return size
+
+    def _init_data(self, metadata: PatchMetadata | None) -> None:
+        # check that ra and dec exist
+        length = self._check_attr_size("ra", must_exist=True)
+        self._check_attr_size("dec", must_exist=True, size=length)
+        # check the optional data
+        self._check_attr_size("weight", must_exist=False, size=length)
+        self._check_attr_size("redshift", must_exist=False, size=length)
+        # load the metadata
+        if metadata is not None:
+            self.metadata = metadata
+            self._write_metadata()
+        elif self._path_metadata.exists():
+            with open(self._path_metadata) as f:
+                the_dict = json.load(f)
+            self.metadata = PatchMetadata.from_dict(the_dict)
         else:
-            trees = []
-            for _, bindata in self.iter_bins(z_bins):
-                tree = SphericalKDTree(
-                    bindata.ra, bindata.dec, bindata.weight, **kwargs
-                )
-                tree._total = bindata.total  # will be recomputed for bin subset
-                trees.append(tree)
-        return trees
+            self.metadata = PatchMetadata(length)
+            self._write_metadata()
 
-    def to_ipc(self) -> PatchIpcBuffered:
-        return PatchIpcBuffered(self)
+    @classmethod
+    def restore(cls, id: int, path: TypePathStr) -> PatchDataCached:
+        new = cls.__new__(cls)
+        new.path = Path(path)
+        if not new.path.exists():
+            raise FileNotFoundError(f"cache directory des not exist: {new.path}")
+        new.id = id
+        # populate the data attributes
+        new._init_data(None)
+        return new
+
+    @property
+    def ra(self) -> NDArray[np.float64]:
+        np.fromfile(self.path / "ra", dtype=np.float64)
+
+    @property
+    def dec(self) -> NDArray[np.float64]:
+        np.fromfile(self.path / "dec", dtype=np.float64)
+
+    @property
+    def weight(self) -> NDArray[np.float64] | None:
+        try:
+            np.fromfile(self.path / "weight", dtype=np.float64)
+        except FileNotFoundError:
+            return None
+
+    @property
+    def redshift(self) -> NDArray[np.float64] | None:
+        try:
+            np.fromfile(self.path / "redshift", dtype=np.float64)
+        except FileNotFoundError:
+            return None
 
 
 class CacheWriter:
@@ -345,160 +422,6 @@ class CacheWriter:
         self.flush()
 
 
-def load_attribute(
-    path: TypePathStr, which: str, require: bool = True
-) -> np.memmap | None:
-    mempath = path / which
-    try:
-        return utils.memmap_load(mempath, np.float64)
-    except FileNotFoundError as err:
-        if require:
-            raise FileNotFoundError(f"missing '{which}' data: {mempath}") from err
-
-
-class PatchIpcCached:
-    def __init__(self, patch: PatchDataCached) -> None:
-        self.id = patch.id
-        self.path = patch.path
-
-    def unpack(self) -> PatchDataCached:
-        return PatchDataCached.restore(self.id, self.path)
-
-
-class PatchDataCached(PatchData):
-    path: Path
-    id: int
-    ra: NDArray[np.float64]
-    dec: NDArray[np.float64]
-    weight: NDArray[np.floating] | None
-    redshift: NDArray[np.float64] | None
-    metadata: PatchMetadata = field(default=None)
-    _binning: Binning | None | NotSet = field(default=NotSet, init=False)
-
-    def __init__(
-        self,
-        path: TypePathStr,
-        id: int,
-        ra: NDArray[np.float64],
-        dec: NDArray[np.float64],
-        weight: NDArray[np.floating] | None = None,
-        redshift: NDArray[np.float64] | None = None,
-        metadata: PatchMetadata | None = None,
-    ) -> PatchDataCached:
-        self.id = id
-        has_weight = weight is not None
-        has_redshift = redshift is not None
-        # create memory maps for the input data
-        writer = CacheWriter(path, has_weight, has_redshift)
-        writer.append_data(ra, dec, weight, redshift)
-        writer.finalize()
-        self.path = writer.path
-        # populate the data attributes
-        self._init_data(metadata)
-
-    def _init_data(self, metadata: PatchMetadata | None) -> None:
-        # check that ra and dec exist and load them
-        self.ra = load_attribute(self.path, "ra", require=True)
-        self.dec = load_attribute(self.path, "dec", require=True)
-        # add the optional data, otherwise initialised to None
-        self.weight = load_attribute(self.path, "weight", require=False)
-        self.redshift = load_attribute(self.path, "redshift", require=False)
-        # run final checks and load metadata
-        utils.check_arrays_matching_shape(self.ra, self.dec, self.weight, self.redshift)
-        if metadata is not None:
-            self.metadata = metadata
-            self._write_metadata()
-        elif self._path_metadata.exists():
-            with open(self._path_metadata) as f:
-                the_dict = json.load(f)
-            self.metadata = PatchMetadata.from_dict(the_dict)
-        else:
-            self.metadata = PatchMetadata(len(self))
-            self._write_metadata()
-
-    @classmethod
-    def restore(cls, id: int, path: TypePathStr) -> PatchDataCached:
-        new = cls.__new__(cls)
-        new.path = Path(path)
-        if not new.path.exists():
-            raise FileNotFoundError(f"cache directory des not exist: {new.path}")
-        new.id = id
-        # populate the data attributes
-        new._init_data(None)
-        return new
-
-    @property
-    def _path_metadata(self) -> Path:
-        return self.path / "metadata.json"
-
-    def _write_metadata(self) -> None:
-        with open(self._path_metadata, "w") as f:
-            the_dict = self.metadata.to_dict()
-            json.dump(the_dict, f)
-
-    def _update_metadata_callback(self) -> None:
-        self._write_metadata()
-
-    @property
-    def _path_binning(self) -> Path:
-        return self.path / "binning.pickle"
-
-    def _get_binning(self) -> Binning | None:
-        if self._binning is NotSet:
-            self._binning = utils.read_pickle(self._path_binning)
-        return self._binning
-
-    def _set_binning(self, z_bins: Binning | NDArray[np.float64] | None) -> None:
-        if z_bins is not None and not isinstance(z_bins, Binning):
-            z_bins = Binning.from_edges(z_bins)
-        utils.write_pickle(self._path_binning, z_bins)
-        self._binning = z_bins
-
-    @property
-    def _path_trees(self) -> Path:
-        return self.path / "trees.pickle"
-
-    def _read_trees(self) -> list[SphericalKDTree]:
-        return utils.read_pickle(self._path_trees)
-
-    def _write_trees(self, trees: list[SphericalKDTree]) -> None:
-        utils.write_pickle(self._path_trees, trees)
-
-    def _trees_cached(self, z_bins: Binning | NDArray[np.float64] | None) -> bool:
-        # check if any data is cached
-        if not self._path_binning.exists() or not self._path_trees.exists():
-            return False
-        # compare the binning
-        binning = self._get_binning()
-        if binning is None:
-            binning_equal = z_bins is None
-        elif z_bins is None:
-            binning_equal = False
-        elif isinstance(z_bins, Binning):
-            binning_equal = (
-                (z_bins.closed == binning.closed)
-                & np.any(z_bins.left == binning.left)
-                & np.any(z_bins.right == binning.right)
-            )
-        else:
-            binning_equal = binning.edges_equal(z_bins)
-        return binning_equal
-
-    def get_trees(
-        self, z_bins: Binning | NDArray[np.float64] | None = None, **kwargs
-    ) -> list[SphericalKDTree]:
-        if self._trees_cached(z_bins):
-            trees = self._read_trees()
-        else:
-            trees = super().get_trees(z_bins=z_bins, **kwargs)
-            self._write_trees(trees)
-            self._set_binning(z_bins)
-        return trees
-
-    def to_ipc(self) -> PatchIpcCached:
-        return PatchIpcCached(self)
-
-
 # the constructor functions
 
 
@@ -510,7 +433,7 @@ def patch_from_records(
     weight: NDArray[np.float64] | None = None,
     redshift: NDArray[np.float64] | None = None,
     metadata: PatchMetadata | None = None,
-) -> PatchDataBuffered:
+) -> PatchDataResident:
     ...
 
 
@@ -536,7 +459,7 @@ def patch_from_records(
     redshift: NDArray[np.float64] | None = None,
     metadata: PatchMetadata | None = None,
     cachepath: None = None,
-) -> PatchDataBuffered:
+) -> PatchDataResident:
     ...
 
 
@@ -548,9 +471,9 @@ def patch_from_records(
     redshift: NDArray[np.float64] | None = None,
     metadata: PatchMetadata | None = None,
     cachepath: TypePathStr | None = None,
-) -> PatchDataBuffered | PatchDataCached:
+) -> PatchDataResident | PatchDataCached:
     if cachepath is None:
-        return PatchDataBuffered(
+        return PatchDataResident(
             id=id, ra=ra, dec=dec, weight=weight, redshift=redshift, metadata=metadata
         )
     else:
@@ -563,10 +486,6 @@ def patch_from_records(
             redshift=redshift,
             metadata=metadata,
         )
-
-
-def patch_from_cache(id: int, cachepath: TypePathStr) -> PatchDataCached:
-    return PatchDataCached.restore(id, cachepath)
 
 
 class Collector(ABC):
@@ -595,12 +514,12 @@ class PatchCollector(Collector):
     def close(self) -> None:
         pass
 
-    def get_patches(self) -> dict[int, PatchDataBuffered]:
+    def get_patches(self) -> dict[int, PatchDataResident]:
         data = {
             pid: DataChunk.from_chunks(chunks) for pid, chunks in self._chunks.items()
         }
         return {
-            pid: PatchDataBuffered(pid, **data.to_dict()) for pid, data in data.items()
+            pid: PatchDataResident(pid, **data.to_dict()) for pid, data in data.items()
         }
 
 

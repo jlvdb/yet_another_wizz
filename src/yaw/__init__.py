@@ -27,9 +27,12 @@ from yaw.catalog import Catalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.cosmology import Scale
 from yaw.core.math import global_covariance
-from yaw.correlation import CorrData, CorrFunc, autocorrelate, crosscorrelate
+from yaw.correlation import CorrData, CorrFunc
 from yaw.randoms import UniformRandoms
 from yaw.redshifts import HistData, RedshiftData
+
+# isort: split
+from yaw.correlate import autocorrelate, crosscorrelate
 
 # isort: split
 from yaw.deprecated.correlation.corrfuncs import CorrelationData, CorrelationFunction

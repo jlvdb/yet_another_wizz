@@ -9,10 +9,11 @@ import numpy as np
 from pyarrow import csv, parquet
 
 from yaw.catalog.utils import DataChunk
-from yaw.core.utils import TypePathStr
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
+
+    from yaw.core.utils import TypePathStr
 
 __all__ = [
     "ParquetReader",

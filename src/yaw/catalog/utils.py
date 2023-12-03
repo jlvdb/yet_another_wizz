@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Any, Generator
 
 import numpy as np
 
-from yaw.core.utils import TypePathStr
-
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, DTypeLike, NDArray
+
+    from yaw.core.utils import TypePathStr
 
 __all__ = [
     "memmap_init",

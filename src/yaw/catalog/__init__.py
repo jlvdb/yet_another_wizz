@@ -11,7 +11,6 @@ implementations.
 """
 
 from yaw.catalog.catalog import Catalog
-from yaw.catalog.linkage import PatchLinkage
-from yaw.catalog.patch import PatchDataBuffered, PatchDataCached
+from yaw.catalog.patch import PatchDataCached, PatchDataResident
 
-__all__ = ["Catalog", "PatchLinkage", "PatchDataBuffered", "PatchDataCached"]
+__all__ = ["Catalog", "PatchDataResident", "PatchDataCached"]

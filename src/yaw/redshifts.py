@@ -27,12 +27,13 @@ from deprecated import deprecated
 from yaw.config import ResamplingConfig
 from yaw.core.containers import Binning, SampledValue
 from yaw.core.math import rebin, shift_histogram
-from yaw.core.utils import TimedLog, TypePathStr
+from yaw.core.utils import TimedLog
 from yaw.correlation import CorrData
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
+    from yaw.core.utils import TypePathStr
     from yaw.correlation import CorrFunc
 
 __all__ = ["RedshiftData", "HistData"]

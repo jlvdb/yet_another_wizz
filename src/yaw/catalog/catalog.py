@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing
 from collections.abc import Generator, Iterable, Mapping
 from enum import Enum
-from itertools import repeat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, overload
 
@@ -12,24 +10,26 @@ import numpy as np
 from scipy.cluster import vq
 from scipy.spatial import KDTree
 
-from yaw.catalog import worker
+from yaw.catalog.field import build_field
 from yaw.catalog.patch import (
     PatchCollector,
-    PatchDataBuffered,
     PatchDataCached,
+    PatchDataResident,
     PatchWriter,
 )
 from yaw.catalog.readers import ChunkReader, Reader, get_reader
 from yaw.catalog.utils import DataChunk, IndexMapper, patch_id_from_path
+from yaw.core.containers import Binning
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
-from yaw.core.utils import TypePathStr, job_progress_bar, long_num_format
+from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-    from yaw.catalog.linkage import PatchLinkage
+    from yaw.catalog.field import PatchLinkage
     from yaw.catalog.patch import PatchData
     from yaw.config import Configuration, ResamplingConfig
+    from yaw.core.utils import TypePathStr
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
 
@@ -202,7 +202,7 @@ def assign_patch_centers(
 def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
-) -> dict[int, PatchDataBuffered]:
+) -> dict[int, PatchDataResident]:
     ...
 
 
@@ -211,7 +211,7 @@ def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
     cache_directory: None = None,
-) -> dict[int, PatchDataBuffered]:
+) -> dict[int, PatchDataResident]:
     ...
 
 
@@ -228,7 +228,7 @@ def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
     cache_directory: TypePathStr | None = None,
-) -> dict[int, PatchDataBuffered] | dict[int, PatchDataCached]:
+) -> dict[int, PatchDataResident] | dict[int, PatchDataCached]:
     # set up the collectors that construct the patches on the fly
     if cache_directory is None:
         collector = PatchCollector()
@@ -261,14 +261,65 @@ def parse_path_or_none(path: TypePathStr) -> Path:
     ...
 
 
-def parse_path_or_none(path: TypePathStr) -> Path | None:
+def parse_path_or_none(path: TypePathStr | None) -> Path | None:
     if path is not None:
         return Path(path)
 
 
-class Catalog:
-    """TODO: See factory"""
+def count_histogram_patch(
+    patch: PatchData, z_bins: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """Compute a histogram of redshifts in a single patch.
 
+    Args:
+        patch (:obj:`yaw.catalog.PatchData`):
+            The input patch catalogue.
+        z_bins (:obj:`NDArray[np.float64]`):
+            The bin edges including the right-most edge.
+
+    Returns:
+        :obj:`NDArray[np.float64]`:
+            Counts in the provided redshift bins.
+    """
+    counts, _ = np.histogram(patch.redshift, z_bins, weights=patch.weight)
+    return counts
+
+
+def merge_histogram_patches(
+    hist_counts: NDArray[np.float64],
+    z_bins: NDArray[np.float64],
+    sampling_config: ResamplingConfig | None = None,
+) -> HistData:
+    """Merge redshift histogram from patches into a histogram data container.
+
+    Args:
+        hist_counts (:obj:`NDArray[np.float64]`):
+            A two-dimensional array with histogram counts with shape
+            `(n_patches, n_bins)`.
+        z_bins (:obj:`NDArray[np.float64]`):
+            The bin edges including the right-most edge.
+        sampling_config: (:obj:`yaw.config.ResamplingConfig`, optional):
+            Specify the resampling method and its configuration.
+
+    Returns:
+        :obj:`yaw.redshifts.HistData`:
+            Histogram data with samples and covaraiance estimate.
+    """
+    if sampling_config is None:
+        sampling_config = ResamplingConfig()  # default values
+    binning = Binning.from_edges(z_bins)
+    patch_idx = sampling_config.get_samples(len(hist_counts))
+    nz_data = hist_counts.sum(axis=0)
+    nz_samp = np.sum(hist_counts[patch_idx], axis=1)
+    return HistData(
+        binning=binning,
+        data=nz_data,
+        samples=nz_samp,
+        method=sampling_config.method,
+    )
+
+
+class Catalog:
     _logger = logging.getLogger("yaw.catalog")
 
     def __init__(
@@ -282,7 +333,7 @@ class Catalog:
             self._patches = dict(enumerate(patches))
         else:
             raise TypeError(f"invalid type '{patches.__class__}' for 'patches'")
-        self._cache_directory = parse_path_or_none(cache_directory)
+        self.cache_directory = parse_path_or_none(cache_directory)
 
     @classmethod
     def _from_reader(
@@ -408,6 +459,9 @@ class Catalog:
         arg_str = ", ".join(f"{k}={v}" for k, v in args.items())
         return f"{name}({arg_str})"
 
+    def as_dict(self) -> dict[int, PatchData]:
+        return {pid: patch for pid, patch in self._patches.items()}
+
     def __len__(self) -> int:
         return sum(len(patch) for patch in self._patches.values())
 
@@ -433,7 +487,7 @@ class Catalog:
 
         Always ``True`` if no cache is used. If the catalog is unloaded, data
         will be read from cache every time data is accessed."""
-        return self._cache_directory is not None
+        return self.cache_directory is not None
 
     def drop_cache(self) -> None:
         for patch in self._patches.values():
@@ -577,31 +631,31 @@ class Catalog:
             config.binning.zbin_num,
         )
 
-        auto = other is None
-        patch1_list, patch2_list = worker.get_patch_list(
-            self, other, config, linkage, auto
-        )
+        # figure out which catalog needs to be binned by redshift
+        bin_self = self.has_redshift
+        bin_other = binned if other is not None else True
 
-        # process the patch pairs, add an optional progress bar
-        n_jobs = len(patch1_list)
-        bin1 = self.has_redshift
-        bin2 = binned if other is not None else True
-        iter_args = zip(
-            patch1_list, patch2_list, repeat(config), repeat(bin1), repeat(bin2)
+        # build the field(s)
+        field_self = build_field(
+            self.as_dict(),
+            config.binning.zbins if bin_self else None,
+            cache_directory=self.cache_directory,
         )
-        if progress:
-            iter_args = job_progress_bar(iter_args, total=n_jobs)
-        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
-            patch_datasets = list(pool.imap_unordered(worker.correlate, iter_args))
+        if other is not None:
+            field_other = build_field(
+                other.as_dict(),
+                config.binning.zbins if bin_other else None,
+                cache_directory=other.cache_directory,
+            )
+        else:
+            field_other = None
 
-        # merge the pair counts from all patch combinations
-        return worker.merge_pairs_patches(patch_datasets, config, self.n_patches, auto)
+        return field_self.correlate(config, field_other, linkage)
 
     def true_redshifts(
         self,
         config: Configuration,
         sampling_config: ResamplingConfig | None = None,
-        progress: bool = False,
     ) -> HistData:
         """
         Compute a histogram of the object redshifts from the binning defined in
@@ -612,8 +666,6 @@ class Catalog:
                 Defines the bin edges used for the histogram.
             sampling_config (:obj:`~yaw.config.ResamplingConfig`, optional):
                 Specifies the spatial resampling for error estimates.
-            progress (:obj:`bool`):
-                Show a progress bar.
 
         Returns:
             HistData:
@@ -622,16 +674,11 @@ class Catalog:
         self._logger.info("computing true redshift distribution")
         if not self.has_redshift:
             raise ValueError("catalog has no redshifts")
-
         # compute the reshift histogram in each patch
-        n_jobs = self.n_patches
-        iter_args = zip(self.patches.values(), repeat(config.binning.zbins))
-        if progress:
-            iter_args = job_progress_bar(iter_args, total=n_jobs)
-        with multiprocessing.Pool(config.backend.get_threads(n_jobs)) as pool:
-            hist_counts = list(pool.imap_unordered(worker.true_redshifts, iter_args))
-
+        hist_counts = []
+        for patch in iter(self):
+            hist_counts.append(count_histogram_patch(patch, config.binning.zbins))
         # construct the output data samples
-        return worker.merge_histogram_patches(
+        return merge_histogram_patches(
             np.array(hist_counts), config.binning.zbins, sampling_config
         )
