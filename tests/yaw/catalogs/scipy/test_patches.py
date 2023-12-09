@@ -181,7 +181,7 @@ class TestPatchCatalog:
         patch_noz = patches.PatchCatalog(0, mock_data.drop(columns="redshift"))
         with raises(ValueError):
             next(patch_noz.iter_bins(zbins))
-        for intv, patch in patch_noz.iter_bins(zbins, allow_no_redshift=True):
+        for intv, patch in patch_noz.iter_bins(zbins, require_redshift=False):
             assert len(patch) == len(patch_noz)
 
     def test_get_tree(self, mock_patch):

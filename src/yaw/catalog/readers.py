@@ -12,6 +12,7 @@ from yaw.catalog.utils import DataChunk
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
+    from pyarrow import RecordBatch, Table
 
     from yaw.core.utils import TypePathStr
 
@@ -22,6 +23,10 @@ __all__ = [
     "CsvReader",
     "get_reader",
 ]
+
+
+def arrow_to_numpy_dict(arrow_data: RecordBatch | Table) -> dict[str, NDArray]:
+    return {col_data._name: col_data.to_numpy() for col_data in arrow_data.columns}
 
 
 class OptionalDependencyError(Exception):
@@ -110,23 +115,22 @@ class BaseReader(Reader, FileContext):
         degrees: bool = True,
         **kwargs,
     ) -> None:
-        self._degrees = degrees  # whether conversion to radian is needed
-        # determine how to map columns
-        self._col_to_chunk_arg = dict(ra=ra_name, dec=dec_name)
+        self._degrees = degrees
+
+        self._colname_to_chunk_attr = dict(ra=ra_name, dec=dec_name)
         if weight_name is not None:
-            self._col_to_chunk_arg["weight"] = weight_name
+            self._colname_to_chunk_attr["weight"] = weight_name
         if redshift_name is not None:
-            self._col_to_chunk_arg["redshift"] = redshift_name
+            self._colname_to_chunk_attr["redshift"] = redshift_name
         if patch_name is not None:
-            self._col_to_chunk_arg["patch"] = patch_name
-        # get the list of columns to read
-        self._colnames = list(self._col_to_chunk_arg.values())
-        # open the file, set up reader, etc.
+            self._colname_to_chunk_attr["patch"] = patch_name
+
+        self._colnames = list(self._colname_to_chunk_attr.values())
         self.path = Path(path)
         self._init_file(**kwargs)
 
     def _chunk_from_dict(self, data: dict[str, NDArray]) -> DataChunk:
-        converted = {new: data[old] for new, old in self._col_to_chunk_arg.items()}
+        converted = {new: data[old] for new, old in self._colname_to_chunk_attr.items()}
         if self._degrees:
             converted["ra"] = np.deg2rad(converted["ra"])
             converted["dec"] = np.deg2rad(converted["dec"])
@@ -150,16 +154,16 @@ class BaseReader(Reader, FileContext):
 
     @abstractmethod
     def read_all(self, sparse: int | None = None) -> DataChunk:
-        total = 0
+        current_size = 0
         chunks = []
         for chunk in self.iter():
-            n_chunk = len(chunk)
+            chunk_size = len(chunk)
             if sparse is not None:
-                # take a regular subset that factors in the chunk size
-                idx = np.arange(total % sparse, n_chunk, sparse)
-                chunk = chunk[idx]
+                chunk_offset = current_size % sparse
+                sparse_idx = np.arange(chunk_offset, chunk_size, sparse)
+                chunk = chunk[sparse_idx]
             chunks.append(chunk)
-            total += n_chunk
+            current_size += chunk_size
         return DataChunk.from_chunks(chunks)
 
 
@@ -168,10 +172,10 @@ class ParquetReader(BaseReader):
 
     def _init_file(self) -> None:
         self.file = parquet.ParquetFile(str(self.path))
-        availble = set(self.file.metadata.schema.names)
-        for col in self._colnames:
-            if col not in availble:
-                raise KeyError(f"column '{col}' not found")
+        availble_columns = set(self.file.metadata.schema.names)
+        for column in self._colnames:
+            if column not in availble_columns:
+                raise KeyError(f"column '{column}' not found")
 
     @property
     def n_rows(self) -> int:
@@ -182,16 +186,14 @@ class ParquetReader(BaseReader):
         n_groups = self.file.num_row_groups
         for gid in range(n_groups):
             group = self.file.read_row_group(gid, self._colnames)
-            data = {column._name: column.to_numpy() for column in group.columns}
-            yield self._chunk_from_dict(data)
+            yield self._chunk_from_dict(arrow_to_numpy_dict(group))
 
     def read_all(self, sparse: int | None = None) -> DataChunk:
         if sparse is not None:
             return super().read_all(sparse)
         else:
             table = self.file.read(self._colnames)
-            data = {column._name: column.to_numpy() for column in table.columns}
-            return self._chunk_from_dict(data)
+            return self._chunk_from_dict(arrow_to_numpy_dict(table))
 
 
 class FitsReader(BaseReader):
@@ -247,7 +249,10 @@ class FitsReader(BaseReader):
 
     def read_all(self, sparse: int | None = None) -> DataChunk:
         data: NDArray = self.hdu[self._colnames][::sparse]
-        data = {col: data[col].byteswap().newbyteorder() for col in data.dtype.fields}
+        data = {
+            colname: data[colname].byteswap().newbyteorder()
+            for colname in data.dtype.fields
+        }
         return self._chunk_from_dict(data)
 
 
@@ -287,18 +292,18 @@ class HDFReader(BaseReader):
 
     @property
     def n_rows(self) -> int:
-        n_rows = [self.file[col].shape[0] for col in self._colnames]
+        n_rows = [self.file[colname].shape[0] for colname in self._colnames]
         if len(set(n_rows)) != 1:
             raise IndexError("columns do not have equal length")
         return n_rows[0]
 
     def iter(self) -> Generator[DataChunk]:
         n_groups = int(np.ceil(self.n_rows / self.chunksize))
-        for gid in range(n_groups):
-            offset = gid * self.chunksize
+        for group_index in range(n_groups):
+            offset = group_index * self.chunksize
             data = {
-                col: self.file[col][offset : offset + self.chunksize]
-                for col in self._colnames
+                colname: self.file[colname][offset : offset + self.chunksize]
+                for colname in self._colnames
             }
             yield self._chunk_from_dict(data)
 
@@ -359,7 +364,7 @@ class CsvReader(BaseReader):
             quote_char=quote_char,
             escape_char=escape_char,
         )
-        self._reopen_file()  # run any checks that pyarrow might do
+        self._reopen_file()
 
     def _reopen_file(self) -> csv.CSVStreamingReader:
         self.file = csv.open_csv(
@@ -371,7 +376,7 @@ class CsvReader(BaseReader):
     @property
     def n_rows(self) -> int:
         # this is not very fast, but there is no other way and nobody should use
-        # CSV for large numerical datasets in the first place in 2023
+        # CSV for large numerical datasets in 2023 in the first place
         with open(self.path) as file:
             return sum(1 for _ in file)
 
@@ -387,7 +392,7 @@ class CsvReader(BaseReader):
         else:
             self._reopen_file()
             table = self.file.read_all()
-            data = {column._name: column.to_numpy() for column in table.columns}
+            data = {colname: table[colname].to_numpy() for colname in self._colnames}
             return self._chunk_from_dict(data)
 
 
