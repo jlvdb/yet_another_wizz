@@ -5,6 +5,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Literal, Protocol
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 from pyarrow import csv, parquet
 
@@ -43,7 +48,7 @@ class FileContext(ABC):
     def close(self) -> None:
         pass
 
-    def __enter__(self) -> FileContext:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args, **kwargs) -> None:

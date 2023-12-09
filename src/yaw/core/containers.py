@@ -22,9 +22,13 @@ from typing import (
     Iterable,
     Literal,
     NamedTuple,
-    Type,
     TypeVar,
 )
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 import h5py
 import numpy as np
@@ -80,7 +84,7 @@ class Interval:
     def edges(self) -> NDArray[np.float64]:
         return np.append([self.left, self.right])
 
-    def copy(self: _Tindex) -> _Tindex:
+    def copy(self) -> Self:
         return copy(self)
 
 
@@ -108,7 +112,7 @@ class Binning:
         cls,
         edges: NDArray[np.float64],
         closed: Literal["right", "left"] = "right",
-    ) -> Binning:
+    ) -> Self:
         return cls.from_arrays(edges[:-1], edges[1:], closed)
 
     @classmethod
@@ -117,7 +121,7 @@ class Binning:
         left: NDArray[np.float64],
         right: NDArray[np.float64],
         closed: Literal["right", "left"] = "right",
-    ) -> Binning:
+    ) -> Self:
         if left.ndim != 1 or right.ndim != 1:
             raise ValueError("'left' and 'right' must be one dimensional")
         elif left.shape != right.shape:
@@ -219,7 +223,7 @@ class Indexer(Generic[_TK, _TV], Iterator):
             self._iter_loc += 1
             return val
 
-    def __iter__(self) -> Iterator[_TV]:
+    def __iter__(self) -> Self:
         """Returns a new instance of this class to have an independent iterator
         location index"""
         return self.__class__(inst=self._inst, builder=self._builder)
@@ -287,7 +291,7 @@ class PatchedQuantity(ABC):
         pass
 
     @abstractmethod
-    def concatenate_patches(self: _Tpatched, *data: _Tpatched) -> _Tpatched:
+    def concatenate_patches(self, *data: Self) -> Self:
         """Concatenate pair count data containers with equal redshift binning.
 
         The data is merged by extending the dimension of the patch axes. The
@@ -370,7 +374,7 @@ class BinnedQuantity(ABC):
         """
         pass
 
-    def is_compatible(self: _Tbinned, other: _Tbinned, require: bool = False) -> bool:
+    def is_compatible(self, other: Self, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
 
         Ensures that both objects are instances of the same class and that the
@@ -401,7 +405,7 @@ class BinnedQuantity(ABC):
         return True
 
     @abstractmethod
-    def concatenate_bins(self: _Tbinned, *data: _Tbinned) -> _Tbinned:
+    def concatenate_bins(self, *data: Self) -> Self:
         """Concatenate pair count data containers with equal patches.
 
         The data is merged by appending the data along the redshift binning
@@ -613,7 +617,7 @@ class SampledData(BinnedQuantity):
             )
         return NotImplemented
 
-    def __add__(self, other: object) -> _Tdata:
+    def __add__(self, other: object) -> Self:
         if not isinstance(other, self.__class__):
             self.is_compatible(other, require=True)
             return self.__class__(
@@ -624,7 +628,7 @@ class SampledData(BinnedQuantity):
             )
         return NotImplemented
 
-    def __sub__(self, other: object) -> _Tdata:
+    def __sub__(self, other: object) -> Self:
         if isinstance(other, self.__class__):
             self.is_compatible(other, require=True)
             return self.__class__(
@@ -636,7 +640,7 @@ class SampledData(BinnedQuantity):
         return NotImplemented
 
     @property
-    def bins(self: _Tdata) -> Indexer[int | slice | Sequence, _Tdata]:
+    def bins(self) -> Indexer[int | slice | Sequence, Self]:
         def builder(inst: _Tdata, item: int | slice | Sequence) -> _Tdata:
             if isinstance(item, int):
                 item = [item]
@@ -696,10 +700,10 @@ class SampledData(BinnedQuantity):
             return False
         return True
 
-    def concatenate_bins(self: _Tdata, *data: _Tdata) -> _Tdata:
+    def concatenate_bins(self, *data: Self) -> Self:
         for other in data:
             self.is_compatible(other, require=True)
-        all_data: list[_Tdata] = [self, *data]
+        all_data: list[Self] = [self, *data]
         binning = concatenate_bin_edges(*all_data)
         # concatenate data
         data = np.concatenate([d.data for d in all_data])
@@ -748,15 +752,12 @@ def concatenate_bin_edges(*patched: BinnedQuantity) -> Binning:
     return Binning.from_edges(edges, closed=reference.closed)
 
 
-_Thdf = TypeVar("_Thdf", bound="HDFSerializable")
-
-
 class HDFSerializable(ABC):
     """Base class for an object that can be serialised into a HDF5 file."""
 
     @classmethod
     @abstractmethod
-    def from_hdf(cls: Type[_Thdf], source: h5py.Group) -> _Thdf:
+    def from_hdf(cls, source: h5py.Group) -> Self:
         """Create a class instance by deserialising data from a HDF5 group.
 
         Args:
@@ -779,7 +780,7 @@ class HDFSerializable(ABC):
         pass
 
     @classmethod
-    def from_file(cls: Type[_Thdf], path: TypePathStr) -> _Thdf:
+    def from_file(cls, path: TypePathStr) -> Self:
         """Create a class instance by deserialising data from a HDF5 file.
 
         Args:

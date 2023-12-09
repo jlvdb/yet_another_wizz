@@ -5,6 +5,11 @@ from copy import copy
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Generator, TypeVar, overload
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 
 from yaw.catalog import utils
@@ -88,8 +93,8 @@ class PatchMetadata:
         object.__setattr__(self, "radius", radius)
 
     @classmethod
-    def new_with_length(self, length: int) -> PatchMetadata:
-        return PatchMetadata(
+    def new_with_length(self, length: int) -> Self:
+        return self.__cls__(
             length=length,
             total=NotSet,
             center=copy(self.center),
@@ -117,7 +122,7 @@ class PatchMetadata:
         return metadict
 
     @classmethod
-    def from_dict(cls, the_dict: dict) -> PatchMetadata:
+    def from_dict(cls, the_dict: dict) -> Self:
         kwargs = {k: v for k, v in the_dict.items()}
 
         try:

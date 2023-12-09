@@ -8,7 +8,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any, Type, TypeVar
+from typing import TYPE_CHECKING, Any
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 import h5py
 import numpy as np
@@ -43,8 +48,6 @@ __all__ = ["CorrData", "CorrFunc", "add_corrfuncs"]
 
 
 logger = logging.getLogger(__name__)
-
-_Tdata = TypeVar("_Tdata", bound="CorrData")
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -109,7 +112,7 @@ class CorrData(SampledData):
         super().__post_init__()
 
     @classmethod
-    def from_files(cls: Type[_Tdata], path_prefix: TypePathStr) -> _Tdata:
+    def from_files(cls, path_prefix: TypePathStr) -> Self:
         """Create a new instance by loading the data from ASCII files.
 
         The data is restored from a set of three input files produced by
@@ -515,7 +518,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return True
         return NotImplemented
 
-    def __add__(self, other: object) -> CorrFunc:
+    def __add__(self, other: object) -> Self:
         if isinstance(other, self.__class__):
             # check that the pair counts are set consistently
             kinds = []
@@ -536,12 +539,12 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self.__class__(**kwargs)
         return NotImplemented
 
-    def __radd__(self, other: object) -> CorrFunc:
+    def __radd__(self, other: object) -> Self:
         if np.isscalar(other) and other == 0:
             return self
         return other.__add__(self)
 
-    def __mul__(self, other: object) -> CorrFunc:
+    def __mul__(self, other: object) -> Self:
         if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
             # check that the pair counts are set consistently
             kwargs = {}
@@ -749,7 +752,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         )
 
     @classmethod
-    def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrFunc:
+    def from_hdf(cls, source: h5py.File | h5py.Group) -> Self:
         def _try_load(root: h5py.Group, name: str) -> NormalisedCounts | None:
             try:
                 return NormalisedCounts.from_hdf(root[name])
@@ -774,7 +777,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         dest.create_dataset("n_patches", data=self.n_patches)
 
     @classmethod
-    def from_file(cls, path: TypePathStr) -> CorrFunc:
+    def from_file(cls, path: TypePathStr) -> Self:
         logger.debug("reading pair counts from '%s'", path)
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
@@ -784,7 +787,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
 
-    def concatenate_patches(self, *cfs: CorrFunc) -> CorrFunc:
+    def concatenate_patches(self, *cfs: CorrFunc) -> Self:
         check_mergable([self, *cfs])
         merged = {}
         for kind in ("dd", "dr", "rd", "rr"):
@@ -794,7 +797,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                 merged[kind] = self_pcounts.concatenate_patches(*other_pcounts)
         return self.__class__(**merged)
 
-    def concatenate_bins(self, *cfs: CorrFunc) -> CorrFunc:
+    def concatenate_bins(self, *cfs: CorrFunc) -> Self:
         check_mergable([self, *cfs])
         merged = {}
         for kind in ("dd", "dr", "rd", "rr"):

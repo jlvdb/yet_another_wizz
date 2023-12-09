@@ -8,6 +8,11 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import MISSING, Field, asdict, dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import yaml
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -69,7 +74,7 @@ class Parameter(Mapping):
         return asdict(self)[key[4:]]
 
     @classmethod
-    def from_field(cls, field: Field) -> Parameter:
+    def from_field(cls, field: Field) -> Self:
         """Create a new instance from a :obj:`dataclassField`."""
         kwargs = {}
         for key, value in field.metadata.items():

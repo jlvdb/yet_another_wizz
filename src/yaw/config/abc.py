@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import asdict
-from typing import Any, Type, TypeVar
+from typing import Any, TypeVar
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 from yaw.config import DEFAULT
 
 __all__ = ["DictRepresentation", "BaseConfig"]
-
-_Tdict = TypeVar("_Tdict", bound="DictRepresentation")
 
 
 class DictRepresentation(ABC):
@@ -16,10 +19,10 @@ class DictRepresentation(ABC):
 
     @classmethod
     def from_dict(
-        cls: Type[_Tdict],
+        cls,
         the_dict: dict[str, Any],
         **kwargs: dict[str, Any],  # passing additional constructor data
-    ) -> _Tdict:
+    ) -> Self:
         """Create a class instance from a dictionary representation of the
         minimally required data.
 
@@ -45,7 +48,7 @@ T = TypeVar("T", bound="BaseConfig")
 
 class BaseConfig(DictRepresentation):
     @classmethod
-    def create(cls: Type[T], **kwargs: Any) -> T:
+    def create(cls, **kwargs: Any) -> Self:
         """Create a new configuration object.
 
         By default this is an alias for :meth:`__init__`. Configuration classes
@@ -56,7 +59,7 @@ class BaseConfig(DictRepresentation):
         return cls(**kwargs)
 
     @abstractmethod
-    def modify(self: T, **kwargs: Any | DEFAULT.NotSet) -> T:
+    def modify(self, **kwargs: Any | DEFAULT.NotSet) -> Self:
         """Create a copy of the current configuration with updated parameter
         values.
 
@@ -72,10 +75,10 @@ class BaseConfig(DictRepresentation):
 
     @classmethod
     def from_dict(
-        cls: Type[T],
+        cls,
         the_dict: dict[str, Any],
         **kwargs: dict[str, Any],  # passing additional constructor data
-    ) -> T:
+    ) -> Self:
         """Create a class instance from a dictionary representation of the
         minimally required data.
 

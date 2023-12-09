@@ -10,6 +10,11 @@ from pathlib import Path
 from timeit import default_timer
 from typing import Callable, TypeVar, Union
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import tqdm
 
 __all__ = [
@@ -88,7 +93,7 @@ class TimedLog:
         self.callback = logging_callback
         self.msg = msg
 
-    def __enter__(self) -> TimedLog:
+    def __enter__(self) -> Self:
         self.t = default_timer()
         return self
 

@@ -20,6 +20,11 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 import scipy.optimize
 from deprecated import deprecated
@@ -131,7 +136,7 @@ class RedshiftData(CorrData):
 
     @classmethod
     @deprecated(reason="renamed to RedshiftData.from_corrdata", version="2.3.2")
-    def from_correlation_data(cls, *args, **kwargs):
+    def from_correlation_data(cls, *args, **kwargs) -> Self:
         """
         .. deprecated:: 2.3.2
             Renamed to :meth:`from_corrdata`.
@@ -145,7 +150,7 @@ class RedshiftData(CorrData):
         ref_data: CorrData | None = None,
         unk_data: CorrData | None = None,
         info: str | None = None,
-    ) -> RedshiftData:
+    ) -> Self:
         """Compute redshift estimate from readily sampled function data.
 
         The required argument is a crosscorrelation measurement, additional
@@ -215,7 +220,7 @@ class RedshiftData(CorrData):
 
     @classmethod
     @deprecated(reason="renamed to RedshiftData.from_corrfuncs", version="2.3.2")
-    def from_correlation_functions(cls, *args, **kwargs):
+    def from_correlation_functions(cls, *args, **kwargs) -> Self:
         """
         .. deprecated:: 2.3.2
             Renamed to :meth:`from_corrfuncs`.
@@ -234,7 +239,7 @@ class RedshiftData(CorrData):
         unk_est: str | None = None,
         config: ResamplingConfig | None = None,
         info: str | None = None,
-    ) -> RedshiftData:
+    ) -> Self:
         """Sample correlation functions to compute a redshift estimate.
 
         The required argument is a crosscorrelation measurement, additional
@@ -303,7 +308,7 @@ class RedshiftData(CorrData):
     def _cov_desc(self) -> str:
         return f"# n(z) estimate covariance matrix ({self.n_bins}x{self.n_bins})"
 
-    def normalised(self, to: CorrData | None = None) -> RedshiftData:
+    def normalised(self, to: CorrData | None = None) -> Self:
         """Obtain a normalised copy of the data.
 
         Either attempts to normalise the data by integration along the redshift
@@ -361,7 +366,7 @@ class RedshiftData(CorrData):
         samples = np.nansum(self.samples * self.mids, axis=1) / norm
         return SampledValue(value=mean, samples=samples, method=self.method)
 
-    def rebin(self, bins: NDArray) -> RedshiftData:
+    def rebin(self, bins: NDArray) -> Self:
         """Attempts recomute the data for a different redshift binning.
 
         .. Warning::
@@ -395,7 +400,7 @@ class RedshiftData(CorrData):
 
     def shift(
         self, dz: float | SampledValue = 0.0, *, amplitude: float | SampledValue = 1.0
-    ) -> RedshiftData:
+    ) -> Self:
         """Attempts shift the data along the redshift axis.
 
         The shifting is performed by recomputing the redshift estimate with its
@@ -498,7 +503,7 @@ class HistData(RedshiftData):
         return f"# n(z) {n}histogram covariance matrix ({self.n_bins}x{self.n_bins})"
 
     @classmethod
-    def from_files(cls, path_prefix: TypePathStr) -> HistData:
+    def from_files(cls, path_prefix: TypePathStr) -> Self:
         new = super().from_files(path_prefix)
         with open(f"{path_prefix}.dat") as f:
             line = f.readline()
@@ -511,7 +516,7 @@ class HistData(RedshiftData):
             density=density,
         )
 
-    def normalised(self, *args, **kwargs) -> HistData:
+    def normalised(self, *args, **kwargs) -> Self:
         """Obtain a normalised copy of the data.
 
         Normalises the data by integration along the redshift axis. This sets

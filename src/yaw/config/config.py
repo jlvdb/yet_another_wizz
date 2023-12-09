@@ -4,6 +4,11 @@ import logging
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, get_args
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 import yaml
 from deprecated import deprecated
@@ -117,7 +122,7 @@ class Configuration(BaseConfig):
         # BackendConfig
         thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
         crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
-    ) -> Configuration:
+    ) -> Self:
         """Create a new configuration object.
 
         Except for the ``cosmology`` parameter, all other parameters are passed
@@ -201,7 +206,7 @@ class Configuration(BaseConfig):
         # BackendConfig
         thread_num: int | None = DEFAULT.NotSet,
         crosspatch: bool | None = DEFAULT.NotSet,
-    ) -> Configuration:
+    ) -> Self:
         if cosmology is DEFAULT.NotSet:
             cosmology = self.cosmology
         elif isinstance(cosmology, str):
@@ -275,7 +280,7 @@ class Configuration(BaseConfig):
         return fig
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> Configuration:
+    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> Self:
         config = {k: v for k, v in the_dict.items()}
         cosmology = utils.parse_cosmology(
             config.pop("cosmology", DEFAULT.Configuration.cosmology)
@@ -316,7 +321,7 @@ class Configuration(BaseConfig):
         return values
 
     @classmethod
-    def from_yaml(cls, path: TypePathStr) -> Configuration:
+    def from_yaml(cls, path: TypePathStr) -> Self:
         """Create a new instance by loading the configuration from a YAML file.
 
         Args:

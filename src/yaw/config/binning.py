@@ -4,6 +4,11 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 
 from yaw.config import DEFAULT, OPTIONS
@@ -109,7 +114,7 @@ class BinningConfig(BaseConfig):
         zbin_num: int = DEFAULT.Binning.zbin_num,
         method: str = DEFAULT.Binning.method,
         cosmology: TypeCosmology | str | None = None,
-    ) -> BinningConfig:
+    ) -> Self:
         """Create a new redshift binning configuration.
 
         If redshift bins (``zbins``) are provided, ``method`` is set to
@@ -171,7 +176,7 @@ class BinningConfig(BaseConfig):
         zbin_num: int = DEFAULT.NotSet,
         method: str = DEFAULT.NotSet,
         cosmology: TypeCosmology | str | None = None,
-    ) -> BinningConfig:
+    ) -> Self:
         """Create a copy of the current configuration with updated parameter
         values.
 
@@ -210,7 +215,7 @@ class BinningConfig(BaseConfig):
     @classmethod
     def from_dict(
         cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
-    ) -> BinningConfig:
+    ) -> Self:
         """Create a class instance from a dictionary representation of the
         minimally required data.
 

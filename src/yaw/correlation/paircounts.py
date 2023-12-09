@@ -19,6 +19,11 @@ from dataclasses import dataclass
 from itertools import accumulate
 from typing import TYPE_CHECKING, NoReturn, Type, Union
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 try:  # pragma: no cover
     from typing import TypeAlias
 except ImportError:  # pragma: no cover
@@ -370,7 +375,7 @@ class PatchedTotal(PatchedArray):
         return self.totals1.shape[0]
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> PatchedTotal:
+    def from_hdf(cls, source: h5py.Group) -> Self:
         # reconstruct the binning
         binning = binning_from_hdf(source)
         # load the data
@@ -387,9 +392,9 @@ class PatchedTotal(PatchedArray):
         dest.create_dataset("totals2", data=self.totals2, **_compression)
         dest.create_dataset("auto", data=self.auto)
 
-    def concatenate_patches(self, *data: PatchedTotal) -> PatchedTotal:
+    def concatenate_patches(self, *data: Self) -> Self:
         sequence_require_type(data, self.__class__)
-        all_totals: list[PatchedTotal] = [self, *data]
+        all_totals: list[Self] = [self, *data]
         check_mergable(all_totals, patches=True)
         return self.__class__(
             binning=self.binning.copy(),
@@ -398,9 +403,9 @@ class PatchedTotal(PatchedArray):
             auto=self.auto,
         )
 
-    def concatenate_bins(self, *data: PatchedTotal) -> PatchedTotal:
+    def concatenate_bins(self, *data: Self) -> Self:
         sequence_require_type(data, self.__class__)
-        all_totals: list[PatchedTotal] = [self, *data]
+        all_totals: list[Self] = [self, *data]
         check_mergable(all_totals, patches=False)
         binning = concatenate_bin_edges(*all_totals)
         return self.__class__(
@@ -614,7 +619,7 @@ class PatchedCount(PatchedArray):
         *,
         auto: bool,
         dtype: DTypeLike = np.float64,
-    ) -> PatchedCount:
+    ) -> Self:
         """Create a new instance where all elements of the counts array are
         initialised to zero.
 
@@ -647,7 +652,7 @@ class PatchedCount(PatchedArray):
             )
         return NotImplemented
 
-    def __add__(self, other: object) -> PatchedCount:
+    def __add__(self, other: object) -> Self:
         if isinstance(other, self.__class__):
             self.is_compatible(other, require=True)
             if self.n_patches != other.n_patches:
@@ -657,12 +662,12 @@ class PatchedCount(PatchedArray):
             )
         return NotImplemented
 
-    def __radd__(self, other: object) -> PatchedCount:
+    def __radd__(self, other: object) -> Self:
         if np.isscalar(other) and other == 0:
             return self
         return other.__add__(self)
 
-    def __mul__(self, other: object) -> PatchedCount:
+    def __mul__(self, other: object) -> Self:
         if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
             return self.__class__(self.binning, self.counts * other, auto=self.auto)
         return NotImplemented
@@ -761,7 +766,7 @@ class PatchedCount(PatchedArray):
         return self.counts[i1, i2, :]  # shape (n_nonzero, n_bins)
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> PatchedCount:
+    def from_hdf(cls, source: h5py.Group) -> Self:
         # reconstruct the binning
         binning = binning_from_hdf(source)
         # load the sparse data representation
@@ -964,7 +969,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self.count == other.count and self.total == other.total
         return NotImplemented
 
-    def __add__(self, other: object) -> NormalisedCounts:
+    def __add__(self, other: object) -> Self:
         if isinstance(other, self.__class__):
             count = self.count + other.count
             if np.any(self.total.totals1 != other.total.totals1) or np.any(
@@ -974,12 +979,12 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
             return self.__class__(count, self.total)
         return NotImplemented
 
-    def __radd__(self, other: object) -> NormalisedCounts:
+    def __radd__(self, other: object) -> Self:
         if np.isscalar(other) and other == 0:
             return self
         return other.__add__(self)
 
-    def __mul__(self, other: object) -> NormalisedCounts:
+    def __mul__(self, other: object) -> Self:
         if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
             return self.__class__(self.count * other, self.total)
         return NotImplemented
@@ -1043,7 +1048,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return samples
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> NormalisedCounts:
+    def from_hdf(cls, source: h5py.Group) -> Self:
         count = PatchedCount.from_hdf(source["count"])
         total = PatchedTotal.from_hdf(source["total"])
         return cls(count=count, total=total)
@@ -1054,7 +1059,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         group = dest.create_group("total")
         self.total.to_hdf(group)
 
-    def concatenate_patches(self, *pcounts: NormalisedCounts) -> NormalisedCounts:
+    def concatenate_patches(self, *pcounts: Self) -> Self:
         sequence_require_type(pcounts, self.__class__)
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]
@@ -1063,7 +1068,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
             total=self.total.concatenate_patches(*totals),
         )
 
-    def concatenate_bins(self, *pcounts: NormalisedCounts) -> NormalisedCounts:
+    def concatenate_bins(self, *pcounts: Self) -> Self:
         sequence_require_type(pcounts, self.__class__)
         counts = [pc.count for pc in pcounts]
         totals = [pc.total for pc in pcounts]

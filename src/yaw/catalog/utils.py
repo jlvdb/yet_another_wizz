@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator, Iterator
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -171,7 +176,7 @@ class DataChunk:
     patch: NDArray | None = field(default=None)
 
     @classmethod
-    def from_chunks(cls, chunks: Iterable[DataChunk]) -> DataChunk:
+    def from_chunks(cls, chunks: Iterable[DataChunk]) -> Self:
         merged = concat_numpy_dicts([chunk.to_dict() for chunk in chunks])
         return cls(**merged)
 
@@ -230,7 +235,7 @@ class DataChunk:
         return the_dict
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, NDArray]) -> DataChunk:
+    def from_dict(cls, the_dict: dict[str, NDArray]) -> Self:
         return cls(**the_dict)
 
 

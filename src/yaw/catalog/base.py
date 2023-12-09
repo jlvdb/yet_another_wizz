@@ -7,11 +7,16 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, overload
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 from scipy.cluster import vq
 from scipy.spatial import KDTree
 
-from yaw.catalog.field import PatchLinkage, build_field
+from yaw.catalog.field import PatchLinkage
 from yaw.catalog.patch import (
     PatchCollector,
     PatchDataCached,
@@ -22,7 +27,6 @@ from yaw.catalog.readers import ChunkReader, Reader, get_reader
 from yaw.catalog.utils import DataChunk, IndexMapper
 from yaw.core.containers import Binning
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
-from yaw.core.utils import long_num_format
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -104,7 +108,7 @@ class PatchMode(Enum):
     apply = 2
 
     @classmethod
-    def get(cls, patches: Any) -> PatchMode:
+    def get(cls, patches: Any) -> Self:
         if isinstance(patches, (int, np.integer)):
             if patches <= 1:
                 raise ValueError("number or patches must be greater than 1")
@@ -336,7 +340,7 @@ class Catalog(ABC):
         patch_data: NDArray | Catalog | Coordinate | int | str,
         cache_directory: TypePathStr | None = None,
         n_per_patch: int | None = None,
-    ) -> Catalog:
+    ) -> Self:
         reader_inst = reader(**reader_kwargs)
         centers = get_centers(reader_inst, patch_mode, patch_data, n_per_patch)
 
@@ -357,7 +361,7 @@ class Catalog(ABC):
         redshift: NDArray | None = None,
         degrees: bool = True,
         n_per_patch: int | None = None,
-    ) -> Catalog:
+    ) -> Self:
         data = DataChunk(
             ra=np.asarray(np.deg2rad(ra) if degrees else ra),
             dec=np.asarray(np.deg2rad(dec) if degrees else dec),
@@ -391,7 +395,7 @@ class Catalog(ABC):
         n_per_patch: int | None = None,
         reader: type[Reader] | None = None,
         reader_kwargs: dict | None = None,
-    ) -> Catalog:
+    ) -> Self:
         patch_mode = PatchMode.get(patches)
 
         if reader is None:
@@ -420,6 +424,14 @@ class Catalog(ABC):
             patch_data=patches,
             n_per_patch=n_per_patch,
         )
+
+    @abstractmethod
+    def __enter__(self) -> Self:
+        pass
+
+    @abstractmethod
+    def __exit__(self, *args, **kwargs) -> None:
+        pass
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -582,36 +594,7 @@ class Catalog(ABC):
         The catalogue from the calling instance of :meth:`correlate` has always
         redshift binning applied.
         """
-        n1 = long_num_format(len(self))
-        n2 = long_num_format(len(self) if other is None else len(other))
-        self._logger.debug(
-            "correlating with %sbinned catalog (%sx%s) in %d redshift bins",
-            "" if binned else "un",
-            n1,
-            n2,
-            config.binning.zbin_num,
-        )
-
-        # figure out which catalog needs to be binned by redshift
-        bin_self = self.has_redshift
-        bin_other = binned if other is not None else True
-
-        # build the field(s)
-        field_self = build_field(
-            self.as_dict(),
-            config.binning.zbins if bin_self else None,
-            cache_directory=self.cache_directory,
-        )
-        if other is not None:
-            field_other = build_field(
-                other.as_dict(),
-                config.binning.zbins if bin_other else None,
-                cache_directory=other.cache_directory,
-            )
-        else:
-            field_other = None
-
-        return field_self.correlate(config, field_other, linkage)
+        pass
 
     def true_redshifts(
         self,

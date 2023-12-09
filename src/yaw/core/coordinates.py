@@ -8,7 +8,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 from functools import total_ordering
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 import numpy as np
 
@@ -83,12 +88,12 @@ class Coordinate(ABC):
 
     @classmethod
     @abstractmethod
-    def from_array(cls, array) -> Coordinate:
+    def from_array(cls, array) -> Self:
         pass
 
     @classmethod
     @abstractmethod
-    def from_coords(cls, coords: Sequence[Coordinate]) -> Coordinate:
+    def from_coords(cls, coords: Sequence[Coordinate]) -> Self:
         """Concatenate a sequence of coordinates into a new vector of
         coordates."""
         pass
@@ -174,14 +179,14 @@ class Coord3D(Coordinate):
         self.z = np.atleast_1d(z).astype(np.float64)
 
     @classmethod
-    def from_array(cls, array) -> Coord3D:
+    def from_array(cls, array) -> Self:
         """Create a new coordinate vector from an array of tuples of
         (`x`, `y`, `z`)."""
         x, y, z = np.transpose(array)
         return cls(x, y, z)
 
     @classmethod
-    def from_coords(cls, coords: Sequence[Coord3D]) -> Coord3D:
+    def from_coords(cls, coords: Sequence[Coord3D]) -> Self:
         x = np.concatenate([coord.x for coord in coords], axis=0)
         y = np.concatenate([coord.y for coord in coords], axis=0)
         z = np.concatenate([coord.z for coord in coords], axis=0)
@@ -194,10 +199,10 @@ class Coord3D(Coordinate):
     def __len__(self) -> int:
         return len(self.x)
 
-    def __getitem__(self, idx: ArrayLike) -> Coord3D:
+    def __getitem__(self, idx: ArrayLike) -> Self:
         return self.__class__(x=self.x[idx], y=self.y[idx], z=self.z[idx])
 
-    def __iter__(self) -> Iterator[Coord3D]:
+    def __iter__(self) -> Iterator[Self]:
         for i in range(len(self)):
             yield self[i]
 
@@ -212,7 +217,7 @@ class Coord3D(Coordinate):
     def mean(self) -> Coord3D:
         return Coord3D(x=self.x.mean(), y=self.y.mean(), z=self.z.mean())
 
-    def to_3d(self) -> Coord3D:
+    def to_3d(self) -> Self:
         return self
 
     def to_sky(self) -> CoordSky:
@@ -278,14 +283,14 @@ class CoordSky(Coordinate):
         self.dec = np.atleast_1d(dec).astype(np.float64)
 
     @classmethod
-    def from_array(cls, array):
+    def from_array(cls, array) -> Self:
         """Create a new coordinate vector from an array of tuples of
         (`ra`, `dec`)."""
         ra, dec = np.transpose(array)
         return cls(ra, dec)
 
     @classmethod
-    def from_coords(cls, coords: Sequence[CoordSky]) -> CoordSky:
+    def from_coords(cls, coords: Sequence[CoordSky]) -> Self:
         ra = np.concatenate([coord.ra for coord in coords], axis=0)
         dec = np.concatenate([coord.dec for coord in coords], axis=0)
         return cls(ra, dec)
@@ -297,10 +302,10 @@ class CoordSky(Coordinate):
     def __len__(self) -> int:
         return len(self.ra)
 
-    def __getitem__(self, idx: ArrayLike) -> CoordSky:
+    def __getitem__(self, idx: ArrayLike) -> Self:
         return self.__class__(ra=self.ra[idx], dec=self.dec[idx])
 
-    def __iter__(self) -> Iterator[CoordSky]:
+    def __iter__(self) -> Iterator[Self]:
         for i in range(len(self)):
             yield self[i]
 
@@ -312,7 +317,7 @@ class CoordSky(Coordinate):
     def values(self) -> NDArray[np.float64]:
         return np.squeeze(np.transpose([self.ra, self.dec]))
 
-    def mean(self) -> CoordSky:
+    def mean(self) -> Self:
         return self.to_3d().mean().to_sky()
 
     def to_3d(self) -> Coord3D:
@@ -320,7 +325,7 @@ class CoordSky(Coordinate):
         dec = np.ascontiguousarray(self.dec, dtype=np.float64)
         return Coord3D(*_coord_sky_to_sphere(ra, dec))
 
-    def to_sky(self) -> CoordSky:
+    def to_sky(self) -> Self:
         return self
 
     def distance(self, other: Coordinate) -> DistSky:
@@ -351,9 +356,6 @@ class CoordSky(Coordinate):
         return Dist3D(_radius_from_coord_sky(ra, dec, *c)).to_sky()
 
 
-_Tdist = TypeVar("_Tdist", bound="Distance")
-
-
 @total_ordering
 class Distance(ABC):
     """Base class for a vector of distances."""
@@ -376,17 +378,17 @@ class Distance(ABC):
         self._values = np.atleast_1d(distance).astype(np.float64)
 
     @classmethod
-    def from_dists(cls: _Tdist, dists: Sequence[_Tdist]) -> _Tdist:
+    def from_dists(cls, dists: Sequence[Self]) -> Self:
         """Concatenate a sequence of distances into a new vector of distances."""
         return cls(np.concatenate([dist._values for dist in dists], axis=0))
 
     def __len__(self) -> int:
         return len(self._values)
 
-    def __getitem__(self, idx: ArrayLike) -> CoordSky:
+    def __getitem__(self, idx: ArrayLike) -> Self:
         return self.__class__(self._values[idx])
 
-    def __iter__(self) -> Iterator[CoordSky]:
+    def __iter__(self) -> Iterator[Self]:
         for i in range(len(self)):
             yield self[i]
 
@@ -413,19 +415,19 @@ class Distance(ABC):
         return NotImplemented
 
     @abstractmethod
-    def __add__(self, other: object) -> _Tdist:
+    def __add__(self, other: object) -> Self:
         pass
 
     @abstractmethod
-    def __sub__(self, other: object) -> _Tdist:
+    def __sub__(self, other: object) -> Self:
         pass
 
-    def min(self) -> _Tdist:
+    def min(self) -> Self:
         """Compute the minimum value and return it as new `Distance`
         instance."""
         return self.__class__(self.values.min())
 
-    def max(self) -> _Tdist:
+    def max(self) -> Self:
         """Compute the maximum value and return it as new `Distance`
         instance."""
         return self.__class__(self.values.max())
@@ -444,19 +446,19 @@ class Distance(ABC):
 class Dist3D(Distance):
     """Implements a vector of Euclidean distances."""
 
-    def __add__(self, other: object) -> DistSky:
+    def __add__(self, other: object) -> Self:
         if isinstance(other, Dist3D):
             dist_sky = self.to_sky() + other.to_sky()
             return dist_sky.to_3d()
         return NotImplemented
 
-    def __sub__(self, other: object) -> DistSky:
+    def __sub__(self, other: object) -> Self:
         if isinstance(other, Dist3D):
             dist_sky = self.to_sky() - other.to_sky()
             return dist_sky.to_3d()
         return NotImplemented
 
-    def to_3d(self) -> Dist3D:
+    def to_3d(self) -> Self:
         return self
 
     def to_sky(self) -> DistSky:
@@ -468,12 +470,12 @@ class Dist3D(Distance):
 class DistSky(Distance):
     """Implements a vector of angular distances in radian."""
 
-    def __add__(self, other: object) -> DistSky:
+    def __add__(self, other: object) -> Self:
         if isinstance(other, DistSky):
             return DistSky(self.values + other.values)
         return NotImplemented
 
-    def __sub__(self, other: object) -> DistSky:
+    def __sub__(self, other: object) -> Self:
         if isinstance(other, DistSky):
             return DistSky(self.values - other.values)
         return NotImplemented
@@ -481,5 +483,5 @@ class DistSky(Distance):
     def to_3d(self) -> Dist3D:
         return Dist3D(2.0 * np.sin(self.values / 2.0))
 
-    def to_sky(self) -> DistSky:
+    def to_sky(self) -> Self:
         return self

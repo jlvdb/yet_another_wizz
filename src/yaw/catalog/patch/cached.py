@@ -7,6 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 
 from yaw.catalog import utils
@@ -143,7 +148,7 @@ class PatchDataCached(PatchData):
         self._init_from_disk(metadata)
 
     @classmethod
-    def restore(cls, id: int, path: TypePathStr) -> PatchDataCached:
+    def restore(cls, id: int, path: TypePathStr) -> Self:
         new = cls.__new__(cls)
         new.path = Path(path)
         if not new.path.exists():

@@ -7,6 +7,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 import pandas as pd
 
@@ -65,7 +70,7 @@ class UniformRandoms:
         self.rng = np.random.SeedSequence(seed)
 
     @classmethod
-    def from_catalog(cls, cat: Catalog, seed: int = 12345) -> UniformRandoms:
+    def from_catalog(cls, cat: Catalog, seed: int = 12345) -> Self:
         """Create a new generator with a rectangular footprint obtained from the
         coordinate range of a given data catalogue.
 

@@ -4,13 +4,21 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 
 from yaw.catalog.base import Catalog, PatchMode, parse_path_or_none
+from yaw.catalog.field import PatchLinkage, build_field
 from yaw.catalog.patch import PatchDataCached
 from yaw.catalog.readers import ChunkReader, Reader, get_reader
 from yaw.catalog.utils import DataChunk, patch_id_from_path
+from yaw.config import Configuration
 from yaw.core.coordinates import Coordinate
+from yaw.correlation.paircounts import NormalisedCounts
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
@@ -42,7 +50,7 @@ class CatalogCached(Catalog):
         redshift: NDArray | None = None,
         degrees: bool = True,
         n_per_patch: int | None = None,
-    ) -> Catalog:
+    ) -> Self:
         data = DataChunk(
             ra=np.asarray(np.deg2rad(ra) if degrees else ra),
             dec=np.asarray(np.deg2rad(dec) if degrees else dec),
@@ -78,7 +86,7 @@ class CatalogCached(Catalog):
         n_per_patch: int | None = None,
         reader: type[Reader] | None = None,
         reader_kwargs: dict | None = None,
-    ) -> Catalog:
+    ) -> Self:
         patch_mode = PatchMode.get(patches)
 
         if reader is None:
@@ -110,9 +118,7 @@ class CatalogCached(Catalog):
         )
 
     @classmethod
-    def from_cache(
-        cls, cache_directory: TypePathStr, progress: bool = False
-    ) -> Catalog:
+    def from_cache(cls, cache_directory: TypePathStr, progress: bool = False) -> Self:
         cache_directory = Path(cache_directory)
         if not cache_directory.exists():
             raise FileNotFoundError(
@@ -123,3 +129,32 @@ class CatalogCached(Catalog):
             patch_id = patch_id_from_path(patch_path)
             patches[patch_id] = PatchDataCached.restore(patch_id, patch_path)
         return cls(patches, cache_directory)
+
+    def correlate(
+        self,
+        config: Configuration,
+        binned: bool,
+        other: Catalog | None = None,
+        linkage: PatchLinkage | None = None,
+        progress: bool = False,
+    ) -> NormalisedCounts | dict[str, NormalisedCounts]:
+        # figure out which catalog needs to be binned by redshift
+        bin_self = self.has_redshift
+        bin_other = binned if other is not None else True
+
+        # build the field(s)
+        field_self = build_field(
+            self.as_dict(),
+            config.binning.zbins if bin_self else None,
+            cache_directory=self.cache_directory,
+        )
+        if other is not None:
+            field_other = build_field(
+                other.as_dict(),
+                config.binning.zbins if bin_other else None,
+                cache_directory=other.cache_directory,
+            )
+        else:
+            field_other = None
+
+        return field_self.correlate(config, field_other, linkage)

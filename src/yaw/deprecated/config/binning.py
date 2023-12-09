@@ -4,6 +4,11 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import numpy as np
 from deprecated import deprecated
 
@@ -90,7 +95,7 @@ class ManualBinningConfig(BaseBinningConfig):
         return len(self.zbins) - 1
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> ManualBinningConfig:
+    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> Self:
         new_dict = {key: val for key, val in the_dict.items()}
         zbins = new_dict.pop("zbins")
         return cls(np.asarray(zbins), **new_dict)
@@ -169,7 +174,7 @@ class AutoBinningConfig(BaseBinningConfig):
         zbin_num: int = DEFAULT.Binning.zbin_num,
         method: str = DEFAULT.Binning.method,
         cosmology: TypeCosmology | None = None,
-    ) -> AutoBinningConfig:
+    ) -> Self:
         """Generate a new redshift binning configuration.
 
         Generates a specified number of bins between a lower and upper redshift
@@ -209,7 +214,7 @@ class AutoBinningConfig(BaseBinningConfig):
     @classmethod
     def from_dict(
         cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
-    ) -> AutoBinningConfig:
+    ) -> Self:
         """Create a class instance from a dictionary representation of the
         minimally required data.
 
