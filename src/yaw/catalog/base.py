@@ -16,7 +16,7 @@ import numpy as np
 from scipy.cluster import vq
 from scipy.spatial import KDTree
 
-from yaw.catalog.field import PatchLinkage
+from yaw.catalog.kdtree import PatchLinkage
 from yaw.catalog.patch import (
     PatchCollector,
     PatchDataCached,
@@ -462,6 +462,7 @@ class Catalog(ABC):
         """The number of spatial patches of this catalogue."""
         return max(self.ids) + 1
 
+    @abstractmethod
     def __iter__(self) -> Generator[PatchData]:
         for patch_id in self.ids:
             yield self._patches[patch_id]
@@ -542,7 +543,12 @@ class Catalog(ABC):
         """
         return DistSky.from_dists([self._patches[pid].radius for pid in self.ids])
 
-    @abstractmethod
+    def parallel_context(
+        self,
+        binning: Binning | Iterable | None,
+    ) -> ParallelContext:
+        return ParallelContext(self, binning)
+
     def correlate(
         self,
         config: Configuration,
@@ -594,7 +600,14 @@ class Catalog(ABC):
         The catalogue from the calling instance of :meth:`correlate` has always
         redshift binning applied.
         """
-        pass
+        """auto = other is None"""
+        # check patch centers
+        # open create the patch for parallel processing
+        """patch1_list, patch2_list = utils.get_patch_list(
+            self, other, config, linkage, auto
+        )"""
+        # iterate the linkage in parallel
+        # merge and return the result
 
     def true_redshifts(
         self,
@@ -625,3 +638,43 @@ class Catalog(ABC):
         return merge_histogram_patches(
             np.array(hist_counts), config.binning.zbins, sampling_config
         )
+
+
+class IpcData(ABC):
+    @abstractmethod
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    @abstractmethod
+    def __enter__(self) -> Self:
+        pass
+
+    @abstractmethod
+    def __exit__(self, *args, **kwargs) -> None:
+        pass
+
+
+class ParallelContext(ABC):
+    def __init__(
+        self,
+        catalog: Catalog,
+        binning: Binning | Iterable | None,
+        num_threads: int,
+    ) -> None:
+        self.catalog = catalog
+        if binning is not None and not isinstance(binning, Binning):
+            binning = Binning.from_edges(binning, closed="left")
+        self.binning = binning
+        self.num_threads = num_threads
+
+    @abstractmethod
+    def __enter__(self) -> Self:
+        pass
+
+    @abstractmethod
+    def __exit__(self, *args, **kwargs) -> None:
+        pass
+
+    @abstractmethod
+    def get_patches_ipc(self) -> list[IpcData]:
+        pass

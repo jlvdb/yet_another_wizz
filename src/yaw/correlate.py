@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from yaw.catalog.field import PatchLinkage
+from yaw.catalog.kdtree import PatchLinkage
 from yaw.core.utils import TimedLog
 from yaw.correlation.corrfuncs import CorrFunc
 

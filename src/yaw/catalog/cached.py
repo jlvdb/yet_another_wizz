@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+import multiprocessing
+from collections.abc import Generator, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,28 +12,110 @@ except ImportError:
 
 import numpy as np
 
-from yaw.catalog.base import Catalog, PatchMode, parse_path_or_none
-from yaw.catalog.field import PatchLinkage, build_field
+from yaw.catalog.base import (
+    Catalog,
+    IpcData,
+    ParallelContext,
+    PatchMode,
+    parse_path_or_none,
+)
+from yaw.catalog.kdtree import build_trees_binned
 from yaw.catalog.patch import PatchDataCached
 from yaw.catalog.readers import ChunkReader, Reader, get_reader
-from yaw.catalog.utils import DataChunk, patch_id_from_path
-from yaw.config import Configuration
+from yaw.catalog.utils import DataChunk, patch_id_from_path, read_pickle, write_pickle
+from yaw.core.containers import Binning
 from yaw.core.coordinates import Coordinate
-from yaw.correlation.paircounts import NormalisedCounts
 
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-    from yaw.catalog.patch.base import PatchData
+    from yaw.catalog.kdtree import SphericalKDTree
     from yaw.core.utils import TypePathStr
 
 __all__ = ["CatalogCached"]
 
 
+class IpcDataCached(IpcData):
+    def __init__(self, tree_path: Path) -> None:
+        self.path = tree_path
+
+    def __enter__(self) -> Self:
+        pass
+
+    def __exit__(self, *args, **kwargs) -> None:
+        pass
+
+    def get_trees(self) -> list[SphericalKDTree] | SphericalKDTree:
+        return read_pickle(self.path)
+
+
+def _worker_build_tree(args: tuple[TypePathStr, TypePathStr, Binning | None]) -> None:
+    patch_path, tree_path, binning = args
+    patch_id = patch_id_from_path(patch_path)
+    patch = PatchDataCached.restore(patch_id, patch_path)
+    trees = build_trees_binned(patch, binning)
+    write_pickle(tree_path, trees)
+
+
+class ParallelContextCached(ParallelContext):
+    def __init__(
+        self,
+        catalog: CatalogCached,
+        binning: Binning | Iterable | None,
+        num_threads: int,
+    ) -> None:
+        super().__init__(catalog, binning, num_threads)
+
+    def _get_path_patch(self, patch_id: int) -> Path:
+        return self._path_trees_template.format(patch_id)
+
+    @property
+    def _path_lock(self) -> Path:
+        return self.catalog.cache_directory / "lock"
+
+    @property
+    def _path_binning(self) -> Path:
+        return self.catalog.cache_directory / "binning.pickle"
+
+    @property
+    def _path_trees_template(self) -> str:
+        return str(self.catalog.cache_directory / "trees_{:d}.pickle")
+
+    def _get_path_trees(self, patch_id: int) -> Path:
+        return self._path_trees_template.format(patch_id)
+
+    def __enter__(self) -> Self:
+        if self._path_lock.exists():
+            raise FileExistsError(
+                "catalog is currently locked from a differenct operation"
+            )
+        self._path_lock.touch()
+
+        if self._path_binning.exists():
+            current_binning: Binning | None = read_pickle(self._path_binning)
+        building_required = current_binning != self.binning
+        if building_required:
+            write_pickle(self._path_binning, self.binning)
+
+        args = []
+        for patch in self.catalog:
+            args.append([patch.path, self._get_path_trees(patch.id), self.binning])
+        with multiprocessing.Pool(self.num_threads) as pool:
+            pool.imap_unordered(_worker_build_tree, args)
+
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self._path_lock.unlink()
+
+    def get_patches_ipc(self) -> list[IpcDataCached]:
+        return [self._get_path_trees(patch_id) for patch_id in self.catalog.ids]
+
+
 class CatalogCached(Catalog):
     def __init__(
         self,
-        patches: Mapping[int, PatchData] | Iterable[PatchData],
+        patches: Mapping[int, PatchDataCached] | Iterable[PatchDataCached],
         cache_directory: TypePathStr,
     ) -> None:
         super().__init__(patches)
@@ -130,31 +213,11 @@ class CatalogCached(Catalog):
             patches[patch_id] = PatchDataCached.restore(patch_id, patch_path)
         return cls(patches, cache_directory)
 
-    def correlate(
+    def __iter__(self) -> Generator[PatchDataCached]:
+        return super().__iter__()
+
+    def parallel_context(
         self,
-        config: Configuration,
-        binned: bool,
-        other: Catalog | None = None,
-        linkage: PatchLinkage | None = None,
-        progress: bool = False,
-    ) -> NormalisedCounts | dict[str, NormalisedCounts]:
-        # figure out which catalog needs to be binned by redshift
-        bin_self = self.has_redshift
-        bin_other = binned if other is not None else True
-
-        # build the field(s)
-        field_self = build_field(
-            self.as_dict(),
-            config.binning.zbins if bin_self else None,
-            cache_directory=self.cache_directory,
-        )
-        if other is not None:
-            field_other = build_field(
-                other.as_dict(),
-                config.binning.zbins if bin_other else None,
-                cache_directory=other.cache_directory,
-            )
-        else:
-            field_other = None
-
-        return field_self.correlate(config, field_other, linkage)
+        binning: Binning | Iterable | None,
+    ) -> ParallelContextCached:
+        return ParallelContextCached(self, binning)
