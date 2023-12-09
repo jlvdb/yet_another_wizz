@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable, Mapping
 from enum import Enum
 from pathlib import Path
@@ -10,15 +11,15 @@ import numpy as np
 from scipy.cluster import vq
 from scipy.spatial import KDTree
 
-from yaw.catalog.field import build_field
+from yaw.catalog.field import PatchLinkage, build_field
 from yaw.catalog.patch import (
     PatchCollector,
     PatchDataCached,
-    PatchDataResident,
+    PatchDataShared,
     PatchWriter,
 )
 from yaw.catalog.readers import ChunkReader, Reader, get_reader
-from yaw.catalog.utils import DataChunk, IndexMapper, patch_id_from_path
+from yaw.catalog.utils import DataChunk, IndexMapper
 from yaw.core.containers import Binning
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.utils import long_num_format
@@ -26,23 +27,11 @@ from yaw.core.utils import long_num_format
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-    from yaw.catalog.field import PatchLinkage
-    from yaw.catalog.patch import PatchData
+    from yaw.catalog.patch.base import PatchData
     from yaw.config import Configuration, ResamplingConfig
     from yaw.core.utils import TypePathStr
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
-
-__all__ = [
-    "Catalog",
-    "assign_patch_ids",
-    "create_patches",
-]
-
-
-# Determine patch centers with k-means clustering. The implementation in
-# treecorr is quite good, but might not be available. Implement a fallback using
-# the scipy.cluster module.
 
 
 def assign_patch_ids(centers: Coordinate, position: Coordinate) -> NDArray[np.int64]:
@@ -74,11 +63,11 @@ try:
         xyz = np.atleast_2d(cat.patch_centers)
         centers = Coord3D.from_array(xyz)
         if n_patches == 1:
-            patches = np.zeros(len(position), dtype=np.int64)
+            patch_ids = np.zeros(len(position), dtype=np.int64)
         else:
-            patches = assign_patch_ids(centers=centers, position=position)
+            patch_ids = assign_patch_ids(centers=centers, position=position)
         del cat  # might not be necessary
-        return centers, patches
+        return centers, patch_ids
 
     create_patches = _treecorr_create_patches
 
@@ -95,13 +84,13 @@ except ImportError:
         # place on unit sphere to avoid coordinate distortions
         centers, _ = vq.kmeans2(position.values, n_patches, minit="points")
         centers = Coord3D.from_array(centers)
-        patches = assign_patch_ids(centers=centers, position=position)
-        return centers, patches
+        patch_ids = assign_patch_ids(centers=centers, position=position)
+        return centers, patch_ids
 
     create_patches = _scipy_create_patches
 
 
-def is_iterable(obj) -> bool:
+def is_iterable(obj: Any) -> bool:
     try:
         iter(obj)
         return True
@@ -119,22 +108,25 @@ class PatchMode(Enum):
         if isinstance(patches, (int, np.integer)):
             if patches <= 1:
                 raise ValueError("number or patches must be greater than 1")
-            patch_mode = PatchMode.create
+            return PatchMode.create
         elif isinstance(patches, (Catalog, Coordinate)):
-            patch_mode = PatchMode.apply
+            return PatchMode.apply
         elif isinstance(patches, str) or is_iterable(patches):
-            patch_mode = PatchMode.divide
+            return PatchMode.divide
         else:
             raise TypeError(f"invalid type {type(patches)} for 'patches'")
-        return patch_mode
 
 
 def generate_index_subset(
-    max_idx: int, size: int, seed: int = 12345
+    max_idx: int,
+    subset_size: int,
+    seed: int = 12345,
+    sort: bool = True,
 ) -> NDArray[np.int64]:
     rng = np.random.default_rng(seed=seed)
-    idx = rng.integers(0, max_idx, size=size)
-    idx.sort()
+    idx = rng.integers(0, max_idx, size=subset_size)
+    if sort:
+        idx.sort()  # required if reading objects in batches
     return idx
 
 
@@ -145,19 +137,18 @@ def create_centers(
 ) -> Coord3D:
     subset_size = n_patches * n_per_patch
     with reader:
-        # generate a subset of indices to keep and build a mapping to chunks
         n_records = reader.n_rows
-        take = generate_index_subset(n_records, subset_size)
-        indexmap = IndexMapper(take)
+        index_subset = generate_index_subset(n_records, subset_size)
+        indexer = IndexMapper(index_subset)
         # read the data and keep the data subset
         chunk_subsets = []
         for chunk in reader.iter():
-            idx = indexmap.map(chunk)
+            idx = indexer.map(chunk)
             chunk_subsets.append(chunk[idx])
     data = DataChunk.from_chunks(chunk_subsets)
-    # compute the centers from the subset
     positions = CoordSky(data.ra, data.dec)
-    return create_patches(n_patches, positions)[0]
+    centers, _ = create_patches(n_patches, positions)
+    return centers
 
 
 def get_centers(
@@ -172,8 +163,8 @@ def get_centers(
             kwargs = dict()
         else:
             kwargs = dict(n_per_patch=n_per_patch)
-        coords = create_centers(reader, n_patches=patch_data, **kwargs)
-        centers = dict(enumerate(coords))
+        center_coords = create_centers(reader, n_patches=patch_data, **kwargs)
+        centers = dict(enumerate(center_coords))
 
     # extract the patch centers
     elif patch_mode == PatchMode.apply:
@@ -192,17 +183,19 @@ def assign_patch_centers(
     patches: dict[int, PatchData],
     centers: dict[int, Coordinate],
 ) -> None:
-    # if the centers have not been computed (PatchMode.divide), this is a no-op
-    patch_ids = set(patches.keys()) & set(centers.keys())
-    for patch_id in patch_ids:
-        patches[patch_id].metadata.center = centers[patch_id]
+    n_patches = len(centers)
+    if n_patches != 0:  # PatchMode.divide
+        if n_patches != len(patches):
+            raise IndexError("length of 'patches' and 'centers' does not match")
+        for patch_id, patch in patches.items():
+            patch.metadata.set_center(centers[patch_id])
 
 
 @overload
 def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
-) -> dict[int, PatchDataResident]:
+) -> dict[int, PatchDataShared]:
     ...
 
 
@@ -211,7 +204,7 @@ def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
     cache_directory: None = None,
-) -> dict[int, PatchDataResident]:
+) -> dict[int, PatchDataShared]:
     ...
 
 
@@ -228,7 +221,7 @@ def build_patches(
     reader: Reader,
     centers: dict[int, Coordinate],
     cache_directory: TypePathStr | None = None,
-) -> dict[int, PatchDataResident] | dict[int, PatchDataCached]:
+) -> dict[int, PatchDataShared] | dict[int, PatchDataCached]:
     # set up the collectors that construct the patches on the fly
     if cache_directory is None:
         collector = PatchCollector()
@@ -319,13 +312,13 @@ def merge_histogram_patches(
     )
 
 
-class Catalog:
+class Catalog(ABC):
     _logger = logging.getLogger("yaw.catalog")
 
     def __init__(
         self,
         patches: Mapping[int, PatchData] | Iterable[PatchData],
-        cache_directory: TypePathStr | None = None,
+        *args,
     ) -> None:
         if isinstance(patches, Mapping):
             self._patches = {pid: patch for pid, patch in patches.items()}
@@ -333,7 +326,6 @@ class Catalog:
             self._patches = dict(enumerate(patches))
         else:
             raise TypeError(f"invalid type '{patches.__class__}' for 'patches'")
-        self.cache_directory = parse_path_or_none(cache_directory)
 
     @classmethod
     def _from_reader(
@@ -345,10 +337,9 @@ class Catalog:
         cache_directory: TypePathStr | None = None,
         n_per_patch: int | None = None,
     ) -> Catalog:
-        # compute the centers as needed
         reader_inst = reader(**reader_kwargs)
         centers = get_centers(reader_inst, patch_mode, patch_data, n_per_patch)
-        # process the file and create the patches
+
         reader_inst = reader(**reader_kwargs)
         patches = build_patches(
             reader_inst, centers, parse_path_or_none(cache_directory)
@@ -362,31 +353,27 @@ class Catalog:
         dec: NDArray,
         patches: NDArray | Catalog | Coordinate | int,
         *,
-        redshift: NDArray | None = None,
         weight: NDArray | None = None,
+        redshift: NDArray | None = None,
         degrees: bool = True,
-        cache_directory: TypePathStr | None = None,
         n_per_patch: int | None = None,
-        progress: bool = True,
     ) -> Catalog:
-        # pack and normalise the input data
         data = DataChunk(
             ra=np.asarray(np.deg2rad(ra) if degrees else ra),
             dec=np.asarray(np.deg2rad(dec) if degrees else dec),
             weight=np.asarray(weight),
             redshift=np.asarray(redshift),
         )
-        reader_kwargs = dict(data=data, patch_name=patches, degrees=degrees)
-        # compute centers and build patches
         patch_mode = PatchMode.get(patches)
         if patch_mode == PatchMode.divide:
             data.set_patch(patches)
+
+        reader_kwargs = dict(data=data, patch_name=patches, degrees=degrees)
         return cls._from_reader(
             reader=ChunkReader,
             reader_kwargs=reader_kwargs,
             patch_mode=patch_mode,
             patch_data=patches,
-            cache_directory=cache_directory,
             n_per_patch=n_per_patch,
         )
 
@@ -398,18 +385,23 @@ class Catalog:
         dec_name: str,
         patches: str | int | Catalog | Coordinate,
         *,
-        redshift_name: str | None = None,
         weight_name: str | None = None,
+        redshift_name: str | None = None,
         degrees: bool = True,
-        cache_directory: TypePathStr | None = None,
         n_per_patch: int | None = None,
-        progress: bool = False,
         reader: type[Reader] | None = None,
-        **reader_kwargs,
+        reader_kwargs: dict | None = None,
     ) -> Catalog:
-        # set up the file reader
+        patch_mode = PatchMode.get(patches)
+
         if reader is None:
             reader = get_reader(path)
+        if reader_kwargs is None:
+            reader_kwargs = dict()
+        else:
+            reader_kwargs = {k: v for k, v in reader_kwargs.items()}
+        if patch_mode == PatchMode.divide:
+            reader_kwargs["patch_name"] = patches
         reader_kwargs.update(
             dict(
                 path=path,
@@ -420,38 +412,18 @@ class Catalog:
                 degrees=degrees,
             )
         )
-        # compute centers and build patches
-        patch_mode = PatchMode.get(patches)
-        if patch_mode == PatchMode.divide:
-            reader_kwargs["patch_name"] = patches
+
         return cls._from_reader(
             reader=reader,
             reader_kwargs=reader_kwargs,
             patch_mode=patch_mode,
             patch_data=patches,
-            cache_directory=cache_directory,
             n_per_patch=n_per_patch,
         )
-
-    @classmethod
-    def from_cache(
-        cls, cache_directory: TypePathStr, progress: bool = False
-    ) -> Catalog:
-        cache_directory = Path(cache_directory)
-        if not cache_directory.exists():
-            raise FileNotFoundError(
-                f"cache directory does not exist: {cache_directory}"
-            )
-        patches = {}
-        for patch_path in cache_directory.glob("patch_*"):
-            patch_id = patch_id_from_path(patch_path)
-            patches[patch_id] = PatchDataCached.restore(patch_id, patch_path)
-        return cls(patches, cache_directory)
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
         args = dict(
-            cached=self.is_cached(),
             nobjects=len(self),
             npatches=self.n_patches,
             redshifts=self.has_redshift,
@@ -481,18 +453,6 @@ class Catalog:
     def __iter__(self) -> Generator[PatchData]:
         for patch_id in self.ids:
             yield self._patches[patch_id]
-
-    def is_cached(self) -> bool:
-        """Indicates whether the catalog data is loaded.
-
-        Always ``True`` if no cache is used. If the catalog is unloaded, data
-        will be read from cache every time data is accessed."""
-        return self.cache_directory is not None
-
-    def drop_cache(self) -> None:
-        for patch in self._patches.values():
-            if hasattr(patch, "drop_data"):
-                patch.drop_data()
 
     @property
     def has_redshift(self) -> bool:
@@ -570,6 +530,7 @@ class Catalog:
         """
         return DistSky.from_dists([self._patches[pid].radius for pid in self.ids])
 
+    @abstractmethod
     def correlate(
         self,
         config: Configuration,
@@ -674,11 +635,10 @@ class Catalog:
         self._logger.info("computing true redshift distribution")
         if not self.has_redshift:
             raise ValueError("catalog has no redshifts")
-        # compute the reshift histogram in each patch
+
         hist_counts = []
         for patch in iter(self):
             hist_counts.append(count_histogram_patch(patch, config.binning.zbins))
-        # construct the output data samples
         return merge_histogram_patches(
             np.array(hist_counts), config.binning.zbins, sampling_config
         )

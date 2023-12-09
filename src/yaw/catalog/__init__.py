@@ -10,7 +10,13 @@ common catalogue interface and must be subclasses by all other backend
 implementations.
 """
 
-from yaw.catalog.catalog import Catalog
-from yaw.catalog.patch import PatchDataCached, PatchDataResident
+from yaw.catalog.cached import CatalogCached
+from yaw.catalog.constructors import catalog_from_file, catalog_from_records
+from yaw.catalog.shared import CatalogShared
 
-__all__ = ["Catalog", "PatchDataResident", "PatchDataCached"]
+__all__ = [
+    "CatalogShared",
+    "CatalogCached",
+    "catalog_from_records",
+    "catalog_from_file",
+]

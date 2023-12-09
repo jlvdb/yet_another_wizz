@@ -23,7 +23,7 @@ import logging as _logging
 
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())  # noqa
 
-from yaw.catalog import Catalog
+from yaw.catalog import catalog_from_file, catalog_from_records
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.cosmology import Scale
 from yaw.core.math import global_covariance
@@ -40,7 +40,8 @@ from yaw.deprecated.correlation.paircounts import PairCountResult
 from yaw.deprecated.redshifts import HistogramData
 
 __all__ = [
-    "Catalog",
+    "catalog_from_file",
+    "catalog_from_records",
     "Configuration",
     "ResamplingConfig",
     "Scale",
