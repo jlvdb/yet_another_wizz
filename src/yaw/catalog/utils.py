@@ -4,7 +4,7 @@ import pickle
 from collections.abc import Iterable, Sized
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any, Generator, Iterator
 
 import numpy as np
 
@@ -47,19 +47,21 @@ try:
         dict[int, NDArray[np.float64]] | None,
         dict[int, NDArray[np.float64]] | None,
     ]:
-        # ensure types
+        has_weight = weight is not None
+        has_redshift = redshift is not None
+        # ensure data layout expected by extension
         patch = np.ascontiguousarray(patch, dtype=np.int64)
         ra = np.ascontiguousarray(ra, dtype=np.float64)
         dec = np.ascontiguousarray(dec, dtype=np.float64)
-        # TODO: handling of optional arguments
-        if weight is None:
+        if has_weight:
             weight = np.empty(len(patch), dtype=np.float64)
         else:
             weight = np.ascontiguousarray(weight, dtype=np.float64)
-        if redshift is None:
+        if has_redshift:
             redshift = np.empty(len(patch), dtype=np.float64)
         else:
             redshift = np.ascontiguousarray(redshift, dtype=np.float64)
+
         result = _groupby_arrays(patch, ra, dec, weight, redshift)
         return (
             result[0],
@@ -73,6 +75,20 @@ except ImportError:
 
     warnings.warn("compiled ._groupby extension not availble, performance degraded")
 
+    class IterGroups:
+        def __init__(self, patch_ids: NDArray[np.int64]) -> None:
+            self.idx_ordered = patch_ids.argsort()
+            self.item_labels, _split = np.unique(
+                patch_ids[self.idx_ordered], return_index=True
+            )
+            self.split_at_index = _split[1:]
+
+        def iter_splitted(self, array) -> Iterator:
+            return zip(
+                self.item_labels,
+                np.array_split(array[self.idx_ordered], self.split_at_index),
+            )
+
     def groupby_arrays(
         patch: NDArray[np.int64],
         ra: NDArray[np.float64],
@@ -85,31 +101,18 @@ except ImportError:
         dict[int, NDArray[np.float64]] | None,
         dict[int, NDArray[np.float64]] | None,
     ]:
-        order = patch.argsort()
-        items, _split = np.unique(patch[order], return_index=True)
-        split = _split[1:]
-        grouped = [
-            {pid: pdata for pid, pdata in zip(items, np.array_split(ra[order], split))},
-            {
-                pid: pdata
-                for pid, pdata in zip(items, np.array_split(dec[order], split))
-            },
-        ]
+        group_iter = IterGroups(patch)
+        ra_grouped = dict(group_iter.iter_splitted(ra))
+        dec_grouped = dict(group_iter.iter_splitted(dec))
         if weight is not None:
-            grouped.append(
-                {
-                    pid: pdata
-                    for pid, pdata in zip(items, np.array_split(weight[order], split))
-                }
-            )
+            weight_grouped = dict(group_iter.iter_splitted(weight))
+        else:
+            weight_grouped = None
         if redshift is not None:
-            grouped.append(
-                {
-                    pid: pdata
-                    for pid, pdata in zip(items, np.array_split(redshift[order], split))
-                }
-            )
-        return tuple(grouped)
+            redshift_grouped = dict(group_iter.iter_splitted(redshift))
+        else:
+            redshift_grouped = None
+        return (ra_grouped, dec_grouped, weight_grouped, redshift_grouped)
 
 
 class ArrayCache(list):
@@ -145,12 +148,18 @@ def memmap_resize(memmap: np.memmap, new_shape: tuple[int] | int) -> np.memmap:
 
 
 def concat_numpy_dicts(dicts: Iterable[dict[str, NDArray]]) -> dict[str, NDArray]:
-    chunk_iter = iter(dicts)
-    chunk_dict = {key: [data] for key, data in next(chunk_iter).items()}
-    for chunk in chunk_iter:
-        for col, chunk_list in chunk_dict.items():
-            chunk_list.append(chunk[col])
-    return {col: np.concatenate(data) for col, data in chunk_dict.items()}
+    iter_data_by_items = iter(dicts)
+    first_item = next(iter_data_by_items)
+
+    data_by_keys = {key: [values] for key, values in first_item.items()}
+    for item in iter_data_by_items:
+        for key, data_items in data_by_keys.items():
+            data_items.append(item[key])
+
+    concatenated_by_keys = {
+        key: np.concatenate(data_items) for key, data_items in data_by_keys.items()
+    }
+    return concatenated_by_keys
 
 
 @dataclass
@@ -194,17 +203,17 @@ class DataChunk:
 
     def groupby(self, ordered: bool = False) -> Generator[tuple[int, DataChunk]]:
         # run the groupby and construct the final result
-        grp_ra, grp_dec, grp_weight, grp_redshift = groupby_arrays(
+        groups_ra, groups_dec, groups_weight, groups_redshift = groupby_arrays(
             self.patch, self.ra, self.dec, self.weight, self.redshift
         )
         # the keys are guaranteed to be the same
-        patch_ids = sorted(grp_ra.keys()) if ordered else grp_ra.keys()
+        patch_ids = sorted(groups_ra.keys()) if ordered else groups_ra.keys()
         for patch_id in patch_ids:
-            weight = None if self.weight is None else grp_weight[patch_id]
-            redshift = None if self.redshift is None else grp_redshift[patch_id]
+            weight = None if self.weight is None else groups_weight[patch_id]
+            redshift = None if self.redshift is None else groups_redshift[patch_id]
             chunk = self.__class__(
-                ra=grp_ra[patch_id],
-                dec=grp_dec[patch_id],
+                ra=groups_ra[patch_id],
+                dec=groups_dec[patch_id],
                 weight=weight,
                 redshift=redshift,
             )
@@ -234,13 +243,13 @@ class IndexMapper:
         self.recorded = 0
 
     def map(self, data: Sized) -> NDArray[np.int64]:
-        # slide the index window according to the input data sample
         start = self.recorded
         end = start + len(data)
-        self.recorded = end  # future state
-        # pick the indices that fall into the current data range
-        indices = np.compress((self.idx >= start) & (self.idx < end), self.idx)
-        return indices - start
+        self.recorded = end
+
+        index_mask = (self.idx >= start) & (self.idx < end)
+        indices_global = np.compress(index_mask, self.idx)
+        return indices_global - start
 
 
 def check_optional_args(
@@ -288,5 +297,5 @@ def patch_path_from_id(cache_directory: TypePathStr, patch_id: int) -> Path:
 def patch_id_from_path(directory: TypePathStr) -> int:
     if not directory.match("patch_*"):
         raise ValueError(f"'directory' does not match 'patch_*': {directory}")
-    _, id_str = directory.name.split("_")
-    return int(id_str)
+    _, patch_id_str = directory.name.split("_")
+    return int(patch_id_str)

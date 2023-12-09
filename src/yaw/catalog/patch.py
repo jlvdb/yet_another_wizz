@@ -407,17 +407,10 @@ class CacheWriter:
             cache.clear()
         self.cachesize = 0
 
-    def _check_data_schema(data: dict, name: str, is_expected: bool) -> None:
-        is_provided = name in data
-        if is_provided and not is_expected:
-            raise KeyError(f"'{name}' is provided but not expected")
-        elif not is_provided and is_expected:
-            raise KeyError(f"'{name}' is not provided but expected")
-
     def append_chunk(self, chunk: DataChunk) -> None:
         chunk_dict = chunk.to_dict(drop_patch=True)
-        self._check_data_schema(chunk_dict, "weight", is_expected=self.has_weight)
-        self._check_data_schema(chunk_dict, "redshift", is_expected=self.has_redshift)
+        utils.check_optional_args(chunk_dict["weight"], self.has_weight, "weight")
+        utils.check_optional_args(chunk_dict["redshift"], self.has_redshift, "redshift")
 
         self.cachesize += len(chunk)
         for key, cache in self.cache.items():
