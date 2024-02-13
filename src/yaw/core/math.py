@@ -299,9 +299,9 @@ def rebin(
         Implemented as C extension.
     """
     return _rebin(
-        bins_new.astype(np.float_),
-        bins_old.astype(np.float_),
-        counts_old.astype(np.float_),
+        np.ascontiguousarray(bins_new, dtype=np.double),
+        np.ascontiguousarray(bins_old, dtype=np.double),
+        np.ascontiguousarray(counts_old, dtype=np.double),
     )
 
 

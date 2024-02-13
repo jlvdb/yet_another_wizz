@@ -43,9 +43,8 @@ static PyObject* _rebin(PyObject* self, PyObject* args) {
         return NULL;
     }
     // create the output array
-    PyArray_Descr* descr = PyArray_DescrFromType(NPY_DOUBLE);
     npy_intp dims[1] = { n_bins_new };
-    PyObject* np_counts_new = PyArray_Zeros(1, dims, descr, 0);
+    PyObject* np_counts_new = PyArray_ZEROS(1, dims, NPY_DOUBLE, 0);
     double* counts_new = PyArray_DATA(np_counts_new);
 
     // iterate the new bins and check which of the old bins overlap with it
@@ -65,9 +64,9 @@ static PyObject* _rebin(PyObject* self, PyObject* args) {
             count = counts_old[i_old];
 
             // check for full or partial overlap
-            contains = (zmin_n >= zmin_o) && (zmax_n < zmax_o);
-            overlaps_min = (zmin_n <= zmin_o) && (zmax_n > zmin_o);
-            overlaps_max = (zmin_n <= zmax_o) && (zmax_n > zmax_o);
+            contains = (zmin_o <= zmin_n) && (zmax_n <= zmax_o);
+            overlaps_min = (zmin_n < zmin_o) && (zmin_o < zmax_n);
+            overlaps_max = (zmin_n < zmax_o) && (zmax_o < zmax_n);
 
             if (contains || overlaps_min || overlaps_max) {
                 // compute fractional bin overlap
