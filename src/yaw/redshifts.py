@@ -570,6 +570,18 @@ class HistData(RedshiftData):
         object.__setattr__(self, "density", self.density)
         return result
 
+    def rebin_to(self, hist: HistData) -> HistData:
+        """Short hand for calling `.rebin(hist.edges)`.
+
+        Args:
+            hist (:obj:`HistData`):
+                Histogram from which the bin edges are taken.
+
+        Returns:
+            :obj:`HistData`:
+        """
+        return self.rebin(hist.edges)
+
     def shift(
         self, dz: float | SampledValue = 0.0, *, amplitude: float | SampledValue = 1.0
     ) -> HistData:
