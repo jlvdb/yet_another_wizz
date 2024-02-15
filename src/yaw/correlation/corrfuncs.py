@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Type, TypeVar
 
 import h5py
 import numpy as np
@@ -266,7 +266,7 @@ class CorrData(SampledData):
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
-        error_bars: bool = True,
+        style: Literal["ebar", "line", "step"] = "ebar",
         ax: Axis | None = None,
         plot_kwargs: dict[str, Any] | None = None,
         zero_line: bool = False,
@@ -281,6 +281,7 @@ class CorrData(SampledData):
         plot_kwargs.update(dict(color=color, label=label))
         ebar_kwargs = dict(fmt=".", ls="none")
         ebar_kwargs.update(plot_kwargs)
+        alpha = 0.2
         # plot zero line
         if zero_line:
             lw = 0.7
@@ -288,11 +289,20 @@ class CorrData(SampledData):
                 lw = spine.get_linewidth()
             ax.axhline(0.0, color="k", lw=lw, zorder=-2)
         # plot data
-        if error_bars:
+        if style == "ebar":
             ax.errorbar(x, y, yerr, **ebar_kwargs)
-        else:
+        elif style == "line":
             color = ax.plot(x, y, **plot_kwargs)[0].get_color()
-            ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=0.2)
+            ax.fill_between(x, y - yerr, y + yerr, color=color, alpha=alpha)
+        elif style == "step":
+            y = np.append(y, y[-1])
+            yerr = np.append(yerr, yerr[-1])
+            color = ax.step(x, y, where="post", **plot_kwargs)[0].get_color()
+            ax.fill_between(
+                x, y - yerr, y + yerr, color=color, step="post", alpha=alpha
+            )
+        else:
+            raise ValueError(f"invalid plot style '{style}'")
         return ax
 
     def plot(
@@ -300,7 +310,7 @@ class CorrData(SampledData):
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
-        error_bars: bool = True,
+        style: Literal["ebar", "line", "step"] = "ebar",
         ax: Axis | None = None,
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
@@ -320,9 +330,9 @@ class CorrData(SampledData):
                 line and the shaded uncertainty area.
             label (:obj:`str`, optional):
                 Plot label for the legend.
-            error_bars (:obj:`bool`, optional):
-                Whether to plot error bars (the default) or a line plot with
-                shaded area.
+            style (:obj:`str`, optional):
+                Whether to plot error bars (the default, `ebar`), a line
+                (`line`) or a histogram-like step function (`step`).
             ax (plot axis, optional):
                 Optional :mod:`matplotlib` axis to plot into.
             xoffset (:obj:`int`, optional):
@@ -336,7 +346,10 @@ class CorrData(SampledData):
                 Whether to multiply the y-values by the redshift bin width
                 :obj:`dz`.
         """
-        x = self.mids + xoffset
+        if style == "step":
+            x = self.edges + xoffset
+        else:
+            x = self.mids + xoffset
         y = self.data.astype(np.float_)
         yerr = self.error.astype(np.float_)
         if scale_by_dz:
@@ -348,7 +361,7 @@ class CorrData(SampledData):
             yerr,
             color=color,
             label=label,
-            error_bars=error_bars,
+            style=style,
             ax=ax,
             plot_kwargs=plot_kwargs,
             zero_line=zero_line,
