@@ -51,7 +51,7 @@ class ShiftModel(FitModel):
 
     def __call__(self, params: NDArray) -> NDArray:
         log_amp, shift = params
-        bins = self.target_bins + shift
+        bins = self.target_bins - shift
         values = rebin(bins_new=bins, bins_old=self.binning, counts_old=self.counts)
         return 10**log_amp * values
 
