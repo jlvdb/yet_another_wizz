@@ -44,7 +44,7 @@ class UniformPrior(Prior):
     def draw_samples(self, n_draw: int, rng: np.random.Generator = None) -> NDArray:
         if rng is None:
             rng = np.random.default_rng()
-        return np.random.uniform(self.low, self.high, size=n_draw)
+        return rng.uniform(self.low, self.high, size=n_draw)
 
 
 @dataclass
@@ -58,4 +58,4 @@ class GaussianPrior(Prior):
     def draw_samples(self, n_draw: int, rng: np.random.Generator = None) -> NDArray:
         if rng is None:
             rng = np.random.default_rng()
-        return np.random.normal(self.mu, self.sigma, size=n_draw)
+        return rng.normal(self.mu, self.sigma, size=n_draw)
