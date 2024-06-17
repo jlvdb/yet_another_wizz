@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
+from numpy.exceptions import AxisError
 
 from ._math import _rebin
 
@@ -174,7 +175,7 @@ def cov_from_samples(
     # if many samples are provided, concatenate them
     try:
         concat_samples = np.concatenate(samples, axis=ax_observ)
-    except np.AxisError:
+    except AxisError:
         concat_samples = samples
 
     # np.cov will produce a scalar value instead of matrix with shape (N,N)
