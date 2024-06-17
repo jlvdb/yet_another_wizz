@@ -113,7 +113,7 @@ class Configuration(BaseConfig):
         zmax: ArrayLike = None,
         zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
         method: str = DEFAULT.Configuration.binning.method,
-        zbins: NDArray[np.float_] | None = None,
+        zbins: NDArray[np.float64] | None = None,
         # BackendConfig
         thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
         crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
@@ -202,7 +202,7 @@ class Configuration(BaseConfig):
         zmax: float | None = DEFAULT.NotSet,
         zbin_num: int | None = DEFAULT.NotSet,
         method: str | None = DEFAULT.NotSet,
-        zbins: NDArray[np.float_] | None = DEFAULT.NotSet,
+        zbins: NDArray[np.float64] | None = DEFAULT.NotSet,
         # BackendConfig
         thread_num: int | None = DEFAULT.NotSet,
         crosspatch: bool | None = DEFAULT.NotSet,

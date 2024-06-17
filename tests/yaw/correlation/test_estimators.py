@@ -37,14 +37,14 @@ class TestPeeblesHauser:
     def test_eval(self):
         assert estimators.PeeblesHauser.eval(dd=1, rr=1) == 0
         with warns(UserWarning):
-            estimators.PeeblesHauser.eval(dd=np.float_(1), rr=np.float_(0))
+            estimators.PeeblesHauser.eval(dd=np.float64(1), rr=np.float64(0))
 
 
 class TestDavisPeebles:
     def test_eval(self):
         assert estimators.DavisPeebles.eval(dd=1, dr_rd=1) == 0
         with warns(UserWarning):
-            estimators.DavisPeebles.eval(dd=np.float_(1), dr_rd=np.float_(0))
+            estimators.DavisPeebles.eval(dd=np.float64(1), dr_rd=np.float64(0))
 
 
 class TestHamilton:
@@ -53,7 +53,7 @@ class TestHamilton:
         assert estimators.Hamilton.eval(dd=1, dr=1, rd=1, rr=1) == 0
         with warns(UserWarning):
             estimators.PeeblesHauser.eval(
-                dd=np.float_(1), dr=np.float_(1), rr=np.float_(0)
+                dd=np.float64(1), dr=np.float64(1), rr=np.float64(0)
             )
 
 
@@ -63,5 +63,5 @@ class TestLandySzalay:
         assert estimators.LandySzalay.eval(dd=1, dr=1, rd=1, rr=1) == 0
         with warns(UserWarning):
             estimators.PeeblesHauser.eval(
-                dd=np.float_(1), dr=np.float_(1), rr=np.float_(0)
+                dd=np.float64(1), dr=np.float64(1), rr=np.float64(0)
             )

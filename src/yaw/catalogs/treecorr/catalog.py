@@ -53,7 +53,7 @@ def _iter_bin_masks(
 
 
 def take_subset(
-    cat: TreecorrCatalog, items: NDArray[np.bool_] | NDArray[np.int_] | slice
+    cat: TreecorrCatalog, items: NDArray[np.bool_] | NDArray[np.int64] | slice
 ) -> TreecorrCatalog | EmptyCatalog:
     """Construct a new TreecorrCatalog with a subset of its entries."""
     ra = cat.ra[items]
@@ -85,7 +85,7 @@ class EmptyCatalog:
     def total(self) -> float:
         return 0.0
 
-    def get_totals(self) -> NDArray[np.float_]:
+    def get_totals(self) -> NDArray[np.float64]:
         return np.zeros(self.n_patches)
 
 
@@ -234,23 +234,23 @@ class TreecorrCatalog(BaseCatalog):
         return self.weights is not None
 
     @property
-    def ra(self) -> NDArray[np.float_]:
+    def ra(self) -> NDArray[np.float64]:
         return self._catalog.ra
 
     @property
-    def dec(self) -> NDArray[np.float_]:
+    def dec(self) -> NDArray[np.float64]:
         return self._catalog.dec
 
     @property
-    def redshifts(self) -> NDArray[np.float_] | None:
+    def redshifts(self) -> NDArray[np.float64] | None:
         return self._catalog.r
 
     @property
-    def weights(self) -> NDArray[np.float_]:
+    def weights(self) -> NDArray[np.float64]:
         return self._catalog.w
 
     @property
-    def patch(self) -> NDArray[np.int_]:
+    def patch(self) -> NDArray[np.int64]:
         return self._catalog.patch
 
     def get_min_redshift(self) -> float:
@@ -273,7 +273,7 @@ class TreecorrCatalog(BaseCatalog):
     def total(self) -> float:
         return self._catalog.sumw
 
-    def get_totals(self) -> NDArray[np.float_]:
+    def get_totals(self) -> NDArray[np.float64]:
         return np.array([patch.sumw for patch in iter(self)])
 
     @property
@@ -296,7 +296,7 @@ class TreecorrCatalog(BaseCatalog):
         return DistSky.from_dists(radii)
 
     def iter_bins(
-        self, z_bins: NDArray[np.float_], allow_no_redshift: bool = False
+        self, z_bins: NDArray[np.float64], allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, TreecorrCatalog | EmptyCatalog]]:
         """Iterate the catalogue in bins of redshift.
 

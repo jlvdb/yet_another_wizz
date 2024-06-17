@@ -55,7 +55,7 @@ class Coordinate(ABC):
 
     @property
     @abstractmethod
-    def values(self) -> NDArray[np.float_]:
+    def values(self) -> NDArray[np.float64]:
         """The coordinate values cast into a numpy array with shape
         `(N, ndim)` or `(ndim,)` if there is only a single entry."""
         pass
@@ -111,9 +111,9 @@ class Coord3D(Coordinate):
             and iteration over the elements (always returning new coordinate
             vector instances).
         """
-        self.x = np.atleast_1d(x).astype(np.float_)
-        self.y = np.atleast_1d(y).astype(np.float_)
-        self.z = np.atleast_1d(z).astype(np.float_)
+        self.x = np.atleast_1d(x).astype(np.float64)
+        self.y = np.atleast_1d(y).astype(np.float64)
+        self.z = np.atleast_1d(z).astype(np.float64)
 
     @classmethod
     def from_array(cls, array) -> Coord3D:
@@ -148,7 +148,7 @@ class Coord3D(Coordinate):
         return ("x", "y", "z")
 
     @property
-    def values(self) -> NDArray[np.float_]:
+    def values(self) -> NDArray[np.float64]:
         return np.squeeze(np.transpose([self.x, self.y, self.z]))
 
     def mean(self) -> Coord3D:
@@ -216,8 +216,8 @@ class CoordSky(Coordinate):
             and iteration over the elements (always returning new coordinate
             vector instances).
         """
-        self.ra = np.atleast_1d(ra).astype(np.float_)
-        self.dec = np.atleast_1d(dec).astype(np.float_)
+        self.ra = np.atleast_1d(ra).astype(np.float64)
+        self.dec = np.atleast_1d(dec).astype(np.float64)
 
     @classmethod
     def from_array(cls, array):
@@ -251,7 +251,7 @@ class CoordSky(Coordinate):
         return ("ra", "dec")
 
     @property
-    def values(self) -> NDArray[np.float_]:
+    def values(self) -> NDArray[np.float64]:
         return np.squeeze(np.transpose([self.ra, self.dec]))
 
     def mean(self) -> Coord3D:
@@ -310,7 +310,7 @@ class Distance(ABC):
             Additionally, distances implement element-wise addition and
             subtraction, as well as the comparison operators.
         """
-        self._values = np.atleast_1d(distance).astype(np.float_)
+        self._values = np.atleast_1d(distance).astype(np.float64)
 
     @classmethod
     def from_dists(cls: _Tdist, dists: Sequence[_Tdist]) -> _Tdist:
@@ -328,7 +328,7 @@ class Distance(ABC):
             yield self[i]
 
     @property
-    def values(self) -> NDArray[np.float_] | float:
+    def values(self) -> NDArray[np.float64] | float:
         """The distances cast into a numpy array with shape `(N,)` or a scalar
         if there is only a single distance."""
         return np.squeeze(self._values)

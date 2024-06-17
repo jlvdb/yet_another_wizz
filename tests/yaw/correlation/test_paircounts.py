@@ -236,7 +236,7 @@ class TestPatchedTotal:
         t1, t2 = patch_totals
         pt = patched_totals_full
         assert pt.n_patches == len(t1)
-        assert pt.dtype == np.float_
+        assert pt.dtype == np.float64
         assert pt.ndim == 3
         assert pt.shape == (len(t1), len(t2), n_bins)
         # wrong shape for bins
@@ -435,7 +435,7 @@ class TestPatchedCount:
         n_bins = len(binning)
         counts = paircounts.PatchedCount.zeros(binning, 2, auto=False)
         # check zero matrix
-        npt.assert_equal(counts.keys(), np.empty((0, 2), dtype=np.int_))
+        npt.assert_equal(counts.keys(), np.empty((0, 2), dtype=np.int64))
         npt.assert_equal(counts.values(), np.empty((0, n_bins)))
         # insert single item
         key = (0, 1)

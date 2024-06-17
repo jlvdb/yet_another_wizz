@@ -1,6 +1,11 @@
 Change log
 ==========
 
+Version 2.5.8
+-------------
+
+Updates to be compatible with numpy version 2.0.
+
 
 Version 2.5.7
 -------------

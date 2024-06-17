@@ -219,31 +219,31 @@ class BaseCatalog:
 
     @property
     @abstractmethod
-    def ra(self) -> NDArray[np.float_]:
+    def ra(self) -> NDArray[np.float64]:
         """Get an array of the right ascension values in radians."""
         pass
 
     @property
     @abstractmethod
-    def dec(self) -> NDArray[np.float_]:
+    def dec(self) -> NDArray[np.float64]:
         """Get an array of the declination values in radians."""
         pass
 
     @property
     @abstractmethod
-    def redshifts(self) -> NDArray[np.float_] | None:
+    def redshifts(self) -> NDArray[np.float64] | None:
         """Get the redshifts as array or ``None`` if not available."""
         pass
 
     @property
     @abstractmethod
-    def weights(self) -> NDArray[np.float_]:
+    def weights(self) -> NDArray[np.float64]:
         """Get the object weights as array or ``None`` if not available."""
         pass
 
     @property
     @abstractmethod
-    def patch(self) -> NDArray[np.int_]:
+    def patch(self) -> NDArray[np.int64]:
         """Get the patch indices of each object as array."""
         pass
 
@@ -264,7 +264,7 @@ class BaseCatalog:
         available."""
 
     @abstractmethod
-    def get_totals(self) -> NDArray[np.float_]:
+    def get_totals(self) -> NDArray[np.float64]:
         """Get an array of the sum of weights or number of objects in each
         patch."""
 

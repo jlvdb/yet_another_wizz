@@ -18,7 +18,6 @@ Author: Jan Luca van den Busch
         (Ruhr-Universität Bochum, Astronomisches Institut)
 """
 
-
 import logging as _logging
 
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())  # noqa
@@ -55,4 +54,4 @@ __all__ = [
     "HistogramData",
     "PairCountResult",
 ]
-__version__ = "2.5.7"
+__version__ = "2.5.8"

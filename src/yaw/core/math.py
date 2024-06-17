@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
+from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
 from ._math import _rebin
@@ -174,7 +175,7 @@ def cov_from_samples(
     # if many samples are provided, concatenate them
     try:
         concat_samples = np.concatenate(samples, axis=ax_observ)
-    except np.AxisError:
+    except AxisError:
         concat_samples = samples
 
     # np.cov will produce a scalar value instead of matrix with shape (N,N)
@@ -261,10 +262,10 @@ def corr_from_cov(covariance: NDArray) -> NDArray:
 
 
 def rebin(
-    bins_new: NDArray[np.float_],
-    bins_old: NDArray[np.float_],
-    counts_old: NDArray[np.float_],
-) -> NDArray[np.float_]:
+    bins_new: NDArray[np.float64],
+    bins_old: NDArray[np.float64],
+    counts_old: NDArray[np.float64],
+) -> NDArray[np.float64]:
     """Recompute compute histogram counts for a new binning.
 
     The new counts are computed by summing the fractional contribution of the
@@ -287,9 +288,9 @@ def rebin(
         Implemented as C extension.
     """
     return _rebin(
-        bins_new.astype(np.float_),
-        bins_old.astype(np.float_),
-        counts_old.astype(np.float_),
+        bins_new.astype(np.float64),
+        bins_old.astype(np.float64),
+        counts_old.astype(np.float64),
     )
 
 
@@ -318,6 +319,6 @@ def shift_histogram(
         :obj:`NDArray`:
             The shifted histogram counts.
     """
-    bins_old = bins.astype(np.float_)
+    bins_old = bins.astype(np.float64)
     bins_new = bins_old + dx
-    return A * _rebin(bins_new, bins_old, counts.astype(np.float_))
+    return A * _rebin(bins_new, bins_old, counts.astype(np.float64))

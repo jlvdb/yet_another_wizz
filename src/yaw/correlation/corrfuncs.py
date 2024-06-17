@@ -260,9 +260,9 @@ class CorrData(SampledData):
 
     def _make_plot(
         self,
-        x: NDArray[np.float_],
-        y: NDArray[np.float_],
-        yerr: NDArray[np.float_],
+        x: NDArray[np.float64],
+        y: NDArray[np.float64],
+        yerr: NDArray[np.float64],
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
@@ -337,8 +337,8 @@ class CorrData(SampledData):
                 :obj:`dz`.
         """
         x = self.mids + xoffset
-        y = self.data.astype(np.float_)
-        yerr = self.error.astype(np.float_)
+        y = self.data.astype(np.float64)
+        yerr = self.error.astype(np.float64)
         if scale_by_dz:
             y *= self.dz
             yerr *= self.dz
@@ -394,7 +394,7 @@ def check_mergable(cfs: Sequence[CorrFunc | None]) -> None:
         ref_pcounts = getattr(reference, kind)
         for cf in cfs[1:]:
             pcounts = getattr(cf, kind)
-            if type(ref_pcounts) != type(pcounts):
+            if type(ref_pcounts) is not type(pcounts):
                 raise ValueError(f"cannot merge, '{kind}' incompatible")
 
 
