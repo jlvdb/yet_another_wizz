@@ -339,12 +339,12 @@ class Distance(ABC):
     def __format__(self, __format_spec: str) -> str:
         return self.values.__format__(__format_spec)
 
-    def __eq__(self, other: object) -> ArrayLike[np.bool]:
+    def __eq__(self, other: object) -> ArrayLike[np.bool_]:
         if isinstance(other, self.__class__):
             return self.values == other.values
         return NotImplemented
 
-    def __lt__(self, other: Distance) -> ArrayLike[np.bool]:
+    def __lt__(self, other: Distance) -> ArrayLike[np.bool_]:
         if isinstance(other, self.__class__):
             return self.values < other.values
         return NotImplemented

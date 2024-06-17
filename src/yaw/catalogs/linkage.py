@@ -154,7 +154,7 @@ class PatchLinkage:
         collection1: BaseCatalog,
         collection2: BaseCatalog | None = None,
         crosspatch: bool = True,
-    ) -> NDArray[np.bool]:
+    ) -> NDArray[np.bool_]:
         """Convert the list of linked patches to a boolean matrix indicating if
         two patches are linked.
 
@@ -185,7 +185,7 @@ class PatchLinkage:
         pairs = self.get_pairs(auto, crosspatch)
         # make a boolean matrix indicating the exisiting patch combinations
         n_patches = self.n_patches
-        matrix = np.zeros((n_patches, n_patches), dtype=np.bool)
+        matrix = np.zeros((n_patches, n_patches), dtype=np.bool_)
         for pair in pairs:
             matrix[pair] = True
         return matrix

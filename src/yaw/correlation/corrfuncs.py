@@ -542,7 +542,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return other.__add__(self)
 
     def __mul__(self, other: object) -> CorrFunc:
-        if np.isscalar(other) and not isinstance(other, (bool, np.bool)):
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
             # check that the pair counts are set consistently
             kwargs = {}
             for cfield in fields(self):

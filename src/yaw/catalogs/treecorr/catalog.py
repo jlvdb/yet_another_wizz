@@ -41,7 +41,7 @@ TypeNNResult: TypeAlias = Dict[Tuple[int, int], NNCorrelation]  # supports py3.8
 
 def _iter_bin_masks(
     data: NDArray, bins: NDArray, closed: str = "left"
-) -> Iterator[tuple[Interval, NDArray[np.bool]]]:
+) -> Iterator[tuple[Interval, NDArray[np.bool_]]]:
     """Split data into bins and return an iterator that yields the boolean masks
     that select the data of the current bin out of the input data array."""
     if closed not in ("left", "right"):
@@ -53,7 +53,7 @@ def _iter_bin_masks(
 
 
 def take_subset(
-    cat: TreecorrCatalog, items: NDArray[np.bool] | NDArray[np.int64] | slice
+    cat: TreecorrCatalog, items: NDArray[np.bool_] | NDArray[np.int64] | slice
 ) -> TreecorrCatalog | EmptyCatalog:
     """Construct a new TreecorrCatalog with a subset of its entries."""
     ra = cat.ra[items]

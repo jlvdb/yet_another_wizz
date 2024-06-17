@@ -665,7 +665,7 @@ class PatchedCount(PatchedArray):
         return other.__add__(self)
 
     def __mul__(self, other: object) -> PatchedCount:
-        if np.isscalar(other) and not isinstance(other, (bool, np.bool)):
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
             return self.__class__(
                 self.get_binning(), self.counts * other, auto=self.auto
             )
@@ -987,7 +987,7 @@ class NormalisedCounts(PatchedQuantity, BinnedQuantity, HDFSerializable):
         return other.__add__(self)
 
     def __mul__(self, other: object) -> NormalisedCounts:
-        if np.isscalar(other) and not isinstance(other, (bool, np.bool)):
+        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
             return self.__class__(self.count * other, self.total)
         return NotImplemented
 

@@ -95,7 +95,7 @@ def outer_triu_sum(
 
 
 def apply_bool_mask_ndim(
-    array: _Tarr, mask: NDArray[np.bool], axis: int | Sequence[int] | None = None
+    array: _Tarr, mask: NDArray[np.bool_], axis: int | Sequence[int] | None = None
 ) -> _Tarr:
     """Apply a boolean mask (``mask``) to one or many axes of a numpy array."""
     if axis is None:
