@@ -136,7 +136,7 @@ class ScipyCatalog(BaseCatalog):
         with TimedLog(self._logger.info, f"processed {n_obj_str} records"):
             limits = LimitTracker()
             patches: dict[int, PatchCatalog] = {}
-            patch_iter = data.groupby(patch_name)
+            patch_iter = data.groupby(patch_name, observed=True)
             if progress:
                 patch_iter = job_progress_bar(patch_iter, total=n_patches)
             for patch_id, patch_data in patch_iter:

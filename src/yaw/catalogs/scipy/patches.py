@@ -335,7 +335,9 @@ class PatchCatalog:
             for intv in pd.IntervalIndex.from_breaks(z_bins, closed="left"):
                 yield intv, self
         else:
-            for intv, bin_data in self._data.groupby(pd.cut(self.redshifts, z_bins)):
+            for intv, bin_data in self._data.groupby(
+                pd.cut(self.redshifts, z_bins), observed=True
+            ):
                 yield intv, PatchCatalog(
                     self.id,
                     bin_data,

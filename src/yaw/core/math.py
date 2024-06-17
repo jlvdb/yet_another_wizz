@@ -7,8 +7,8 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
-from numpy.typing import NDArray
 from numpy.exceptions import AxisError
+from numpy.typing import NDArray
 
 from ._math import _rebin
 
