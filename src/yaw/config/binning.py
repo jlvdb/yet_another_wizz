@@ -23,7 +23,7 @@ __all__ = ["BinningConfig"]
 class BinningConfig(BaseConfig):
     """TODO"""
 
-    zbins: NDArray[np.float_] = field(
+    zbins: NDArray[np.float64] = field(
         metadata=Parameter(
             type=float,
             nargs="*",
@@ -103,7 +103,7 @@ class BinningConfig(BaseConfig):
     def create(
         cls,
         *,
-        zbins: NDArray[np.float_] | None = None,
+        zbins: NDArray[np.float64] | None = None,
         zmin: float | None = None,
         zmax: float | None = None,
         zbin_num: int = DEFAULT.Binning.zbin_num,
@@ -124,7 +124,7 @@ class BinningConfig(BaseConfig):
             that require cosmological distance computations.
 
         Args:
-            zbins (:obj:`NDArray[np.float_]`):
+            zbins (:obj:`NDArray[np.float64]`):
                 Monotonically increasing redshift bin edges, including the upper
                 edge (ignored if ``zmin`` and ``zmax`` are provided).
             zmin (:obj:`float`):
@@ -165,7 +165,7 @@ class BinningConfig(BaseConfig):
 
     def modify(
         self,
-        zbins: NDArray[np.float_] | None = DEFAULT.NotSet,
+        zbins: NDArray[np.float64] | None = DEFAULT.NotSet,
         zmin: float | None = DEFAULT.NotSet,
         zmax: float | None = DEFAULT.NotSet,
         zbin_num: int = DEFAULT.NotSet,

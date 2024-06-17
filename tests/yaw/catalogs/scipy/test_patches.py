@@ -25,7 +25,7 @@ def mock_data():
     ra_dec = []
     for ra, dec in itertools.product(range(0, 355), range(-89, 90)):
         ra_dec.append([ra, dec])
-    ra_dec = np.array(ra_dec, dtype=np.float_)
+    ra_dec = np.array(ra_dec, dtype=np.float64)
     df = pd.DataFrame(
         dict(
             ra=ra_dec[:, 0],

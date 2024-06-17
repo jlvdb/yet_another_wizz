@@ -31,7 +31,7 @@ class SphericalKDTree:
     def __init__(
         self,
         position: Coordinate,
-        weights: NDArray[np.float_] | None = None,
+        weights: NDArray[np.float64] | None = None,
         leafsize: int = 16,
     ) -> None:
         """Build a new tree from a set of coordinates.
@@ -67,7 +67,7 @@ class SphericalKDTree:
     def count(
         self,
         other: SphericalKDTree,
-        scales: NDArray[np.float_],
+        scales: NDArray[np.float64],
         dist_weight_scale: float | None = None,
         weight_res: int = 50,
     ) -> NDArray:

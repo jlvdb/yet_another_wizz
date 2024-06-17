@@ -232,7 +232,7 @@ class PatchCatalog:
         return self._data
 
     @property
-    def ra(self) -> NDArray[np.float_]:
+    def ra(self) -> NDArray[np.float64]:
         """Get an array of the right ascension values in radians.
 
         Raises a :obj:`CachingError` if data is not loaded."""
@@ -240,7 +240,7 @@ class PatchCatalog:
         return self._data["ra"].to_numpy()
 
     @property
-    def dec(self) -> NDArray[np.float_]:
+    def dec(self) -> NDArray[np.float64]:
         """Get an array of the declination values in radians.
 
         Raises a :obj:`CachingError` if data is not loaded."""
@@ -260,7 +260,7 @@ class PatchCatalog:
         return CoordSky(self.ra, self.dec)
 
     @property
-    def redshifts(self) -> NDArray[np.float_]:
+    def redshifts(self) -> NDArray[np.float64]:
         """Get the redshifts as array or ``None`` if not available.
 
         Raises a :obj:`CachingError` if data is not loaded."""
@@ -271,7 +271,7 @@ class PatchCatalog:
             return None
 
     @property
-    def weights(self) -> NDArray[np.float_]:
+    def weights(self) -> NDArray[np.float64]:
         """Get the object weights as array or ``None`` if not available.
 
         Raises a :obj:`CachingError` if data is not loaded."""
@@ -312,7 +312,7 @@ class PatchCatalog:
         return self._radius
 
     def iter_bins(
-        self, z_bins: NDArray[np.float_], allow_no_redshift: bool = False
+        self, z_bins: NDArray[np.float64], allow_no_redshift: bool = False
     ) -> Iterator[tuple[Interval, PatchCatalog]]:
         """Iterate the patch in bins of redshift.
 
@@ -356,7 +356,7 @@ class PatchCatalog:
 # the scipy.cluster module.
 
 
-def assign_patches(centers: Coordinate, position: Coordinate) -> NDArray[np.int_]:
+def assign_patches(centers: Coordinate, position: Coordinate) -> NDArray[np.int64]:
     """Assign objects based on their coordinate to a list of points based on
     proximit."""
     patches, dist = vq.vq(position.to_3d().values, centers.to_3d().values)
@@ -368,7 +368,7 @@ try:
 
     def treecorr_patches(
         position: Coordinate, n_patches: int, **kwargs
-    ) -> tuple[Coord3D, NDArray[np.int_]]:
+    ) -> tuple[Coord3D, NDArray[np.int64]]:
         """Use the *k*-means clustering algorithm of :obj:`treecorr.Catalog` to
         generate spatial patches and assigning objects to those patches.
         """
@@ -383,7 +383,7 @@ try:
         xyz = np.atleast_2d(cat.patch_centers)
         centers = Coord3D.from_array(xyz)
         if n_patches == 1:
-            patches = np.zeros(len(position), dtype=np.int_)
+            patches = np.zeros(len(position), dtype=np.int64)
         else:
             patches = assign_patches(centers=centers, position=position)
         del cat  # might not be necessary
@@ -395,7 +395,7 @@ except ImportError:
 
     def scipy_patches(
         position: Coordinate, n_patches: int, n_max: int = 500_000
-    ) -> tuple[Coord3D, NDArray[np.int_]]:
+    ) -> tuple[Coord3D, NDArray[np.int64]]:
         """Use the *k*-means clustering algorithm of :obj:`scipy.cluster` to
         generate spatial patches and assigning objects to those patches.
         """

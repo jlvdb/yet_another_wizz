@@ -146,7 +146,7 @@ class ScalesConfig(BaseConfig):
     ) -> ScalesConfig:
         return super().modify(rmin=rmin, rmax=rmax, rweight=rweight, rbin_num=rbin_num)
 
-    def as_array(self) -> NDArray[np.float_]:
+    def as_array(self) -> NDArray[np.float64]:
         """Obtain the scales cuts as array of shape (2, N)"""
         return np.atleast_2d(np.transpose([self.rmin, self.rmax]))
 

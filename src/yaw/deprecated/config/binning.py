@@ -24,7 +24,7 @@ __all__ = ["AutoBinningConfig", "ManualBinningConfig", "make_binning_config"]
 class BaseBinningConfig(DictRepresentation):
     """Base class for redshift binning configuration."""
 
-    zbins: NDArray[np.float_]
+    zbins: NDArray[np.float64]
     """Edges of redshift bins."""
     method: str
     """Method used to create redshift binning, ``manual`` or either of
@@ -50,7 +50,7 @@ class ManualBinningConfig(BaseBinningConfig):
             Edges of redshift bins, must increase monotonically.
     """
 
-    zbins: NDArray[np.float_] = field(
+    zbins: NDArray[np.float64] = field(
         metadata=Parameter(
             type=float,
             nargs="*",
@@ -116,7 +116,7 @@ class AutoBinningConfig(BaseBinningConfig):
             :obj:`~yaw.config.options.Options.binning`.
     """
 
-    zbins: NDArray[np.float_]
+    zbins: NDArray[np.float64]
     method: str = field(
         default=DEFAULT.Configuration.binning.method,
         metadata=Parameter(
@@ -240,7 +240,7 @@ def make_binning_config(
     zmax: float | None = None,
     zbin_num: int = DEFAULT.Binning.zbin_num,
     method: str = DEFAULT.Binning.method,
-    zbins: NDArray[np.float_] | None = None,
+    zbins: NDArray[np.float64] | None = None,
 ) -> ManualBinningConfig | AutoBinningConfig:
     """
     Helper function to construct a binning configuration.

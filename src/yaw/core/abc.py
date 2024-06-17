@@ -110,18 +110,18 @@ class BinnedQuantity(ABC):
         return len(self.get_binning())
 
     @property
-    def mids(self) -> NDArray[np.float_]:
+    def mids(self) -> NDArray[np.float64]:
         """Get the centers of the redshift bins as array."""
         return np.array([z.mid for z in self.get_binning()])
 
     @property
-    def edges(self) -> NDArray[np.float_]:
+    def edges(self) -> NDArray[np.float64]:
         """Get the edges of the redshift bins as flat array."""
         binning = self.get_binning()
         return np.append(binning.left, binning.right[-1])
 
     @property
-    def dz(self) -> NDArray[np.float_]:
+    def dz(self) -> NDArray[np.float64]:
         """Get the width of the redshift bins as array."""
         return np.diff(self.edges)
 

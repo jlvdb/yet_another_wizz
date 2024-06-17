@@ -82,8 +82,8 @@ TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
 
 
 def r_kpc_to_angle(
-    r_kpc: NDArray[np.float_] | Sequence[float], z: float, cosmology: TypeCosmology
-) -> NDArray[np.float_]:
+    r_kpc: NDArray[np.float64] | Sequence[float], z: float, cosmology: TypeCosmology
+) -> NDArray[np.float64]:
     """Convert from a physical separation in kpc to angles in radian at a given
     redshift.
 
@@ -150,7 +150,7 @@ class Scale:
     def __str__(self) -> str:
         return f"kpc{self.rmin:.0f}t{self.rmax:.0f}"
 
-    def to_radian(self, z: float, cosmology: TypeCosmology) -> NDArray[np.float_]:
+    def to_radian(self, z: float, cosmology: TypeCosmology) -> NDArray[np.float64]:
         """Get the separation in radian at a given redshift.
 
         Args:
@@ -197,11 +197,11 @@ class BinFactory:
         self.zmax = zmax
         self.nbins = nbins
 
-    def linear(self) -> NDArray[np.float_]:
+    def linear(self) -> NDArray[np.float64]:
         """Generate a binning with equal width in redshift."""
         return np.linspace(self.zmin, self.zmax, self.nbins + 1)
 
-    def comoving(self) -> NDArray[np.float_]:
+    def comoving(self) -> NDArray[np.float64]:
         """Generate a binning with equal width in radial comoving distance."""
         cbinning = np.linspace(
             self.cosmology.comoving_distance(self.zmin).value,
@@ -213,7 +213,7 @@ class BinFactory:
         carray = self.cosmology.comoving_distance(zarray).value
         return np.interp(cbinning, xp=carray, fp=zarray)  # redshift @ cbinning
 
-    def logspace(self) -> NDArray[np.float_]:
+    def logspace(self) -> NDArray[np.float64]:
         """Generate a binning with equal width in logarithmic redshift
         :math:`\\log(1+z)`."""
         logbinning = np.linspace(
@@ -222,7 +222,7 @@ class BinFactory:
         return np.exp(logbinning) - 1.0
 
     @staticmethod
-    def check(zbins: NDArray[np.float_]) -> None:
+    def check(zbins: NDArray[np.float64]) -> None:
         """Check if a list of bin edges in monotonicaly increasing.
 
         Raises a :exc:`ValueError` if the condition is not met.
@@ -234,7 +234,7 @@ class BinFactory:
         if np.any(np.diff(zbins) <= 0):
             raise ValueError("redshift bins must be monotonicaly increasing")
 
-    def get(self, method: str) -> NDArray[np.float_]:
+    def get(self, method: str) -> NDArray[np.float64]:
         """Call one of the generation methods based on its name.
 
         Args:

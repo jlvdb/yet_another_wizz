@@ -94,7 +94,7 @@ def outer_triu_sum(
 
 
 def apply_bool_mask_ndim(
-    array: _Tarr, mask: NDArray[np.bool_], axis: int | Sequence[int] | None = None
+    array: _Tarr, mask: NDArray[np.bool], axis: int | Sequence[int] | None = None
 ) -> _Tarr:
     """Apply a boolean mask (``mask``) to one or many axes of a numpy array."""
     if axis is None:
@@ -261,10 +261,10 @@ def corr_from_cov(covariance: NDArray) -> NDArray:
 
 
 def rebin(
-    bins_new: NDArray[np.float_],
-    bins_old: NDArray[np.float_],
-    counts_old: NDArray[np.float_],
-) -> NDArray[np.float_]:
+    bins_new: NDArray[np.float64],
+    bins_old: NDArray[np.float64],
+    counts_old: NDArray[np.float64],
+) -> NDArray[np.float64]:
     """Recompute compute histogram counts for a new binning.
 
     The new counts are computed by summing the fractional contribution of the
@@ -287,9 +287,9 @@ def rebin(
         Implemented as C extension.
     """
     return _rebin(
-        bins_new.astype(np.float_),
-        bins_old.astype(np.float_),
-        counts_old.astype(np.float_),
+        bins_new.astype(np.float64),
+        bins_old.astype(np.float64),
+        counts_old.astype(np.float64),
     )
 
 
@@ -318,6 +318,6 @@ def shift_histogram(
         :obj:`NDArray`:
             The shifted histogram counts.
     """
-    bins_old = bins.astype(np.float_)
+    bins_old = bins.astype(np.float64)
     bins_new = bins_old + dx
-    return A * _rebin(bins_new, bins_old, counts.astype(np.float_))
+    return A * _rebin(bins_new, bins_old, counts.astype(np.float64))

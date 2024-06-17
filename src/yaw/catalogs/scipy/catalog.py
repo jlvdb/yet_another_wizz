@@ -41,8 +41,8 @@ def _worker_correlate(
 
 
 def _worker_true_redshifts(
-    args: tuple[PatchCatalog, NDArray[np.float_]]
-) -> NDArray[np.float_]:
+    args: tuple[PatchCatalog, NDArray[np.float64]]
+) -> NDArray[np.float64]:
     return utils.count_histogram_patch(*args)
 
 
@@ -260,22 +260,22 @@ class ScipyCatalog(BaseCatalog):
         return all(patch.has_weights() for patch in self._patches.values())
 
     @property
-    def ra(self) -> NDArray[np.float_]:
+    def ra(self) -> NDArray[np.float64]:
         return np.concatenate([patch.ra for patch in iter(self)])
 
     @property
-    def dec(self) -> NDArray[np.float_]:
+    def dec(self) -> NDArray[np.float64]:
         return np.concatenate([patch.dec for patch in iter(self)])
 
     @property
-    def redshifts(self) -> NDArray[np.float_] | None:
+    def redshifts(self) -> NDArray[np.float64] | None:
         if self.has_redshifts():
             return np.concatenate([patch.redshifts for patch in iter(self)])
         else:
             return None
 
     @property
-    def weights(self) -> NDArray[np.float_]:
+    def weights(self) -> NDArray[np.float64]:
         weights = []
         for patch in iter(self):
             if patch.has_weights():
@@ -285,7 +285,7 @@ class ScipyCatalog(BaseCatalog):
         return np.concatenate(weights)
 
     @property
-    def patch(self) -> NDArray[np.int_]:
+    def patch(self) -> NDArray[np.int64]:
         return np.concatenate([np.full(len(patch), patch.id) for patch in iter(self)])
 
     def get_min_redshift(self) -> float:
@@ -298,7 +298,7 @@ class ScipyCatalog(BaseCatalog):
     def total(self) -> float:
         return self.get_totals().sum()
 
-    def get_totals(self) -> NDArray[np.float_]:
+    def get_totals(self) -> NDArray[np.float64]:
         return np.array([patch.total for patch in self._patches.values()])
 
     @property
