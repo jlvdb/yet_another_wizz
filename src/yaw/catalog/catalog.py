@@ -217,7 +217,10 @@ class Catalog(Sequence):
         return cls(cache_directory)
 
     def __repr__(self) -> str:
-        pass
+        num_patches = len(self)
+        weights = self.has_weight()
+        redshifts = self.has_redshift()
+        return f"{type(self).__name__}({num_patches=}, {weights=}, {redshifts=})"
 
     def __len__(self) -> int:
         return len(self._patches)
@@ -229,7 +232,7 @@ class Catalog(Sequence):
         for patch_id in sorted(self._patches.keys()):
             yield self._patches[patch_id]
 
-    def has_weights(self) -> bool:
+    def has_weight(self) -> bool:
         has_weight = tuple(patch.has_weight() for patch in iter(self))
         if all(has_weight):
             return True
@@ -237,7 +240,7 @@ class Catalog(Sequence):
             return False
         raise InconsistentPatchesError("'weight' not consistent")
 
-    def has_redshifts(self) -> bool:
+    def has_redshift(self) -> bool:
         has_redshift = tuple(patch.has_redshift() for patch in iter(self))
         if all(has_redshift):
             return True
@@ -246,7 +249,7 @@ class Catalog(Sequence):
         raise InconsistentPatchesError("'redshift' not consistent")
 
     def get_redshift_range(self) -> tuple[float, float]:
-        if not self.has_redshifts():
+        if not self.has_redshift():
             raise ValueError("no 'redshift' attached")
         zmin = np.inf
         zmax = -np.inf
