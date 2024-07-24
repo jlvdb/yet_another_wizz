@@ -37,11 +37,11 @@ class InconsistentPatchesError(Exception):
 def get_column(
     dataframe: DataFrame, column: str | None, required: bool = False
 ) -> NDArray | None:
-    if column is None:
-        if required:
-            raise ValueError("column is required but no column name provided")
-        return None
-    return dataframe[column].to_numpy()
+    if column is not None:
+        return dataframe[column].to_numpy()
+    elif required:
+        raise ValueError("column is required but no column name provided")
+    return None
 
 
 class PatchMode(Enum):
@@ -88,18 +88,18 @@ def assign_patch_centers(
     chunk: DataChunk, patch_centers: CoordsSky
 ) -> NDArray[np.int32]:
     patches, _ = vq.vq(chunk.coords.to_3d().values, patch_centers.to_3d().values)
-    return patches
+    return patches.astype(np.int32, copy=False)
 
 
 class CatalogWriter:
-    def __init__(self, path: Tpath, overwrite: bool = True) -> None:
-        self.path = Path(path)
-        if self.path.exists():
+    def __init__(self, cache_directory: Tpath, overwrite: bool = True) -> None:
+        self.cache_directory = Path(cache_directory)
+        if self.cache_directory.exists():
             if overwrite:
-                rmtree(self.path)
+                rmtree(self.cache_directory)
             else:
-                raise FileExistsError(f"cache directory exists: {path}")
-        self.path.mkdir()
+                raise FileExistsError(f"cache directory exists: {cache_directory}")
+        self.cache_directory.mkdir()
         self._writers: dict[int, PatchWriter] = {}
 
     def __enter__(self) -> Self:
@@ -110,8 +110,8 @@ class CatalogWriter:
 
     def get_writer(self, patch_id: int) -> PatchWriter:
         if patch_id not in self._writers:
-            path = self.path / PATCH_NAME_TEMPLATE.format(patch_id)
-            self._writers[patch_id] = PatchWriter(path)
+            cache_path = self.cache_directory / PATCH_NAME_TEMPLATE.format(patch_id)
+            self._writers[patch_id] = PatchWriter(cache_path)
         return self._writers[patch_id]
 
     def process_patches(self, patches: dict[int, DataChunk]) -> None:
@@ -138,7 +138,8 @@ def write_patches(
     with reader, CatalogWriter(path, overwrite=overwrite) as writer:
         for chunk in reader:
             if mode == PatchMode.apply:
-                chunk.set_patch(assign_patch_centers(chunk, patch_centers))
+                patch = assign_patch_centers(chunk, patch_centers)
+                chunk.set_patch(patch)
             patch_chunks = chunk.split_patches()
             writer.process_patches(patch_chunks)
 
@@ -148,11 +149,10 @@ class Catalog(Sequence):
 
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
-        patches = {}
+        self._patches = {}
         for cache in self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")):
-            _, str_pid = cache.name.split("_")
-            patches[int(str_pid)] = Patch(cache)
-        self._patches = patches
+            patch_id = int(cache.name.split("_")[1])
+            self._patches[patch_id] = Patch(cache)
 
     @classmethod
     def from_dataframe(

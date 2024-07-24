@@ -20,7 +20,7 @@ __all__ = [
 Tpath = Union[Path, str]
 
 
-def split_array(
+def optional_sort_split(
     array: NDArray | None,
     idx_sort: NDArray[np.int64],
     idx_split: NDArray[np.int64],
@@ -62,20 +62,20 @@ class DataChunk:
 
     @classmethod
     def from_chunks(cls, chunks: Sequence[DataChunk]) -> DataChunk:
-        def concat_attr(attr: str) -> NDArray | None:
+        def concat_optional_attr(attr: str) -> NDArray | None:
             values = tuple(getattr(chunk, attr) for chunk in chunks)
-            value_set = tuple(value is not None for value in values)
-            if all(value_set):
+            value_is_set = tuple(value is not None for value in values)
+            if all(value_is_set):
                 return np.concatenate(values)
-            elif not any(value_set):
+            elif not any(value_is_set):
                 return None
             raise ValueError(f"not all chunks have '{attr}' set")
 
         return DataChunk(
             coords=CoordsSky.from_coords(chunk.coords for chunk in chunks),
-            weight=concat_attr("weight"),
-            redshift=concat_attr("redshift"),
-            patch=concat_attr("patch"),
+            weight=concat_optional_attr("weight"),
+            redshift=concat_optional_attr("redshift"),
+            patch=concat_optional_attr("patch"),
         )
 
     def __len__(self) -> int:
@@ -103,18 +103,19 @@ class DataChunk:
 
         idx_sort = np.argsort(self.patch)
         patch_sorted = self.patch[idx_sort]
+        patch_ids = np.unique(patch_sorted).tolist()
         idx_split = np.where(np.diff(patch_sorted) != 0)[0] + 1
 
-        coords = split_array(self.coords.values, idx_sort, idx_split)
-        weight = split_array(self.weight, idx_sort, idx_split)
-        redshift = split_array(self.redshift, idx_sort, idx_split)
+        coords_patches = optional_sort_split(self.coords.values, idx_sort, idx_split)
+        weight_patches = optional_sort_split(self.weight, idx_sort, idx_split)
+        redshift_patches = optional_sort_split(self.redshift, idx_sort, idx_split)
 
         chunks = {}
-        for i, pid in enumerate(np.unique(patch_sorted)):
-            chunks[int(pid)] = DataChunk(
-                coords=CoordsSky(coords[i]),
-                weight=weight[i],
-                redshift=redshift[i],
+        for i, patch_id in enumerate(patch_ids):
+            chunks[patch_id] = DataChunk(
+                coords=CoordsSky(coords_patches[i]),
+                weight=weight_patches[i],
+                redshift=redshift_patches[i],
             )
         return chunks
 
@@ -128,61 +129,57 @@ class ArrayCache:
         self._shards.append(data)
 
     def get_values(self) -> NDArray:
-        return np.concatenate(self._shards, dtype=np.float64)
+        return np.concatenate(self._shards)
 
     def clear(self) -> None:
         self._shards = []
 
 
 class PatchWriter:
-    def __init__(self, path: Tpath, chunksize: int = 65_536) -> None:
-        self.path = Path(path)
-        if self.path.exists():
-            raise FileExistsError(f"directory already exists: {self.path}")
-        self.path.mkdir(parents=True)
+    def __init__(self, cache_path: Tpath, chunksize: int = 65_536) -> None:
+        self.cache_path = Path(cache_path)
+        if self.cache_path.exists():
+            raise FileExistsError(f"directory already exists: {self.cache_path}")
+        self.cache_path.mkdir(parents=True)
 
         self.chunksize = chunksize
         self._cachesize = 0
         self._caches: dict[str, ArrayCache] = {}
 
+    def _init_caches(self, chunk: DataChunk) -> None:
+        self._caches["coords"] = ArrayCache()
+        if chunk.weight is not None:
+            self._caches["weight"] = ArrayCache()
+        if chunk.redshift is not None:
+            self._caches["redshift"] = ArrayCache()
+
     def process_chunk(self, chunk: DataChunk) -> None:
-        has_weight = chunk.weight is not None
-        has_redshift = chunk.redshift is not None
-
         if len(self._caches) == 0:
-            self._caches["coords"] = ArrayCache()
-            if has_weight:
-                self._caches["weight"] = ArrayCache()
-            if has_redshift:
-                self._caches["redshift"] = ArrayCache()
+            self._init_caches(chunk)
 
-        self._caches["coords"].append(chunk.coords.values)
-        if "weight" in self._caches:
-            if not has_weight:
-                raise ValueError("chunk has no 'weight' attached")
-            self._caches["weight"].append(chunk.weight)
-        if "redshift" in self._caches:
-            if not has_redshift:
-                raise ValueError("chunk has no 'redshift' attached")
-            self._caches["redshift"].append(chunk.redshift)
+        for attr, cache in self._caches.items():
+            values = getattr(chunk, attr)
+            if values is None:
+                raise ValueError(f"chunk has no '{attr}' attached")
+            if attr is "coords":
+                values = values.values
+            cache.append(values)
 
         self._cachesize += len(chunk)
         if self._cachesize > self.chunksize:
             self.flush()
 
     def flush(self):
-        for key, cache in self._caches.items():
-            with open(self.path / key, mode="a") as f:
+        for attr, cache in self._caches.items():
+            cache_path = self.cache_path / attr
+            with cache_path.open(mode="a") as f:
                 cache.get_values().tofile(f)
             cache.clear()
         self._cachesize = 0
 
     def finalize(self) -> None:
         self.flush()
-        Patch(self.path)  # computes metadata
-
-
-META_FILE_NAME = "meta.json"
+        Patch(self.cache_path)  # computes metadata
 
 
 @dataclass
@@ -206,21 +203,21 @@ class Metadata:
         return new
 
     @classmethod
-    def from_file(cls, cache_path: Tpath) -> Metadata:
-        with open(Path(cache_path) / META_FILE_NAME) as f:
+    def from_file(cls, fpath: Tpath) -> Metadata:
+        with Path(fpath).open() as f:
             meta: dict = json.load(f)
         center = CoordsSky(meta.pop("center"))
         radius = DistsSky(meta.pop("radius"))
         return cls(center=center, radius=radius, **meta)
 
-    def to_file(self, cache_path: Tpath) -> None:
+    def to_file(self, fpath: Tpath) -> None:
         meta = dict(
             num_records=int(self.num_records),
             total=float(self.total),
             center=self.center.to_sky().values.tolist(),
             radius=self.radius.values.tolist(),
         )
-        with open(Path(cache_path) / META_FILE_NAME, "w") as f:
+        with Path(fpath).open(mode="w") as f:
             json.dump(meta, f)
 
 
@@ -229,19 +226,28 @@ class Patch(Sized):
 
     def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
+        meta_data_file = self.cache_path / "meta.json"
         try:
-            self.meta = Metadata.from_file(self.cache_path)
+            self.meta = Metadata.from_file(meta_data_file)
         except FileNotFoundError:
             self.meta = Metadata.compute(self.coords, self.weight)
-            self.meta.to_file(self.cache_path)
+            self.meta.to_file(meta_data_file)
 
     def __len__(self) -> int:
         return self.meta.num_records
 
+    def has_weight(self) -> bool:
+        path = self.cache_path / "weight"
+        return path.exists()
+
+    def has_redshift(self) -> bool:
+        path = self.cache_path / "redshift"
+        return path.exists()
+
     @property
     def coords(self) -> CoordsSky:
-        data = np.fromfile(self.cache_path / "coords").reshape((-1, 2))
-        return CoordsSky(data)
+        data = np.fromfile(self.cache_path / "coords")
+        return CoordsSky(data.reshape((-1, 2)))
 
     @property
     def weight(self) -> NDArray | None:
@@ -254,11 +260,3 @@ class Patch(Sized):
         if self.has_redshift():
             return np.fromfile(self.cache_path / "redshift")
         return None
-
-    def has_weight(self) -> bool:
-        path = self.cache_path / "weight"
-        return path.exists()
-
-    def has_redshift(self) -> bool:
-        path = self.cache_path / "redshift"
-        return path.exists()

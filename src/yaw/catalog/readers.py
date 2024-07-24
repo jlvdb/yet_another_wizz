@@ -133,7 +133,7 @@ class FileReader(BaseReader):
         **reader_kwargs,
     ) -> None:
         self.path = str(path)
-        self._input_is_degrees = degrees
+        self.degrees = degrees
         self._init(ra_name, dec_name, weight_name, redshift_name, patch_name, chunksize)
         self._init_file(**reader_kwargs)
 
@@ -153,12 +153,6 @@ class FileReader(BaseReader):
 
         self.chunksize = chunksize
         self._group_idx = 0  # chunk iteration state
-
-    def _convert_ra_dec(self, data: dict[str, NDArray]) -> None:
-        if self._input_is_degrees:
-            data["ra"] = np.deg2rad(data["ra"])
-            data["dec"] = np.deg2rad(data["dec"])
-        return data
 
     @abstractmethod
     def _init_file(self, **kwargs) -> None:
@@ -183,8 +177,7 @@ class ParquetReader(FileReader):
             attr: group.column(col).to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        data = self._convert_ra_dec(data)
-        return DataChunk.from_columns(**data)
+        return DataChunk.from_columns(**data, degrees=self.degrees)
 
 
 class FitsReader(FileReader):
@@ -211,16 +204,14 @@ class FitsReader(FileReader):
             attr: swap_byteorder(group[col])
             for attr, col in zip(self.attrs, self.columns)
         }
-        data = self._convert_ra_dec(data)
-        return DataChunk.from_columns(**data)
+        return DataChunk.from_columns(**data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: swap_byteorder(self._hdu[col][::sparse])
             for attr, col in zip(self.attrs, self.columns)
         }
-        data = self._convert_ra_dec(data)
-        return DataChunk.from_columns(**data)
+        return DataChunk.from_columns(**data, degrees=self.degrees)
 
 
 class HDFReader(FileReader):
@@ -248,16 +239,14 @@ class HDFReader(FileReader):
             attr: self._file[col][offset : offset + self.chunksize]
             for attr, col in zip(self.attrs, self.columns)
         }
-        data = self._convert_ra_dec(data)
-        return DataChunk.from_columns(**data)
+        return DataChunk.from_columns(**data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._file[col][::sparse]
             for attr, col in zip(self.attrs, self.columns)
         }
-        data = self._convert_ra_dec(data)
-        return DataChunk.from_columns(**data)
+        return DataChunk.from_columns(**data, degrees=self.degrees)
 
 
 def get_filereader(path: Tpath) -> type[FileReader]:
