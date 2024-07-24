@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
 from shutil import rmtree
@@ -91,7 +92,7 @@ def assign_patch_centers(
     return patches.astype(np.int32, copy=False)
 
 
-class CatalogWriter:
+class CatalogWriter(AbstractContextManager):
     def __init__(self, cache_directory: Tpath, overwrite: bool = True) -> None:
         self.cache_directory = Path(cache_directory)
         if self.cache_directory.exists():

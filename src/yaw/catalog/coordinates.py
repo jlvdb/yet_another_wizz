@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sized
 from functools import total_ordering
 from typing import TYPE_CHECKING, TypeVar
 
@@ -29,7 +29,7 @@ def sgn(val: ArrayLike) -> ArrayLike:
     return np.where(val == 0, 1.0, np.sign(val))
 
 
-class NDArrayWrapper(Sequence):
+class NDArrayWrapper(Iterable, Sized):
     values: NDArray
 
     def __repr__(self) -> str:
@@ -202,10 +202,10 @@ class Distances(NDArrayWrapper):
     def __sub__(self: Tdist, other: object) -> Tdist:
         pass
 
-    def min(self) -> Tdist:
+    def min(self: Tdist) -> Tdist:
         return type(self)(self.values.min())
 
-    def max(self) -> Tdist:
+    def max(self: Tdist) -> Tdist:
         return type(self)(self.values.max())
 
     @abstractmethod

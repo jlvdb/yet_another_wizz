@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from abc import abstractmethod
 from collections.abc import Iterator
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Union
 
@@ -36,20 +37,13 @@ class OptionalDependencyError(Exception):
     pass
 
 
-class BaseReader(Iterator):
+class BaseReader(Iterator, AbstractContextManager):
     _group_idx: int
     _num_groups: int
 
     def __repr__(self) -> str:
         name = type(self).__name__
         return f"{name} @ {self._group_idx} / {self.num_chunks} chunks"
-
-    def __enter__(self) -> Self:
-        return self
-
-    @abstractmethod
-    def __exit__(self, *args, **kwargs) -> None:
-        pass
 
     @property
     @abstractmethod
@@ -72,8 +66,10 @@ class BaseReader(Iterator):
         return chunk
 
     def __iter__(self) -> Iterator[DataChunk]:
+        self._group_idx = 0
         return self
 
+    @abstractmethod
     def read(self, sparse: int) -> DataChunk:
         n_read = 0
         chunks = []
@@ -101,6 +97,9 @@ class MemoryReader(BaseReader):
         self.chunksize = chunksize
         self._num_groups = int(np.ceil(self.num_records / self.chunksize))
         self._group_idx = 0
+
+    def __enter__(self) -> Self:
+        return self
 
     def __exit__(self, *args, **kwargs) -> None:
         pass
@@ -152,11 +151,14 @@ class FileReader(BaseReader):
         self.columns = tuple(col for col in columns if col is not None)
 
         self.chunksize = chunksize
-        self._group_idx = 0  # chunk iteration state
+        self._group_idx = 0
 
     @abstractmethod
     def _init_file(self, **kwargs) -> None:
         pass
+
+    def __enter__(self) -> Self:
+        return self
 
     def __exit__(self, *args, **kwargs) -> None:
         self._file.close()
@@ -178,6 +180,9 @@ class ParquetReader(FileReader):
             for attr, col in zip(self.attrs, self.columns)
         }
         return DataChunk.from_columns(**data, degrees=self.degrees)
+
+    def read(self, sparse: int) -> DataChunk:
+        return super().read(sparse)
 
 
 class FitsReader(FileReader):
