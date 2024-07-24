@@ -52,7 +52,7 @@ class DataChunk:
         weight: NDArray | None = None,
         redshift: NDArray | None = None,
         patch: NDArray | None = None,
-        degrees: bool = True
+        degrees: bool = True,
     ):
         if degrees:
             ra = np.deg2rad(ra)
@@ -193,7 +193,7 @@ class Metadata:
     radius: DistsSky
 
     @classmethod
-    def compute(cls, coords: CoordsSky, weight: NDArray |  None = None) -> Metadata:
+    def compute(cls, coords: CoordsSky, weight: NDArray | None = None) -> Metadata:
         new = super().__new__(cls)
         new.num_records = len(coords)
         if weight is None:

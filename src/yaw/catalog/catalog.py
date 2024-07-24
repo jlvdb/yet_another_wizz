@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 from shutil import rmtree
 from typing import Union
+
 try:
     from typing import Self
 except ImportError:
@@ -16,9 +17,9 @@ from numpy.typing import NDArray
 from pandas import DataFrame
 from scipy.cluster import vq
 
-from yaw.catalog.patch import DataChunk, PatchWriter, Patch
-from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
 from yaw.catalog.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
+from yaw.catalog.patch import DataChunk, Patch, PatchWriter
+from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
 
 __all__ = [
     "Catalog",
@@ -33,7 +34,9 @@ class InconsistentPatchesError(Exception):
     pass
 
 
-def get_column(dataframe: DataFrame, column: str | None, required: bool = False) -> NDArray | None:
+def get_column(
+    dataframe: DataFrame, column: str | None, required: bool = False
+) -> NDArray | None:
     if column is None:
         if required:
             raise ValueError("column is required but no column name provided")
@@ -62,7 +65,9 @@ class PatchMode(Enum):
         raise ValueError("no patch method specified")
 
 
-def create_patch_centers(reader: BaseReader, patch_num: int, probe_size: int) -> CoordsSky:
+def create_patch_centers(
+    reader: BaseReader, patch_num: int, probe_size: int
+) -> CoordsSky:
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
     sparse_factor = np.ceil(reader.num_records / probe_size)
@@ -79,7 +84,9 @@ def create_patch_centers(reader: BaseReader, patch_num: int, probe_size: int) ->
     return Coords3D(xyz).to_sky()
 
 
-def assign_patch_centers(chunk: DataChunk, patch_centers: CoordsSky) -> NDArray[np.int32]:
+def assign_patch_centers(
+    chunk: DataChunk, patch_centers: CoordsSky
+) -> NDArray[np.int32]:
     patches, _ = vq.vq(chunk.coords.to_3d().values, patch_centers.to_3d().values)
     return patches
 
@@ -128,7 +135,7 @@ def write_patches(
     if isinstance(patch_centers, Coordinates):
         patch_centers = patch_centers.to_sky()
 
-    with (reader, CatalogWriter(path, overwrite=overwrite) as writer):
+    with reader, CatalogWriter(path, overwrite=overwrite) as writer:
         for chunk in reader:
             if mode == PatchMode.apply:
                 chunk.set_patch(assign_patch_centers(chunk, patch_centers))
@@ -209,7 +216,7 @@ class Catalog(Sequence):
             patch_name=patch_name,
             chunksize=chunksize,
             degrees=degrees,
-            **reader_kwargs
+            **reader_kwargs,
         )
         if mode == PatchMode.create:
             patch_centers = create_patch_centers(reader, patch_num, probe_size)

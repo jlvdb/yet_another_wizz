@@ -5,6 +5,7 @@ from abc import abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Union
+
 try:
     from typing import Self
 except ImportError:

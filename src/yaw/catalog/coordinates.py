@@ -12,8 +12,6 @@ except ImportError:
 
 import numpy as np
 
-from yaw.core.math import sgn
-
 if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import ArrayLike, NDArray
 
@@ -62,7 +60,7 @@ class Coordinates(NDArrayWrapper):
         pass
 
     def __eq__(self, other: object) -> NDArray[np.bool_]:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return self.values == other.values
         return NotImplemented
 
@@ -187,12 +185,12 @@ class Distances(NDArrayWrapper):
         pass
 
     def __eq__(self, other: object) -> NDArray[np.bool_]:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return self.values == other.values
         return NotImplemented
 
     def __lt__(self, other: object) -> NDArray[np.bool_]:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return self.values < other.values
         return NotImplemented
 
@@ -226,12 +224,12 @@ class Dists3D(Distances):
         return cls(np.concatenate(values))
 
     def __add__(self, other: object) -> Dists3D:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return type(self)(self.values + other.values)
         return NotImplemented
 
     def __sub__(self, other: object) -> Dists3D:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return type(self)(self.values - other.values)
         return NotImplemented
 
@@ -251,12 +249,12 @@ class DistsSky(Distances):
         return cls(np.concatenate(values))
 
     def __add__(self, other: object) -> Dists3D:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return (self.to_3d() + other.to_3d()).to_sky()
         return NotImplemented
 
     def __sub__(self, other: object) -> Dists3D:
-        if type(self) == type(other):
+        if type(self) is type(other):
             return (self.to_3d() - other.to_3d()).to_sky()
         return NotImplemented
 
