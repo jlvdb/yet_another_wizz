@@ -24,7 +24,7 @@ __all__ = [
     "get_filereader",
 ]
 
-TypePathStr = Union[Path, str]
+Tpath = Union[Path, str]
 
 
 def swap_byteorder(array: NDArray) -> NDArray:
@@ -120,7 +120,7 @@ class MemoryReader(BaseReader):
 class FileReader(BaseReader):
     def __init__(
         self,
-        path: TypePathStr,
+        path: Tpath,
         *,
         ra_name: str,
         dec_name: str,
@@ -259,7 +259,7 @@ class HDFReader(FileReader):
         return DataChunk.from_columns(**data)
 
 
-def get_filereader(path: TypePathStr) -> type[FileReader]:
+def get_filereader(path: Tpath) -> type[FileReader]:
     # parse the extension
     _, ext = os.path.splitext(str(path))
     ext = ext.lower()

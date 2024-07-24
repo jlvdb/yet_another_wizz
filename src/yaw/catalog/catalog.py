@@ -18,13 +18,13 @@ from scipy.cluster import vq
 
 from yaw.catalog.patch import DataChunk, PatchWriter, Patch
 from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
-from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
+from yaw.catalog.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
 __all__ = [
     "Catalog",
 ]
 
-TypePathStr = Union[Path, str]
+Tpath = Union[Path, str]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
 
@@ -85,7 +85,7 @@ def assign_patch_centers(chunk: DataChunk, patch_centers: CoordsSky) -> NDArray[
 
 
 class CatalogWriter:
-    def __init__(self, path: TypePathStr, overwrite: bool = True) -> None:
+    def __init__(self, path: Tpath, overwrite: bool = True) -> None:
         self.path = Path(path)
         if self.path.exists():
             if overwrite:
@@ -117,7 +117,7 @@ class CatalogWriter:
 
 
 def write_patches(
-    path: TypePathStr,
+    path: Tpath,
     reader: BaseReader,
     mode: PatchMode,
     patch_centers: Catalog | Coordinates | None,
@@ -139,7 +139,7 @@ def write_patches(
 class Catalog(Sequence):
     _patches = dict[int, Patch]
 
-    def __init__(self, cache_directory: TypePathStr) -> None:
+    def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
         patches = {}
         for cache in self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")):
@@ -150,7 +150,7 @@ class Catalog(Sequence):
     @classmethod
     def from_dataframe(
         cls,
-        cache_directory:TypePathStr,
+        cache_directory: Tpath,
         data: DataFrame,
         *,
         ra_name: str,
@@ -183,8 +183,8 @@ class Catalog(Sequence):
     @classmethod
     def from_file(
         cls,
-        cache_directory:TypePathStr,
-        path: TypePathStr,
+        cache_directory: Tpath,
+        path: Tpath,
         *,
         ra_name: str,
         dec_name: str,

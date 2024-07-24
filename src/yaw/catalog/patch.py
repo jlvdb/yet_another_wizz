@@ -9,7 +9,7 @@ from typing import Union
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from yaw.coordinates import CoordsSky, DistsSky
+from yaw.catalog.coordinates import CoordsSky, DistsSky
 
 __all__ = [
     "DataChunk",
@@ -17,7 +17,7 @@ __all__ = [
     "Patch",
 ]
 
-TypePathStr = Union[Path, str]
+Tpath = Union[Path, str]
 
 
 def split_array(
@@ -135,7 +135,7 @@ class ArrayCache:
 
 
 class PatchWriter:
-    def __init__(self, path: TypePathStr, chunksize: int = 65_536) -> None:
+    def __init__(self, path: Tpath, chunksize: int = 65_536) -> None:
         self.path = Path(path)
         if self.path.exists():
             raise FileExistsError(f"directory already exists: {self.path}")
@@ -206,14 +206,14 @@ class Metadata:
         return new
 
     @classmethod
-    def from_file(cls, cache_path: TypePathStr) -> Metadata:
+    def from_file(cls, cache_path: Tpath) -> Metadata:
         with open(Path(cache_path) / META_FILE_NAME) as f:
             meta: dict = json.load(f)
         center = CoordsSky(meta.pop("center"))
         radius = DistsSky(meta.pop("radius"))
         return cls(center=center, radius=radius, **meta)
 
-    def to_file(self, cache_path: TypePathStr) -> None:
+    def to_file(self, cache_path: Tpath) -> None:
         meta = dict(
             num_records=int(self.num_records),
             total=float(self.total),
@@ -227,7 +227,7 @@ class Metadata:
 class Patch(Sized):
     meta: Metadata
 
-    def __init__(self, cache_path: TypePathStr) -> None:
+    def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
         try:
             self.meta = Metadata.from_file(self.cache_path)
