@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping
 from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
@@ -145,7 +145,7 @@ def write_patches(
             writer.process_patches(patch_chunks)
 
 
-class Catalog(Sequence):
+class Catalog(Mapping[int, Patch]):
     _patches = dict[int, Patch]
 
     def __init__(self, cache_directory: Tpath) -> None:
@@ -236,12 +236,11 @@ class Catalog(Sequence):
     def __getitem__(self, patch_id: int) -> Patch:
         return self._patches[patch_id]
 
-    def __iter__(self) -> Iterator[Patch]:
-        for patch_id in sorted(self._patches.keys()):
-            yield self._patches[patch_id]
+    def __iter__(self) -> Iterator[int]:
+        yield from sorted(self._patches.keys())
 
     def has_weight(self) -> bool:
-        has_weight = tuple(patch.has_weight() for patch in iter(self))
+        has_weight = tuple(patch.has_weight() for patch in self.values())
         if all(has_weight):
             return True
         elif not any(has_weight):
@@ -249,7 +248,7 @@ class Catalog(Sequence):
         raise InconsistentPatchesError("'weight' not consistent")
 
     def has_redshift(self) -> bool:
-        has_redshift = tuple(patch.has_redshift() for patch in iter(self))
+        has_redshift = tuple(patch.has_redshift() for patch in self.values())
         if all(has_redshift):
             return True
         elif not any(has_redshift):
@@ -259,22 +258,22 @@ class Catalog(Sequence):
     def get_redshift_range(self) -> tuple[float, float]:
         if not self.has_redshift():
             raise ValueError("no 'redshift' attached")
-        zmin = np.inf
-        zmax = -np.inf
-        for patch in iter(self):
-            z = patch.redshift
-            zmin = min(zmin, z.min())
-            zmax = max(zmax, z.max())
-        return float(zmin), float(zmax)
+        min_redshifts = []
+        max_redshifts = []
+        for patch in self.values():
+            redshift = patch.redshift  # triggers I/O
+            min_redshifts.append(redshift.min())
+            max_redshifts.append(redshift.max())
+        return float(min(min_redshifts)), float(max(max_redshifts))
 
     def get_num_records(self) -> tuple[int]:
-        return tuple(patch.meta.num_records for patch in iter(self))
+        return tuple(patch.meta.num_records for patch in self.values())
 
     def get_totals(self) -> tuple[float]:
-        return tuple(patch.meta.total for patch in iter(self))
+        return tuple(patch.meta.total for patch in self.values())
 
     def get_centers(self) -> CoordsSky:
-        return CoordsSky.from_coords(patch.meta.center for patch in iter(self))
+        return CoordsSky.from_coords(patch.meta.center for patch in self.values())
 
     def get_radii(self) -> DistsSky:
-        return DistsSky.from_dists(patch.meta.radius for patch in iter(self))
+        return DistsSky.from_dists(patch.meta.radius for patch in self.values())

@@ -37,7 +37,7 @@ class OptionalDependencyError(Exception):
     pass
 
 
-class BaseReader(Iterator, AbstractContextManager):
+class BaseReader(Iterator[DataChunk], AbstractContextManager):
     _group_idx: int
     _num_groups: int
 
