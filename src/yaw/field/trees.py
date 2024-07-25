@@ -16,7 +16,7 @@ from yaw.coordinates import Coordinates, CoordsSky, DistsSky
 
 __all__ = [
     "AngularTree",
-    "CachedTrees",
+    "BinnedTrees",
 ]
 
 Tpath = Union[Path, str]
@@ -135,7 +135,7 @@ def build_binned_trees(
     leafsize: int,
 ) -> tuple[AngularTree]:
     if not patch.has_redshifts():
-        raise ValueError(f"patch has no 'redshifts' attached")
+        raise ValueError("patch has no 'redshifts' attached")
 
     trees = []
     for _, bin_data in groupby_binning(

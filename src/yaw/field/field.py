@@ -13,6 +13,7 @@ from yaw.field.trees import BinnedTrees
 class InconsistentTreesError(Exception):
     pass
 
+
 __all__ = [
     "Field",
 ]
