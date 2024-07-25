@@ -9,7 +9,7 @@ from typing import Any, Generator, Literal, Union
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from yaw.catalog.coordinates import CoordsSky, DistsSky
+from yaw.coordinates import CoordsSky, DistsSky
 
 __all__ = [
     "DataChunk",

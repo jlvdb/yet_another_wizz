@@ -18,9 +18,9 @@ from numpy.typing import NDArray
 from pandas import DataFrame
 from scipy.cluster import vq
 
-from yaw.catalog.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 from yaw.catalog.patch import DataChunk, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
+from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
 __all__ = [
     "Catalog",
