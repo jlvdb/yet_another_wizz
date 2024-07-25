@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import pickle
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Sized
 from itertools import repeat
 from pathlib import Path
 from typing import Literal, Union
@@ -75,7 +75,7 @@ def get_counts_for_limits(
     return final_counts
 
 
-class AngularTree:
+class AngularTree(Sized):
     def __init__(
         self,
         coords: Coordinates,
@@ -151,7 +151,7 @@ def build_binned_trees(
     return tuple(trees)
 
 
-class BinnedTrees:
+class BinnedTrees(Sized, Iterable):
     def __init__(self, patch: Patch) -> None:
         self.cache_path = patch.cache_path
         if not self.binning_file.exists():
@@ -221,10 +221,10 @@ class BinnedTrees:
         with self.trees_file.open(mode="rb") as f:
             return pickle.load(f)
 
-    def get_trees_iterable(self) -> Iterable[AngularTree]:
+    def __iter__(self) -> Iterator[AngularTree]:
         if self.is_binned():
-            return iter(self.trees)
-        return repeat(self.trees)
+            yield from self.trees
+        yield from repeat(self.trees)
 
     def count_binned(
         self,
@@ -241,10 +241,7 @@ class BinnedTrees:
             raise ValueError("binning of trees does not match")
 
         binned_counts = []
-        for tree_self, tree_other in zip(
-            self.get_trees_iterable(),
-            other.get_trees_iterable(),
-        ):
+        for tree_self, tree_other in zip(iter(self), iter(other)):
             counts = tree_self.count(
                 tree_other,
                 ang_min,
