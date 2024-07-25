@@ -4,7 +4,7 @@ import json
 from collections.abc import Sequence, Sized
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Any, Generator, Literal, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -20,15 +20,37 @@ __all__ = [
 Tpath = Union[Path, str]
 
 
-def optional_sort_split(
-    array: NDArray | None,
-    idx_sort: NDArray[np.int64],
-    idx_split: NDArray[np.int64],
-) -> list[NDArray] | list[None]:
-    if array is None:
-        return [None] * (len(idx_split) + 1)
-    array_sorted = array[idx_sort]
-    return np.split(array_sorted, idx_split)
+def groupby_value(
+    values: NDArray,
+    **optional_arrays: NDArray | None,
+) -> Generator[tuple[Any, dict[str, NDArray]], None, None]:
+    idx_sort = np.argsort(values)
+    values_sorted = values[idx_sort]
+    uniques, _idx_split = np.unique(values_sorted, return_index=True)
+    idx_split = _idx_split[1:]
+
+    splitted_arrays = {}
+    for name, array in optional_arrays.items():
+        if array is not None:
+            array_sorted = array[idx_sort]
+            splitted_arrays[name] = np.split(array_sorted, idx_split)
+
+    for i, value in enumerate(uniques):
+        yield value, {name: splits[i] for name, splits in splitted_arrays.items()}
+
+
+def groupby_binning(
+    values: NDArray,
+    binning: NDArray,
+    closed: Literal["left", "right"] = "left",
+    **optional_arrays: NDArray | None,
+) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
+    binning = np.asarray(binning)
+    bin_idx = np.digitize(values, binning, right=(closed == "right"))
+    for i, bin_array in groupby_value(bin_idx, **optional_arrays):
+        if i == 0 or i == len(binning):  # skip values outside of binning range
+            continue
+        yield binning[i - 1 : i + 1], bin_array
 
 
 class DataChunk:
@@ -100,23 +122,15 @@ class DataChunk:
     def split_patches(self) -> dict[int, DataChunk]:
         if self.patch is None:
             raise ValueError("'patch' not provided")
-
-        idx_sort = np.argsort(self.patch)
-        patch_sorted = self.patch[idx_sort]
-        patch_ids = np.unique(patch_sorted).tolist()
-        idx_split = np.where(np.diff(patch_sorted) != 0)[0] + 1
-
-        coords_patches = optional_sort_split(self.coords.values, idx_sort, idx_split)
-        weight_patches = optional_sort_split(self.weight, idx_sort, idx_split)
-        redshift_patches = optional_sort_split(self.redshift, idx_sort, idx_split)
-
         chunks = {}
-        for i, patch_id in enumerate(patch_ids):
-            chunks[patch_id] = DataChunk(
-                coords=CoordsSky(coords_patches[i]),
-                weight=weight_patches[i],
-                redshift=redshift_patches[i],
-            )
+        for patch_id, attr_dict in groupby_value(
+            self.patch,
+            coords=self.coords.values,
+            weight=self.weight,
+            redshift=self.redshift,
+        ):
+            coords = CoordsSky(attr_dict.pop("coords"))
+            chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
         return chunks
 
 
@@ -161,7 +175,7 @@ class PatchWriter:
             values = getattr(chunk, attr)
             if values is None:
                 raise ValueError(f"chunk has no '{attr}' attached")
-            if attr is "coords":
+            if attr == "coords":
                 values = values.values
             cache.append(values)
 
