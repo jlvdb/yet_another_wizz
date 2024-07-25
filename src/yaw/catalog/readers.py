@@ -145,7 +145,7 @@ class FileReader(BaseReader):
         patch_name: str | None = None,
         chunksize: int = 1_000_000,
     ) -> None:
-        attrs = ("ra", "dec", "weight", "redshift", "patch")  # DataChunk.from_columns
+        attrs = ("ra", "dec", "weights", "redshifts", "patch_ids")
         columns = (ra_name, dec_name, weight_name, redshift_name, patch_name)
         self.attrs = tuple(attr for attr, col in zip(attrs, columns) if col is not None)
         self.columns = tuple(col for col in columns if col is not None)
