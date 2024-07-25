@@ -4,12 +4,12 @@ import json
 from collections.abc import Sequence, Sized
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Any, Generator, Literal, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from yaw.catalog.coordinates import CoordsSky, DistsSky
+from yaw.coordinates import CoordsSky, DistsSky
 
 __all__ = [
     "DataChunk",
@@ -20,45 +20,67 @@ __all__ = [
 Tpath = Union[Path, str]
 
 
-def optional_sort_split(
-    array: NDArray | None,
-    idx_sort: NDArray[np.int64],
-    idx_split: NDArray[np.int64],
-) -> list[NDArray] | list[None]:
-    if array is None:
-        return [None] * (len(idx_split) + 1)
-    array_sorted = array[idx_sort]
-    return np.split(array_sorted, idx_split)
+def groupby_value(
+    values: NDArray,
+    **optional_arrays: NDArray | None,
+) -> Generator[tuple[Any, dict[str, NDArray]], None, None]:
+    idx_sort = np.argsort(values)
+    values_sorted = values[idx_sort]
+    uniques, _idx_split = np.unique(values_sorted, return_index=True)
+    idx_split = _idx_split[1:]
+
+    splitted_arrays = {}
+    for name, array in optional_arrays.items():
+        if array is not None:
+            array_sorted = array[idx_sort]
+            splitted_arrays[name] = np.split(array_sorted, idx_split)
+
+    for i, value in enumerate(uniques):
+        yield value, {name: splits[i] for name, splits in splitted_arrays.items()}
+
+
+def groupby_binning(
+    values: NDArray,
+    binning: NDArray,
+    closed: Literal["left", "right"] = "left",
+    **optional_arrays: NDArray | None,
+) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
+    binning = np.asarray(binning)
+    bin_idx = np.digitize(values, binning, right=(closed == "right"))
+    for i, bin_array in groupby_value(bin_idx, **optional_arrays):
+        if i == 0 or i == len(binning):  # skip values outside of binning range
+            continue
+        yield binning[i - 1 : i + 1], bin_array
 
 
 class DataChunk:
     def __init__(
         self,
         coords: CoordsSky,
-        weight: NDArray | None = None,
-        redshift: NDArray | None = None,
-        patch: NDArray[np.int32] | None = None,
+        weights: NDArray | None = None,
+        redshifts: NDArray | None = None,
+        patch_ids: NDArray[np.int32] | None = None,
     ) -> None:
         self.coords = coords
-        self.weight = weight
-        self.redshift = redshift
-        self.set_patch(patch)
+        self.weights = weights
+        self.redshifts = redshifts
+        self.set_patch_ids(patch_ids)
 
     @classmethod
     def from_columns(
         cls,
         ra: NDArray,
         dec: NDArray,
-        weight: NDArray | None = None,
-        redshift: NDArray | None = None,
-        patch: NDArray | None = None,
+        weights: NDArray | None = None,
+        redshifts: NDArray | None = None,
+        patch_ids: NDArray | None = None,
         degrees: bool = True,
     ):
         if degrees:
             ra = np.deg2rad(ra)
             dec = np.deg2rad(dec)
         coords = CoordsSky(np.column_stack((ra, dec)))
-        return cls(coords, weight, redshift, patch)
+        return cls(coords, weights, redshifts, patch_ids)
 
     @classmethod
     def from_chunks(cls, chunks: Sequence[DataChunk]) -> DataChunk:
@@ -73,9 +95,9 @@ class DataChunk:
 
         return DataChunk(
             coords=CoordsSky.from_coords(chunk.coords for chunk in chunks),
-            weight=concat_optional_attr("weight"),
-            redshift=concat_optional_attr("redshift"),
-            patch=concat_optional_attr("patch"),
+            weights=concat_optional_attr("weights"),
+            redshifts=concat_optional_attr("redshifts"),
+            patch_ids=concat_optional_attr("patch_ids"),
         )
 
     def __len__(self) -> int:
@@ -84,39 +106,31 @@ class DataChunk:
     def __getitem__(self, index: ArrayLike) -> DataChunk:
         return DataChunk(
             coords=self.coords[index],
-            weight=self.weight[index] if self.weight is not None else None,
-            redshift=self.redshift[index] if self.redshift is not None else None,
-            patch=self.patch[index] if self.patch is not None else None,
+            weights=self.weights[index] if self.weights is not None else None,
+            redshifts=self.redshifts[index] if self.redshifts is not None else None,
+            patch_ids=self.patch_ids[index] if self.patch_ids is not None else None,
         )
 
-    def set_patch(self, patch: NDArray | None):
-        if patch is not None:
-            patch = np.asarray(patch, copy=False)
-            if patch.shape != (len(self),):
-                raise ValueError("'patch' has an invalid shape")
-            patch = patch.astype(np.int32, casting="same_kind", copy=False)
-        self.patch = patch
+    def set_patch_ids(self, patch_ids: NDArray | None):
+        if patch_ids is not None:
+            patch_ids = np.asarray(patch_ids, copy=False)
+            if patch_ids.shape != (len(self),):
+                raise ValueError("'patch_ids' has an invalid shape")
+            patch_ids = patch_ids.astype(np.int32, casting="same_kind", copy=False)
+        self.patch_ids = patch_ids
 
     def split_patches(self) -> dict[int, DataChunk]:
-        if self.patch is None:
-            raise ValueError("'patch' not provided")
-
-        idx_sort = np.argsort(self.patch)
-        patch_sorted = self.patch[idx_sort]
-        patch_ids = np.unique(patch_sorted).tolist()
-        idx_split = np.where(np.diff(patch_sorted) != 0)[0] + 1
-
-        coords_patches = optional_sort_split(self.coords.values, idx_sort, idx_split)
-        weight_patches = optional_sort_split(self.weight, idx_sort, idx_split)
-        redshift_patches = optional_sort_split(self.redshift, idx_sort, idx_split)
-
+        if self.patch_ids is None:
+            raise ValueError("'patch_ids' not provided")
         chunks = {}
-        for i, patch_id in enumerate(patch_ids):
-            chunks[patch_id] = DataChunk(
-                coords=CoordsSky(coords_patches[i]),
-                weight=weight_patches[i],
-                redshift=redshift_patches[i],
-            )
+        for patch_id, attr_dict in groupby_value(
+            self.patch_ids,
+            coords=self.coords.values,
+            weights=self.weights,
+            redshifts=self.redshifts,
+        ):
+            coords = CoordsSky(attr_dict.pop("coords"))
+            chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
         return chunks
 
 
@@ -148,10 +162,10 @@ class PatchWriter:
 
     def _init_caches(self, chunk: DataChunk) -> None:
         self._caches["coords"] = ArrayCache()
-        if chunk.weight is not None:
-            self._caches["weight"] = ArrayCache()
-        if chunk.redshift is not None:
-            self._caches["redshift"] = ArrayCache()
+        if chunk.weights is not None:
+            self._caches["weights"] = ArrayCache()
+        if chunk.redshifts is not None:
+            self._caches["redshifts"] = ArrayCache()
 
     def process_chunk(self, chunk: DataChunk) -> None:
         if len(self._caches) == 0:
@@ -161,7 +175,7 @@ class PatchWriter:
             values = getattr(chunk, attr)
             if values is None:
                 raise ValueError(f"chunk has no '{attr}' attached")
-            if attr is "coords":
+            if attr == "coords":
                 values = values.values
             cache.append(values)
 
@@ -190,13 +204,13 @@ class Metadata:
     radius: DistsSky
 
     @classmethod
-    def compute(cls, coords: CoordsSky, weight: NDArray | None = None) -> Metadata:
+    def compute(cls, coords: CoordsSky, weights: NDArray | None = None) -> Metadata:
         new = super().__new__(cls)
         new.num_records = len(coords)
-        if weight is None:
+        if weights is None:
             new.total = float(new.num_records)
         else:
-            new.total = float(np.sum(weight))
+            new.total = float(np.sum(weights))
 
         new.center = coords.mean()
         new.radius = coords.distance(new.center).max().to_sky()
@@ -230,18 +244,18 @@ class Patch(Sized):
         try:
             self.meta = Metadata.from_file(meta_data_file)
         except FileNotFoundError:
-            self.meta = Metadata.compute(self.coords, self.weight)
+            self.meta = Metadata.compute(self.coords, self.weights)
             self.meta.to_file(meta_data_file)
 
     def __len__(self) -> int:
         return self.meta.num_records
 
-    def has_weight(self) -> bool:
-        path = self.cache_path / "weight"
+    def has_weights(self) -> bool:
+        path = self.cache_path / "weights"
         return path.exists()
 
-    def has_redshift(self) -> bool:
-        path = self.cache_path / "redshift"
+    def has_redshifts(self) -> bool:
+        path = self.cache_path / "redshifts"
         return path.exists()
 
     @property
@@ -250,13 +264,13 @@ class Patch(Sized):
         return CoordsSky(data.reshape((-1, 2)))
 
     @property
-    def weight(self) -> NDArray | None:
-        if self.has_weight():
-            return np.fromfile(self.cache_path / "weight")
+    def weights(self) -> NDArray | None:
+        if self.has_weights():
+            return np.fromfile(self.cache_path / "weights")
         return None
 
     @property
-    def redshift(self) -> NDArray | None:
-        if self.has_redshift():
-            return np.fromfile(self.cache_path / "redshift")
+    def redshifts(self) -> NDArray | None:
+        if self.has_redshifts():
+            return np.fromfile(self.cache_path / "redshifts")
         return None

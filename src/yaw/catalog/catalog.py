@@ -18,9 +18,9 @@ from numpy.typing import NDArray
 from pandas import DataFrame
 from scipy.cluster import vq
 
-from yaw.catalog.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 from yaw.catalog.patch import DataChunk, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
+from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
 __all__ = [
     "Catalog",
@@ -85,9 +85,7 @@ def create_patch_centers(
     return Coords3D(xyz).to_sky()
 
 
-def assign_patch_centers(
-    chunk: DataChunk, patch_centers: CoordsSky
-) -> NDArray[np.int32]:
+def compute_patch_ids(chunk: DataChunk, patch_centers: CoordsSky) -> NDArray[np.int32]:
     patches, _ = vq.vq(chunk.coords.to_3d().values, patch_centers.to_3d().values)
     return patches.astype(np.int32, copy=False)
 
@@ -139,8 +137,8 @@ def write_patches(
     with reader, CatalogWriter(path, overwrite=overwrite) as writer:
         for chunk in reader:
             if mode == PatchMode.apply:
-                patch = assign_patch_centers(chunk, patch_centers)
-                chunk.set_patch(patch)
+                patch_ids = compute_patch_ids(chunk, patch_centers)
+                chunk.set_patch_ids(patch_ids)
             patch_chunks = chunk.split_patches()
             writer.process_patches(patch_chunks)
 
@@ -177,9 +175,11 @@ class Catalog(Mapping[int, Patch]):
         data_chunk = DataChunk.from_columns(
             ra=get_column(data, ra_name, required=True),
             dec=get_column(data, dec_name, required=True),
-            weight=get_column(data, weight_name),
-            redshift=get_column(data, redshift_name),
-            patch=get_column(data, patch_name if mode == PatchMode.divide else None),
+            weights=get_column(data, weight_name),
+            redshifts=get_column(data, redshift_name),
+            patch_ids=get_column(
+                data, patch_name if mode == PatchMode.divide else None
+            ),
             degrees=degrees,
         )
         reader = MemoryReader(data_chunk, chunksize=chunksize)
@@ -226,8 +226,8 @@ class Catalog(Mapping[int, Patch]):
 
     def __repr__(self) -> str:
         num_patches = len(self)
-        weights = self.has_weight()
-        redshifts = self.has_redshift()
+        weights = self.has_weights()
+        redshifts = self.has_redshifts()
         return f"{type(self).__name__}({num_patches=}, {weights=}, {redshifts=})"
 
     def __len__(self) -> int:
@@ -239,31 +239,31 @@ class Catalog(Mapping[int, Patch]):
     def __iter__(self) -> Iterator[int]:
         yield from sorted(self._patches.keys())
 
-    def has_weight(self) -> bool:
-        has_weight = tuple(patch.has_weight() for patch in self.values())
-        if all(has_weight):
+    def has_weights(self) -> bool:
+        has_weights = tuple(patch.has_weights() for patch in self.values())
+        if all(has_weights):
             return True
-        elif not any(has_weight):
+        elif not any(has_weights):
             return False
-        raise InconsistentPatchesError("'weight' not consistent")
+        raise InconsistentPatchesError("'weights' not consistent")
 
-    def has_redshift(self) -> bool:
-        has_redshift = tuple(patch.has_redshift() for patch in self.values())
-        if all(has_redshift):
+    def has_redshifts(self) -> bool:
+        has_redshifts = tuple(patch.has_redshifts() for patch in self.values())
+        if all(has_redshifts):
             return True
-        elif not any(has_redshift):
+        elif not any(has_redshifts):
             return False
-        raise InconsistentPatchesError("'redshift' not consistent")
+        raise InconsistentPatchesError("'redshifts' not consistent")
 
     def get_redshift_range(self) -> tuple[float, float]:
-        if not self.has_redshift():
-            raise ValueError("no 'redshift' attached")
+        if not self.has_redshifts():
+            raise ValueError("no 'redshifts' attached")
         min_redshifts = []
         max_redshifts = []
         for patch in self.values():
-            redshift = patch.redshift  # triggers I/O
-            min_redshifts.append(redshift.min())
-            max_redshifts.append(redshift.max())
+            redshifts = patch.redshifts  # triggers I/O
+            min_redshifts.append(redshifts.min())
+            max_redshifts.append(redshifts.max())
         return float(min(min_redshifts)), float(max(max_redshifts))
 
     def get_num_records(self) -> tuple[int]:
