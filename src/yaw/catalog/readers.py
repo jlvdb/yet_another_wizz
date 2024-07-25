@@ -23,7 +23,7 @@ __all__ = [
     "HDFReader",
     "MemoryReader",
     "ParquetReader",
-    "get_filereader",
+    "new_filereader",
 ]
 
 Tpath = Union[Path, str]
@@ -254,17 +254,39 @@ class HDFReader(FileReader):
         return DataChunk.from_columns(**data, degrees=self.degrees)
 
 
-def get_filereader(path: Tpath) -> type[FileReader]:
+def new_filereader(
+    path: Tpath,
+    *,
+    ra_name: str,
+    dec_name: str,
+    weight_name: str | None = None,
+    redshift_name: str | None = None,
+    patch_name: str | None = None,
+    chunksize: int = 1_000_000,
+    degrees: bool = True,
+    **reader_kwargs,
+) -> FileReader:
     # parse the extension
     _, ext = os.path.splitext(str(path))
     ext = ext.lower()
     # get the correct reader
     if ext in (".fits", ".cat"):
-        reader = FitsReader
+        reader_cls = FitsReader
     elif ext in (".hdf5", ".hdf", ".h5"):
-        reader = HDFReader
+        reader_cls = HDFReader
     elif ext in (".pq", ".pqt", ".parq", ".parquet"):
-        reader = ParquetReader
+        reader_cls = ParquetReader
     else:
         raise ValueError(f"unrecognized file extesion '{ext}'")
-    return reader
+
+    return reader_cls(
+        path,
+        ra_name=ra_name,
+        dec_name=dec_name,
+        weight_name=weight_name,
+        redshift_name=redshift_name,
+        patch_name=patch_name,
+        chunksize=chunksize,
+        degrees=degrees,
+        **reader_kwargs
+    )

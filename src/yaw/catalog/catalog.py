@@ -19,7 +19,7 @@ from pandas import DataFrame
 from scipy.cluster import vq
 
 from yaw.catalog.patch import DataChunk, Patch, PatchWriter
-from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
+from yaw.catalog.readers import BaseReader, MemoryReader, new_filereader
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
 __all__ = [
@@ -208,7 +208,7 @@ class Catalog(Mapping[int, Patch]):
         **reader_kwargs,
     ) -> Catalog:
         mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-        reader = get_filereader(path)(
+        reader = new_filereader(
             path,
             ra_name=ra_name,
             dec_name=dec_name,
