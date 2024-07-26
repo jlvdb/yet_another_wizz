@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
+from typing import TYPE_CHECKING
 
 from numpy.typing import NDArray
 
-from yaw.catalog.catalog import Catalog
 from yaw.catalog.patch import Patch
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import Tclosed
 
-
-class InconsistentTreesError(Exception):
-    pass
+if TYPE_CHECKING:
+    from yaw.catalog.catalog import Catalog
 
 
 __all__ = [
     "Field",
 ]
+
+
+class InconsistentTreesError(Exception):
+    pass
 
 
 class Field(Mapping[int, BinnedTrees]):
