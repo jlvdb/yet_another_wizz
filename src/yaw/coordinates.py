@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Iterable, Iterator, Sized
 from functools import total_ordering
-from typing import TYPE_CHECKING, TypeVar
+from typing import TypeVar
 
 try:
     from typing import Type
@@ -11,11 +11,14 @@ except ImportError:
     from typing_extensions import Type
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
-if TYPE_CHECKING:  # pragma: no cover
-    from numpy.typing import ArrayLike, NDArray
-
-__all__ = ["Coords3D", "CoordsSky", "Dists3D", "DistsSky"]
+__all__ = [
+    "Coords3D",
+    "CoordsSky",
+    "Dists3D",
+    "DistsSky",
+]
 
 
 Tarray = TypeVar("Tarray", bound="CustomNumpyArray")

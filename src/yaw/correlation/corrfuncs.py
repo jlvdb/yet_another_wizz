@@ -30,7 +30,7 @@ from yaw.correlation.estimators import (
 )
 from yaw.correlation.paircounts import NormalisedCounts, TypeIndex
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from matplotlib.axis import Axis
     from numpy.typing import NDArray
     from pandas import IntervalIndex

@@ -18,7 +18,7 @@ from yaw.config.scales import ScalesConfig
 from yaw.core.cosmology import TypeCosmology, get_default_cosmology, r_kpc_to_angle
 from yaw.core.docs import Parameter
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
 

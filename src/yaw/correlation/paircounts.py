@@ -39,7 +39,7 @@ from yaw.core.abc import (
 from yaw.core.containers import Indexer, PatchIDs, SampledData
 from yaw.core.math import apply_slice_ndim, outer_triu_sum
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import DTypeLike, NDArray
     from pandas import IntervalIndex
 

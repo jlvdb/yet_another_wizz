@@ -32,7 +32,7 @@ from yaw.core.math import rebin, shift_histogram
 from yaw.core.utils import TypePathStr
 from yaw.correlation import CorrData
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.correlation import CorrFunc

@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
 __all__ = [

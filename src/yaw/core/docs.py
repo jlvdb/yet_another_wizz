@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from argparse import ArgumentParser
 
 __all__ = ["Parameter", "get_doc_args", "populate_parser"]

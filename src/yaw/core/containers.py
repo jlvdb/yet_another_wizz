@@ -21,7 +21,7 @@ from yaw.config import OPTIONS
 from yaw.core.abc import BinnedQuantity, concatenate_bin_edges
 from yaw.core.math import cov_from_samples
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame, IntervalIndex, Series
 

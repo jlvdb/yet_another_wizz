@@ -11,7 +11,7 @@ from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
 from yaw.core.docs import Parameter
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 __all__ = ["ResamplingConfig"]

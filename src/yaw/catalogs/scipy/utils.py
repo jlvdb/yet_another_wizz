@@ -19,7 +19,7 @@ from yaw.correlation.paircounts import (
 )
 from yaw.redshifts import HistData
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.catalogs.scipy.catalog import ScipyCatalog

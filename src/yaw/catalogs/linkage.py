@@ -11,7 +11,7 @@ from yaw.core.containers import PatchIDs
 from yaw.core.coordinates import Dist3D, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from yaw.catalogs import BaseCatalog
     from yaw.config import Configuration
 

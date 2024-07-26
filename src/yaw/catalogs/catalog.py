@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 from yaw.core.coordinates import Coordinate, CoordSky, DistSky
 from yaw.core.utils import long_num_format
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from pandas import DataFrame
 
     from yaw.catalogs import PatchLinkage
