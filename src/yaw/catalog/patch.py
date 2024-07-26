@@ -125,7 +125,7 @@ class DataChunk:
         chunks = {}
         for patch_id, attr_dict in groupby_value(
             self.patch_ids,
-            coords=self.coords.values,
+            coords=self.coords.data,
             weights=self.weights,
             redshifts=self.redshifts,
         ):
@@ -134,7 +134,7 @@ class DataChunk:
         return chunks
 
 
-class ArrayCache:
+class ArrayBuffer:
     def __init__(self):
         self._shards = []
 
@@ -158,14 +158,14 @@ class PatchWriter:
 
         self.chunksize = chunksize
         self._cachesize = 0
-        self._caches: dict[str, ArrayCache] = {}
+        self._caches: dict[str, ArrayBuffer] = {}
 
     def _init_caches(self, chunk: DataChunk) -> None:
-        self._caches["coords"] = ArrayCache()
+        self._caches["coords"] = ArrayBuffer()
         if chunk.weights is not None:
-            self._caches["weights"] = ArrayCache()
+            self._caches["weights"] = ArrayBuffer()
         if chunk.redshifts is not None:
-            self._caches["redshifts"] = ArrayCache()
+            self._caches["redshifts"] = ArrayBuffer()
 
     def process_chunk(self, chunk: DataChunk) -> None:
         if len(self._caches) == 0:
@@ -175,8 +175,6 @@ class PatchWriter:
             values = getattr(chunk, attr)
             if values is None:
                 raise ValueError(f"chunk has no '{attr}' attached")
-            if attr == "coords":
-                values = values.values
             cache.append(values)
 
         self._cachesize += len(chunk)
@@ -228,8 +226,8 @@ class Metadata:
         meta = dict(
             num_records=int(self.num_records),
             total=float(self.total),
-            center=self.center.to_sky().values.tolist(),
-            radius=self.radius.values.tolist(),
+            center=self.center.to_sky().tolist(),
+            radius=self.radius.tolist(),
         )
         with Path(fpath).open(mode="w") as f:
             json.dump(meta, f)

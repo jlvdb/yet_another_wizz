@@ -86,7 +86,7 @@ def create_patch_centers(
 
 
 def compute_patch_ids(chunk: DataChunk, patch_centers: CoordsSky) -> NDArray[np.int32]:
-    patches, _ = vq.vq(chunk.coords.to_3d().values, patch_centers.to_3d().values)
+    patches, _ = vq.vq(chunk.coords.to_3d().data, patch_centers.to_3d().data)
     return patches.astype(np.int32, copy=False)
 
 

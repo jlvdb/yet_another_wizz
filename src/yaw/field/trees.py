@@ -93,7 +93,7 @@ class AngularTree(Sized):
             self.weights = np.asarray(weights).astype(np.float64, copy=False)
             self.total = float(self.weights.sum())
 
-        self.tree = KDTree(coords.to_3d().values, leafsize=leafsize, copy_data=True)
+        self.tree = KDTree(coords.to_3d().data, leafsize=leafsize, copy_data=True)
 
     def __len__(self) -> int:
         return self.num_records
@@ -114,7 +114,7 @@ class AngularTree(Sized):
         try:
             counts = self.tree.count_neighbors(
                 other.tree,
-                r=DistsSky(ang_bins).to_3d().values,
+                r=DistsSky(ang_bins).to_3d().data,
                 weights=(self.weights, other.weights),
                 cumulative=cumulative,
             ).astype(np.float64)
@@ -142,7 +142,7 @@ def build_binned_trees(
         patch.redshifts,
         binning,
         closed=closed,
-        coords=patch.coords.values,
+        coords=patch.coords.data,
         weights=patch.weights,
     ):
         bin_data["coords"] = CoordsSky(bin_data["coords"])
@@ -151,7 +151,7 @@ def build_binned_trees(
     return tuple(trees)
 
 
-class BinnedTrees(Sized, Iterable):
+class BinnedTrees(Iterable):
     def __init__(self, patch: Patch) -> None:
         self.cache_path = patch.cache_path
         if not self.binning_file.exists():
