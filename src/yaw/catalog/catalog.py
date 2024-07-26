@@ -25,7 +25,6 @@ from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
 __all__ = [
     "Catalog",
-    "Field",
 ]
 
 Tpath = Union[Path, str]
@@ -34,6 +33,10 @@ PATCH_NAME_TEMPLATE = "patch_{:}"
 
 
 class InconsistentPatchesError(Exception):
+    pass
+
+
+class InconsistentTreesError(Exception):
     pass
 
 
@@ -147,7 +150,6 @@ def write_patches(
 
 class Catalog(Mapping[int, Patch]):
     _patches = dict[int, Patch]
-    _field: Field | None
 
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
@@ -155,7 +157,6 @@ class Catalog(Mapping[int, Patch]):
         for cache in self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")):
             patch_id = int(cache.name.split("_")[1])
             self._patches[patch_id] = Patch(cache)
-        self._field = None
 
     @classmethod
     def from_dataframe(
@@ -282,61 +283,7 @@ class Catalog(Mapping[int, Patch]):
     def get_radii(self) -> DistsSky:
         return DistsSky.from_dists(patch.meta.radius for patch in self.values())
 
-    def get_field(
-        self,
-        binning: NDArray | None = None,
-        *,
-        closed: Tclosed = "left",
-        leafsize: int = 16,
-        force_build: bool = False,
-    ) -> Field:
-        kwargs = dict(binning=binning, closed=closed, leafsize=leafsize)
-
-        if self._field is None:
-            try:
-                self._field = Field(self)
-            except FileNotFoundError:
-                self._field = Field.create(self, **kwargs, force=True)
-                return self._field
-
-        self._field.rebuild(**kwargs, force=force_build)
-        return self._field
-
-
-class InconsistentTreesError(Exception):
-    pass
-
-
-class Field(Mapping[int, BinnedTrees]):
-    _catalog: Catalog
-    _trees: dict[int, BinnedTrees]
-
-    def __init__(self, catalog: Catalog) -> None:
-        self._catalog = catalog
-        self._trees = {}
-        for patch_id, patch in self._catalog.items():
-            self._trees[patch_id] = BinnedTrees(patch)
-
-    @classmethod
-    def create(
-        cls,
-        catalog: Catalog,
-        binning: NDArray | None = None,
-        *,
-        closed: Tclosed = "left",
-        leafsize: int = 16,
-        force: bool = False,
-    ) -> BinnedTrees:
-        new = cls.__new__(cls)
-        new._catalog = catalog
-        new._trees = {}
-        for patch_id, patch in catalog.items():
-            new._trees[patch_id] = patch.get_trees(
-                binning, closed=closed, leafsize=leafsize, force_build=force
-            )
-        return new
-
-    def rebuild(
+    def build_trees(
         self,
         binning: NDArray | None = None,
         *,
@@ -344,37 +291,7 @@ class Field(Mapping[int, BinnedTrees]):
         leafsize: int = 16,
         force: bool = False,
     ) -> None:
-        for tree in self.values():
-            tree.rebuild(
-                binning, closed=closed, leafsize=leafsize, force=force
+        for patch in self.values():
+            BinnedTrees.build(
+                patch, binning, closed=closed, leafsize=leafsize, force=force
             )
-
-    def __repr__(self) -> str:
-        num_patches = len(self)
-        binned = self.is_binned()
-        return f"{type(self).__name__}({num_patches=}, {binned=})"
-
-    def __len__(self) -> int:
-        return len(self._trees)
-
-    def __getitem__(self, patch_id: int) -> Patch:
-        return self._trees[patch_id]
-
-    def __iter__(self) -> Iterator[int]:
-        yield from sorted(self._trees.keys())
-
-    def is_binned(self) -> bool:
-        is_binned = tuple(patch.is_binned() for patch in self.values())
-        if all(is_binned):
-            return True
-        elif not any(is_binned):
-            return False
-        raise InconsistentTreesError("'binning' not consistent")
-
-    def get_binning(self) -> NDArray | None:
-        tree_iter = iter(self.values())
-        binning = next(tree_iter).binning
-        for tree in tree_iter:
-            if not tree.binning_equal(binning):
-                raise InconsistentTreesError("'binning' not consistent")
-        return binning

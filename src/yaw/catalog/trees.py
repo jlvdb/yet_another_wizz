@@ -1,18 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Sized
+import json
+import pickle
+from collections.abc import Iterable, Iterator, Sized
+from itertools import repeat
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
-from yaw.catalog.utils import logarithmic_mid
-from yaw.coordinates import Coordinates, DistsSky
+from yaw.catalog.utils import Tclosed, groupby_binning, logarithmic_mid
+from yaw.coordinates import Coordinates, CoordsSky, DistsSky
+
+if TYPE_CHECKING:
+    from yaw.catalog.patch import Patch
 
 __all__ = [
     "AngularTree",
+    "BinnedTrees",
 ]
 
 Tpath = Union[Path, str]
@@ -116,3 +123,138 @@ class AngularTree(Sized):
             ang_weights = logarithmic_mid(ang_bins) ** weight_scale
             counts *= ang_weights / ang_weights.sum()
         return get_counts_for_limits(counts, ang_bins, ang_limits)
+
+
+def build_binned_trees(
+    patch: Patch,
+    binning: NDArray,
+    closed: str,
+    leafsize: int,
+) -> tuple[AngularTree]:
+    if not patch.has_redshifts():
+        raise ValueError("patch has no 'redshifts' attached")
+
+    trees = []
+    for _, bin_data in groupby_binning(
+        patch.redshifts,
+        binning,
+        closed=closed,
+        coords=patch.coords,
+        weights=patch.weights,
+    ):
+        bin_data["coords"] = CoordsSky(bin_data["coords"])
+        tree = AngularTree(**bin_data, leafsize=leafsize)
+        trees.append(tree)
+    return tuple(trees)
+
+
+class BinnedTrees(Iterable):
+    _patch: Patch
+
+    def __init__(self, patch: Patch) -> None:
+        self._patch = patch
+        if not self.binning_file.exists():
+            raise FileNotFoundError(f"no trees found for patch at '{self.cache_path}'")
+
+        with self.binning_file.open() as f:
+            binning = json.load(f)
+        if binning is None:
+            self.binning = None
+        else:
+            self.binning = np.asarray(binning)
+
+    @classmethod
+    def build(
+        cls,
+        patch: Patch,
+        binning: NDArray | None = None,
+        *,
+        closed: Tclosed = "left",
+        leafsize: int = 16,
+        force: bool = False,
+    ) -> BinnedTrees:
+        if binning is not None:
+            binning = np.asarray(binning, dtype=np.float64)
+
+        try:
+            assert not force
+            new = cls(patch)  # trees exists, load the associated binning
+            assert new.binning_equal(binning)
+        except (AssertionError, FileNotFoundError):
+            new = cls.__new__(cls)
+            new._patch = patch
+            new.binning = binning
+
+            with new.trees_file.open(mode="wb") as f:
+                if binning is not None:
+                    trees = build_binned_trees(patch, binning, closed, leafsize)
+                else:
+                    trees = AngularTree(patch.coords, patch.weights, leafsize=leafsize)
+                pickle.dump(trees, f)
+
+            with new.binning_file.open(mode="w") as f:
+                try:
+                    json.dump(binning.tolist(), f)
+                except AttributeError:
+                    json.dump(binning, f)
+
+        return new
+
+    @property
+    def cache_path(self) -> Path:
+        return self._patch.cache_path
+
+    @property
+    def binning_file(self) -> Path:
+        return self.cache_path / "binning.json"
+
+    @property
+    def trees_file(self) -> Path:
+        return self.cache_path / "trees.pkl"
+
+    def is_binned(self) -> bool:
+        return self.binning is not None
+
+    def binning_equal(self, binning: NDArray | None) -> bool:
+        if self.binning is None and binning is None:
+            return True
+        elif np.array_equal(self.binning, binning):
+            return True
+        return False
+
+    @property
+    def trees(self) -> AngularTree | tuple[AngularTree]:
+        with self.trees_file.open(mode="rb") as f:
+            return pickle.load(f)
+
+    def __iter__(self) -> Iterator[AngularTree]:
+        if self.is_binned():
+            yield from self.trees
+        else:
+            yield from repeat(self.trees)
+
+    def count_binned(
+        self,
+        other: BinnedTrees,
+        ang_min: NDArray,
+        ang_max: NDArray,
+        weight_scale: float | None = None,
+        weight_res: int = 50,
+    ) -> NDArray[np.float64]:
+        is_binned = (self.is_binned(), other.is_binned())
+        if not any(is_binned):
+            raise ValueError("at least one of the trees must be binned")
+        elif all(is_binned) and not self.binning_equal(other.binning):
+            raise ValueError("binning of trees does not match")
+
+        binned_counts = []
+        for tree_self, tree_other in zip(iter(self), iter(other)):
+            counts = tree_self.count(
+                tree_other,
+                ang_min,
+                ang_max,
+                weight_scale=weight_scale,
+                weight_res=weight_res,
+            )
+            binned_counts.append(counts)
+        return np.transpose(binned_counts)
