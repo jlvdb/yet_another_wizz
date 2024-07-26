@@ -5,15 +5,17 @@ import pickle
 from collections.abc import Iterable, Iterator, Sized
 from itertools import repeat
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
-from yaw.catalog.patch import Patch, groupby_binning
-from yaw.catalog.utils import Tclosed, logarithmic_mid
+from yaw.catalog.utils import Tclosed, groupby_binning, logarithmic_mid
 from yaw.coordinates import Coordinates, CoordsSky, DistsSky
+
+if TYPE_CHECKING:
+    from yaw.catalog.patch import Patch
 
 __all__ = [
     "AngularTree",

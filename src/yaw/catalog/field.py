@@ -6,8 +6,8 @@ from numpy.typing import NDArray
 
 from yaw.catalog.catalog import Catalog
 from yaw.catalog.patch import Patch
+from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import Tclosed
-from yaw.field.trees import BinnedTrees
 
 
 class InconsistentTreesError(Exception):
