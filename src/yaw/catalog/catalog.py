@@ -19,7 +19,7 @@ from pandas import DataFrame
 from scipy.cluster import vq
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
-from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
+from yaw.catalog.readers import BaseReader, MemoryReader, new_filereader
 from yaw.catalog.utils import DataChunk, Tclosed
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 

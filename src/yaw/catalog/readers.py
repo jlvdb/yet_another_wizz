@@ -288,5 +288,5 @@ def new_filereader(
         patch_name=patch_name,
         chunksize=chunksize,
         degrees=degrees,
-        **reader_kwargs
+        **reader_kwargs,
     )

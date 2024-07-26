@@ -113,8 +113,8 @@ class Metadata:
         meta = dict(
             num_records=int(self.num_records),
             total=float(self.total),
-            center=self.center.to_sky().tolist(),
-            radius=self.radius.tolist(),
+            center=self.center.to_sky().tolist()[0],  # 2-dim by default
+            radius=self.radius.tolist()[0],  # 1-dim by default
         )
         with Path(fpath).open(mode="w") as f:
             json.dump(meta, f)
