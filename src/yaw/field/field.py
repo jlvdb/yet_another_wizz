@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from typing import Literal
 
 from numpy.typing import NDArray
 
 from yaw.catalog.catalog import Catalog
 from yaw.catalog.patch import Patch
+from yaw.catalog.utils import Tclosed
 from yaw.field.trees import BinnedTrees
 
 
@@ -33,7 +33,7 @@ class Field(Mapping[int, BinnedTrees]):
         catalog: Catalog,
         binning: NDArray | None = None,
         *,
-        closed: Literal["left", "right"] = "left",
+        closed: Tclosed = "left",
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:

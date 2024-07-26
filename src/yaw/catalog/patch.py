@@ -4,11 +4,12 @@ import json
 from collections.abc import Sequence, Sized
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generator, Literal, Union
+from typing import Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from yaw.catalog.utils import groupby_value
 from yaw.coordinates import CoordsSky, DistsSky
 
 __all__ = [
@@ -18,39 +19,6 @@ __all__ = [
 ]
 
 Tpath = Union[Path, str]
-
-
-def groupby_value(
-    values: NDArray,
-    **optional_arrays: NDArray | None,
-) -> Generator[tuple[Any, dict[str, NDArray]], None, None]:
-    idx_sort = np.argsort(values)
-    values_sorted = values[idx_sort]
-    uniques, _idx_split = np.unique(values_sorted, return_index=True)
-    idx_split = _idx_split[1:]
-
-    splitted_arrays = {}
-    for name, array in optional_arrays.items():
-        if array is not None:
-            array_sorted = array[idx_sort]
-            splitted_arrays[name] = np.split(array_sorted, idx_split)
-
-    for i, value in enumerate(uniques):
-        yield value, {name: splits[i] for name, splits in splitted_arrays.items()}
-
-
-def groupby_binning(
-    values: NDArray,
-    binning: NDArray,
-    closed: Literal["left", "right"] = "left",
-    **optional_arrays: NDArray | None,
-) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
-    binning = np.asarray(binning)
-    bin_idx = np.digitize(values, binning, right=(closed == "right"))
-    for i, bin_array in groupby_value(bin_idx, **optional_arrays):
-        if i == 0 or i == len(binning):  # skip values outside of binning range
-            continue
-        yield binning[i - 1 : i + 1], bin_array
 
 
 class DataChunk:

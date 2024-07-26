@@ -5,13 +5,14 @@ import pickle
 from collections.abc import Iterable, Iterator, Sized
 from itertools import repeat
 from pathlib import Path
-from typing import Literal, Union
+from typing import Union
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
 from yaw.catalog.patch import Patch, groupby_binning
+from yaw.catalog.utils import Tclosed, logarithmic_mid
 from yaw.coordinates import Coordinates, CoordsSky, DistsSky
 
 __all__ = [
@@ -20,12 +21,6 @@ __all__ = [
 ]
 
 Tpath = Union[Path, str]
-
-
-def logarithmic_mid(edges: NDArray) -> NDArray:
-    log_edges = np.log10(edges)
-    log_mids = (log_edges[:-1] + log_edges[1:]) / 2.0
-    return 10.0**log_mids
 
 
 def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
@@ -170,7 +165,7 @@ class BinnedTrees(Iterable):
         patch: Patch,
         binning: NDArray | None = None,
         *,
-        closed: Literal["left", "right"] = "left",
+        closed: Tclosed = "left",
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:
