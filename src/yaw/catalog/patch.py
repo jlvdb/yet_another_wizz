@@ -1,105 +1,28 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence, Sized
+import pickle
+from collections.abc import Iterable, Iterator, Sized
 from dataclasses import dataclass
+from itertools import repeat
 from pathlib import Path
 from typing import Union
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
-from yaw.catalog.utils import groupby_value
+from yaw.catalog.trees import AngularTree
+from yaw.catalog.utils import DataChunk, Tclosed, groupby_binning
 from yaw.coordinates import CoordsSky, DistsSky
 
 __all__ = [
-    "DataChunk",
     "PatchWriter",
     "Patch",
+    "BinnedTree",
 ]
 
 Tpath = Union[Path, str]
 
-
-class DataChunk:
-    def __init__(
-        self,
-        coords: CoordsSky,
-        weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
-        patch_ids: NDArray[np.int32] | None = None,
-    ) -> None:
-        self.coords = coords
-        self.weights = weights
-        self.redshifts = redshifts
-        self.set_patch_ids(patch_ids)
-
-    @classmethod
-    def from_columns(
-        cls,
-        ra: NDArray,
-        dec: NDArray,
-        weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
-        patch_ids: NDArray | None = None,
-        degrees: bool = True,
-    ):
-        if degrees:
-            ra = np.deg2rad(ra)
-            dec = np.deg2rad(dec)
-        coords = CoordsSky(np.column_stack((ra, dec)))
-        return cls(coords, weights, redshifts, patch_ids)
-
-    @classmethod
-    def from_chunks(cls, chunks: Sequence[DataChunk]) -> DataChunk:
-        def concat_optional_attr(attr: str) -> NDArray | None:
-            values = tuple(getattr(chunk, attr) for chunk in chunks)
-            value_is_set = tuple(value is not None for value in values)
-            if all(value_is_set):
-                return np.concatenate(values)
-            elif not any(value_is_set):
-                return None
-            raise ValueError(f"not all chunks have '{attr}' set")
-
-        return DataChunk(
-            coords=CoordsSky.from_coords(chunk.coords for chunk in chunks),
-            weights=concat_optional_attr("weights"),
-            redshifts=concat_optional_attr("redshifts"),
-            patch_ids=concat_optional_attr("patch_ids"),
-        )
-
-    def __len__(self) -> int:
-        return len(self.coords)
-
-    def __getitem__(self, index: ArrayLike) -> DataChunk:
-        return DataChunk(
-            coords=self.coords[index],
-            weights=self.weights[index] if self.weights is not None else None,
-            redshifts=self.redshifts[index] if self.redshifts is not None else None,
-            patch_ids=self.patch_ids[index] if self.patch_ids is not None else None,
-        )
-
-    def set_patch_ids(self, patch_ids: NDArray | None):
-        if patch_ids is not None:
-            patch_ids = np.asarray(patch_ids, copy=False)
-            if patch_ids.shape != (len(self),):
-                raise ValueError("'patch_ids' has an invalid shape")
-            patch_ids = patch_ids.astype(np.int32, casting="same_kind", copy=False)
-        self.patch_ids = patch_ids
-
-    def split_patches(self) -> dict[int, DataChunk]:
-        if self.patch_ids is None:
-            raise ValueError("'patch_ids' not provided")
-        chunks = {}
-        for patch_id, attr_dict in groupby_value(
-            self.patch_ids,
-            coords=self.coords,
-            weights=self.weights,
-            redshifts=self.redshifts,
-        ):
-            coords = CoordsSky(attr_dict.pop("coords"))
-            chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
-        return chunks
 
 
 class ArrayBuffer:
@@ -107,7 +30,7 @@ class ArrayBuffer:
         self._shards = []
 
     def append(self, data: NDArray) -> None:
-        data = np.asarray(data, copy=False)
+        data = np.asarray(data)
         self._shards.append(data)
 
     def get_values(self) -> NDArray:
@@ -203,6 +126,7 @@ class Metadata:
 
 class Patch(Sized):
     meta: Metadata
+    _trees: BinnedTrees | None
 
     def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
@@ -212,6 +136,7 @@ class Patch(Sized):
         except FileNotFoundError:
             self.meta = Metadata.compute(self.coords, self.weights)
             self.meta.to_file(meta_data_file)
+        self._trees = None
 
     def __len__(self) -> int:
         return self.meta.num_records
@@ -240,3 +165,164 @@ class Patch(Sized):
         if self.has_redshifts():
             return np.fromfile(self.cache_path / "redshifts")
         return None
+
+    def get_trees(
+        self,
+        binning: NDArray | None = None,
+        *,
+        closed: Tclosed = "left",
+        leafsize: int = 16,
+        force_build: bool = False,
+    ) -> BinnedTrees:
+        kwargs = dict(binning=binning, closed=closed, leafsize=leafsize, force=force_build)
+
+        if self._trees is None:
+            try:
+                self._trees = BinnedTrees(self)
+            except FileNotFoundError:
+                self._trees = BinnedTrees.create(self, **kwargs)
+                return self._trees
+
+        self._trees.rebuild(**kwargs)
+        return self._trees
+
+
+def build_binned_trees(
+    patch: Patch,
+    binning: NDArray,
+    closed: str,
+    leafsize: int,
+) -> tuple[AngularTree]:
+    if not patch.has_redshifts():
+        raise ValueError("patch has no 'redshifts' attached")
+
+    trees = []
+    for _, bin_data in groupby_binning(
+        patch.redshifts,
+        binning,
+        closed=closed,
+        coords=patch.coords,
+        weights=patch.weights,
+    ):
+        bin_data["coords"] = CoordsSky(bin_data["coords"])
+        tree = AngularTree(**bin_data, leafsize=leafsize)
+        trees.append(tree)
+    return tuple(trees)
+
+
+class BinnedTrees(Iterable):
+    _patch: Patch
+
+    def __init__(self, patch: Patch) -> None:
+        self._patch = patch
+        if not self.binning_file.exists():
+            raise FileNotFoundError(f"no trees found for patch at '{self.cache_path}'")
+
+        with self.binning_file.open() as f:
+            binning = json.load(f)
+        if binning is None:
+            self.binning = None
+        else:
+            self.binning = np.asarray(binning)
+
+    @classmethod
+    def create(
+        cls,
+        patch: Patch,
+        binning: NDArray | None = None,
+        *,
+        closed: Tclosed = "left",
+        leafsize: int = 16,
+        force: bool = False,
+    ) -> BinnedTrees:
+        new = cls.__new__(cls)
+        new._patch = patch
+        new.rebuild(binning, closed=closed, leafsize=leafsize, force=force)
+        return new
+
+    def rebuild(
+        self,
+        binning: NDArray | None = None,
+        *,
+        closed: Tclosed = "left",
+        leafsize: int = 16,
+        force: bool = False,
+    ) -> None:
+        if binning is not None:
+            binning = np.asarray(binning, dtype=np.float64)
+        if not force and self.binning_file.exists() and self.binning_equal(binning):
+            return
+
+        with self.trees_file.open(mode="wb") as f:
+            patch = self._patch
+            if binning is not None:
+                trees = build_binned_trees(patch, binning, closed, leafsize)
+            else:
+                trees = AngularTree(patch.coords, patch.weights, leafsize=leafsize)
+            pickle.dump(trees, f)
+
+        with self.binning_file.open(mode="w") as f:
+            try:
+                json.dump(binning.tolist(), f)
+            except AttributeError:
+                json.dump(binning, f)
+        self.binning = binning
+
+    @property
+    def cache_path(self) -> Path:
+        return self._patch.cache_path
+
+    @property
+    def binning_file(self) -> Path:
+        return self.cache_path / "binning.json"
+
+    @property
+    def trees_file(self) -> Path:
+        return self.cache_path / "trees.pkl"
+
+    def is_binned(self) -> bool:
+        return self.binning is not None
+
+    def binning_equal(self, binning: NDArray | None) -> bool:
+        if self.binning is None and binning is None:
+            return True
+        elif np.array_equal(self.binning, binning):
+            return True
+        return False
+
+    @property
+    def trees(self) -> AngularTree | tuple[AngularTree]:
+        with self.trees_file.open(mode="rb") as f:
+            return pickle.load(f)
+
+    def __iter__(self) -> Iterator[AngularTree]:
+        if self.is_binned():
+            yield from self.trees
+        else:
+            yield from repeat(self.trees)
+
+    def count_binned(
+        self,
+        other: BinnedTrees,
+        ang_min: NDArray,
+        ang_max: NDArray,
+        weight_scale: float | None = None,
+        weight_res: int = 50,
+    ) -> NDArray[np.float64]:
+        is_binned = (self.is_binned(), other.is_binned())
+        if not any(is_binned):
+            raise ValueError("at least one of the trees must be binned")
+        elif all(is_binned) and not self.binning_equal(other.binning):
+            raise ValueError("binning of trees does not match")
+
+        binned_counts = []
+        for tree_self, tree_other in zip(iter(self), iter(other)):
+            counts = tree_self.count(
+                tree_other,
+                ang_min,
+                ang_max,
+                weight_scale=weight_scale,
+                weight_res=weight_res,
+            )
+            binned_counts.append(counts)
+        return np.transpose(binned_counts)
