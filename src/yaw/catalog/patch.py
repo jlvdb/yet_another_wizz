@@ -125,7 +125,7 @@ class DataChunk:
         chunks = {}
         for patch_id, attr_dict in groupby_value(
             self.patch_ids,
-            coords=self.coords.data,
+            coords=self.coords,
             weights=self.weights,
             redshifts=self.redshifts,
         ):

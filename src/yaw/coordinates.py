@@ -18,7 +18,7 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["Coords3D", "CoordsSky", "Dists3D", "DistsSky"]
 
 
-Twrap = TypeVar("Twrap", bound="NDArrayWrapper")
+Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
 Tcoord = TypeVar("Tcoord", bound="Coordinates")
 Tdist = TypeVar("Tdist", bound="Distances")
 
@@ -29,7 +29,7 @@ def sgn(val: ArrayLike) -> ArrayLike:
     return np.where(val == 0, 1.0, np.sign(val))
 
 
-class NDArrayWrapper(Iterable, Sized):
+class CustomNumpyArray(Iterable, Sized):
     data: NDArray
 
     @property
@@ -45,10 +45,10 @@ class NDArrayWrapper(Iterable, Sized):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self: Twrap, idx: ArrayLike) -> Twrap:
+    def __getitem__(self: Tarray, idx: ArrayLike) -> Tarray:
         return type(self)(self.data[idx])
 
-    def __iter__(self: Twrap) -> Iterator[Twrap]:
+    def __iter__(self: Tarray) -> Iterator[Tarray]:
         for i in range(len(self)):
             yield self[i]
 
@@ -56,7 +56,7 @@ class NDArrayWrapper(Iterable, Sized):
         return self.data.tolist()
 
 
-class Coordinates(NDArrayWrapper):
+class Coordinates(CustomNumpyArray):
     def __init__(self, data: ArrayLike) -> None:
         self.data = np.atleast_2d(data).astype(np.float64, copy=False)
         if not self.data.shape[1] == self.ndim:
@@ -185,7 +185,7 @@ class CoordsSky(Coordinates):
 
 
 @total_ordering
-class Distances(NDArrayWrapper):
+class Distances(CustomNumpyArray):
     def __init__(self, data: ArrayLike) -> None:
         self.data = np.atleast_1d(data).astype(np.float64, copy=False)
 
