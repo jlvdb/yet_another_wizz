@@ -7,7 +7,7 @@ from scipy.spatial import cKDTree
 
 from yaw.core.coordinates import Coordinate, DistSky
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 __all__ = ["SphericalKDTree"]

@@ -14,7 +14,7 @@ from yaw.core.cosmology import Scale
 from yaw.core.docs import Parameter
 from yaw.core.math import array_equal
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 __all__ = ["ScalesConfig"]

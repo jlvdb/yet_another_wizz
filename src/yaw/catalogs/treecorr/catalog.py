@@ -28,7 +28,7 @@ from yaw.correlation.paircounts import (
 )
 from yaw.redshifts import HistData
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from pandas import DataFrame, Interval
 
     from yaw.catalogs import PatchLinkage

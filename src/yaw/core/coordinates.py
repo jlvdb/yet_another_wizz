@@ -14,7 +14,7 @@ import numpy as np
 
 from yaw.core.math import sgn
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
 __all__ = ["Coord3D", "CoordSky", "Dist3D", "DistSky"]

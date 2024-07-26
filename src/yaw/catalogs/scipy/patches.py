@@ -11,7 +11,7 @@ from scipy.cluster import vq
 from yaw.catalogs.scipy.kdtree import SphericalKDTree
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, Distance, DistSky
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame, Interval
 

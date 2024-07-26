@@ -18,8 +18,9 @@ from numpy.typing import NDArray
 from pandas import DataFrame
 from scipy.cluster import vq
 
-from yaw.catalog.patch import DataChunk, Patch, PatchWriter
-from yaw.catalog.readers import BaseReader, MemoryReader, new_filereader
+from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
+from yaw.catalog.readers import BaseReader, MemoryReader, get_filereader
+from yaw.catalog.utils import DataChunk, Tclosed
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
 __all__ = [
@@ -32,6 +33,10 @@ PATCH_NAME_TEMPLATE = "patch_{:}"
 
 
 class InconsistentPatchesError(Exception):
+    pass
+
+
+class InconsistentTreesError(Exception):
     pass
 
 
@@ -86,7 +91,7 @@ def create_patch_centers(
 
 
 def compute_patch_ids(chunk: DataChunk, patch_centers: CoordsSky) -> NDArray[np.int32]:
-    patches, _ = vq.vq(chunk.coords.to_3d().data, patch_centers.to_3d().data)
+    patches, _ = vq.vq(chunk.coords.to_3d(), patch_centers.to_3d())
     return patches.astype(np.int32, copy=False)
 
 
@@ -277,3 +282,16 @@ class Catalog(Mapping[int, Patch]):
 
     def get_radii(self) -> DistsSky:
         return DistsSky.from_dists(patch.meta.radius for patch in self.values())
+
+    def build_trees(
+        self,
+        binning: NDArray | None = None,
+        *,
+        closed: Tclosed = "left",
+        leafsize: int = 16,
+        force: bool = False,
+    ) -> None:
+        for patch in self.values():
+            BinnedTrees.build(
+                patch, binning, closed=closed, leafsize=leafsize, force=force
+            )

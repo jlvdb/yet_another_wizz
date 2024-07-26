@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from yaw.catalogs.catalog import BackendError, BaseCatalog
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from pandas import DataFrame
 
     from yaw.core.coordinates import Coordinate

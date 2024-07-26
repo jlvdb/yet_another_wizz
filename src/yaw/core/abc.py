@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from pandas import IntervalIndex
 
     from yaw.core.containers import Indexer

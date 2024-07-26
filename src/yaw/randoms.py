@@ -13,7 +13,7 @@ import pandas as pd
 from yaw.core.logging import TimedLog
 from yaw.core.utils import long_num_format
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame
 

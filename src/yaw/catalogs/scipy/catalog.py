@@ -24,7 +24,7 @@ from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
 from yaw.correlation.paircounts import NormalisedCounts
 from yaw.redshifts import HistData
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame
 

@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 
 from ._math import _rebin
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from numpy.typing import ArrayLike
 
     from yaw.core.containers import SampledData

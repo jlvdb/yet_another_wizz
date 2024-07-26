@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence, Sized
+from collections.abc import Sized
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generator, Literal, Union
+from typing import Union
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
+from yaw.catalog.trees import BinnedTrees
+from yaw.catalog.utils import DataChunk
 from yaw.coordinates import CoordsSky, DistsSky
 
 __all__ = [
-    "DataChunk",
     "PatchWriter",
     "Patch",
 ]
@@ -20,126 +21,12 @@ __all__ = [
 Tpath = Union[Path, str]
 
 
-def groupby_value(
-    values: NDArray,
-    **optional_arrays: NDArray | None,
-) -> Generator[tuple[Any, dict[str, NDArray]], None, None]:
-    idx_sort = np.argsort(values)
-    values_sorted = values[idx_sort]
-    uniques, _idx_split = np.unique(values_sorted, return_index=True)
-    idx_split = _idx_split[1:]
-
-    splitted_arrays = {}
-    for name, array in optional_arrays.items():
-        if array is not None:
-            array_sorted = array[idx_sort]
-            splitted_arrays[name] = np.split(array_sorted, idx_split)
-
-    for i, value in enumerate(uniques):
-        yield value, {name: splits[i] for name, splits in splitted_arrays.items()}
-
-
-def groupby_binning(
-    values: NDArray,
-    binning: NDArray,
-    closed: Literal["left", "right"] = "left",
-    **optional_arrays: NDArray | None,
-) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
-    binning = np.asarray(binning)
-    bin_idx = np.digitize(values, binning, right=(closed == "right"))
-    for i, bin_array in groupby_value(bin_idx, **optional_arrays):
-        if i == 0 or i == len(binning):  # skip values outside of binning range
-            continue
-        yield binning[i - 1 : i + 1], bin_array
-
-
-class DataChunk:
-    def __init__(
-        self,
-        coords: CoordsSky,
-        weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
-        patch_ids: NDArray[np.int32] | None = None,
-    ) -> None:
-        self.coords = coords
-        self.weights = weights
-        self.redshifts = redshifts
-        self.set_patch_ids(patch_ids)
-
-    @classmethod
-    def from_columns(
-        cls,
-        ra: NDArray,
-        dec: NDArray,
-        weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
-        patch_ids: NDArray | None = None,
-        degrees: bool = True,
-    ):
-        if degrees:
-            ra = np.deg2rad(ra)
-            dec = np.deg2rad(dec)
-        coords = CoordsSky(np.column_stack((ra, dec)))
-        return cls(coords, weights, redshifts, patch_ids)
-
-    @classmethod
-    def from_chunks(cls, chunks: Sequence[DataChunk]) -> DataChunk:
-        def concat_optional_attr(attr: str) -> NDArray | None:
-            values = tuple(getattr(chunk, attr) for chunk in chunks)
-            value_is_set = tuple(value is not None for value in values)
-            if all(value_is_set):
-                return np.concatenate(values)
-            elif not any(value_is_set):
-                return None
-            raise ValueError(f"not all chunks have '{attr}' set")
-
-        return DataChunk(
-            coords=CoordsSky.from_coords(chunk.coords for chunk in chunks),
-            weights=concat_optional_attr("weights"),
-            redshifts=concat_optional_attr("redshifts"),
-            patch_ids=concat_optional_attr("patch_ids"),
-        )
-
-    def __len__(self) -> int:
-        return len(self.coords)
-
-    def __getitem__(self, index: ArrayLike) -> DataChunk:
-        return DataChunk(
-            coords=self.coords[index],
-            weights=self.weights[index] if self.weights is not None else None,
-            redshifts=self.redshifts[index] if self.redshifts is not None else None,
-            patch_ids=self.patch_ids[index] if self.patch_ids is not None else None,
-        )
-
-    def set_patch_ids(self, patch_ids: NDArray | None):
-        if patch_ids is not None:
-            patch_ids = np.asarray(patch_ids, copy=False)
-            if patch_ids.shape != (len(self),):
-                raise ValueError("'patch_ids' has an invalid shape")
-            patch_ids = patch_ids.astype(np.int32, casting="same_kind", copy=False)
-        self.patch_ids = patch_ids
-
-    def split_patches(self) -> dict[int, DataChunk]:
-        if self.patch_ids is None:
-            raise ValueError("'patch_ids' not provided")
-        chunks = {}
-        for patch_id, attr_dict in groupby_value(
-            self.patch_ids,
-            coords=self.coords.data,
-            weights=self.weights,
-            redshifts=self.redshifts,
-        ):
-            coords = CoordsSky(attr_dict.pop("coords"))
-            chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
-        return chunks
-
-
 class ArrayBuffer:
     def __init__(self):
         self._shards = []
 
     def append(self, data: NDArray) -> None:
-        data = np.asarray(data, copy=False)
+        data = np.asarray(data)
         self._shards.append(data)
 
     def get_values(self) -> NDArray:
@@ -272,3 +159,6 @@ class Patch(Sized):
         if self.has_redshifts():
             return np.fromfile(self.cache_path / "redshifts")
         return None
+
+    def get_trees(self) -> BinnedTrees:
+        return BinnedTrees(self)

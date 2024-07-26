@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pyarrow import parquet
 
-from yaw.catalog.patch import DataChunk
+from yaw.catalog.utils import DataChunk
 
 __all__ = [
     "FitsReader",
