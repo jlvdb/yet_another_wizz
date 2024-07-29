@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Sized
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +9,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from yaw.catalog.trees import BinnedTrees
-from yaw.catalog.utils import DataChunk
+from yaw.catalog.utils import DataChunk, JsonSerialisable
 from yaw.coordinates import CoordsSky, DistsSky
 
 __all__ = [
@@ -82,7 +81,7 @@ class PatchWriter:
 
 
 @dataclass
-class Metadata:
+class Metadata(JsonSerialisable):
     num_records: int
     total: float
     center: CoordsSky
@@ -102,22 +101,18 @@ class Metadata:
         return new
 
     @classmethod
-    def from_file(cls, fpath: Tpath) -> Metadata:
-        with Path(fpath).open() as f:
-            meta: dict = json.load(f)
-        center = CoordsSky(meta.pop("center"))
-        radius = DistsSky(meta.pop("radius"))
-        return cls(center=center, radius=radius, **meta)
+    def from_dict(cls, kwarg_dict: dict) -> Metadata:
+        center = CoordsSky(kwarg_dict.pop("center"))
+        radius = DistsSky(kwarg_dict.pop("radius"))
+        return cls(center=center, radius=radius, **kwarg_dict)
 
-    def to_file(self, fpath: Tpath) -> None:
-        meta = dict(
+    def to_dict(self) -> dict:
+        return dict(
             num_records=int(self.num_records),
             total=float(self.total),
             center=self.center.to_sky().tolist()[0],  # 2-dim by default
             radius=self.radius.tolist()[0],  # 1-dim by default
         )
-        with Path(fpath).open(mode="w") as f:
-            json.dump(meta, f)
 
 
 class Patch(Sized):

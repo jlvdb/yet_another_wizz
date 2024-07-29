@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, Generator, Literal
+from pathlib import Path
+from typing import Any, Generator, Literal, Type, TypeVar, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -9,6 +12,8 @@ from numpy.typing import ArrayLike, NDArray
 from yaw.coordinates import CoordsSky
 
 Tclosed = Literal["left", "right"]
+Tjson = TypeVar("Tjson", bound="JsonSerialisable")
+Tpath = Union[Path, str]
 
 
 def groupby_value(
@@ -140,3 +145,23 @@ class DataChunk:
             coords = CoordsSky(attr_dict.pop("coords"))
             chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
         return chunks
+
+
+class JsonSerialisable(ABC):
+    @classmethod
+    def from_dict(cls: Type[Tjson], kwarg_dict: dict) -> Tjson:
+        return cls(**kwarg_dict)
+
+    @abstractmethod
+    def to_dict(self) -> dict:
+        pass
+
+    @classmethod
+    def from_file(cls: Type[Tjson], path: Tpath) -> Tjson:
+        with Path(path).open() as f:
+            kwarg_dict = json.load(f)
+        return cls.from_dict(kwarg_dict)
+
+    def to_file(self, path: Tpath) -> Tjson:
+        with Path(path).open(mode="w") as f:
+            json.dump(self.to_dict(), f, indent=4)
