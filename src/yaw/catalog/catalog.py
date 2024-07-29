@@ -23,6 +23,7 @@ from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.trees import parse_binning
 from yaw.catalog.utils import DataChunk, Tclosed
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
+from yaw.parallel import ParallelHelper
 
 __all__ = [
     "Catalog",
@@ -144,10 +145,19 @@ class Catalog(Mapping[int, Patch]):
 
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
-        self._patches = {}
-        for cache in self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")):
-            patch_id = int(cache.name.split("_")[1])
-            self._patches[patch_id] = Patch(cache)
+
+        if ParallelHelper.on_root():
+            patches = {}
+            for cache in self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")):
+                patch_id = int(cache.name.split("_")[1])
+                patches[patch_id] = Patch(cache)
+        else:
+            patches = None
+
+        if ParallelHelper.use_mpi():
+            self._patches = ParallelHelper.comm.bcast(patches, root=0)
+        else:
+            self._patches = patches
 
     @classmethod
     def from_dataframe(
@@ -168,21 +178,22 @@ class Catalog(Mapping[int, Patch]):
         overwrite: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        reader = DataFrameReader(
-            dataframe,
-            ra_name=ra_name,
-            dec_name=dec_name,
-            weight_name=weight_name,
-            redshift_name=redshift_name,
-            patch_name=patch_name,
-            chunksize=chunksize,
-            degrees=degrees,
-            **reader_kwargs,
-        )
-        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-        if mode == PatchMode.create:
-            patch_centers = create_patch_centers(reader, patch_num, probe_size)
-        write_patches(cache_directory, reader, mode, patch_centers, overwrite)
+        if ParallelHelper.on_root():
+            reader = DataFrameReader(
+                dataframe,
+                ra_name=ra_name,
+                dec_name=dec_name,
+                weight_name=weight_name,
+                redshift_name=redshift_name,
+                patch_name=patch_name,
+                chunksize=chunksize,
+                degrees=degrees,
+                **reader_kwargs,
+            )
+            mode = PatchMode.determine(patch_centers, patch_name, patch_num)
+            if mode == PatchMode.create:
+                patch_centers = create_patch_centers(reader, patch_num, probe_size)
+            write_patches(cache_directory, reader, mode, patch_centers, overwrite)
         return cls(cache_directory)
 
     @classmethod
@@ -204,21 +215,22 @@ class Catalog(Mapping[int, Patch]):
         overwrite: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        reader = new_filereader(
-            path,
-            ra_name=ra_name,
-            dec_name=dec_name,
-            weight_name=weight_name,
-            redshift_name=redshift_name,
-            patch_name=patch_name,
-            chunksize=chunksize,
-            degrees=degrees,
-            **reader_kwargs,
-        )
-        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-        if mode == PatchMode.create:
-            patch_centers = create_patch_centers(reader, patch_num, probe_size)
-        write_patches(cache_directory, reader, mode, patch_centers, overwrite)
+        if ParallelHelper.on_root():
+            reader = new_filereader(
+                path,
+                ra_name=ra_name,
+                dec_name=dec_name,
+                weight_name=weight_name,
+                redshift_name=redshift_name,
+                patch_name=patch_name,
+                chunksize=chunksize,
+                degrees=degrees,
+                **reader_kwargs,
+            )
+            mode = PatchMode.determine(patch_centers, patch_name, patch_num)
+            if mode == PatchMode.create:
+                patch_centers = create_patch_centers(reader, patch_num, probe_size)
+            write_patches(cache_directory, reader, mode, patch_centers, overwrite)
         return cls(cache_directory)
 
     def __repr__(self) -> str:
@@ -284,7 +296,10 @@ class Catalog(Mapping[int, Patch]):
         force: bool = False,
     ) -> None:
         binning = parse_binning(binning)
-        for patch in self.values():
-            BinnedTrees.build(
-                patch, binning, closed=closed, leafsize=leafsize, force=force
-            )
+        for _ in ParallelHelper.imap_unordered(
+            BinnedTrees.build,
+            self.values(),
+            job_args=(binning,),
+            job_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+        ):
+            pass
