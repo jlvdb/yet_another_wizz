@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Iterator, Mapping
 from contextlib import AbstractContextManager
 from enum import Enum
@@ -296,10 +297,14 @@ class Catalog(Mapping[int, Patch]):
         force: bool = False,
     ) -> None:
         binning = parse_binning(binning)
-        for _ in ParallelHelper.iter_unordered(
-            BinnedTrees.build,
-            self.values(),
-            job_args=(binning,),
-            job_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
-        ):
-            pass
+        patches = self.values()
+
+        deque(  # deplete the iterator with maxlen=0
+            ParallelHelper.iter_unordered(
+                BinnedTrees.build,
+                patches,
+                job_args=(binning,),
+                job_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+            ),
+            maxlen=0,
+        )

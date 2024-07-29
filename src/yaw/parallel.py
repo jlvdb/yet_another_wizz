@@ -31,17 +31,8 @@ class ParallelJob:
         self.args = args
         self.kwargs = kwargs
 
-    def __call__(self, arg: Targ) -> tuple[int, Tresult]:
-        result = self.function(arg, *self.args, **self.kwargs)
-
-        if use_mpi():
-            rank = COMM.Get_rank()
-        else:
-            name = multiprocessing.current_process().name
-            _, str_rank = name.split("-")
-            rank = int(str_rank)
-
-        return (rank, result)
+    def __call__(self, arg: Targ) -> Tresult:
+        return self.function(arg, *self.args, **self.kwargs)
 
 
 def _init_mpi_jobs(job_items: Iterable) -> int:
@@ -57,20 +48,21 @@ def _init_mpi_jobs(job_items: Iterable) -> int:
 
 def _finalise_mpi_jobs(job_items: Iterable, active_ranks: int) -> Iterator:
     while active_ranks > 0:
-        worker, result = COMM.recv(source=MPI.ANY_SOURCE, tag=2)
+        rank, result = COMM.recv(source=MPI.ANY_SOURCE, tag=2)
         yield result
 
         try:
-            COMM.send(next(job_items), dest=worker, tag=1)
+            COMM.send(next(job_items), dest=rank, tag=1)
         except StopIteration:
-            COMM.send(EndOfQueue, dest=worker, tag=1)
+            COMM.send(EndOfQueue, dest=rank, tag=1)
             active_ranks -= 1
 
 
 def _run_mpi_job(job_func: ParallelJob) -> None:
-    while (args := COMM.recv(source=0, tag=1)) is not EndOfQueue:
-        rank_result = job_func(args)
-        COMM.send(rank_result, dest=0, tag=2)
+    rank = COMM.Get_rank()
+    while (id_args := COMM.recv(source=0, tag=1)) is not EndOfQueue:
+        result = job_func(id_args)
+        COMM.send((rank, result), dest=0, tag=2)
 
 
 class ParallelHelper:
@@ -124,15 +116,16 @@ class ParallelHelper:
             function, job_items, job_args=job_args, job_kwargs=job_kwargs
         )
 
-        if progress and cls.on_root():
+        show_bar = progress and cls.on_root()
+        if show_bar:
             if n_jobs is None:
                 n_jobs = len(job_items)
             ncols = min(80, get_terminal_size()[0])
-            result_iter: Iterator[Tresult] = tqdm(
-                result_iter, total=n_jobs, ncols=ncols
-            )
+            bar = tqdm(total=n_jobs, ncols=ncols)
 
         for result in iter(result_iter):
+            if show_bar:
+                bar.update(1)
             yield result
 
     @classmethod
@@ -146,8 +139,7 @@ class ParallelHelper:
     ) -> Iterator[Tresult]:
         job_func = ParallelJob(function, job_args, job_kwargs)
         with multiprocessing.Pool(cls.num_threads) as pool:
-            for _, result in pool.imap_unordered(job_func, job_items):
-                yield result
+            yield from pool.imap_unordered(job_func, job_items)
 
     @classmethod
     def _iter_mpi(
@@ -165,5 +157,4 @@ class ParallelHelper:
         else:
             job_iter = iter(job_items)
             active_ranks = _init_mpi_jobs(job_iter)
-            for result in _finalise_mpi_jobs(job_iter, active_ranks):
-                yield result
+            yield from _finalise_mpi_jobs(job_iter, active_ranks)
