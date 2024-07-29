@@ -67,13 +67,14 @@ class PatchWriter:
         if self._cachesize > self.chunksize:
             self.flush()
 
-    def flush(self):
-        for attr, cache in self._caches.items():
-            cache_path = self.cache_path / attr
-            with cache_path.open(mode="a") as f:
-                cache.get_values().tofile(f)
-            cache.clear()
-        self._cachesize = 0
+    def flush(self) -> None:
+        if self._cachesize > 0:
+            for attr, cache in self._caches.items():
+                cache_path = self.cache_path / attr
+                with cache_path.open(mode="a") as f:
+                    cache.get_values().tofile(f)
+                cache.clear()
+            self._cachesize = 0
 
     def finalize(self) -> None:
         self.flush()
