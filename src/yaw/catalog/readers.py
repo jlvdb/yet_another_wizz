@@ -179,7 +179,7 @@ class ParquetReader(FileReader):
             attr: group.column(col).to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def read(self, sparse: int) -> DataChunk:
         return super().read(sparse)
@@ -209,14 +209,14 @@ class FitsReader(FileReader):
             attr: swap_byteorder(group[col])
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: swap_byteorder(self._hdu[col][::sparse])
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
 
 class HDFReader(FileReader):
@@ -244,14 +244,14 @@ class HDFReader(FileReader):
             attr: self._file[col][offset : offset + self.chunksize]
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._file[col][::sparse]
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
 
 def new_filereader(

@@ -72,12 +72,21 @@ class DataChunk:
         redshifts: NDArray | None = None,
         patch_ids: NDArray | None = None,
         degrees: bool = True,
+        chkfinite: bool = False,
     ):
+        if chkfinite:
+            parser = lambda arr: None if arr is None else np.asarray_chkfinite(arr)
+        else:
+            parser = lambda arr: arr
+
+        ra = parser(ra)
+        dec = parser(dec)
         if degrees:
             ra = np.deg2rad(ra)
             dec = np.deg2rad(dec)
+
         coords = CoordsSky(np.column_stack((ra, dec)))
-        return cls(coords, weights, redshifts, patch_ids)
+        return cls(coords, parser(weights), parser(redshifts), parser(patch_ids))
 
     @classmethod
     def from_chunks(cls, chunks: Sequence[DataChunk]) -> DataChunk:
