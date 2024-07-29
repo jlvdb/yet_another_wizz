@@ -19,7 +19,7 @@ from pandas import DataFrame
 from scipy.cluster import vq
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
-from yaw.catalog.readers import BaseReader, MemoryReader, new_filereader
+from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.utils import DataChunk, Tclosed
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
@@ -38,16 +38,6 @@ class InconsistentPatchesError(Exception):
 
 class InconsistentTreesError(Exception):
     pass
-
-
-def get_column(
-    dataframe: DataFrame, column: str | None, required: bool = False
-) -> NDArray | None:
-    if column is not None:
-        return dataframe[column].to_numpy()
-    elif required:
-        raise ValueError("column is required but no column name provided")
-    return None
 
 
 class PatchMode(Enum):
@@ -162,7 +152,7 @@ class Catalog(Mapping[int, Patch]):
     def from_dataframe(
         cls,
         cache_directory: Tpath,
-        data: DataFrame,
+        dataframe: DataFrame,
         *,
         ra_name: str,
         dec_name: str,
@@ -175,19 +165,20 @@ class Catalog(Mapping[int, Patch]):
         chunksize: int = 1_000_000,
         probe_size: int = -1,
         overwrite: bool = False,
+        **reader_kwargs,
     ) -> Catalog:
-        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-        data_chunk = DataChunk.from_columns(
-            ra=get_column(data, ra_name, required=True),
-            dec=get_column(data, dec_name, required=True),
-            weights=get_column(data, weight_name),
-            redshifts=get_column(data, redshift_name),
-            patch_ids=get_column(
-                data, patch_name if mode == PatchMode.divide else None
-            ),
+        reader = DataFrameReader(
+            dataframe,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            patch_name=patch_name,
+            chunksize=chunksize,
             degrees=degrees,
+            **reader_kwargs,
         )
-        reader = MemoryReader(data_chunk, chunksize=chunksize)
+        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
         if mode == PatchMode.create:
             patch_centers = create_patch_centers(reader, patch_num, probe_size)
         write_patches(cache_directory, reader, mode, patch_centers, overwrite)
@@ -212,7 +203,6 @@ class Catalog(Mapping[int, Patch]):
         overwrite: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
         reader = new_filereader(
             path,
             ra_name=ra_name,
@@ -224,6 +214,7 @@ class Catalog(Mapping[int, Patch]):
             degrees=degrees,
             **reader_kwargs,
         )
+        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
         if mode == PatchMode.create:
             patch_centers = create_patch_centers(reader, patch_num, probe_size)
         write_patches(cache_directory, reader, mode, patch_centers, overwrite)

@@ -74,10 +74,12 @@ class DataChunk:
         degrees: bool = True,
         chkfinite: bool = False,
     ):
-        if chkfinite:
-            parser = lambda arr: None if arr is None else np.asarray_chkfinite(arr)
-        else:
-            parser = lambda arr: arr
+        def parser(arr: NDArray | None) -> NDArray | None:
+            if arr is None:
+                return None
+            if chkfinite:
+                return np.asarray_chkfinite(arr)
+            return arr
 
         ra = parser(ra)
         dec = parser(dec)
