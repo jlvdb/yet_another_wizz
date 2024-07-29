@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import pickle
 from collections.abc import Iterable, Iterator, Sized
 from itertools import repeat
@@ -23,6 +22,15 @@ __all__ = [
 ]
 
 Tpath = Union[Path, str]
+
+
+def parse_binning(binning: NDArray | None) -> NDArray | None:
+    if binning is None:
+        return None
+    binning = np.asarray(binning, dtype=np.float64)
+    if np.any(np.diff(binning) <= 0.0):
+        raise ValueError("bin edges must increase monotonically")
+    return binning
 
 
 def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
@@ -156,12 +164,8 @@ class BinnedTrees(Iterable):
         if not self.binning_file.exists():
             raise FileNotFoundError(f"no trees found for patch at '{self.cache_path}'")
 
-        with self.binning_file.open() as f:
-            binning = json.load(f)
-        if binning is None:
-            self.binning = None
-        else:
-            self.binning = np.asarray(binning)
+        binning = np.fromfile(self.binning_file)
+        self.binning = None if len(binning) == 0 else binning
 
     @classmethod
     def build(
@@ -173,8 +177,7 @@ class BinnedTrees(Iterable):
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:
-        if binning is not None:
-            binning = np.asarray(binning, dtype=np.float64)
+        binning = parse_binning(binning)
 
         try:
             assert not force
@@ -186,19 +189,25 @@ class BinnedTrees(Iterable):
             new.binning = binning
 
             with new.trees_file.open(mode="wb") as f:
-                if binning is not None:
-                    trees = build_binned_trees(patch, binning, closed, leafsize)
-                else:
+                if binning is None:
                     trees = AngularTree(patch.coords, patch.weights, leafsize=leafsize)
+                else:
+                    trees = build_binned_trees(patch, binning, closed, leafsize)
                 pickle.dump(trees, f)
 
-            with new.binning_file.open(mode="w") as f:
-                try:
-                    json.dump(binning.tolist(), f)
-                except AttributeError:
-                    json.dump(binning, f)
+            if binning is None:
+                binning = np.empty(0)  # zero bytes in binary representation
+            binning.tofile(new.binning_file)
 
         return new
+
+    @classmethod
+    def from_path(cls, cache_path: Tpath) -> BinnedTrees:
+        patch = Patch(cache_path)
+        return cls(patch)
+
+    def to_path(self) -> str:
+        return str(self.cache_path)
 
     @property
     def cache_path(self) -> Path:
@@ -206,7 +215,7 @@ class BinnedTrees(Iterable):
 
     @property
     def binning_file(self) -> Path:
-        return self.cache_path / "binning.json"
+        return self.cache_path / "binning"
 
     @property
     def trees_file(self) -> Path:

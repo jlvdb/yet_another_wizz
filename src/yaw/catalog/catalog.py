@@ -20,6 +20,7 @@ from scipy.cluster import vq
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
+from yaw.catalog.trees import parse_binning
 from yaw.catalog.utils import DataChunk, Tclosed
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 
@@ -282,6 +283,7 @@ class Catalog(Mapping[int, Patch]):
         leafsize: int = 16,
         force: bool = False,
     ) -> None:
+        binning = parse_binning(binning)
         for patch in self.values():
             BinnedTrees.build(
                 patch, binning, closed=closed, leafsize=leafsize, force=force
