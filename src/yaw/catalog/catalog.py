@@ -296,7 +296,7 @@ class Catalog(Mapping[int, Patch]):
         force: bool = False,
     ) -> None:
         binning = parse_binning(binning)
-        for _ in ParallelHelper.imap_unordered(
+        for _ in ParallelHelper.iter_unordered(
             BinnedTrees.build,
             self.values(),
             job_args=(binning,),

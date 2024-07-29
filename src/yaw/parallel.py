@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import multiprocessing as PYMP
-import sys
+import multiprocessing
 from collections.abc import Iterable, Iterator
 from shutil import get_terminal_size
 from typing import Callable, TypeVar
@@ -38,7 +37,7 @@ class ParallelJob:
         if use_mpi():
             rank = COMM.Get_rank()
         else:
-            name = PYMP.current_process().name
+            name = multiprocessing.current_process().name
             _, str_rank = name.split("-")
             rank = int(str_rank)
 
@@ -77,10 +76,10 @@ def _run_mpi_job(job_func: ParallelJob) -> None:
 class ParallelHelper:
     comm = COMM
     size = SIZE
-    num_threads = PYMP.cpu_count()
+    num_threads = multiprocessing.cpu_count()
 
     @classmethod
-    def set_pymp_threads(cls, num_threads: int) -> None:
+    def set_multiprocessing_threads(cls, num_threads: int) -> None:
         cls.num_threads = num_threads
 
     @classmethod
@@ -98,14 +97,14 @@ class ParallelHelper:
     @classmethod
     def on_worker(cls) -> bool:
         return not cls.on_root()
-    
+
     @classmethod
     def print(cls, *args, **kwargs) -> None:
         if cls.on_root():
             print(*args, **kwargs)
 
     @classmethod
-    def imap_unordered(
+    def iter_unordered(
         cls,
         function: Callable[[Targ], Tresult],
         job_items: Iterable[Targ],
@@ -120,7 +119,7 @@ class ParallelHelper:
         if job_kwargs is None:
             job_kwargs = dict()
 
-        parallel_method = cls._imap_mpi if cls.use_mpi() else cls._imap_pymp
+        parallel_method = cls._iter_mpi if cls.use_mpi() else cls._iter_multiprocessing
         result_iter = parallel_method(
             function, job_items, job_args=job_args, job_kwargs=job_kwargs
         )
@@ -137,7 +136,7 @@ class ParallelHelper:
             yield result
 
     @classmethod
-    def _imap_pymp(
+    def _iter_multiprocessing(
         cls,
         function: Callable[[Targ], Tresult],
         job_items: Iterable[Targ],
@@ -146,12 +145,12 @@ class ParallelHelper:
         job_kwargs: dict,
     ) -> Iterator[Tresult]:
         job_func = ParallelJob(function, job_args, job_kwargs)
-        with PYMP.Pool(cls.num_threads) as pool:
+        with multiprocessing.Pool(cls.num_threads) as pool:
             for _, result in pool.imap_unordered(job_func, job_items):
                 yield result
 
     @classmethod
-    def _imap_mpi(
+    def _iter_mpi(
         cls,
         function: Callable[[Targ], Tresult],
         job_items: Iterable[Targ],
