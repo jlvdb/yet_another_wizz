@@ -3,7 +3,7 @@ from __future__ import annotations
 import multiprocessing
 from collections.abc import Iterable, Iterator
 from shutil import get_terminal_size
-from typing import Callable, Optional, TypeVar
+from typing import Callable, TypeVar
 
 from mpi4py import MPI
 from tqdm import tqdm
@@ -95,7 +95,7 @@ def multiprocessing_iter_unordered(
     *,
     func_args: tuple,
     func_kwargs: dict,
-    num_threads: Optional[int] = None,
+    num_threads: int | None = None,
 ) -> Iterator[Tresult]:
     wrapped_func = ParallelJob(func, func_args, func_kwargs)
     with multiprocessing.Pool(num_threads) as pool:
@@ -138,8 +138,8 @@ class ParallelHelper:
         func: Callable[[Targ], Tresult],
         iterable: Iterable[Targ],
         *,
-        func_args: Optional[tuple] = None,
-        func_kwargs: Optional[dict] = None,
+        func_args: tuple | None = None,
+        func_kwargs: dict | None = None,
         progress: bool = False,
         total: int | None = None,
     ) -> Iterator[Tresult]:
