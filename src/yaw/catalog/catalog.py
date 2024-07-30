@@ -295,6 +295,7 @@ class Catalog(Mapping[int, Patch]):
         closed: Tclosed = "left",
         leafsize: int = 16,
         force: bool = False,
+        progress: bool = False,
     ) -> None:
         binning = parse_binning(binning)
         patches = self.values()
@@ -303,8 +304,10 @@ class Catalog(Mapping[int, Patch]):
             ParallelHelper.iter_unordered(
                 BinnedTrees.build,
                 patches,
-                job_args=(binning,),
-                job_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+                func_args=(binning,),
+                func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+                progress=progress,
+                total=len(patches),
             ),
             maxlen=0,
         )

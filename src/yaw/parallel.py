@@ -3,13 +3,14 @@ from __future__ import annotations
 import multiprocessing
 from collections.abc import Iterable, Iterator
 from shutil import get_terminal_size
-from typing import Callable, TypeVar
+from typing import Callable, Optional, TypeVar
 
 from mpi4py import MPI
 from tqdm import tqdm
 
 Targ = TypeVar("Targ")
 Tresult = TypeVar("Tresult")
+Titer = TypeVar("Titer")
 
 COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
@@ -19,50 +20,86 @@ def use_mpi() -> bool:
     return SIZE > 1
 
 
+def on_root() -> bool:
+    return COMM.Get_rank() == 0
+
+
 class EndOfQueue:
     pass
 
 
 class ParallelJob:
     def __init__(
-        self, func: Callable[[Targ], Tresult], args: tuple, kwargs: dict
+        self, func: Callable[[Targ], Tresult], func_args: tuple, func_kwargs: dict
     ) -> None:
-        self.function = func
-        self.args = args
-        self.kwargs = kwargs
+        self.func = func
+        self.func_args = func_args
+        self.func_kwargs = func_kwargs
 
     def __call__(self, arg: Targ) -> Tresult:
-        return self.function(arg, *self.args, **self.kwargs)
+        return self.func(arg, *self.func_args, **self.func_kwargs)
 
 
-def _init_mpi_jobs(job_items: Iterable) -> int:
+def mpi_root_init(iterable: Iterable) -> int:
     active_ranks = 0
     for rank in range(1, SIZE):
         try:
-            COMM.send(next(job_items), dest=rank, tag=1)
+            arg = next(iterable)
+            COMM.send(arg, dest=rank, tag=1)
             active_ranks += 1
         except StopIteration:  # stop all superflous workers
             COMM.send(EndOfQueue, dest=rank, tag=1)
     return active_ranks
 
 
-def _finalise_mpi_jobs(job_items: Iterable, active_ranks: int) -> Iterator:
+def mpi_root_finalise(iterable: Iterable, active_ranks: int) -> Iterator:
     while active_ranks > 0:
-        rank, result = COMM.recv(source=MPI.ANY_SOURCE, tag=2)
+        rank, result = COMM.recv(source=MPI.ANY_SOURCE, tag=2)  # from worker
         yield result
 
         try:
-            COMM.send(next(job_items), dest=rank, tag=1)
+            arg = next(iterable)
+            COMM.send(arg, dest=rank, tag=1)  # to worker
         except StopIteration:
-            COMM.send(EndOfQueue, dest=rank, tag=1)
+            COMM.send(EndOfQueue, dest=rank, tag=1)  # to worker
             active_ranks -= 1
 
 
-def _run_mpi_job(job_func: ParallelJob) -> None:
+def mpi_worker_task(func: ParallelJob) -> None:
     rank = COMM.Get_rank()
-    while (id_args := COMM.recv(source=0, tag=1)) is not EndOfQueue:
-        result = job_func(id_args)
-        COMM.send((rank, result), dest=0, tag=2)
+    while (arg := COMM.recv(source=0, tag=1)) is not EndOfQueue:  # from root
+        result = func(arg)
+        COMM.send((rank, result), dest=0, tag=2)  # to root
+
+
+def mpi_iter_unordered(
+    func: Callable[[Targ], Tresult],
+    iterable: Iterable[Targ],
+    *,
+    func_args: tuple,
+    func_kwargs: dict,
+) -> Iterator[Tresult]:
+    if on_root():
+        iterable = iter(iterable)
+        active_ranks = mpi_root_init(iterable)
+        yield from mpi_root_finalise(iterable, active_ranks)
+
+    else:
+        wrapped_func = ParallelJob(func, func_args, func_kwargs)
+        mpi_worker_task(wrapped_func)
+
+
+def multiprocessing_iter_unordered(
+    func: Callable[[Targ], Tresult],
+    iterable: Iterable[Targ],
+    *,
+    func_args: tuple,
+    func_kwargs: dict,
+    num_threads: Optional[int] = None,
+) -> Iterator[Tresult]:
+    wrapped_func = ParallelJob(func, func_args, func_kwargs)
+    with multiprocessing.Pool(num_threads) as pool:
+        yield from pool.imap_unordered(wrapped_func, iterable)
 
 
 class ParallelHelper:
@@ -84,7 +121,7 @@ class ParallelHelper:
 
     @classmethod
     def on_root(cls) -> bool:
-        return cls.get_rank() == 0
+        return on_root()
 
     @classmethod
     def on_worker(cls) -> bool:
@@ -98,63 +135,29 @@ class ParallelHelper:
     @classmethod
     def iter_unordered(
         cls,
-        function: Callable[[Targ], Tresult],
-        job_items: Iterable[Targ],
+        func: Callable[[Targ], Tresult],
+        iterable: Iterable[Targ],
         *,
-        job_args: tuple | None = None,
-        job_kwargs: dict | None = None,
-        progress: bool = True,
-        n_jobs: int | None = None,
+        func_args: Optional[tuple] = None,
+        func_kwargs: Optional[dict] = None,
+        progress: bool = False,
+        total: int | None = None,
     ) -> Iterator[Tresult]:
-        if job_args is None:
-            job_args = tuple()
-        if job_kwargs is None:
-            job_kwargs = dict()
-
-        parallel_method = cls._iter_mpi if cls.use_mpi() else cls._iter_multiprocessing
-        result_iter = parallel_method(
-            function, job_items, job_args=job_args, job_kwargs=job_kwargs
+        iter_kwargs = dict(
+            func_args=(func_args or tuple()),
+            func_kwargs=(func_kwargs or dict()),
         )
-
-        show_bar = progress and cls.on_root()
-        if show_bar:
-            if n_jobs is None:
-                n_jobs = len(job_items)
-            ncols = min(80, get_terminal_size()[0])
-            bar = tqdm(total=n_jobs, ncols=ncols)
-
-        for result in iter(result_iter):
-            if show_bar:
-                bar.update(1)
-            yield result
-
-    @classmethod
-    def _iter_multiprocessing(
-        cls,
-        function: Callable[[Targ], Tresult],
-        job_items: Iterable[Targ],
-        *,
-        job_args: tuple,
-        job_kwargs: dict,
-    ) -> Iterator[Tresult]:
-        job_func = ParallelJob(function, job_args, job_kwargs)
-        with multiprocessing.Pool(cls.num_threads) as pool:
-            yield from pool.imap_unordered(job_func, job_items)
-
-    @classmethod
-    def _iter_mpi(
-        cls,
-        function: Callable[[Targ], Tresult],
-        job_items: Iterable[Targ],
-        *,
-        job_args: tuple,
-        job_kwargs: dict,
-    ) -> Iterator[Tresult]:
-        if cls.on_worker():
-            job_func = ParallelJob(function, job_args, job_kwargs)
-            _run_mpi_job(job_func)
-
+        if cls.use_mpi():
+            parallel_method = mpi_iter_unordered
         else:
-            job_iter = iter(job_items)
-            active_ranks = _init_mpi_jobs(job_iter)
-            yield from _finalise_mpi_jobs(job_iter, active_ranks)
+            parallel_method = multiprocessing_iter_unordered
+            iter_kwargs["num_threads"] = cls.num_threads
+
+        result_iter = parallel_method(func, iterable, **iter_kwargs)
+        result_iter_progress_optional = tqdm(
+            result_iter,
+            total=total,
+            ncols=min(80, get_terminal_size()[0]),
+            disable=(not progress or cls.on_worker()),
+        )
+        yield from result_iter_progress_optional
