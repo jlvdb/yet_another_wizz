@@ -201,11 +201,6 @@ class BinnedTrees(Iterable):
 
         return new
 
-    @classmethod
-    def from_path(cls, cache_path: Tpath) -> BinnedTrees:
-        patch = Patch(cache_path)
-        return cls(patch)
-
     def to_path(self) -> str:
         return str(self.cache_path)
 
@@ -241,29 +236,3 @@ class BinnedTrees(Iterable):
             yield from self.trees
         else:
             yield from repeat(self.trees)
-
-    def count_binned(
-        self,
-        other: BinnedTrees,
-        ang_min: NDArray,
-        ang_max: NDArray,
-        weight_scale: float | None = None,
-        weight_res: int = 50,
-    ) -> NDArray[np.float64]:
-        is_binned = (self.is_binned(), other.is_binned())
-        if not any(is_binned):
-            raise ValueError("at least one of the trees must be binned")
-        elif all(is_binned) and not self.binning_equal(other.binning):
-            raise ValueError("binning of trees does not match")
-
-        binned_counts = []
-        for tree_self, tree_other in zip(iter(self), iter(other)):
-            counts = tree_self.count(
-                tree_other,
-                ang_min,
-                ang_max,
-                weight_scale=weight_scale,
-                weight_res=weight_res,
-            )
-            binned_counts.append(counts)
-        return np.transpose(binned_counts)

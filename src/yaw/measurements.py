@@ -12,6 +12,7 @@ from yaw.config import Configuration
 from yaw.coordinates import DistsSky
 from yaw.core.cosmology import r_kpc_to_angle
 from yaw.correlation import CorrFunc
+from yaw.parallel import ParallelHelper
 
 
 def check_patch_conistency(catalog: Catalog, *catalogs: Catalog, rtol: float = 0.5):
@@ -19,7 +20,7 @@ def check_patch_conistency(catalog: Catalog, *catalogs: Catalog, rtol: float = 0
     radii = catalog.get_radii()
     for cat in catalogs:
         distance = centers.distance(cat.get_centers())
-        if np.any(distance / radii > rtol):
+        if np.any(distance.data / radii.data > rtol):
             raise InconsistentPatchesError("patch centers are not aligned")
         # radius may not be well constraint on sparse catalogs
 
@@ -64,7 +65,7 @@ class PatchLinkage:
             linked = distances < (radii + patch_radius + max_scale_angle)
             patch_links[patch_id] = set(compress(patch_ids, linked))
 
-        return cls(patch_ids)
+        return cls(patch_links)
 
     @property
     def num_total(self) -> int:
@@ -103,16 +104,36 @@ class PatchLinkage:
             for patch_id in exhausted:
                 patch_links.pop(patch_id)
 
-    def iter_patch_pairs(
+    def get_patch_pairs(
         self,
         catalog1: Catalog,
         catalog2: Catalog | None = None,
-    ) -> Iterator[tuple[Patch, Patch]]:
+    ) -> tuple[tuple[Patch, Patch]]:
         auto = catalog2 is None
         if auto:
             catalog2 = catalog1
-        for patch_id1, patch_id2 in self.iter_patch_id_pairs(auto=auto):
-            yield (catalog1[patch_id1], catalog2[patch_id2])
+        return tuple(
+            (catalog1[patch_id1], catalog2[patch_id2])
+            for patch_id1, patch_id2 in self.iter_patch_id_pairs(auto=auto)
+        )
+
+
+def count_pairs_patches(patches: tuple[str, str], config: Configuration):
+    trees1 = patches[0].get_trees()
+    trees2 = patches[1].get_trees()
+
+    binned_counts = []
+    for i, (tree1, tree2) in enumerate(zip(iter(trees1), iter(trees2))):
+        zmid = (config.binning.zbins[i] / config.binning.zbins[i+1]) / 2.0
+        counts = tree1.count(
+            tree2,
+            r_kpc_to_angle(config.scales.rmin, zmid, config.cosmology),
+            r_kpc_to_angle(config.scales.rmax, zmid, config.cosmology),
+            weight_scale=config.scales.rweight,
+            weight_res=config.scales.rbin_num,
+        )
+        binned_counts.append(counts)
+    return np.transpose(binned_counts)
 
 
 def autocorrelate(
@@ -123,7 +144,28 @@ def autocorrelate(
     compute_rr: bool = True,
     progress: bool = False,
 ) -> CorrFunc | dict[str, CorrFunc]:
-    pass
+    data.build_trees(config.binning.zbins, progress=progress)
+    random.build_trees(config.binning.zbins, progress=progress)
+
+    linkage = PatchLinkage.from_catalogs(config, data, random)
+    kwargs = dict(func_args=(config,), progress=progress)
+
+    patches = linkage.get_patch_pairs(data)
+    dd = []
+    for result in ParallelHelper.iter_unordered(count_pairs_patches, patches, total=len(patches), **kwargs):
+        pass
+
+    patches = linkage.get_patch_pairs(data, random)
+    dr = []
+    for result in ParallelHelper.iter_unordered(count_pairs_patches, patches, total=len(patches), **kwargs):
+        pass
+
+    if compute_rr:
+        patches = linkage.get_patch_pairs(random)
+        rr = []
+        for result in ParallelHelper.iter_unordered(count_pairs_patches, patches, total=len(patches), **kwargs):
+            pass
+
 
 
 def crosscorrelate(
