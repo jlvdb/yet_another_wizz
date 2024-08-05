@@ -83,8 +83,8 @@ class DataChunk:
             if arr is None:
                 return None
             if chkfinite:
-                return np.asarray_chkfinite(arr)
-            return arr
+                return np.asarray_chkfinite(arr, dtype=np.float64)
+            return arr.astype(np.float64, casting="same_kind", copy=False)
 
         ra = parser(ra)
         dec = parser(dec)
