@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from itertools import compress
 from collections.abc import Iterator
 from copy import deepcopy
+from dataclasses import dataclass
+from itertools import compress
 
-import pandas as pd  # TODO: remove dependecy?
 import numpy as np
+import pandas as pd  # TODO: remove dependecy?
 from numpy.typing import NDArray
 
 from yaw.catalog import Catalog, Patch
@@ -32,6 +32,7 @@ class PatchPair:
 @dataclass(frozen=True)
 class PatchPaircounts:
     """TODO: delete original version in yaw.core.containers"""
+
     id1: int
     id2: int
     totals1: NDArray
@@ -106,7 +107,7 @@ class PatchLinkage:
 
     def iter_patch_id_pairs(self, *, auto: bool) -> Iterator[tuple[int, int]]:
         patch_links = deepcopy(self.patch_links)  # this will be emptied
- 
+
         # start with the slowest jobs
         for patch_id, links in patch_links.items():
             links.remove(patch_id)  # skip on next visit
@@ -153,7 +154,7 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
         totals1 += tree1.total
         totals1 += tree2.total
 
-        zmid = (config.binning.zbins[i] / config.binning.zbins[i+1]) / 2.0
+        zmid = (config.binning.zbins[i] / config.binning.zbins[i + 1]) / 2.0
         counts = tree1.count(
             tree2,
             r_kpc_to_angle(config.scales.rmin, zmid, config.cosmology),
@@ -167,7 +168,12 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     return PatchPaircounts(patch_pair.id1, patch_pair.id2, totals1, totals2, counts)
 
 
-def count_pairs(config: Configuration, linkage: PatchLinkage, *catalogs: Catalog, progress: bool = False) -> NormalisedCounts:
+def count_pairs(
+    config: Configuration,
+    linkage: PatchLinkage,
+    *catalogs: Catalog,
+    progress: bool = False,
+) -> NormalisedCounts:
     """TODO: derived from yaw.catalogs.scipy.utils.merge_pairs_patches"""
     patch_pairs = linkage.get_patch_pairs(*catalogs)
     auto = len(catalogs) == 1

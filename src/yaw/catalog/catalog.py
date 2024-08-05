@@ -85,14 +85,18 @@ def create_patch_centers(
     return Coords3D(xyz).to_sky()
 
 
-def compute_patch_ids(coord_sky: NDArray, patch_centers_3d: NDArray) -> NDArray[np.int32]:
+def compute_patch_ids(
+    coord_sky: NDArray, patch_centers_3d: NDArray
+) -> NDArray[np.int32]:
     coords = CoordsSky(coord_sky).to_3d()
     patch_centers = Coords3D(patch_centers_3d)
     patches, _ = vq.vq(coords, patch_centers)
     return patches.astype(np.int32, copy=False)
 
 
-def compute_patch_ids_parallel(chunk: DataChunk, patch_centers: CoordsSky, num_threads: int = 4) -> NDArray[np.int32]:
+def compute_patch_ids_parallel(
+    chunk: DataChunk, patch_centers: CoordsSky, num_threads: int = 4
+) -> NDArray[np.int32]:
     coord_chunks = np.array_split(chunk.coords.data, multiprocessing.cpu_count())
     patch_centers_3d = patch_centers.to_3d()
     with multiprocessing.Pool(processes=num_threads) as pool:
@@ -215,7 +219,9 @@ class Catalog(Mapping[int, Patch]):
             mode = PatchMode.determine(patch_centers, patch_name, patch_num)
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            write_patches(cache_directory, reader, mode, patch_centers, overwrite, progress)
+            write_patches(
+                cache_directory, reader, mode, patch_centers, overwrite, progress
+            )
         ParallelHelper.comm.Barrier()
         return cls(cache_directory)
 
@@ -254,7 +260,9 @@ class Catalog(Mapping[int, Patch]):
             mode = PatchMode.determine(patch_centers, patch_name, patch_num)
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            write_patches(cache_directory, reader, mode, patch_centers, overwrite, progress)
+            write_patches(
+                cache_directory, reader, mode, patch_centers, overwrite, progress
+            )
         ParallelHelper.comm.Barrier()
         return cls(cache_directory)
 
