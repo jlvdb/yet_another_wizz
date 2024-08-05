@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import multiprocessing
 from collections import deque
 from collections.abc import Iterator, Mapping
 from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
-from shutil import rmtree
+from shutil import get_terminal_size, rmtree
 from typing import Union
 
 try:
@@ -18,6 +19,7 @@ import treecorr
 from numpy.typing import NDArray
 from pandas import DataFrame
 from scipy.cluster import vq
+from tqdm import tqdm
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
@@ -83,9 +85,20 @@ def create_patch_centers(
     return Coords3D(xyz).to_sky()
 
 
-def compute_patch_ids(chunk: DataChunk, patch_centers: CoordsSky) -> NDArray[np.int32]:
-    patches, _ = vq.vq(chunk.coords.to_3d(), patch_centers.to_3d())
+def compute_patch_ids(coord_sky: NDArray, patch_centers_3d: NDArray) -> NDArray[np.int32]:
+    coords = CoordsSky(coord_sky).to_3d()
+    patch_centers = Coords3D(patch_centers_3d)
+    patches, _ = vq.vq(coords, patch_centers)
     return patches.astype(np.int32, copy=False)
+
+
+def compute_patch_ids_parallel(chunk: DataChunk, patch_centers: CoordsSky, num_threads: int = 4) -> NDArray[np.int32]:
+    coord_chunks = np.array_split(chunk.coords.data, multiprocessing.cpu_count())
+    patch_centers_3d = patch_centers.to_3d()
+    with multiprocessing.Pool(processes=num_threads) as pool:
+        args = ((chunk, patch_centers_3d.data) for chunk in coord_chunks)
+        patches = pool.starmap(compute_patch_ids, args)
+    return np.concatenate(patches, dtype=np.int32)
 
 
 class CatalogWriter(AbstractContextManager):
@@ -126,6 +139,7 @@ def write_patches(
     mode: PatchMode,
     patch_centers: Catalog | Coordinates | None,
     overwrite: bool,
+    progress: bool,
 ) -> None:
     if isinstance(patch_centers, Catalog):
         patch_centers = patch_centers.get_centers()
@@ -133,9 +147,15 @@ def write_patches(
         patch_centers = patch_centers.to_sky()
 
     with reader, CatalogWriter(path, overwrite=overwrite) as writer:
-        for chunk in reader:
-            if mode == PatchMode.apply:
-                patch_ids = compute_patch_ids(chunk, patch_centers)
+        chunk_iter_progress_optional = tqdm(
+            reader,
+            total=reader.num_chunks,
+            ncols=min(80, get_terminal_size()[0]),
+            disable=(not progress),
+        )
+        for chunk in chunk_iter_progress_optional:
+            if mode != PatchMode.divide:
+                patch_ids = compute_patch_ids_parallel(chunk, patch_centers)
                 chunk.set_patch_ids(patch_ids)
             patch_chunks = chunk.split_patches()
             writer.process_patches(patch_chunks)
@@ -177,6 +197,7 @@ class Catalog(Mapping[int, Patch]):
         chunksize: int = 1_000_000,
         probe_size: int = -1,
         overwrite: bool = False,
+        progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
         if ParallelHelper.on_root():
@@ -194,7 +215,8 @@ class Catalog(Mapping[int, Patch]):
             mode = PatchMode.determine(patch_centers, patch_name, patch_num)
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            write_patches(cache_directory, reader, mode, patch_centers, overwrite)
+            write_patches(cache_directory, reader, mode, patch_centers, overwrite, progress)
+        ParallelHelper.comm.Barrier()
         return cls(cache_directory)
 
     @classmethod
@@ -214,6 +236,7 @@ class Catalog(Mapping[int, Patch]):
         chunksize: int = 1_000_000,
         probe_size: int = -1,
         overwrite: bool = False,
+        progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
         if ParallelHelper.on_root():
@@ -231,7 +254,8 @@ class Catalog(Mapping[int, Patch]):
             mode = PatchMode.determine(patch_centers, patch_name, patch_num)
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            write_patches(cache_directory, reader, mode, patch_centers, overwrite)
+            write_patches(cache_directory, reader, mode, patch_centers, overwrite, progress)
+        ParallelHelper.comm.Barrier()
         return cls(cache_directory)
 
     def __repr__(self) -> str:
