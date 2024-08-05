@@ -128,6 +128,12 @@ class Patch(Sized):
             self.meta = Metadata.compute(self.coords, self.weights)
             self.meta.to_file(meta_data_file)
 
+    def __getstate__(self) -> dict:
+        return dict(cache_path=self.cache_path, meta=self.meta)
+
+    def __setstate__(self, state) -> None:
+        self.__dict__.update(state)
+
     def __len__(self) -> int:
         return self.meta.num_records
 
