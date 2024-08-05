@@ -40,36 +40,34 @@ class ParallelJob:
         return self.func(arg, *self.func_args, **self.func_kwargs)
 
 
-def mpi_root_init(iterable: Iterable) -> int:
-    active_ranks = 0
+def mpi_root_task(iterable: Iterable) -> Iterator:
+    # first pass of assigning tasks to workers dynamically
+    active_workers = 0
     for rank in range(1, SIZE):
         try:
-            arg = next(iterable)
-            COMM.send(arg, dest=rank, tag=1)
-            active_ranks += 1
-        except StopIteration:  # stop all superflous workers
+            COMM.send(next(iterable), dest=rank, tag=1)
+            active_workers += 1
+        except StopIteration:
+            # if more workers than tasks, shut down superflous workers
             COMM.send(EndOfQueue, dest=rank, tag=1)
-    return active_ranks
 
-
-def mpi_root_finalise(iterable: Iterable, active_ranks: int) -> Iterator:
-    while active_ranks > 0:
-        rank, result = COMM.recv(source=MPI.ANY_SOURCE, tag=2)  # from worker
+    # yield results from workers and send new tasks until all have been processed
+    while active_workers > 0:
+        rank, result = COMM.recv(source=MPI.ANY_SOURCE, tag=2)
         yield result
 
         try:
-            arg = next(iterable)
-            COMM.send(arg, dest=rank, tag=1)  # to worker
+            COMM.send(next(iterable), dest=rank, tag=1)
         except StopIteration:
-            COMM.send(EndOfQueue, dest=rank, tag=1)  # to worker
-            active_ranks -= 1
+            COMM.send(EndOfQueue, dest=rank, tag=1)
+            active_workers -= 1
 
 
 def mpi_worker_task(func: ParallelJob) -> None:
     rank = COMM.Get_rank()
-    while (arg := COMM.recv(source=0, tag=1)) is not EndOfQueue:  # from root
+    while (arg := COMM.recv(source=0, tag=1)) is not EndOfQueue:
         result = func(arg)
-        COMM.send((rank, result), dest=0, tag=2)  # to root
+        COMM.send((rank, result), dest=0, tag=2)
 
 
 def mpi_iter_unordered(
@@ -81,8 +79,7 @@ def mpi_iter_unordered(
 ) -> Iterator[Tresult]:
     if on_root():
         iterable = iter(iterable)
-        active_ranks = mpi_root_init(iterable)
-        yield from mpi_root_finalise(iterable, active_ranks)
+        yield from mpi_root_task(iterable)
 
     else:
         wrapped_func = ParallelJob(func, func_args, func_kwargs)
