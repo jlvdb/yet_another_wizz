@@ -92,10 +92,10 @@ class AngularTree(Sized):
         if weights is None:
             self.weights = None
             self.total = float(self.num_records)
-        elif len(weights) != coords:
+        elif len(weights) != self.num_records:
             raise ValueError("shape of 'coords' and 'weights' does not match")
         else:
-            self.weights = np.asarray(weights).astype(np.float64)
+            self.weights = np.asarray(weights).astype(np.float64, copy=False)
             self.total = float(self.weights.sum())
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
