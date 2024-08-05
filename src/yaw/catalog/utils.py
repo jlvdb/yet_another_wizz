@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Generator, Literal, Type, TypeVar, Union
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from yaw.coordinates import CoordsSky
 
@@ -79,21 +79,26 @@ class DataChunk:
         degrees: bool = True,
         chkfinite: bool = False,
     ):
-        def parser(arr: NDArray | None) -> NDArray | None:
+        def parser(arr: NDArray | None, dtype: DTypeLike) -> NDArray | None:
             if arr is None:
                 return None
             if chkfinite:
-                return np.asarray_chkfinite(arr, dtype=np.float64)
-            return arr.astype(np.float64, casting="same_kind", copy=False)
+                return np.asarray_chkfinite(arr, dtype=dtype)
+            return arr.astype(dtype, casting="same_kind", copy=False)
 
-        ra = parser(ra)
-        dec = parser(dec)
+        ra = parser(ra, np.float64)
+        dec = parser(dec, np.float64)
         if degrees:
             ra = np.deg2rad(ra)
             dec = np.deg2rad(dec)
 
         coords = CoordsSky(np.column_stack((ra, dec)))
-        return cls(coords, parser(weights), parser(redshifts), parser(patch_ids))
+        return cls(
+            coords,
+            parser(weights, np.float64),
+            parser(redshifts, np.float64),
+            parser(patch_ids, np.int32),
+        )
 
     @classmethod
     def from_chunks(cls, chunks: Sequence[DataChunk]) -> DataChunk:
