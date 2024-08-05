@@ -106,7 +106,9 @@ def compute_patch_ids_parallel(
 
 
 class CatalogWriter(AbstractContextManager):
-    def __init__(self, cache_directory: Tpath, overwrite: bool = True) -> None:
+    def __init__(
+        self, cache_directory: Tpath, overwrite: bool = True, progress: bool = False
+    ) -> None:
         self.cache_directory = Path(cache_directory)
         if self.cache_directory.exists():
             if overwrite:
@@ -115,6 +117,7 @@ class CatalogWriter(AbstractContextManager):
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
         self.cache_directory.mkdir()
         self._writers: dict[int, PatchWriter] = {}
+        self.progress = progress
 
     def __enter__(self) -> Self:
         return self
@@ -136,6 +139,17 @@ class CatalogWriter(AbstractContextManager):
         for writer in self._writers.values():
             writer.finalize()
 
+        # instantiate patches, which trigger computing the patch meta-data
+        deque(
+            ParallelHelper.iter_unordered(
+                Patch,
+                (writer.cache_path for writer in self._writers.values()),
+                progress=self.progress,
+                total=len(self._writers),
+            ),
+            maxlen=0,
+        )
+
 
 def write_patches(
     path: Tpath,
@@ -150,7 +164,7 @@ def write_patches(
     if isinstance(patch_centers, Coordinates):
         patch_centers = patch_centers.to_sky()
 
-    with reader, CatalogWriter(path, overwrite=overwrite) as writer:
+    with reader, CatalogWriter(path, overwrite=overwrite, progress=progress) as writer:
         chunk_iter_progress_optional = tqdm(
             reader,
             total=reader.num_chunks,
@@ -332,7 +346,7 @@ class Catalog(Mapping[int, Patch]):
         binning = parse_binning(binning)
         patches = self.values()
 
-        deque(  # deplete the iterator with maxlen=0
+        deque(
             ParallelHelper.iter_unordered(
                 BinnedTrees.build,
                 patches,

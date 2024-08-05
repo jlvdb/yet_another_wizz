@@ -78,7 +78,6 @@ class PatchWriter:
 
     def finalize(self) -> None:
         self.flush()
-        Patch(self.cache_path)  # computes metadata
 
 
 @dataclass
