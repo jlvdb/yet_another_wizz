@@ -139,17 +139,6 @@ class CatalogWriter(AbstractContextManager):
         for writer in self._writers.values():
             writer.finalize()
 
-        # instantiate patches, which trigger computing the patch meta-data
-        deque(
-            ParallelHelper.iter_unordered(
-                Patch,
-                (writer.cache_path for writer in self._writers.values()),
-                progress=self.progress,
-                total=len(self._writers),
-            ),
-            maxlen=0,
-        )
-
 
 def write_patches(
     path: Tpath,
@@ -177,6 +166,20 @@ def write_patches(
                 chunk.set_patch_ids(patch_ids)
             patch_chunks = chunk.split_patches()
             writer.process_patches(patch_chunks)
+
+
+def compute_patch_metadata(path: Tpath, progress: bool = False):
+    patch_paths = tuple(Path(path).glob(PATCH_NAME_TEMPLATE.format("*")))
+    # instantiate patches, which trigger computing the patch meta-data
+    deque(
+        ParallelHelper.iter_unordered(
+            Patch,
+            patch_paths,
+            progress=progress,
+            total=len(patch_paths),
+        ),
+        maxlen=0,
+    )
 
 
 class Catalog(Mapping[int, Patch]):
@@ -237,6 +240,8 @@ class Catalog(Mapping[int, Patch]):
                 cache_directory, reader, mode, patch_centers, overwrite, progress
             )
         ParallelHelper.comm.Barrier()
+
+        compute_patch_metadata(cache_directory, progress)
         return cls(cache_directory)
 
     @classmethod
@@ -278,6 +283,8 @@ class Catalog(Mapping[int, Patch]):
                 cache_directory, reader, mode, patch_centers, overwrite, progress
             )
         ParallelHelper.comm.Barrier()
+
+        compute_patch_metadata(cache_directory, progress)
         return cls(cache_directory)
 
     def __repr__(self) -> str:
