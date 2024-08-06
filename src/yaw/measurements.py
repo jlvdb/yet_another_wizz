@@ -248,13 +248,13 @@ def crosscorrelate(
         raise ValueError("at least one random dataset must be provided")
 
     reference.build_trees(config.binning.zbins, progress=progress)
-    unknown.build_trees(config.binning.zbins, progress=progress)
+    unknown.build_trees(None, progress=progress)
     randoms = []
     if have_ref_rand:
         ref_rand.build_trees(config.binning.zbins, progress=progress)
         randoms.append(ref_rand)
     if have_unk_rand:
-        unk_rand.build_trees(config.binning.zbins, progress=progress)
+        unk_rand.build_trees(None, progress=progress)
         randoms.append(unk_rand)
     linkage = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
 
