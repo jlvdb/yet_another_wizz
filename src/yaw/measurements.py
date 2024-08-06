@@ -152,7 +152,7 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     binned_counts = []
     for i, (tree1, tree2) in enumerate(zip(iter(trees1), iter(trees2))):
         totals1 += tree1.total
-        totals1 += tree2.total
+        totals2 += tree2.total
 
         zmid = (config.binning.zbins[i] / config.binning.zbins[i + 1]) / 2.0
         counts = tree1.count(
