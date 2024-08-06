@@ -124,7 +124,7 @@ class PatchCatalog:
         # precompute (estimate) the patch center and size since it is quite fast
         # and the data is still loaded
         if center is None or radius is None:
-            SUBSET_SIZE = 1000  # seems a reasonable, fast but not too sparse
+            SUBSET_SIZE = 10000000  # seems a reasonable, fast but not too sparse
             if self._len < SUBSET_SIZE:
                 positions = self.pos.to_3d()
             else:
