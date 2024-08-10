@@ -29,7 +29,7 @@ def job_progress_bar(
     iterable: Iterable[Tjob], total: int | None = None
 ) -> Iterable[Tjob]:
     """Configure and return a tqdm progress bar with custom format."""
-    config = dict(delay=0.5, leave=False, smoothing=0.1, unit="jobs")
+    config = dict(delay=0.5, smoothing=0.1, unit="jobs")
     return tqdm.tqdm(iterable, total=total, **config)
 
 

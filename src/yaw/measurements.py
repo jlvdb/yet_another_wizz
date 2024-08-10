@@ -144,17 +144,15 @@ class PatchLinkage:
 
 
 def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPaircounts:
-    trees1 = patch_pair.patch1.get_trees()
-    trees2 = patch_pair.patch2.get_trees()
+    trees1 = iter(patch_pair.patch1.get_trees())
+    trees2 = iter(patch_pair.patch2.get_trees())
 
-    totals1 = 0.0
-    totals2 = 0.0
-    binned_counts = []
-    for i, (tree1, tree2) in enumerate(zip(iter(trees1), iter(trees2))):
-        totals1 += tree1.total
-        totals2 += tree2.total
-
-        zmid = (config.binning.zbins[i] / config.binning.zbins[i + 1]) / 2.0
+    totals1 = np.empty((config.binning.zbin_num,))
+    totals2 = np.empty((config.binning.zbin_num,))
+    binned_counts = np.empty((config.binning.zbin_num, config.scales.num_scales))
+    for i, (tree1, tree2) in enumerate(zip(trees1, trees2)):
+        # TODO: implement a binning class that can be iterated here
+        zmid = (config.binning.zbins[i] + config.binning.zbins[i + 1]) / 2.0
         counts = tree1.count(
             tree2,
             r_kpc_to_angle(config.scales.rmin, zmid, config.cosmology),
@@ -162,10 +160,12 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
             weight_scale=config.scales.rweight,
             weight_res=config.scales.rbin_num,
         )
-        binned_counts.append(counts)
-    counts = np.array(binned_counts)
 
-    return PatchPaircounts(patch_pair.id1, patch_pair.id2, totals1, totals2, counts)
+        binned_counts[i] = counts
+        totals1[i] = tree1.total
+        totals2[i] = tree2.total
+
+    return PatchPaircounts(patch_pair.id1, patch_pair.id2, totals1, totals2, binned_counts)
 
 
 def count_pairs(

@@ -137,6 +137,13 @@ class ScalesConfig(BaseConfig):
         for rmin, rmax in self.as_array():
             yield Scale(rmin=rmin, rmax=rmax)
 
+    @property
+    def num_scales(self) -> int:
+        try:
+            return len(self.rmin)
+        except TypeError:
+            return 1
+
     def modify(
         self,
         rmin: list[float] | float = DEFAULT.NotSet,
