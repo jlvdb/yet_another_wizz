@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
 from collections.abc import Iterable, Iterator
 from shutil import get_terminal_size
 from typing import Callable, TypeVar
@@ -12,8 +13,16 @@ Targ = TypeVar("Targ")
 Tresult = TypeVar("Tresult")
 Titer = TypeVar("Titer")
 
+
+def get_num_threads() -> int:
+    system_threads = multiprocessing.cpu_count()
+    num_threads = os.environ.get("YAW_NUM_THREADS", system_threads)
+    return min(int(num_threads), system_threads)
+
+
 COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
+MP_THREADS = get_num_threads()
 
 
 def use_mpi() -> bool:
@@ -102,7 +111,7 @@ def multiprocessing_iter_unordered(
 class ParallelHelper:
     comm = COMM
     size = SIZE
-    num_threads = multiprocessing.cpu_count()
+    num_threads = MP_THREADS
 
     @classmethod
     def set_multiprocessing_threads(cls, num_threads: int) -> None:
