@@ -38,7 +38,7 @@ def groupby_value(
 def groupby_binning(
     values: NDArray,
     binning: NDArray,
-    closed: Tclosed = "left",
+    closed: Tclosed = "right",
     **optional_arrays: NDArray | None,
 ) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
     binning = np.asarray(binning)

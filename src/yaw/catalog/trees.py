@@ -173,7 +173,7 @@ class BinnedTrees(Iterable):
         patch: Patch,
         binning: NDArray | None = None,
         *,
-        closed: Tclosed = "left",
+        closed: Tclosed = "right",
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:

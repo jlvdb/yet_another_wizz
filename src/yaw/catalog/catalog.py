@@ -193,6 +193,8 @@ class Catalog(Mapping[int, Patch]):
             for cache in self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")):
                 patch_id = int(cache.name.split("_")[1])
                 patches[patch_id] = Patch(cache)
+            if len(patches) == 0:
+                raise FileNotFoundError(f"no patches found in '{cache_directory}'")
         else:
             patches = None
 
