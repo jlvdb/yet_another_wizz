@@ -165,18 +165,32 @@ def write_patches(
             ncols=min(80, get_terminal_size()[0]),
             disable=(not progress),
         )
+
+        d_read = 0.0
+        d_proc = 0.0
         d_write = 0.0
+
+        t_start = default_timer()
         t_0 = default_timer()
         for chunk in chunk_iter_progress_optional:
+            d_read += default_timer() - t_0
+
+            t_1 = default_timer()
             thread_chunks = chunk.split(num_threads)
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
+                d_proc += default_timer() - t_1
+
                 t_2 = default_timer()
                 writer.process_patches(patch_chunks)
                 d_write += default_timer() - t_2
-        t_1 = default_timer()
-        d_all = t_1 - t_0
-        print("total time:   ", d_all)
-        print("preprocessing:", d_all - d_write)
+
+                t_1 = default_timer()
+            t_0 = default_timer()
+        t_end = default_timer()
+
+        print("total time:   ", t_end - t_start)
+        print("reading:      ", d_read)
+        print("preprocessing:", d_proc)
         print("writing:      ", d_write)
 
 
@@ -200,6 +214,7 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
     patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
     create_patchfile(cache_directory, len(patch_paths))
 
+    t_0 = default_timer()
     # instantiate patches, which trigger computing the patch meta-data
     deque(
         ParallelHelper.iter_unordered(
@@ -210,6 +225,7 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
         ),
         maxlen=0,
     )
+    print("metadata:     ", default_timer() - t_0)
 
 
 class Catalog(Mapping[int, Patch]):
