@@ -21,8 +21,13 @@ Tpath = Union[Path, str]
 
 
 class ArrayBuffer:
+    __slots__ = ("_shards")
+
     def __init__(self):
         self._shards = []
+
+    def is_empty(self) -> bool:
+        return len(self._shards) == 0
 
     def append(self, data: NDArray) -> None:
         data = np.asarray(data)
@@ -36,6 +41,8 @@ class ArrayBuffer:
 
 
 class PatchWriter:
+    __slots__ = ("cache_path", "coords", "weights", "redshifts", "chunksize", "cachesize")
+
     def __init__(self, cache_path: Tpath, chunksize: int = 65_536) -> None:
         self.cache_path = Path(cache_path)
         if self.cache_path.exists():
@@ -43,38 +50,41 @@ class PatchWriter:
         self.cache_path.mkdir(parents=True)
 
         self.chunksize = chunksize
-        self._cachesize = 0
-        self._caches: dict[str, ArrayBuffer] = {}
+        self.cachesize = 0
 
-    def _init_caches(self, chunk: DataChunk) -> None:
-        self._caches["coords"] = ArrayBuffer()
-        if chunk.weights is not None:
-            self._caches["weights"] = ArrayBuffer()
-        if chunk.redshifts is not None:
-            self._caches["redshifts"] = ArrayBuffer()
+        self.coords = ArrayBuffer()
+        self.weights = ArrayBuffer()
+        self.redshifts = ArrayBuffer()
 
     def process_chunk(self, chunk: DataChunk) -> None:
-        if len(self._caches) == 0:
-            self._init_caches(chunk)
+        coords = chunk.coords.data
+        self.coords.append(coords)
 
-        for attr, cache in self._caches.items():
-            values = getattr(chunk, attr)
-            if values is None:
-                raise ValueError(f"chunk has no '{attr}' attached")
-            cache.append(values)
+        weights = chunk.weights
+        if weights is not None:
+            self.weights.append(weights)
 
-        self._cachesize += len(chunk)
-        if self._cachesize > self.chunksize:
+        redshifts = chunk.redshifts
+        if redshifts is not None:
+            self.redshifts.append(redshifts)
+
+        self.cachesize += len(coords)
+        if self.cachesize > self.chunksize:
             self.flush()
 
     def flush(self) -> None:
-        if self._cachesize > 0:
-            for attr, cache in self._caches.items():
-                cache_path = self.cache_path / attr
-                with cache_path.open(mode="a") as f:
-                    cache.get_values().tofile(f)
-                cache.clear()
-            self._cachesize = 0
+        def flush_cache(cache: ArrayBuffer, cache_path: Path) -> None:
+            with cache_path.open(mode="a") as f:
+                cache.get_values().tofile(f)
+            cache.clear()
+
+        if self.cachesize > 0:
+            flush_cache(self.coords, self.cache_path / "coords")
+            if not self.weights.is_empty():
+                flush_cache(self.weights, self.cache_path / "weights")
+            if not self.redshifts.is_empty():
+                flush_cache(self.redshifts, self.cache_path / "redshifts")
+            self.cachesize = 0
 
     def finalize(self) -> None:
         self.flush()

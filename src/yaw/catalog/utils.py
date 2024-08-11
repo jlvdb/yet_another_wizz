@@ -55,6 +55,8 @@ def logarithmic_mid(edges: NDArray) -> NDArray:
 
 
 class DataChunk:
+    __slots__ = ("coords", "weights", "redshifts", "patch_ids")
+
     def __init__(
         self,
         coords: CoordsSky,
