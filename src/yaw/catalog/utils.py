@@ -44,9 +44,8 @@ def groupby_binning(
     binning = np.asarray(binning)
     bin_idx = np.digitize(values, binning, right=(closed == "right"))
     for i, bin_array in groupby_value(bin_idx, **optional_arrays):
-        if i == 0 or i == len(binning):  # skip values outside of binning range
-            continue
-        yield binning[i - 1 : i + 1], bin_array
+        if 0 < i < len(binning):  # skip values outside of binning range
+            yield binning[i - 1 : i + 1], bin_array
 
 
 def logarithmic_mid(edges: NDArray) -> NDArray:
@@ -117,6 +116,21 @@ class DataChunk:
             redshifts=concat_optional_attr("redshifts"),
             patch_ids=concat_optional_attr("patch_ids"),
         )
+
+    def split(self, num_chunks: int) -> list[DataChunk]:
+        chunks = [np.array_split(self.coords.data, num_chunks)]
+        for attr in ("weights", "redshifts", "patch_ids"):
+            values = getattr(self, attr)
+            if values is None:
+                splits = [None] * num_chunks
+            else:
+                splits = np.array_split(values, num_chunks)
+            chunks.append(splits)
+
+        return [
+            DataChunk(CoordsSky(coords), weights, redshifts, patch_ids)
+            for coords, weights, redshifts, patch_ids in zip(*chunks)
+        ]
 
     def __len__(self) -> int:
         return len(self.coords)
