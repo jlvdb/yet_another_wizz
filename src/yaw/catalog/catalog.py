@@ -169,34 +169,34 @@ def write_patches(
             disable=(not progress),
         )
 
-        #d_read = 0.0
-        #d_proc = 0.0
-        #d_write = 0.0
+        d_read = 0.0
+        d_proc = 0.0
+        d_write = 0.0
 
-        #t_start = default_timer()
-        #t_0 = default_timer()
+        t_start = default_timer()
+        t_0 = default_timer()
         for chunk in chunk_iter_progress_optional:
-            #d_read += default_timer() - t_0
+            d_read += default_timer() - t_0
 
-            #t_1 = default_timer()
+            t_1 = default_timer()
             thread_chunks = chunk.split(num_threads)
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
-                #d_proc += default_timer() - t_1
+                d_proc += default_timer() - t_1
 
-                #t_2 = default_timer()
+                t_2 = default_timer()
                 writer.process_patches(patch_chunks)
-                #d_write += default_timer() - t_2
+                d_write += default_timer() - t_2
 
-                #t_1 = default_timer()
-            #t_0 = default_timer()
-        #t_2 = default_timer()
-    #d_write += default_timer() - t_2
-    #t_end = default_timer()
+                t_1 = default_timer()
+            t_0 = default_timer()
+        t_2 = default_timer()
+    d_write += default_timer() - t_2
+    t_end = default_timer()
 
-    #print("total time:   ", t_end - t_start)
-    #print("reading:      ", d_read)
-    #print("preprocessing:", d_proc)
-    #print("writing:      ", d_write)
+    print("total time:   ", t_end - t_start)
+    print("reading:      ", d_read)
+    print("preprocessing:", d_proc)
+    print("writing:      ", d_write)
 
 
 def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
