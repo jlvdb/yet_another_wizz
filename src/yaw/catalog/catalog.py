@@ -7,6 +7,7 @@ from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
 from shutil import get_terminal_size, rmtree
+from timeit import default_timer
 from typing import Union
 
 try:
@@ -164,10 +165,19 @@ def write_patches(
             ncols=min(80, get_terminal_size()[0]),
             disable=(not progress),
         )
+        d_write = 0.0
+        t_0 = default_timer()
         for chunk in chunk_iter_progress_optional:
             thread_chunks = chunk.split(num_threads)
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
+                t_2 = default_timer()
                 writer.process_patches(patch_chunks)
+                d_write += default_timer() - t_2
+        t_1 = default_timer()
+        d_all = t_1 - t_0
+        print("total time:   ", d_all)
+        print("preprocessing:", d_all - d_write)
+        print("writing:      ", d_write)
 
 
 def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
@@ -188,7 +198,7 @@ def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
 def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
     cache_directory = Path(cache_directory)
     patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
-    create_patchfile(len(patch_paths))
+    create_patchfile(cache_directory, len(patch_paths))
 
     # instantiate patches, which trigger computing the patch meta-data
     deque(
@@ -209,10 +219,11 @@ class Catalog(Mapping[int, Patch]):
         self.cache_directory = Path(cache_directory)
 
         if ParallelHelper.on_root():
-            patches = {}
-            patch_paths = self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*"))
+            template = PATCH_NAME_TEMPLATE.format("*")
+            patch_paths = tuple(self.cache_directory.glob(template))
             verify_patchfile(cache_directory, len(patch_paths))
 
+            patches = {}
             for cache in patch_paths:
                 patch_id = int(cache.name.split("_")[1])
                 patches[patch_id] = Patch(cache)
