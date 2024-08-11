@@ -32,6 +32,7 @@ __all__ = [
     "Catalog",
 ]
 
+Tcenters = Union["Catalog", Coordinates]
 Tpath = Union[Path, str]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
@@ -53,7 +54,7 @@ class PatchMode(Enum):
     @classmethod
     def determine(
         cls,
-        patch_centers: Catalog | Coordinates | None,
+        patch_centers: Tcenters | None,
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
@@ -85,24 +86,22 @@ def create_patch_centers(
     return Coords3D(xyz).to_sky()
 
 
-def compute_patch_ids(
-    coord_sky: NDArray, patch_centers_3d: NDArray
-) -> NDArray[np.int32]:
-    coords = CoordsSky(coord_sky).to_3d()
-    patch_centers = Coords3D(patch_centers_3d)
-    patches, _ = vq.vq(coords, patch_centers)
-    return patches.astype(np.int32, copy=False)
+class ChunkProcessor:
+    def __init__(self, patch_centers: CoordsSky | None) -> None:
+        if patch_centers is None:
+            self.patch_centers = None
+        else:
+            self.patch_centers = patch_centers.to_3d()
 
+    def compute_patch_ids(self, chunk: DataChunk) -> NDArray[np.int32]:
+        patches, _ = vq.vq(chunk.coords.to_3d(), self.patch_centers)
+        return patches.astype(np.int32, copy=False)
 
-def compute_patch_ids_parallel(
-    chunk: DataChunk, patch_centers: CoordsSky, num_threads: int = 4
-) -> NDArray[np.int32]:
-    coord_chunks = np.array_split(chunk.coords.data, multiprocessing.cpu_count())
-    patch_centers_3d = patch_centers.to_3d()
-    with multiprocessing.Pool(processes=num_threads) as pool:
-        args = ((chunk, patch_centers_3d.data) for chunk in coord_chunks)
-        patches = pool.starmap(compute_patch_ids, args)
-    return np.concatenate(patches, dtype=np.int32)
+    def __call__(self, chunk: DataChunk) -> dict[int, DataChunk]:
+        if self.patch_centers is not None:
+            patch_ids = self.compute_patch_ids(chunk)
+            chunk.set_patch_ids(patch_ids)
+        return chunk.split_patches()
 
 
 class CatalogWriter(AbstractContextManager):
@@ -143,17 +142,21 @@ class CatalogWriter(AbstractContextManager):
 def write_patches(
     path: Tpath,
     reader: BaseReader,
-    mode: PatchMode,
-    patch_centers: Catalog | Coordinates | None,
+    patch_centers: Tcenters | None,
     overwrite: bool,
     progress: bool,
+    num_threads: int | None = None,
 ) -> None:
+    if num_threads is None:
+        num_threads = ParallelHelper.num_threads
     if isinstance(patch_centers, Catalog):
         patch_centers = patch_centers.get_centers()
     if isinstance(patch_centers, Coordinates):
         patch_centers = patch_centers.to_sky()
+    preprocess = ChunkProcessor(patch_centers)
 
-    with reader, CatalogWriter(path, overwrite=overwrite, progress=progress) as writer:
+    writer = CatalogWriter(path, overwrite=overwrite, progress=progress)
+    with reader, writer, multiprocessing.Pool(num_threads) as pool:
         chunk_iter_progress_optional = tqdm(
             reader,
             total=reader.num_chunks,
@@ -161,11 +164,9 @@ def write_patches(
             disable=(not progress),
         )
         for chunk in chunk_iter_progress_optional:
-            if mode != PatchMode.divide:
-                patch_ids = compute_patch_ids_parallel(chunk, patch_centers)
-                chunk.set_patch_ids(patch_ids)
-            patch_chunks = chunk.split_patches()
-            writer.process_patches(patch_chunks)
+            thread_chunks = chunk.split(num_threads)
+            for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
+                writer.process_patches(patch_chunks)
 
 
 def compute_patch_metadata(path: Tpath, progress: bool = False):
@@ -213,7 +214,7 @@ class Catalog(Mapping[int, Patch]):
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: Catalog | Coordinates | None = None,
+        patch_centers: Tcenters | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
@@ -239,7 +240,7 @@ class Catalog(Mapping[int, Patch]):
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
             write_patches(
-                cache_directory, reader, mode, patch_centers, overwrite, progress
+                cache_directory, reader, patch_centers, overwrite, progress
             )
         ParallelHelper.comm.Barrier()
 
@@ -256,7 +257,7 @@ class Catalog(Mapping[int, Patch]):
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: Catalog | Coordinates | None = None,
+        patch_centers: Tcenters | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
@@ -282,7 +283,7 @@ class Catalog(Mapping[int, Patch]):
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
             write_patches(
-                cache_directory, reader, mode, patch_centers, overwrite, progress
+                cache_directory, reader, patch_centers, overwrite, progress
             )
         ParallelHelper.comm.Barrier()
 
