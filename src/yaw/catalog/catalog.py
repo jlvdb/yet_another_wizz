@@ -36,6 +36,7 @@ Tcenters = Union["Catalog", Coordinates]
 Tpath = Union[Path, str]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
+PATCH_FILE_NAME = "num_patches"
 
 
 class InconsistentPatchesError(Exception):
@@ -169,8 +170,26 @@ def write_patches(
                 writer.process_patches(patch_chunks)
 
 
-def compute_patch_metadata(path: Tpath, progress: bool = False):
-    patch_paths = tuple(Path(path).glob(PATCH_NAME_TEMPLATE.format("*")))
+def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
+    with (cache_directory / PATCH_FILE_NAME).open("w") as f:
+        f.write(str(num_patches))
+
+
+def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
+    path = cache_directory / PATCH_FILE_NAME
+    if not path.exists():
+        raise InconsistentPatchesError("patch indicator file not found")
+    with path.open() as f:
+        num_patches = int(f.read())
+    if num_expect != num_patches:
+        raise ValueError(f"expected {num_expect} patches but found {num_patches}")
+
+
+def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
+    cache_directory = Path(cache_directory)
+    patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
+    create_patchfile(len(patch_paths))
+
     # instantiate patches, which trigger computing the patch meta-data
     deque(
         ParallelHelper.iter_unordered(
@@ -191,11 +210,13 @@ class Catalog(Mapping[int, Patch]):
 
         if ParallelHelper.on_root():
             patches = {}
-            for cache in self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")):
+            patch_paths = self.cache_directory.glob(PATCH_NAME_TEMPLATE.format("*"))
+            verify_patchfile(cache_directory, len(patch_paths))
+
+            for cache in patch_paths:
                 patch_id = int(cache.name.split("_")[1])
                 patches[patch_id] = Patch(cache)
-            if len(patches) == 0:
-                raise FileNotFoundError(f"no patches found in '{cache_directory}'")
+
         else:
             patches = None
 
