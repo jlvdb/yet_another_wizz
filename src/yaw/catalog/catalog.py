@@ -186,7 +186,7 @@ def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
 
 
 def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
-    path = cache_directory / PATCH_FILE_NAME
+    path = Path(cache_directory) / PATCH_FILE_NAME
     if not path.exists():
         raise InconsistentPatchesError("patch indicator file not found")
     with path.open() as f:
@@ -221,7 +221,7 @@ class Catalog(Mapping[int, Patch]):
         if ParallelHelper.on_root():
             template = PATCH_NAME_TEMPLATE.format("*")
             patch_paths = tuple(self.cache_directory.glob(template))
-            verify_patchfile(cache_directory, len(patch_paths))
+            verify_patchfile(self.cache_directory, len(patch_paths))
 
             patches = {}
             for cache in patch_paths:
