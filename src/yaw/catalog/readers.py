@@ -30,7 +30,7 @@ __all__ = [
 
 Tpath = Union[Path, str]
 
-CHUNKSIZE = 1_048_576
+CHUNKSIZE = 8_388_608
 
 
 def swap_byteorder(array: NDArray) -> NDArray:
