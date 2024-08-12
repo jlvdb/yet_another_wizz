@@ -83,7 +83,7 @@ def create_patch_centers(
         dec=test_sample.coords.dec,
         dec_units="radians",
         npatch=patch_num,
-        num_threads=ParallelHelper.num_threads(),
+        config=dict(num_threads=ParallelHelper.num_threads),
     )
     xyz = np.atleast_2d(cat.patch_centers)
     return Coords3D(xyz).to_sky()
