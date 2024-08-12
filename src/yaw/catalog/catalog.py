@@ -161,6 +161,8 @@ def write_patches(
     progress: bool,
     num_threads: int | None = None,
 ) -> None:
+    num_threads = num_threads or ParallelHelper.num_threads
+
     if isinstance(patch_centers, Catalog):
         patch_centers = patch_centers.get_centers()
     if isinstance(patch_centers, Coordinates):
@@ -175,7 +177,7 @@ def write_patches(
     )
 
     writer = CatalogWriter(path, overwrite=overwrite, progress=progress)
-    pool = multiprocessing.Pool(num_threads or ParallelHelper.num_threads)
+    pool = multiprocessing.Pool(num_threads)
     with reader, writer, pool:
 
         _TEMP_d_read = 0.0
