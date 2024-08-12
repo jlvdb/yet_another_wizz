@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from abc import abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Union
@@ -13,9 +13,10 @@ except ImportError:
     from typing_extensions import Self
 
 import numpy as np
+import pyarrow as pa
 from numpy.typing import NDArray
 from pandas import DataFrame
-from pyarrow import parquet
+from pyarrow import Table, parquet
 
 from yaw.catalog.utils import DataChunk
 
@@ -28,6 +29,8 @@ __all__ = [
 ]
 
 Tpath = Union[Path, str]
+
+CHUNKSIZE = 16_777_216
 
 
 def swap_byteorder(array: NDArray) -> NDArray:
@@ -49,7 +52,7 @@ class BaseReader(Iterator[DataChunk], AbstractContextManager):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
-        chunksize: int = 1_000_000,
+        chunksize: int | None = None,
         degrees: bool = True,
         **reader_kwargs,
     ) -> None:
@@ -64,15 +67,15 @@ class BaseReader(Iterator[DataChunk], AbstractContextManager):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
-        chunksize: int = 1_000_000,
+        chunksize: int | None = None,
     ) -> None:
         attrs = ("ra", "dec", "weights", "redshifts", "patch_ids")
         columns = (ra_name, dec_name, weight_name, redshift_name, patch_name)
         self.attrs = tuple(attr for attr, col in zip(attrs, columns) if col is not None)
         self.columns = tuple(col for col in columns if col is not None)
 
-        self.chunksize = chunksize
-        self._group_idx = 0
+        self.chunksize = chunksize or CHUNKSIZE
+        self._chunk_idx = 0
 
     @abstractmethod
     def _init_source(self, source: Any, **reader_kwargs) -> None:
@@ -80,7 +83,7 @@ class BaseReader(Iterator[DataChunk], AbstractContextManager):
 
     def __repr__(self) -> str:
         name = type(self).__name__
-        return f"{name} @ {self._group_idx} / {self.num_chunks} chunks"
+        return f"{name} @ {self._chunk_idx} / {self.num_chunks} chunks"
 
     @property
     @abstractmethod
@@ -96,14 +99,15 @@ class BaseReader(Iterator[DataChunk], AbstractContextManager):
         pass
 
     def __next__(self) -> DataChunk:
-        if self._group_idx >= self._num_chunks:
+        if self._chunk_idx >= self._num_chunks:
             raise StopIteration()
+
         chunk = self._load_next_chunk()
-        self._group_idx += 1
+        self._chunk_idx += 1
         return chunk
 
     def __iter__(self) -> Iterator[DataChunk]:
-        self._group_idx = 0
+        self._chunk_idx = 0
         return self
 
     @abstractmethod
@@ -132,7 +136,7 @@ class DataFrameReader(BaseReader):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
-        chunksize: int = 1_000_000,
+        chunksize: int | None = None,
         degrees: bool = True,
         **reader_kwargs,
     ) -> None:
@@ -163,9 +167,10 @@ class DataFrameReader(BaseReader):
         return len(self._data)
 
     def _load_next_chunk(self) -> DataChunk:
-        start = self._group_idx * self.chunksize
+        start = self._chunk_idx * self.chunksize
         end = start + self.chunksize
         chunk = self._data[start:end]
+
         data = {
             attr: chunk[col].to_numpy() for attr, col in zip(self.attrs, self.columns)
         }
@@ -185,7 +190,7 @@ class FileReader(BaseReader):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
-        chunksize: int = 1_000_000,
+        chunksize: int | None = None,
         degrees: bool = True,
         **reader_kwargs,
     ) -> None:
@@ -208,23 +213,87 @@ class FileReader(BaseReader):
         self._file.close()
 
 
-class ParquetReader(FileReader):
-    def _init_source(self, path: Tpath) -> None:
+class ParquetFile(Iterator):
+    __slots__ = ("path", "_file", "columns", "_group_idx")
+
+    def __init__(self, path: Tpath, columns: Iterable[str]) -> None:
+        self.columns = tuple(columns)
         self.path = Path(path)
         self._file = parquet.ParquetFile(self.path)
-        self._num_chunks = self._file.num_row_groups
+        self.rewind()
+
+    def close(self) -> None:
+        self._file.close()
+
+    @property
+    def num_groups(self) -> int:
+        return self._file.num_row_groups
 
     @property
     def num_records(self) -> int:
         return self._file.metadata.num_rows
 
-    def _load_next_chunk(self) -> DataChunk:
+    def rewind(self) -> None:
+        self._group_idx = 0
+
+    def __next__(self) -> Table:
+        if self._group_idx >= self.num_groups:
+            raise StopIteration
+
         group = self._file.read_row_group(self._group_idx, self.columns)
+        self._group_idx += 1
+        return group
+
+    def __iter__(self) -> Iterator[Table]:
+        self.rewind()
+        return self
+
+    def get_empty_group(self) -> Table:
+        full_schema = self._file.schema.to_arrow_schema()
+        schema = pa.schema([full_schema.field(name) for name in self.columns])
+        return Table.from_pylist([], schema=schema)
+
+
+class ParquetReader(FileReader):
+    def _init_source(self, path: Tpath) -> None:
+        self._file = ParquetFile(path, self.columns)
+        self._cache = self._file.get_empty_group()
+        super()._init_source(path)
+
+    @property
+    def path(self) -> Path:
+        return self._file.path
+
+    @property
+    def num_records(self) -> int:
+        return self._file.num_records
+
+    def _load_next_chunk(self) -> DataChunk:
+        reached_end = False
+        while len(self._cache) < self.chunksize:
+            try:
+                next_group = next(self._file)
+                self._cache = pa.concat_tables([self._cache, next_group])
+            except StopIteration:
+                reached_end = True
+                break
+
+        if not reached_end:
+            table = self._cache[: self.chunksize]
+            self._cache = self._cache[self.chunksize :]
+        else:
+            table = self._cache
+
         data = {
-            attr: group.column(col).to_numpy()
+            attr: table.column(col).to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
         return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+
+    def __iter__(self) -> Iterator[DataChunk]:
+        self._cache = self._file.get_empty_group()
+        self._file.rewind()
+        return super().__iter__()
 
     def read(self, sparse: int) -> DataChunk:
         return super().read(sparse)
@@ -242,7 +311,6 @@ class FitsReader(FileReader):
         self.path = Path(source)
         self._file = fitsio.FITS(self.path)
         self._hdu = self._file[hdu]
-        self._num_chunks = int(np.ceil(self.num_records / self.chunksize))
         super()._init_source(source)
 
     @property
@@ -250,8 +318,9 @@ class FitsReader(FileReader):
         return self._hdu.get_nrows()
 
     def _load_next_chunk(self) -> DataChunk:
-        offset = self._group_idx * self.chunksize
+        offset = self._chunk_idx * self.chunksize
         group = self._hdu[self.columns][offset : offset + self.chunksize]
+
         data = {
             attr: swap_byteorder(group[col])
             for attr, col in zip(self.attrs, self.columns)
@@ -277,7 +346,6 @@ class HDFReader(FileReader):
 
         self.path = Path(source)
         self._file = h5py.File(self.path, mode="r")
-        self._num_chunks = int(np.ceil(self.num_records / self.chunksize))
         super()._init_source(source)
 
     @property
@@ -288,7 +356,7 @@ class HDFReader(FileReader):
         return num_records[0]
 
     def _load_next_chunk(self) -> DataChunk:
-        offset = self._group_idx * self.chunksize
+        offset = self._chunk_idx * self.chunksize
         data = {
             attr: self._file[col][offset : offset + self.chunksize]
             for attr, col in zip(self.attrs, self.columns)
@@ -311,14 +379,13 @@ def new_filereader(
     weight_name: str | None = None,
     redshift_name: str | None = None,
     patch_name: str | None = None,
-    chunksize: int = 1_000_000,
+    chunksize: int | None = None,
     degrees: bool = True,
     **reader_kwargs,
 ) -> FileReader:
-    # parse the extension
     _, ext = os.path.splitext(str(path))
     ext = ext.lower()
-    # get the correct reader
+
     if ext in (".fits", ".cat"):
         reader_cls = FitsReader
     elif ext in (".hdf5", ".hdf", ".h5"):

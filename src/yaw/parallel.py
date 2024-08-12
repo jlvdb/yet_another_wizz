@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import subprocess
+import sys
 from collections.abc import Iterable, Iterator
 from shutil import get_terminal_size
 from typing import Callable, TypeVar
@@ -14,10 +16,35 @@ Tresult = TypeVar("Tresult")
 Titer = TypeVar("Titer")
 
 
+def get_physical_cores() -> int:
+    try:
+        if os.name == "posix":
+            output = subprocess.check_output("lscpu")
+            for line in output.decode("utf-8").splitlines():
+                if "Core(s) per socket:" in line:
+                    return int(line.split(":")[1].strip())
+
+        elif sys.platform == "darwin":  # macOS
+            output = subprocess.check_output("sysctl -n hw.physicalcpu", shell=True)
+            return int(output.decode("utf-8").strip())
+
+        elif os.name == "nt":
+            output = subprocess.check_output("WMIC CPU Get NumberOfCores", shell=True)
+            return int(output.strip().split(b"\n")[1])
+
+    except Exception:
+        return multiprocessing.cpu_count()
+
+
 def get_num_threads() -> int:
-    system_threads = multiprocessing.cpu_count()
-    num_threads = os.environ.get("YAW_NUM_THREADS", system_threads)
-    return min(int(num_threads), system_threads)
+    system_threads = get_physical_cores()
+
+    try:
+        num_threads = int(os.environ["YAW_NUM_THREADS"])
+        return min(num_threads, system_threads)
+
+    except KeyError:
+        return system_threads
 
 
 COMM = MPI.COMM_WORLD
@@ -153,17 +180,18 @@ class ParallelHelper:
             func_args=(func_args or tuple()),
             func_kwargs=(func_kwargs or dict()),
         )
+
         if cls.use_mpi():
             parallel_method = mpi_iter_unordered
         else:
             parallel_method = multiprocessing_iter_unordered
             iter_kwargs["num_threads"] = cls.num_threads
 
-        result_iter = parallel_method(func, iterable, **iter_kwargs)
         result_iter_progress_optional = tqdm(
-            result_iter,
+            parallel_method(func, iterable, **iter_kwargs),
             total=total,
             ncols=min(80, get_terminal_size()[0]),
             disable=(not progress or cls.on_worker()),
         )
+
         yield from result_iter_progress_optional

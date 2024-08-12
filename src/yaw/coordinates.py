@@ -128,7 +128,6 @@ class Coords3D(Coordinates):
         return self
 
     def to_sky(self) -> CoordsSky:
-        radec = np.empty((len(self), 2))
         x = self.x
         y = self.y
         z = self.z
@@ -138,8 +137,10 @@ class Coords3D(Coordinates):
         x_normed = np.ones_like(x)  # fallback for zero-division, arccos(1)=0.0
         np.divide(x, r_d2, where=r_d2 > 0.0, out=x_normed)
 
+        radec = np.empty((len(self), 2))
         radec[:, 0] = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
         radec[:, 1] = np.arcsin(self.z / r_d3)
+
         return CoordsSky(radec)
 
     def distance(self, other: Coordinates) -> Dists3D:
@@ -171,13 +172,13 @@ class CoordsSky(Coordinates):
         return self.to_3d().mean().to_sky()
 
     def to_3d(self) -> Coords3D:
-        xyz = np.empty((len(self), 3))
-
         cos_dec = np.cos(self.dec)
 
+        xyz = np.empty((len(self), 3))
         xyz[:, 0] = np.cos(self.ra) * cos_dec
         xyz[:, 1] = np.sin(self.ra) * cos_dec
         xyz[:, 2] = np.sin(self.dec)
+
         return Coords3D(xyz)
 
     def to_sky(self) -> CoordsSky:

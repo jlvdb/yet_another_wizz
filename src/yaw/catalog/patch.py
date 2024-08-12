@@ -19,65 +19,67 @@ __all__ = [
 
 Tpath = Union[Path, str]
 
+CHUNKSIZE = 65_536
 
-class ArrayBuffer:
-    def __init__(self):
+
+class ArrayWriter:
+    __slots__ = ("path", "_cachesize", "chunksize", "_shards")
+
+    def __init__(self, path: Tpath, *, chunksize: int = CHUNKSIZE):
+        self.path = path
+        self._cachesize = 0
+        self.chunksize = chunksize
         self._shards = []
 
     def append(self, data: NDArray) -> None:
         data = np.asarray(data)
         self._shards.append(data)
+        self._cachesize += len(data)
 
-    def get_values(self) -> NDArray:
-        return np.concatenate(self._shards)
+        if self._cachesize >= self.chunksize:
+            self.flush()
 
-    def clear(self) -> None:
-        self._shards = []
+    def flush(self) -> None:
+        if len(self._shards) > 0:
+            data = np.concatenate(self._shards)
+            with self.path.open("a") as f:
+                data.tofile(f)
+            self._shards = []
+
+        self._cachesize = 0
 
 
 class PatchWriter:
-    def __init__(self, cache_path: Tpath, chunksize: int = 65_536) -> None:
+    __slots__ = ("cache_path", "coords", "weights", "redshifts")
+
+    def __init__(self, cache_path: Tpath, chunksize: int = CHUNKSIZE) -> None:
         self.cache_path = Path(cache_path)
         if self.cache_path.exists():
             raise FileExistsError(f"directory already exists: {self.cache_path}")
         self.cache_path.mkdir(parents=True)
 
-        self.chunksize = chunksize
-        self._cachesize = 0
-        self._caches: dict[str, ArrayBuffer] = {}
-
-    def _init_caches(self, chunk: DataChunk) -> None:
-        self._caches["coords"] = ArrayBuffer()
-        if chunk.weights is not None:
-            self._caches["weights"] = ArrayBuffer()
-        if chunk.redshifts is not None:
-            self._caches["redshifts"] = ArrayBuffer()
+        self.coords = ArrayWriter(self.cache_path / "coords", chunksize=chunksize)
+        self.weights = ArrayWriter(self.cache_path / "weights", chunksize=chunksize)
+        self.redshifts = ArrayWriter(self.cache_path / "redshifts", chunksize=chunksize)
 
     def process_chunk(self, chunk: DataChunk) -> None:
-        if len(self._caches) == 0:
-            self._init_caches(chunk)
+        coords = chunk.coords.data
+        self.coords.append(coords)
 
-        for attr, cache in self._caches.items():
-            values = getattr(chunk, attr)
-            if values is None:
-                raise ValueError(f"chunk has no '{attr}' attached")
-            cache.append(values)
+        weights = chunk.weights
+        if weights is not None:
+            self.weights.append(weights)
 
-        self._cachesize += len(chunk)
-        if self._cachesize > self.chunksize:
-            self.flush()
-
-    def flush(self) -> None:
-        if self._cachesize > 0:
-            for attr, cache in self._caches.items():
-                cache_path = self.cache_path / attr
-                with cache_path.open(mode="a") as f:
-                    cache.get_values().tofile(f)
-                cache.clear()
-            self._cachesize = 0
+        redshifts = chunk.redshifts
+        if redshifts is not None:
+            self.redshifts.append(redshifts)
 
     def finalize(self) -> None:
-        self.flush()
+        self.coords.flush()
+        if self.weights:
+            self.weights.flush()
+        if self.redshifts:
+            self.redshifts.flush()
 
 
 @dataclass
@@ -121,8 +123,10 @@ class Patch(Sized):
     def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
         meta_data_file = self.cache_path / "meta.json"
+
         try:
             self.meta = Metadata.from_file(meta_data_file)
+
         except FileNotFoundError:
             self.meta = Metadata.compute(self.coords, self.weights)
             self.meta.to_file(meta_data_file)
