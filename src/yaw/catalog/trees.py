@@ -27,15 +27,18 @@ Tpath = Union[Path, str]
 def parse_binning(binning: NDArray | None) -> NDArray | None:
     if binning is None:
         return None
+
     binning = np.asarray(binning, dtype=np.float64)
-    if np.any(np.diff(binning) <= 0.0):
-        raise ValueError("bin edges must increase monotonically")
-    return binning
+    if np.all(np.diff(binning) > 0.0):
+        return binning
+
+    raise ValueError("bin edges must increase monotonically")
 
 
 def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
     ang_min = np.atleast_1d(ang_min).astype(np.float64)
     ang_max = np.atleast_1d(ang_max).astype(np.float64)
+
     if ang_min.ndim != 1 or ang_max.ndim != 1:
         raise ValueError("'ang_min' and 'ang_max' must be 1-dim")
     if len(ang_min) != len(ang_max):
@@ -46,6 +49,7 @@ def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
     ang_range = np.column_stack((ang_min, ang_max))
     if np.any(ang_range < 0.0) and np.any(ang_range > np.pi):
         raise ValueError("'ang_min' and 'ang_max' not in range [0.0, pi]")
+
     return ang_range
 
 
@@ -53,14 +57,16 @@ def get_ang_bins(
     ang_range: NDArray, weight_scale: float | None, weight_res: int
 ) -> NDArray:
     log_range = np.log10(ang_range)
+
     if weight_scale is not None:
         log_bins = np.linspace(log_range.min(), log_range.max(), weight_res)
         # ensure that all ang_min/max scales are included in the bins
         log_bins = np.concatenate(log_bins, log_range.flatten())
+
     else:
         log_bins = log_range.flatten()
-    log_bins = np.sort(np.unique(log_bins))
-    return 10.0**log_bins
+
+    return 10.0 ** np.sort(np.unique(log_bins))
 
 
 def dispatch_counts(counts: NDArray, cumulative: bool) -> NDArray:
@@ -77,6 +83,7 @@ def get_counts_for_limits(
         idx_min = np.argmin(np.abs(ang_bins - ang_min))
         idx_max = np.argmin(np.abs(ang_bins - ang_max))
         final_counts[i] = counts[idx_min:idx_max].sum()
+
     return final_counts
 
 
@@ -89,11 +96,14 @@ class AngularTree(Sized):
         leafsize: int = 16,
     ) -> None:
         self.num_records = len(coords)
+
         if weights is None:
             self.weights = None
             self.total = float(self.num_records)
+
         elif len(weights) != self.num_records:
             raise ValueError("shape of 'coords' and 'weights' does not match")
+
         else:
             self.weights = np.asarray(weights).astype(np.float64, copy=False)
             self.total = float(self.weights.sum())
@@ -114,8 +124,8 @@ class AngularTree(Sized):
     ) -> NDArray[np.float64]:
         ang_limits = parse_ang_limits(ang_min, ang_max)
         ang_bins = get_ang_bins(ang_limits, weight_scale, weight_res)
-
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
+
         try:
             counts = self.tree.count_neighbors(
                 other.tree,
@@ -130,6 +140,7 @@ class AngularTree(Sized):
         if weight_scale is not None:
             ang_weights = logarithmic_mid(ang_bins) ** weight_scale
             counts *= ang_weights / ang_weights.sum()
+
         return get_counts_for_limits(counts, ang_bins, ang_limits)
 
 
@@ -153,6 +164,7 @@ def build_binned_trees(
         bin_data["coords"] = CoordsSky(bin_data["coords"])
         tree = AngularTree(**bin_data, leafsize=leafsize)
         trees.append(tree)
+
     return tuple(trees)
 
 
@@ -222,8 +234,10 @@ class BinnedTrees(Iterable):
     def binning_equal(self, binning: NDArray | None) -> bool:
         if self.binning is None and binning is None:
             return True
+
         elif np.array_equal(self.binning, binning):
             return True
+
         return False
 
     @property
@@ -232,7 +246,4 @@ class BinnedTrees(Iterable):
             return pickle.load(f)
 
     def __iter__(self) -> Iterator[AngularTree]:
-        if self.is_binned():
-            yield from self.trees
-        else:
-            yield from repeat(self.trees)
+        yield from (self.trees if self.is_binned() else repeat(self.trees))

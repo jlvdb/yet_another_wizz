@@ -37,7 +37,7 @@ Tcenters = Union["Catalog", Coordinates]
 Tpath = Union[Path, str]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
-PATCH_FILE_NAME = "num_patches"
+PATCHFILE_NAME = "num_patches"
 
 
 class InconsistentPatchesError(Exception):
@@ -62,10 +62,13 @@ class PatchMode(Enum):
     ) -> PatchMode:
         if patch_centers is not None:
             return PatchMode.apply
+
         if patch_name is not None:
             return PatchMode.divide
+
         elif patch_num is not None:
             return PatchMode.create
+
         raise ValueError("no patch method specified")
 
 
@@ -104,6 +107,7 @@ class ChunkProcessor:
         if self.patch_centers is not None:
             patch_ids = self.compute_patch_ids(chunk)
             chunk.set_patch_ids(patch_ids)
+
         return chunk.split_patches()
 
 
@@ -117,9 +121,10 @@ class CatalogWriter(AbstractContextManager):
                 rmtree(self.cache_directory)
             else:
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
+
         self.cache_directory.mkdir()
-        self._writers: dict[int, PatchWriter] = {}
         self.progress = progress
+        self._writers: dict[int, PatchWriter] = {}
 
     def __enter__(self) -> Self:
         return self
@@ -127,12 +132,15 @@ class CatalogWriter(AbstractContextManager):
     def __exit__(self, *args, **kwargs) -> None:
         self.finalize()
 
+    def get_writer_path(self, patch_id: int) -> Path:
+        return self.cache_directory / PATCH_NAME_TEMPLATE.format(patch_id)
+
     def get_writer(self, patch_id: int) -> PatchWriter:
         try:
             return self._writers[patch_id]
+
         except KeyError:
-            cache_path = self.cache_directory / PATCH_NAME_TEMPLATE.format(patch_id)
-            writer = PatchWriter(cache_path)
+            writer = PatchWriter(self.get_writer_path(patch_id))
             self._writers[patch_id] = writer
             return writer
 
@@ -153,62 +161,63 @@ def write_patches(
     progress: bool,
     num_threads: int | None = None,
 ) -> None:
-    if num_threads is None:
-        num_threads = ParallelHelper.num_threads
     if isinstance(patch_centers, Catalog):
         patch_centers = patch_centers.get_centers()
     if isinstance(patch_centers, Coordinates):
         patch_centers = patch_centers.to_sky()
     preprocess = ChunkProcessor(patch_centers)
 
+    chunk_iter_progress_optional = tqdm(
+        reader,
+        total=reader.num_chunks,
+        ncols=min(80, get_terminal_size()[0]),
+        disable=(not progress),
+    )
+
     writer = CatalogWriter(path, overwrite=overwrite, progress=progress)
-    with reader, writer, multiprocessing.Pool(num_threads) as pool:
-        chunk_iter_progress_optional = tqdm(
-            reader,
-            total=reader.num_chunks,
-            ncols=min(80, get_terminal_size()[0]),
-            disable=(not progress),
-        )
+    pool = multiprocessing.Pool(num_threads or ParallelHelper.num_threads)
+    with reader, writer, pool:
 
-        d_read = 0.0
-        d_proc = 0.0
-        d_write = 0.0
+        _TEMP_d_read = 0.0
+        _TEMP_d_proc = 0.0
+        _TEMP_d_write = 0.0
+        _TEMP_t_start = default_timer()
+        _TEMP_t_0 = default_timer()
 
-        t_start = default_timer()
-        t_0 = default_timer()
         for chunk in chunk_iter_progress_optional:
-            d_read += default_timer() - t_0
+            _TEMP_d_read += default_timer() - _TEMP_t_0
+            _TEMP_t_1 = default_timer()
 
-            t_1 = default_timer()
             thread_chunks = chunk.split(num_threads)
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
-                d_proc += default_timer() - t_1
+                _TEMP_d_proc += default_timer() - _TEMP_t_1
+                _TEMP_t_2 = default_timer()
 
-                t_2 = default_timer()
                 writer.process_patches(patch_chunks)
-                d_write += default_timer() - t_2
 
-                t_1 = default_timer()
-            t_0 = default_timer()
-        t_2 = default_timer()
-    d_write += default_timer() - t_2
-    t_end = default_timer()
+                _TEMP_d_write += default_timer() - _TEMP_t_2
+                _TEMP_t_1 = default_timer()
+            _TEMP_t_0 = default_timer()
+        _TEMP_t_2 = default_timer()
+    _TEMP_d_write += default_timer() - _TEMP_t_2
+    _TEMP_t_end = default_timer()
 
-    print("total time:   ", t_end - t_start)
-    print("reading:      ", d_read)
-    print("preprocessing:", d_proc)
-    print("writing:      ", d_write)
+    print("total time:   ", _TEMP_t_end - _TEMP_t_start)
+    print("reading:      ", _TEMP_d_read)
+    print("preprocessing:", _TEMP_d_proc)
+    print("writing:      ", _TEMP_d_write)
 
 
 def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
-    with (cache_directory / PATCH_FILE_NAME).open("w") as f:
+    with (cache_directory / PATCHFILE_NAME).open("w") as f:
         f.write(str(num_patches))
 
 
 def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
-    path = Path(cache_directory) / PATCH_FILE_NAME
+    path = Path(cache_directory) / PATCHFILE_NAME
     if not path.exists():
         raise InconsistentPatchesError("patch indicator file not found")
+
     with path.open() as f:
         num_patches = int(f.read())
     if num_expect != num_patches:
@@ -220,7 +229,7 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
     patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
     create_patchfile(cache_directory, len(patch_paths))
 
-    t_0 = default_timer()
+    _TEMP_t_0 = default_timer()
     # instantiate patches, which trigger computing the patch meta-data
     deque(
         ParallelHelper.iter_unordered(
@@ -231,7 +240,7 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
         ),
         maxlen=0,
     )
-    print("metadata:     ", default_timer() - t_0)
+    print("metadata:     ", default_timer() - _TEMP_t_0)
 
 
 class Catalog(Mapping[int, Patch]):
@@ -290,12 +299,12 @@ class Catalog(Mapping[int, Patch]):
                 degrees=degrees,
                 **reader_kwargs,
             )
+
             mode = PatchMode.determine(patch_centers, patch_name, patch_num)
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            write_patches(
-                cache_directory, reader, patch_centers, overwrite, progress
-            )
+
+            write_patches(cache_directory, reader, patch_centers, overwrite, progress)
         ParallelHelper.comm.Barrier()
 
         compute_patch_metadata(cache_directory, progress)
@@ -333,12 +342,12 @@ class Catalog(Mapping[int, Patch]):
                 degrees=degrees,
                 **reader_kwargs,
             )
+
             mode = PatchMode.determine(patch_centers, patch_name, patch_num)
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            write_patches(
-                cache_directory, reader, patch_centers, overwrite, progress
-            )
+
+            write_patches(cache_directory, reader, patch_centers, overwrite, progress)
         ParallelHelper.comm.Barrier()
 
         compute_patch_metadata(cache_directory, progress)
@@ -378,12 +387,14 @@ class Catalog(Mapping[int, Patch]):
     def get_redshift_range(self) -> tuple[float, float]:
         if not self.has_redshifts():
             raise ValueError("no 'redshifts' attached")
+
         min_redshifts = []
         max_redshifts = []
         for patch in self.values():
             redshifts = patch.redshifts  # triggers I/O
             min_redshifts.append(redshifts.min())
             max_redshifts.append(redshifts.max())
+
         return float(min(min_redshifts)), float(max(max_redshifts))
 
     def get_num_records(self) -> tuple[int]:

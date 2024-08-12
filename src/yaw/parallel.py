@@ -27,20 +27,24 @@ def get_physical_cores() -> int:
         elif sys.platform == "darwin":  # macOS
             output = subprocess.check_output("sysctl -n hw.physicalcpu", shell=True)
             return int(output.decode("utf-8").strip())
-  
+
         elif os.name == "nt":
             output = subprocess.check_output("WMIC CPU Get NumberOfCores", shell=True)
             return int(output.strip().split(b"\n")[1])
 
     except Exception:
-        pass
-    return multiprocessing.cpu_count()
+        return multiprocessing.cpu_count()
 
 
 def get_num_threads() -> int:
     system_threads = get_physical_cores()
-    num_threads = os.environ.get("YAW_NUM_THREADS", system_threads)
-    return min(int(num_threads), system_threads)
+
+    try:
+        num_threads = int(os.environ["YAW_NUM_THREADS"])
+        return min(num_threads, system_threads)
+
+    except KeyError:
+        return system_threads
 
 
 COMM = MPI.COMM_WORLD
@@ -176,17 +180,18 @@ class ParallelHelper:
             func_args=(func_args or tuple()),
             func_kwargs=(func_kwargs or dict()),
         )
+
         if cls.use_mpi():
             parallel_method = mpi_iter_unordered
         else:
             parallel_method = multiprocessing_iter_unordered
             iter_kwargs["num_threads"] = cls.num_threads
 
-        result_iter = parallel_method(func, iterable, **iter_kwargs)
         result_iter_progress_optional = tqdm(
-            result_iter,
+            parallel_method(func, iterable, **iter_kwargs),
             total=total,
             ncols=min(80, get_terminal_size()[0]),
             disable=(not progress or cls.on_worker()),
         )
+
         yield from result_iter_progress_optional

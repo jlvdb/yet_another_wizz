@@ -43,6 +43,7 @@ def groupby_binning(
 ) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
     binning = np.asarray(binning)
     bin_idx = np.digitize(values, binning, right=(closed == "right"))
+
     for i, bin_array in groupby_value(bin_idx, **optional_arrays):
         if 0 < i < len(binning):  # skip values outside of binning range
             yield binning[i - 1 : i + 1], bin_array
@@ -89,13 +90,12 @@ class DataChunk:
 
         ra = parser(ra, np.float64)
         dec = parser(dec, np.float64)
+        coords = np.column_stack((ra, dec))
         if degrees:
-            ra = np.deg2rad(ra)
-            dec = np.deg2rad(dec)
+            coords = np.deg2rad(coords)
 
-        coords = CoordsSky(np.column_stack((ra, dec)))
         return cls(
-            coords,
+            CoordsSky(coords),
             parser(weights, np.float64),
             parser(redshifts, np.float64),
             parser(patch_ids, np.int32),
@@ -151,11 +151,13 @@ class DataChunk:
             if patch_ids.shape != (len(self),):
                 raise ValueError("'patch_ids' has an invalid shape")
             patch_ids = patch_ids.astype(np.int32, casting="same_kind", copy=False)
+
         self.patch_ids = patch_ids
 
     def split_patches(self) -> dict[int, DataChunk]:
         if self.patch_ids is None:
             raise ValueError("'patch_ids' not provided")
+
         chunks = {}
         for patch_id, attr_dict in groupby_value(
             self.patch_ids,
@@ -165,6 +167,7 @@ class DataChunk:
         ):
             coords = CoordsSky(attr_dict.pop("coords"))
             chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
+
         return chunks
 
 

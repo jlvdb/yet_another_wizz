@@ -19,11 +19,13 @@ __all__ = [
 
 Tpath = Union[Path, str]
 
+CHUNKSIZE = 65_536
+
 
 class ArrayWriter:
     __slots__ = ("path", "_cachesize", "chunksize", "_shards")
 
-    def __init__(self, path: Tpath, *, chunksize: int = 65_536):
+    def __init__(self, path: Tpath, *, chunksize: int = CHUNKSIZE):
         self.path = path
         self._cachesize = 0
         self.chunksize = chunksize
@@ -39,16 +41,18 @@ class ArrayWriter:
 
     def flush(self) -> None:
         if len(self._shards) > 0:
+            data = np.concatenate(self._shards)
             with self.path.open("a") as f:
-                np.concatenate(self._shards).tofile(f)
+                data.tofile(f)
             self._shards = []
+
         self._cachesize = 0
 
 
 class PatchWriter:
     __slots__ = ("cache_path", "coords", "weights", "redshifts")
 
-    def __init__(self, cache_path: Tpath, chunksize: int = 65_536) -> None:
+    def __init__(self, cache_path: Tpath, chunksize: int = CHUNKSIZE) -> None:
         self.cache_path = Path(cache_path)
         if self.cache_path.exists():
             raise FileExistsError(f"directory already exists: {self.cache_path}")
@@ -119,8 +123,10 @@ class Patch(Sized):
     def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
         meta_data_file = self.cache_path / "meta.json"
+
         try:
             self.meta = Metadata.from_file(meta_data_file)
+
         except FileNotFoundError:
             self.meta = Metadata.compute(self.coords, self.weights)
             self.meta.to_file(meta_data_file)
