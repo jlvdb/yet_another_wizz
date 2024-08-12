@@ -7,7 +7,6 @@ from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
 from shutil import get_terminal_size, rmtree
-from timeit import default_timer
 from typing import Union
 
 try:
@@ -179,35 +178,11 @@ def write_patches(
     writer = CatalogWriter(path, overwrite=overwrite, progress=progress)
     pool = multiprocessing.Pool(num_threads)
     with reader, writer, pool:
-
-        _TEMP_d_read = 0.0
-        _TEMP_d_proc = 0.0
-        _TEMP_d_write = 0.0
-        _TEMP_t_start = default_timer()
-        _TEMP_t_0 = default_timer()
-
         for chunk in chunk_iter_progress_optional:
-            _TEMP_d_read += default_timer() - _TEMP_t_0
-            _TEMP_t_1 = default_timer()
-
             thread_chunks = chunk.split(num_threads)
+
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
-                _TEMP_d_proc += default_timer() - _TEMP_t_1
-                _TEMP_t_2 = default_timer()
-
                 writer.process_patches(patch_chunks)
-
-                _TEMP_d_write += default_timer() - _TEMP_t_2
-                _TEMP_t_1 = default_timer()
-            _TEMP_t_0 = default_timer()
-        _TEMP_t_2 = default_timer()
-    _TEMP_d_write += default_timer() - _TEMP_t_2
-    _TEMP_t_end = default_timer()
-
-    print("total time:   ", _TEMP_t_end - _TEMP_t_start)
-    print("reading:      ", _TEMP_d_read)
-    print("preprocessing:", _TEMP_d_proc)
-    print("writing:      ", _TEMP_d_write)
 
 
 def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
@@ -231,7 +206,6 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
     patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
     create_patchfile(cache_directory, len(patch_paths))
 
-    _TEMP_t_0 = default_timer()
     # instantiate patches, which trigger computing the patch meta-data
     deque(
         ParallelHelper.iter_unordered(
@@ -242,7 +216,6 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
         ),
         maxlen=0,
     )
-    print("metadata:     ", default_timer() - _TEMP_t_0)
 
 
 class Catalog(Mapping[int, Patch]):
