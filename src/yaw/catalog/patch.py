@@ -20,28 +20,33 @@ __all__ = [
 Tpath = Union[Path, str]
 
 
-class ArrayBuffer:
-    __slots__ = ("_shards")
+class ArrayWriter:
+    __slots__ = ("path", "_cachesize", "chunksize", "_shards")
 
-    def __init__(self):
+    def __init__(self, path: Tpath, *, chunksize: int = 65_536):
+        self.path = path
+        self._cachesize = 0
+        self.chunksize = chunksize
         self._shards = []
-
-    def is_empty(self) -> bool:
-        return len(self._shards) == 0
 
     def append(self, data: NDArray) -> None:
         data = np.asarray(data)
         self._shards.append(data)
+        self._cachesize += len(data)
 
-    def get_values(self) -> NDArray:
-        return np.concatenate(self._shards)
+        if self._cachesize >= self.chunksize:
+            self.flush()
 
-    def clear(self) -> None:
-        self._shards = []
+    def flush(self) -> None:
+        if len(self._shards) > 0:
+            with self.path.open("a") as f:
+                np.concatenate(self._shards).tofile(f)
+            self._shards = []
+        self._cachesize = 0
 
 
 class PatchWriter:
-    __slots__ = ("cache_path", "coords", "weights", "redshifts", "chunksize", "cachesize")
+    __slots__ = ("cache_path", "coords", "weights", "redshifts")
 
     def __init__(self, cache_path: Tpath, chunksize: int = 65_536) -> None:
         self.cache_path = Path(cache_path)
@@ -49,12 +54,9 @@ class PatchWriter:
             raise FileExistsError(f"directory already exists: {self.cache_path}")
         self.cache_path.mkdir(parents=True)
 
-        self.chunksize = chunksize
-        self.cachesize = 0
-
-        self.coords = ArrayBuffer()
-        self.weights = ArrayBuffer()
-        self.redshifts = ArrayBuffer()
+        self.coords = ArrayWriter(self.cache_path / "coords", chunksize=chunksize)
+        self.weights = ArrayWriter(self.cache_path / "weights", chunksize=chunksize)
+        self.redshifts = ArrayWriter(self.cache_path / "redshifts", chunksize=chunksize)
 
     def process_chunk(self, chunk: DataChunk) -> None:
         coords = chunk.coords.data
@@ -68,26 +70,12 @@ class PatchWriter:
         if redshifts is not None:
             self.redshifts.append(redshifts)
 
-        self.cachesize += len(coords)
-        if self.cachesize > self.chunksize:
-            self.flush()
-
-    def flush(self) -> None:
-        def flush_cache(cache: ArrayBuffer, cache_path: Path) -> None:
-            with cache_path.open(mode="a") as f:
-                cache.get_values().tofile(f)
-            cache.clear()
-
-        if self.cachesize > 0:
-            flush_cache(self.coords, self.cache_path / "coords")
-            if not self.weights.is_empty():
-                flush_cache(self.weights, self.cache_path / "weights")
-            if not self.redshifts.is_empty():
-                flush_cache(self.redshifts, self.cache_path / "redshifts")
-            self.cachesize = 0
-
     def finalize(self) -> None:
-        self.flush()
+        self.coords.flush()
+        if self.weights:
+            self.weights.flush()
+        if self.redshifts:
+            self.redshifts.flush()
 
 
 @dataclass
