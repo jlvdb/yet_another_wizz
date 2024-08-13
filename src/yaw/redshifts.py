@@ -3,8 +3,8 @@ redshift distributions. These containers provide methods for error and
 covariance estimation, plotting and computing mean redshifts.
 
 True redshift distributions can be expressed through the :obj:`HistData` class
-and can be computed from the :meth:`~yaw.catalogs_old.BaseCatalog.true_redshifts`
-method of :obj:`~yaw.catalogs_old.BaseCatalog`.
+and can be computed from the :meth:`~yaw.old_catalogs.BaseCatalog.true_redshifts`
+method of :obj:`~yaw.old_catalogs.BaseCatalog`.
 
 Clustering redshift estimates can be expressed through the :obj:`RedshiftData`
 class. Its different constructor methods, :meth:`~RedshiftData.from_corrdata`

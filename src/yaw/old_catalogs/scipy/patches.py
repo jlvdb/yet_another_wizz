@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.cluster import vq
 
-from yaw.catalogs_old.scipy.kdtree import SphericalKDTree
+from yaw.old_catalogs.scipy.kdtree import SphericalKDTree
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, Distance, DistSky
 
 if TYPE_CHECKING:

@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.catalogs_old import BaseCatalog, PatchLinkage
-from yaw.catalogs_old.scipy import utils
-from yaw.catalogs_old.scipy.patches import (
+from yaw.old_catalogs import BaseCatalog, PatchLinkage
+from yaw.old_catalogs.scipy import utils
+from yaw.old_catalogs.scipy.patches import (
     PatchCatalog,
     assign_patches,
     create_patches,
@@ -49,7 +49,7 @@ def _worker_true_redshifts(
 class ScipyCatalog(BaseCatalog):
     """An implementation of the :obj:`BaseCatalog` using a wrapper around
     :obj:`scipy.spatial.cKDTree` for the pair counting, which is implemented in
-    :obj:`yaw.catalogs_old.scipy.kdtree`. Fully supports caching.
+    :obj:`yaw.old_catalogs.scipy.kdtree`. Fully supports caching.
 
     .. Note::
 

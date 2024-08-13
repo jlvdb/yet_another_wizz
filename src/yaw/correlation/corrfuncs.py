@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from deprecated import deprecated
 
-from yaw.catalogs_old import PatchLinkage
+from yaw.old_catalogs import PatchLinkage
 from yaw.config import OPTIONS, ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import IntervalIndex
 
-    from yaw.catalogs_old import BaseCatalog
+    from yaw.old_catalogs import BaseCatalog
     from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
 
@@ -402,7 +402,7 @@ def check_mergable(cfs: Sequence[CorrFunc | None]) -> None:
 class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     """Container object for measured correlation pair counts.
 
-    Container returned by :meth:`~yaw.catalogs_old.BaseCatalog.correlate` that
+    Container returned by :meth:`~yaw.old_catalogs.BaseCatalog.correlate` that
     computes the correlations between data catalogs. The correlation function
     can be computed from four kinds of pair counts, data-data (DD), data-random
     (DR), random-data (RD), and random-random (RR).
@@ -810,7 +810,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
 
 def _create_dummy_counts(counts: Any | dict[str, Any]) -> dict[str, None]:
     """Duplicate a the return values of
-    :meth:`yaw.catalogs_old.BaseCatalog.correlate`, but replace the :obj:`CorrFunc`
+    :meth:`yaw.old_catalogs.BaseCatalog.correlate`, but replace the :obj:`CorrFunc`
     instances by :obj:`None`."""
     if isinstance(counts, dict):
         dummy = {scale_key: None for scale_key in counts}
@@ -901,13 +901,13 @@ def autocorrelate(
         config (:obj:`~yaw.config.Configuration`):
             Provides all major run parameters, such as scales, binning, and for
             the correlation measurement backend.
-        data (:obj:`~yaw.catalogs_old.BaseCatalog`):
+        data (:obj:`~yaw.old_catalogs.BaseCatalog`):
             The data sample catalogue.
-        random (:obj:`~yaw.catalogs_old.BaseCatalog`):
+        random (:obj:`~yaw.old_catalogs.BaseCatalog`):
             Random catalogue for the data sample.
 
     Keyword Args:
-        linkage (:obj:`~yaw.catalogs_old.PatchLinkage`, optional):
+        linkage (:obj:`~yaw.old_catalogs.PatchLinkage`, optional):
             Provide a linkage object that determines which spatial patches must
             be correlated given the measurement scales. Ensures consistency
             when measuring correlations repeatedly for a fixed set of input
@@ -985,18 +985,18 @@ def crosscorrelate(
     Args:
         config (:obj:`~yaw.config.Configuration`):
             Provides all major run parameters.
-        reference (:obj:`yaw.catalogs_old.BaseCatalog`):
+        reference (:obj:`yaw.old_catalogs.BaseCatalog`):
             The reference sample.
-        unknown (:obj:`yaw.catalogs_old.BaseCatalog`):
+        unknown (:obj:`yaw.old_catalogs.BaseCatalog`):
             The sample with unknown redshift distribution.
 
     Keyword Args:
-        ref_rand (:obj:`yaw.catalogs_old.BaseCatalog`, optional):
+        ref_rand (:obj:`yaw.old_catalogs.BaseCatalog`, optional):
             Random catalog for the reference sample, requires redshifts
             configured.
-        unk_rand (:obj:`yaw.catalogs_old.BaseCatalog`, optional):
+        unk_rand (:obj:`yaw.old_catalogs.BaseCatalog`, optional):
             Random catalog for the unknown sample.
-        linkage (:obj:`yaw.catalogs_old.PatchLinkage`, optional):
+        linkage (:obj:`yaw.old_catalogs.PatchLinkage`, optional):
             Provide a linkage object that determines which spatial patches must
             be correlated given the measurement scales. Ensures consistency
             when measuring multiple correlations, otherwise generated

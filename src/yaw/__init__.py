@@ -22,7 +22,7 @@ import logging as _logging
 
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())  # noqa
 
-from yaw.catalogs_old import NewCatalog
+from yaw.old_catalogs import NewCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.cosmology import Scale
 from yaw.core.math import global_covariance

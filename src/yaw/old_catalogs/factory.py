@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from yaw.catalogs_old.catalog import BackendError, BaseCatalog
+from yaw.old_catalogs.catalog import BackendError, BaseCatalog
 
 if TYPE_CHECKING:
     from pandas import DataFrame
@@ -100,7 +100,7 @@ class NewCatalog:
                 Name of the column that specifies the patch index, i.e.
                 assigning each object to a spatial patch. Index starts counting
                 from 0 (see :ref:`patches`).
-            patch_centers (:obj:`~yaw.catalogs_old.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`, optional):
+            patch_centers (:obj:`~yaw.old_catalogs.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`, optional):
                 Assign objects to existing patch centers based on their
                 coordinates. Must be either a different catalog instance or a
                 vector of coordinates.
@@ -170,7 +170,7 @@ class NewCatalog:
         Args:
             filepath (:obj:`str`):
                 Path to the input data file.
-            patches (:obj:`str`, :obj:`int`, :obj:`~yaw.catalogs_old.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`):
+            patches (:obj:`str`, :obj:`int`, :obj:`~yaw.old_catalogs.BaseCatalog`, :obj:`~yaw.core.coordinates.Coordinate`):
                 Specifies the construction of patches. If `str`, patch indices
                 are read from the file. If `int`, generates this number of
                 patches. Otherwise assign objects based on existing patch
