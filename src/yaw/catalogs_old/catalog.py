@@ -15,7 +15,7 @@ from yaw.core.utils import long_num_format
 if TYPE_CHECKING:
     from pandas import DataFrame
 
-    from yaw.catalogs import PatchLinkage
+    from yaw.catalogs_old import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
     from yaw.correlation.paircounts import NormalisedCounts
     from yaw.redshifts import HistData
@@ -77,7 +77,7 @@ class BaseCatalog:
         """Build a catalogue from in-memory data.
 
         Catalogs should be instantiated through the factory class, see
-        :meth:`yaw.catalogs.NewCatalog.from_dataframe`."""
+        :meth:`yaw.catalogs_old.NewCatalog.from_dataframe`."""
         pass
 
     @classmethod
@@ -99,7 +99,7 @@ class BaseCatalog:
         """Build a catalogue from data file.
 
         Catalogs should be instantiated through the factory class, see
-        :meth:`yaw.catalogs.NewCatalog.from_file`."""
+        :meth:`yaw.catalogs_old.NewCatalog.from_file`."""
         columns = [c for c in [ra, dec, redshift, weight] if c is not None]
         if isinstance(patches, str):
             columns.append(patches)
@@ -139,7 +139,7 @@ class BaseCatalog:
         """Restore the catalogue from its cache directory.
 
         Catalogs should be instantiated through the factory class, see
-        :meth:`yaw.catalogs.NewCatalog.from_cache`."""
+        :meth:`yaw.catalogs_old.NewCatalog.from_cache`."""
         cls._logger.info("restoring from cache directory '%s'", cache_directory)
 
     def __repr__(self) -> str:
@@ -188,7 +188,7 @@ class BaseCatalog:
     def load(self) -> None:
         """Permanently load data from cache into memory.
 
-        Raises a :obj:`~yaw.catalogs.scipy.patches.CachingError` if no cache
+        Raises a :obj:`~yaw.catalogs_old.scipy.patches.CachingError` if no cache
         is configured.
         """
         self._logger.debug("bulk loading catalog")
@@ -322,7 +322,7 @@ class BaseCatalog:
             other (Catalog instance, optional):
                 Second catalog instance used for cross-catalogue pair counting.
                 Catalogue must use the same backend.
-            linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, optional):
+            linkage (:obj:`~yaw.catalogs_old.linkage.PatchLinkage`, optional):
                 Linkage object that defines with patches must be correlated for
                 a given scales and which patch combinations can be skipped. Can
                 be used for the ``scipy`` backend to count pairs consistently

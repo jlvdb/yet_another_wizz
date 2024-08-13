@@ -13,7 +13,7 @@ class Options:
     def backend(self) -> tuple[str]:
         """Lists the names of the currently available backends for correlation
         measurements."""
-        from yaw.catalogs import BaseCatalog
+        from yaw.catalogs_old import BaseCatalog
 
         return tuple(sorted(BaseCatalog._backends.keys()))
 

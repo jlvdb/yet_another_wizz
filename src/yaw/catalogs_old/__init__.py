@@ -10,11 +10,11 @@ implementations.
 """
 
 # make backends available and make sure they are registered
-from yaw.catalogs.catalog import BaseCatalog
-from yaw.catalogs.factory import NewCatalog
-from yaw.catalogs.linkage import PatchLinkage
+from yaw.catalogs_old.catalog import BaseCatalog
+from yaw.catalogs_old.factory import NewCatalog
+from yaw.catalogs_old.linkage import PatchLinkage
 
 # isort: split
-from yaw.catalogs import scipy, treecorr  # noqa
+from yaw.catalogs_old import scipy, treecorr  # noqa
 
 __all__ = ["BaseCatalog", "NewCatalog", "PatchLinkage"]

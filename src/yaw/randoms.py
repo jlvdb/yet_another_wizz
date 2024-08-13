@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from pandas import DataFrame
 
-    from yaw.catalogs import BaseCatalog
+    from yaw.catalogs_old import BaseCatalog
 
 __all__ = ["UniformRandoms"]
 
@@ -71,7 +71,7 @@ class UniformRandoms:
         coordinate range of a given data catalogue.
 
         Args:
-            cat (:obj:`yaw.catalogs.BaseCatalog`):
+            cat (:obj:`yaw.catalogs_old.BaseCatalog`):
                 Catalog instance from which the right ascension and declination
                 range is computed.
             seed (:obj:`int`, optional):

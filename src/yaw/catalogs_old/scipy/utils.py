@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.catalogs import PatchLinkage
-from yaw.catalogs.scipy.patches import PatchCatalog
+from yaw.catalogs_old import PatchLinkage
+from yaw.catalogs_old.scipy.patches import PatchCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.correlation.paircounts import (
@@ -22,7 +22,7 @@ from yaw.redshifts import HistData
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from yaw.catalogs.scipy.catalog import ScipyCatalog
+    from yaw.catalogs_old.scipy.catalog import ScipyCatalog
 
 __all__ = [
     "get_patch_list",
@@ -46,13 +46,13 @@ def get_patch_list(
     a newly constructed one.
 
     Args:
-        catalog1 (:obj:`yaw.catalogs.scipy.ScipyCatalog`):
+        catalog1 (:obj:`yaw.catalogs_old.scipy.ScipyCatalog`):
             The first input data catalogue.
-        catalog2 (:obj:`yaw.catalogs.scipy.ScipyCatalog`, :obj:`None`):
+        catalog2 (:obj:`yaw.catalogs_old.scipy.ScipyCatalog`, :obj:`None`):
             The second input data catalogue, can be `None`.
         config (:obj:`yaw.config.Configuration`):
             The configuration used for the correlation measurement.
-        linkage (:obj:`~yaw.catalogs.linkage.PatchLinkage`, :obj:`None`):
+        linkage (:obj:`~yaw.catalogs_old.linkage.PatchLinkage`, :obj:`None`):
             Linkage object that defines with patches must be correlated for
             a given scales and which patch combinations can be skipped.
         auto (:obj:`bool`):
@@ -86,9 +86,9 @@ def count_pairs_patches(
     in a PatchCorrelationData object.
 
     Args:
-        patch1 (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+        patch1 (:obj:`yaw.catalogs_old.scipy.PatchCatalog`):
             The first input patch catalogue.
-        patch2 (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+        patch2 (:obj:`yaw.catalogs_old.scipy.PatchCatalog`):
             The second input patch catalogue.
         config (:obj:`yaw.config.Configuration`):
             The configuration used for the correlation measurement.
@@ -193,7 +193,7 @@ def count_histogram_patch(
     """Compute a histogram of redshifts in a single patch.
 
     Args:
-        patch (:obj:`yaw.catalogs.scipy.PatchCatalog`):
+        patch (:obj:`yaw.catalogs_old.scipy.PatchCatalog`):
             The input patch catalogue.
         z_bins (:obj:`NDArray[np.float64]`):
             The bin edges including the right-most edge.

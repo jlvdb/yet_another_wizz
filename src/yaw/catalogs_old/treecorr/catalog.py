@@ -16,7 +16,7 @@ import pandas as pd
 from numpy.typing import NDArray
 from treecorr import Catalog, NNCorrelation
 
-from yaw.catalogs import BaseCatalog
+from yaw.catalogs_old import BaseCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.logging import TimedLog
@@ -31,7 +31,7 @@ from yaw.redshifts import HistData
 if TYPE_CHECKING:
     from pandas import DataFrame, Interval
 
-    from yaw.catalogs import PatchLinkage
+    from yaw.catalogs_old import PatchLinkage
 
 __all__ = ["EmptyCatalog", "TreecorrCatalog"]
 

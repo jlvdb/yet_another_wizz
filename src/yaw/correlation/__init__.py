@@ -1,6 +1,6 @@
 """This module implements the computation of correlation functions with
 :func:`crosscorrelate` and :func:`autocorrelate` from input data catalogues, see
-:mod:`yaw.catalogs`.
+:mod:`yaw.catalogs_old`.
 
 These measurement methods return the main class, the correlation function
 :obj:`CorrFunc` container. It holds the normalised pair counts (in
