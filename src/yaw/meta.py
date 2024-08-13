@@ -67,7 +67,17 @@ class HdfSerializable(ABC):
 
 
 class Indexer(Generic[Tkey, Tvalue], Iterator):
-    pass
+    @abstractmethod
+    def __getitem__(self, item: Tkey) -> Tvalue:
+        pass
+
+    @abstractmethod
+    def __next__(self) -> Tvalue:
+        pass
+
+    @abstractmethod
+    def __iter__(self) -> Iterator[Tvalue]:
+        pass
 
 
 class PatchwiseData(ABC):
