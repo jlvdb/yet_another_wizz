@@ -16,7 +16,6 @@ import pandas as pd
 from numpy.typing import NDArray
 from treecorr import Catalog, NNCorrelation
 
-from yaw.old_catalogs import BaseCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
 from yaw.core.logging import TimedLog
@@ -26,6 +25,7 @@ from yaw.correlation.paircounts import (
     PatchedTotal,
     pack_results,
 )
+from yaw.old_catalogs import BaseCatalog
 from yaw.redshifts import HistData
 
 if TYPE_CHECKING:

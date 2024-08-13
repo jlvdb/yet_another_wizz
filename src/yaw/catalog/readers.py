@@ -5,7 +5,7 @@ from abc import abstractmethod
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 try:
     from typing import Self
@@ -19,6 +19,7 @@ from pandas import DataFrame
 from pyarrow import Table, parquet
 
 from yaw.catalog.utils import DataChunk
+from yaw.meta import Tpath
 
 __all__ = [
     "DataFrameReader",
@@ -27,8 +28,6 @@ __all__ = [
     "ParquetReader",
     "new_filereader",
 ]
-
-Tpath = Union[Path, str]
 
 CHUNKSIZE = 16_777_216
 

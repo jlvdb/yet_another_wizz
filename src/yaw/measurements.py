@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass
@@ -20,8 +21,13 @@ from yaw.correlation import CorrFunc
 from yaw.correlation.paircounts import NormalisedCounts, PatchedCount, PatchedTotal
 from yaw.parallel import ParallelHelper
 
+if sys.version_info >= (3, 10):
+    dataclass_kwargs = dict(slots=True)
+else:
+    dataclass_kwargs = dict()
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, eq=False, **dataclass_kwargs)
 class PatchPair:
     id1: int
     id2: int
@@ -29,10 +35,8 @@ class PatchPair:
     patch2: Patch
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False, **dataclass_kwargs)
 class PatchPaircounts:
-    """TODO: delete original version in yaw.core.containers"""
-
     id1: int
     id2: int
     totals1: NDArray

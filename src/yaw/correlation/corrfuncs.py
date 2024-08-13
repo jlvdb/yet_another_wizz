@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 from deprecated import deprecated
 
-from yaw.old_catalogs import PatchLinkage
 from yaw.config import OPTIONS, ResamplingConfig
 from yaw.core.abc import BinnedQuantity, HDFSerializable, PatchedQuantity
 from yaw.core.containers import Indexer, SampledData
@@ -29,15 +28,16 @@ from yaw.correlation.estimators import (
     cts_from_code,
 )
 from yaw.correlation.paircounts import NormalisedCounts, TypeIndex
+from yaw.old_catalogs import PatchLinkage
 
 if TYPE_CHECKING:
     from matplotlib.axis import Axis
     from numpy.typing import NDArray
     from pandas import IntervalIndex
 
-    from yaw.old_catalogs import BaseCatalog
     from yaw.config import Configuration
     from yaw.correlation.estimators import Cts
+    from yaw.old_catalogs import BaseCatalog
 
 __all__ = ["CorrData", "CorrFunc", "add_corrfuncs", "autocorrelate", "crosscorrelate"]
 

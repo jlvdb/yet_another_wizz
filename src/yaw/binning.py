@@ -6,7 +6,6 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-
 Tclosed = Literal["left", "right"]
 
 
@@ -36,7 +35,7 @@ class Binning(Sized, Iterable):
 
     def __iter__(self) -> Iterator[Binning]:
         for i in range(len(self)):
-            yield Binning(self.edges[i:i + 2], self.closed)
+            yield Binning(self.edges[i : i + 2], self.closed)
 
     @property
     def num_bins(self) -> int:

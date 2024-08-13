@@ -9,6 +9,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from yaw.config import Configuration, ResamplingConfig
+from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
+from yaw.core.logging import TimedLog
+from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
+from yaw.correlation.paircounts import NormalisedCounts
 from yaw.old_catalogs import BaseCatalog, PatchLinkage
 from yaw.old_catalogs.scipy import utils
 from yaw.old_catalogs.scipy.patches import (
@@ -17,11 +22,6 @@ from yaw.old_catalogs.scipy.patches import (
     create_patches,
     patch_id_from_path,
 )
-from yaw.config import Configuration, ResamplingConfig
-from yaw.core.coordinates import Coord3D, Coordinate, CoordSky, DistSky
-from yaw.core.logging import TimedLog
-from yaw.core.utils import LimitTracker, job_progress_bar, long_num_format
-from yaw.correlation.paircounts import NormalisedCounts
 from yaw.redshifts import HistData
 
 if TYPE_CHECKING:

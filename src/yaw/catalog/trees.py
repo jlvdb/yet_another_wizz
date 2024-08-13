@@ -4,14 +4,15 @@ import pickle
 from collections.abc import Iterable, Iterator, Sized
 from itertools import repeat
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
-from yaw.catalog.utils import Tclosed, groupby_binning, logarithmic_mid
+from yaw.catalog.utils import groupby_binning, logarithmic_mid
 from yaw.coordinates import Coordinates, CoordsSky, DistsSky
+from yaw.meta import Tclosed
 
 if TYPE_CHECKING:
     from yaw.catalog.patch import Patch
@@ -20,8 +21,6 @@ __all__ = [
     "AngularTree",
     "BinnedTrees",
 ]
-
-Tpath = Union[Path, str]
 
 
 def parse_binning(binning: NDArray | None) -> NDArray | None:

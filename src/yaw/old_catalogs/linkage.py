@@ -12,8 +12,8 @@ from yaw.core.coordinates import Dist3D, DistSky
 from yaw.core.cosmology import r_kpc_to_angle
 
 if TYPE_CHECKING:
-    from yaw.old_catalogs import BaseCatalog
     from yaw.config import Configuration
+    from yaw.old_catalogs import BaseCatalog
 
 __all__ = ["PatchLinkage"]
 

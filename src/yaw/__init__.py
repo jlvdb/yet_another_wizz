@@ -22,11 +22,11 @@ import logging as _logging
 
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())  # noqa
 
-from yaw.old_catalogs import NewCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.cosmology import Scale
 from yaw.core.math import global_covariance
 from yaw.correlation import CorrData, CorrFunc, autocorrelate, crosscorrelate
+from yaw.old_catalogs import NewCatalog
 from yaw.randoms import UniformRandoms
 from yaw.redshifts import HistData, RedshiftData
 

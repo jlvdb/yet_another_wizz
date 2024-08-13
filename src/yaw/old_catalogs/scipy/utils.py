@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from yaw.old_catalogs import PatchLinkage
-from yaw.old_catalogs.scipy.patches import PatchCatalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.core.containers import PatchCorrelationData, PatchIDs
 from yaw.correlation.paircounts import (
@@ -17,6 +15,8 @@ from yaw.correlation.paircounts import (
     PatchedTotal,
     pack_results,
 )
+from yaw.old_catalogs import PatchLinkage
+from yaw.old_catalogs.scipy.patches import PatchCatalog
 from yaw.redshifts import HistData
 
 if TYPE_CHECKING:

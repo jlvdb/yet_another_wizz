@@ -15,9 +15,9 @@ from yaw.core.utils import long_num_format
 if TYPE_CHECKING:
     from pandas import DataFrame
 
-    from yaw.old_catalogs import PatchLinkage
     from yaw.config import Configuration, ResamplingConfig
     from yaw.correlation.paircounts import NormalisedCounts
+    from yaw.old_catalogs import PatchLinkage
     from yaw.redshifts import HistData
 
 __all__ = ["BaseCatalog"]

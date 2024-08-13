@@ -1,35 +1,30 @@
 from __future__ import annotations
 
-import json
-from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Generator, Literal, Type, TypeVar, Union
+from typing import Any, Generator, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from yaw.coordinates import CoordsSky
+from yaw.meta import Serialisable, Tclosed
 
-Tclosed = Literal["left", "right"]
-Tjson = TypeVar("Tjson", bound="JsonSerialisable")
 Tpath = Union[Path, str]
 
 
 def groupby_value(
     values: NDArray,
-    **optional_arrays: NDArray | None,
+    **arrays: NDArray,
 ) -> Generator[tuple[Any, dict[str, NDArray]], None, None]:
     idx_sort = np.argsort(values)
     values_sorted = values[idx_sort]
     uniques, _idx_split = np.unique(values_sorted, return_index=True)
-    idx_split = _idx_split[1:]
 
-    splitted_arrays = {}
-    for name, array in optional_arrays.items():
-        if array is not None:
-            array_sorted = array[idx_sort]
-            splitted_arrays[name] = np.split(array_sorted, idx_split)
+    idx_split = _idx_split[1:]
+    splitted_arrays = {
+        name: np.split(array[idx_sort], idx_split) for name, array in arrays.items()
+    }
 
     for i, value in enumerate(uniques):
         yield value, {name: splits[i] for name, splits in splitted_arrays.items()}
@@ -39,12 +34,12 @@ def groupby_binning(
     values: NDArray,
     binning: NDArray,
     closed: Tclosed = "right",
-    **optional_arrays: NDArray | None,
+    **arrays: NDArray,
 ) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
     binning = np.asarray(binning)
     bin_idx = np.digitize(values, binning, right=(closed == "right"))
 
-    for i, bin_array in groupby_value(bin_idx, **optional_arrays):
+    for i, bin_array in groupby_value(bin_idx, **arrays):
         if 0 < i < len(binning):  # skip values outside of binning range
             yield binning[i - 1 : i + 1], bin_array
 
@@ -55,7 +50,7 @@ def logarithmic_mid(edges: NDArray) -> NDArray:
     return 10.0**log_mids
 
 
-class DataChunk:
+class DataChunk(Serialisable):
     __slots__ = ("coords", "weights", "redshifts", "patch_ids")
 
     def __init__(
@@ -95,10 +90,10 @@ class DataChunk:
             coords = np.deg2rad(coords)
 
         return cls(
-            CoordsSky(coords),
-            parser(weights, np.float64),
-            parser(redshifts, np.float64),
-            parser(patch_ids, np.int32),
+            coords=CoordsSky(coords),
+            weights=parser(weights, np.float64),
+            redshifts=parser(redshifts, np.float64),
+            patch_ids=parser(patch_ids, np.int32),
         )
 
     @classmethod
@@ -119,30 +114,37 @@ class DataChunk:
             patch_ids=concat_optional_attr("patch_ids"),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        the_dict = dict(coords=self.coords)
+        if self.weights is not None:
+            the_dict["weights"] = self.weights
+        if self.redshifts is not None:
+            the_dict["redshifts"] = self.redshifts
+        if self.patch_ids is not None:
+            the_dict["patch_ids"] = self.patch_ids
+        return the_dict
+
     def split(self, num_chunks: int) -> list[DataChunk]:
-        chunks = [np.array_split(self.coords.data, num_chunks)]
-        for attr in ("weights", "redshifts", "patch_ids"):
-            values = getattr(self, attr)
-            if values is None:
-                splits = [None] * num_chunks
-            else:
-                splits = np.array_split(values, num_chunks)
-            chunks.append(splits)
+        splitted = dict(
+            coords=[CoordsSky(v) for v in np.array_split(self.coords, num_chunks)]
+        )
+        for attr, values in self.to_dict().items():
+            splits = np.array_split(values, num_chunks)
+            if attr == "coords":
+                splits = [CoordsSky(split) for split in splits]
+            splitted[attr] = splits
 
         return [
-            DataChunk(CoordsSky(coords), weights, redshifts, patch_ids)
-            for coords, weights, redshifts, patch_ids in zip(*chunks)
+            DataChunk.from_dict({attr: values[i] for attr, values in splitted.items()})
+            for i in range(num_chunks)
         ]
 
     def __len__(self) -> int:
         return len(self.coords)
 
     def __getitem__(self, index: ArrayLike) -> DataChunk:
-        return DataChunk(
-            coords=self.coords[index],
-            weights=self.weights[index] if self.weights is not None else None,
-            redshifts=self.redshifts[index] if self.redshifts is not None else None,
-            patch_ids=self.patch_ids[index] if self.patch_ids is not None else None,
+        return DataChunk.from_dict(
+            {attr: values[index] for attr, values in self.to_dict().items()}
         )
 
     def set_patch_ids(self, patch_ids: NDArray | None):
@@ -159,33 +161,8 @@ class DataChunk:
             raise ValueError("'patch_ids' not provided")
 
         chunks = {}
-        for patch_id, attr_dict in groupby_value(
-            self.patch_ids,
-            coords=self.coords,
-            weights=self.weights,
-            redshifts=self.redshifts,
-        ):
+        for patch_id, attr_dict in groupby_value(self.patch_ids, **self.to_dict()):
             coords = CoordsSky(attr_dict.pop("coords"))
             chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
 
         return chunks
-
-
-class JsonSerialisable(ABC):
-    @classmethod
-    def from_dict(cls: Type[Tjson], kwarg_dict: dict) -> Tjson:
-        return cls(**kwarg_dict)
-
-    @abstractmethod
-    def to_dict(self) -> dict:
-        pass
-
-    @classmethod
-    def from_file(cls: Type[Tjson], path: Tpath) -> Tjson:
-        with Path(path).open() as f:
-            kwarg_dict = json.load(f)
-        return cls.from_dict(kwarg_dict)
-
-    def to_file(self, path: Tpath) -> Tjson:
-        with Path(path).open(mode="w") as f:
-            json.dump(self.to_dict(), f, indent=4)

@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from numpy.typing import ArrayLike, NDArray
 
-    from yaw.old_catalogs import BaseCatalog
     from yaw.core.utils import TypePathStr
+    from yaw.old_catalogs import BaseCatalog
 
 __all__ = ["Configuration"]
 

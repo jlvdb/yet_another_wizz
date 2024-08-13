@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 from collections import deque
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
@@ -24,8 +24,9 @@ from tqdm import tqdm
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.trees import parse_binning
-from yaw.catalog.utils import DataChunk, Tclosed
+from yaw.catalog.utils import DataChunk
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
+from yaw.meta import Tclosed, Tpath
 from yaw.parallel import ParallelHelper
 
 __all__ = [
@@ -33,7 +34,6 @@ __all__ = [
 ]
 
 Tcenters = Union["Catalog", Coordinates]
-Tpath = Union[Path, str]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
 PATCHFILE_NAME = "num_patches"
@@ -91,7 +91,7 @@ def create_patch_centers(
     return Coords3D(xyz).to_sky()
 
 
-class ChunkProcessor:
+class ChunkProcessor(Callable):
     def __init__(self, patch_centers: CoordsSky | None) -> None:
         if patch_centers is None:
             self.patch_centers = None

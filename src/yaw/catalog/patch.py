@@ -3,21 +3,20 @@ from __future__ import annotations
 from collections.abc import Sized
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 
 from yaw.catalog.trees import BinnedTrees
-from yaw.catalog.utils import DataChunk, JsonSerialisable
+from yaw.catalog.utils import DataChunk
 from yaw.coordinates import CoordsSky, DistsSky
+from yaw.meta import JsonSerialisable, Serialisable, Tpath
 
 __all__ = [
     "PatchWriter",
     "Patch",
 ]
-
-Tpath = Union[Path, str]
 
 CHUNKSIZE = 65_536
 
@@ -117,7 +116,7 @@ class Metadata(JsonSerialisable):
         )
 
 
-class Patch(Sized):
+class Patch(Sized, Serialisable):
     meta: Metadata
 
     def __init__(self, cache_path: Tpath) -> None:
@@ -139,6 +138,9 @@ class Patch(Sized):
 
     def __len__(self) -> int:
         return self.meta.num_records
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.__getstate__()
 
     def has_weights(self) -> bool:
         path = self.cache_path / "weights"
