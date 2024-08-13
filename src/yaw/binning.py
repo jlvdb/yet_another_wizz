@@ -1,10 +1,19 @@
+"""
+################################################################################
+
+CURRENTLY NOT USED
+
+################################################################################
+"""
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sized
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
+
+from yaw.meta import BinwiseData, Serialisable
 
 Tclosed = Literal["left", "right"]
 
@@ -20,7 +29,7 @@ def parse_binning(binning: NDArray | None) -> NDArray | None:
     raise ValueError("bin edges must increase monotonically")
 
 
-class Binning(Sized, Iterable):
+class Binning(Sized, Iterable, Serialisable, BinwiseData):
     __slots__ = ("edges", "closed")
 
     def __init__(self, edges: Iterable, *, closed: Tclosed = "right") -> None:
@@ -28,30 +37,10 @@ class Binning(Sized, Iterable):
         self.closed = closed
 
     def __getstate__(self) -> dict:
+        return self.to_dict()
+
+    def to_dict(self) -> dict[str, Any]:
         return dict(edges=self.edges, closed=self.closed)
-
-    def __len__(self) -> int:
-        return len(self.edges) - 1
-
-    def __iter__(self) -> Iterator[Binning]:
-        for i in range(len(self)):
-            yield Binning(self.edges[i : i + 2], self.closed)
-
-    @property
-    def num_bins(self) -> int:
-        return len(self)
-
-    @property
-    def left(self) -> NDArray:
-        return self.edges[:-1]
-
-    @property
-    def right(self) -> NDArray:
-        return self.edges[1:]
-
-    @property
-    def mids(self) -> NDArray:
-        return (self.left + self.right) / 2.0
 
     def get_bin_index(self, values: NDArray) -> NDArray[np.int_]:
         return np.digitize(values, self.edges, right=(self.closed == "right")) - 1

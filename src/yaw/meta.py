@@ -19,6 +19,7 @@ Tpath = Union[Path, str]
 Tserialise = TypeVar("Tdict", bound="Serialisable")
 Tjson = TypeVar("Tjson", bound="JsonSerialisable")
 Thdf = TypeVar("Thdf", bound="HdfSerializable")
+Tascii = TypeVar("Tascii", bound="AsciiSerializable")
 
 Tbinned = TypeVar("Tbinned", bound="BinwiseData")
 Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
@@ -64,6 +65,17 @@ class HdfSerializable(ABC):
     def to_file(self, path: Tpath) -> None:
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
+
+
+class AsciiSerializable(ABC):
+    @classmethod
+    @abstractmethod
+    def from_files(cls: Type[Tascii], path_prefix: Tpath) -> Tascii:
+        pass
+
+    @abstractmethod
+    def to_files(self, path_prefix: Tpath) -> None:
+        pass
 
 
 class Indexer(Generic[Tkey, Tvalue], Iterator):
