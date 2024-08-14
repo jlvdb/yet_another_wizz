@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import warnings
-from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
 import scipy.optimize
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
-from yaw import io_utils, plot_utils
-from yaw.config import ResamplingConfig
 from yaw.abc import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
-from yaw.plot_utils import Axis
+from yaw.catalog import Catalog, Patch
+from yaw.config import Configuration, ResamplingConfig
+from yaw.utils import io, plot
+from yaw.utils.parallel import ParallelHelper
+from yaw.utils.plot import Axis
 
 if TYPE_CHECKING:
     from yaw.corrfunc import CorrFunc
@@ -32,7 +33,7 @@ def cov_from_samples(
     samples: NDArray | Sequence[NDArray],
     method: Tmethod,
     rowvar: bool = False,
-    kind: Tcov_kind = "full"
+    kind: Tcov_kind = "full",
 ) -> NDArray:
     """Compute a joint covariance from a sequence of data samples.
 
@@ -167,10 +168,11 @@ class SampledData(BinwiseData):
 
         self.is_compatible(other, require=True)
         return self.__class__(
-            edges=self.edges,
-            data=self.data + other.data,
-            samples=self.samples + other.samples,
+            self.edges,
+            self.data + other.data,
+            self.samples + other.samples,
             method=self.method,
+            closed=self.closed,
         )
 
     def __sub__(self, other: Any) -> Tsampled:
@@ -179,10 +181,11 @@ class SampledData(BinwiseData):
 
         self.is_compatible(other, require=True)
         return self.__class__(
-            edges=self.edges,
-            data=self.data - other.data,
-            samples=self.samples - other.samples,
+            self.edges,
+            self.data - other.data,
+            self.samples - other.samples,
             method=self.method,
+            closed=self.closed,
         )
 
     def _make_slice(self, item: int | slice) -> SampledData:
@@ -205,6 +208,7 @@ class SampledData(BinwiseData):
         new.covariance = np.atleast_2d(self.covariance[item])[item]
 
         new.method = self.method
+        new.closed = self.closed
         return new
 
     def is_compatible(self, other: Any, require: bool = False) -> bool:
@@ -252,21 +256,21 @@ class SampledData(BinwiseData):
             yerr *= self.dz
 
         if indicate_zero:
-            ax = plot_utils.plot_zero_line(ax=ax)
+            ax = plot.zero_line(ax=ax)
 
         if style == "point":
-            return plot_utils.plot_point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plot.point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "line":
-            return plot_utils.plot_line_uncertainty(x, y, yerr, ax, **plot_kwargs)
+            return plot.line_uncertainty(x, y, yerr, ax, **plot_kwargs)
         elif style == "step":
-            return plot_utils.plot_step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plot.step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
 
         raise ValueError(f"invalid plot style '{style}'")
 
     def plot_corr(
         self, *, redshift: bool = False, cmap: str = "RdBu_r", ax: Axis | None = None
     ) -> Axis:
-        return plot_utils.plot_correlation(
+        return plot.correlation(
             self.correlation,
             ticks=self.mids if redshift else None,
             cmap=cmap,
@@ -278,7 +282,7 @@ class SampledData(BinwiseData):
 class CorrData(AsciiSerializable, SampledData):
     @property
     def _description_data(self) -> str:
-        return "# correlation function estimate with symmetric 68% percentile confidence"
+        return "# correlation function with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
@@ -287,19 +291,19 @@ class CorrData(AsciiSerializable, SampledData):
     @property
     def _description_covariance(self) -> str:
         n = self.num_bins
-        return f"# correlation function estimate covariance matrix ({n}x{n})"
+        return f"# correlation function covariance matrix ({n}x{n})"
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
         path_prefix = Path(path_prefix)
-        edges, data = io_utils.load_data(path_prefix.with_suffix(".dat"))
-        samples, method = io_utils.load_samples(path_prefix.with_suffix(".smp"))
+        edges, data = io.load_data(path_prefix.with_suffix(".dat"))
+        samples, method = io.load_samples(path_prefix.with_suffix(".smp"))
 
-        return cls(edges=edges, data=data, samples=samples, method=method)
+        return cls(edges, data, samples, method=method, closed=closed)
 
     def to_files(self, path_prefix: Tpath) -> None:
         path_prefix = Path(path_prefix)
-        io_utils.write_data(
+        io.write_data(
             path_prefix.with_suffix(".dat"),
             self._description_data,
             self.left,
@@ -307,22 +311,65 @@ class CorrData(AsciiSerializable, SampledData):
             self.data,
             self.error,
         )
-        io_utils.write_samples(
+        io.write_samples(
             path_prefix.with_suffix(".smp"),
             self._description_samples,
             self.samples,
             self.method,
         )
         # write covariance for convenience only, it is not required to restore
-        io_utils.write_covariance(
+        io.write_covariance(
             path_prefix.with_suffix(".cov"),
             self._description_covariance,
             self.covariance,
         )
 
 
+def _redshift_histogram(patch: Patch, edges: NDArray, closed: Tclosed) -> NDArray:
+    redshifts = patch.redshifts
+    # numpy histogram uses the bin edges as closed intervals on both sides
+    if closed == "right":
+        mask = redshifts > edges[0]
+    else:
+        mask = redshifts < edges[-1]
+
+    counts = np.histogram(redshifts[mask], edges, weights=patch.weights[mask])
+    return counts.astype(np.float64)
+
+
 @dataclass(frozen=True, repr=False, eq=False)
 class HistData(CorrData):
+    @classmethod
+    def from_catalog(
+        cls,
+        catalog: Catalog,
+        config: Configuration,
+        closed: Tclosed = "right",
+        sampling_config: ResamplingConfig | None = None,
+        progress: bool = False,
+    ) -> HistData:
+        patch_count_iter = ParallelHelper.iter_unordered(
+            _redshift_histogram,
+            catalog.values(),
+            func_kwargs=dict(edges=config.binning.zbins, closed=closed),
+            progress=progress,
+            total=len(catalog),
+        )
+
+        counts = np.empty((len(catalog), config.binning.zbin_num))
+        for i, patch_count in enumerate(patch_count_iter):
+            counts[i] = patch_count
+
+        sampling_config = sampling_config or ResamplingConfig()
+        patch_idx = sampling_config.get_samples(len(counts))
+        return cls(
+            config.binning.zbins,
+            data=counts.sum(axis=0),
+            samples=counts[patch_idx].sum(axis=1),
+            method=sampling_config.method,
+            closed=closed,
+        )
+
     @property
     def _description_data(self) -> str:
         n = "normalised " if self.density else " "
@@ -341,12 +388,18 @@ class HistData(CorrData):
     _default_style = "step"
 
     def normalised(self, *args, **kwargs) -> HistData:
-        width_correction = (self.edges.min() - self.edges.max()) / (self.num_bins * self.dz)
+        width_correction = (self.edges.min() - self.edges.max()) / (
+            self.num_bins * self.dz
+        )
         data = self.data * width_correction
         samples = self.samples * width_correction
         norm = np.nansum(self.dz * data)
 
-        return type(self)(self.edges, data / norm, samples / norm, method=self.method)
+        data /= norm
+        samples /= norm
+        return type(self)(
+            self.edges, data, samples, method=self.method, closed=self.closed
+        )
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -381,13 +434,14 @@ class RedshiftData(CorrData):
         dz2_data = cross_data.dz**2
         dz2_samples = np.tile(dz2_data, N).reshape((N, -1))
         nz_data = w_sp_data / np.sqrt(dz2_data * w_ss_data * w_pp_data)
-        nz_samp = w_sp_samp / np.sqrt(dz2_samples * w_ss_samp * w_pp_samp)
+        nz_samples = w_sp_samp / np.sqrt(dz2_samples * w_ss_samp * w_pp_samp)
 
         return cls(
-            edges=cross_data.edges,
-            data=nz_data,
-            samples=nz_samp,
+            cross_data.edges,
+            nz_data,
+            nz_samples,
             method=cross_data.method,
+            closed=cross_data.closed,
         )
 
     @classmethod
@@ -447,4 +501,8 @@ class RedshiftData(CorrData):
             )
             norm = popt[0]
 
-        return type(self)(self.edges, self.data / norm, self.samples / norm, method=self.method)
+        data = self.data / norm
+        samples = self.samples / norm
+        return type(self)(
+            self.edges, data, samples, method=self.method, closed=self.closed
+        )

@@ -35,7 +35,7 @@ def check_plotting_enabled(func):
 
 
 @check_plotting_enabled
-def plot_zero_line(*, ax: Axis | None = None) -> Axis:
+def zero_line(*, ax: Axis | None = None) -> Axis:
     ax = ax or plt.gca()
 
     lw = 0.7
@@ -47,7 +47,7 @@ def plot_zero_line(*, ax: Axis | None = None) -> Axis:
 
 
 @check_plotting_enabled
-def plot_point_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
+def point_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
     ax = ax or plt.gca()
 
     ebar_kwargs = dict(fmt=".", ls="none")
@@ -58,7 +58,7 @@ def plot_point_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | 
 
 
 @check_plotting_enabled
-def plot_line_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
+def line_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
     ax = ax or plt.gca()
 
     line = ax.plot(x, y, **plot_kwargs)
@@ -69,7 +69,7 @@ def plot_line_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | N
 
 
 @check_plotting_enabled
-def plot_step_uncertainty(edges: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
+def step_uncertainty(edges: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
     ax = ax or plt.gca()
 
     stair_kwargs = dict(lw=plt.rcParams["lines.linewidth"])
@@ -88,7 +88,7 @@ def plot_step_uncertainty(edges: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis
 
 
 @check_plotting_enabled
-def plot_correlation(corr: NDArray, ticks: NDArray | None = None, *, cmap: str = "RdBu_r", ax: Axis | None = None) -> Axis:
+def correlation(corr: NDArray, ticks: NDArray | None = None, *, cmap: str = "RdBu_r", ax: Axis | None = None) -> Axis:
     ax = ax or plt.gca()
     vlims = dict(vmin=-1.0, vmax=1.0)
 
