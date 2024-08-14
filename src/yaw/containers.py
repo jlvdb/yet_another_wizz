@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import warnings
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, Literal
 
 import numpy as np
 from numpy.exceptions import AxisError
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
-from yaw.meta import AsciiSerializable, BinwiseData
+from yaw.meta import AsciiSerializable, BinwiseData, Indexer
 
 Tcov_kind = Literal["full", "diag", "var"]
 Tmethod = Literal["jackknife", "bootstrap"]
@@ -87,17 +88,19 @@ def cov_from_samples(
 
 @dataclass(frozen=True)
 class SampledData(BinwiseData):
+    """TODO: better name?"""
     edges: NDArray
     data: NDArray
     samples: NDArray
-    method: Tmethod
+    method: Tmethod = field(kw_only=True)
     covariance: NDArray = field(init=False)
-    error: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
         if self.data.shape != (self.num_bins,):
             raise ValueError("unexpected shape of 'data' array")
 
+        if self.samples.ndim != 2:
+            raise ValueError("'samples' must be two-dimensional")
         if not self.samples.shape[1] == self.n_bins:
             raise ValueError("number of bins for 'data' and 'samples' do not match")
 
@@ -151,24 +154,27 @@ class SampledData(BinwiseData):
             method=self.method,
         )
 
-    @property
-    def bins(self: Tsampled) -> Indexer[int | slice | Sequence, Tsampled]:
-        def builder(inst: Tsampled, item: int | slice | Sequence) -> Tsampled:
-            if isinstance(item, int):
-                item = [item]
-            # try to take subsets along bin axis
-            binning = inst.get_binning()[item]
-            data = inst.data[item]
-            samples = inst.samples[:, item]
-            # determine which extra attributes need to be copied
-            init_attrs = {field.name for field in fields(inst) if field.init}
-            copy_attrs = init_attrs - {"binning", "data", "samples"}
+    def _make_slice(self, item: int | slice) -> SampledData:
+        if not isinstance(item, (int, np.integer, slice)):
+            raise TypeError("item selector must be a slice or integer type")
 
-            kwargs = dict(binning=binning, data=data, samples=samples)
-            kwargs.update({attr: getattr(inst, attr) for attr in copy_attrs})
-            return inst.__class__(**kwargs)
+        cls = type(self)
+        new = cls.__new__(cls)
 
-        return Indexer(self, builder)
+        left = np.atleast_1d(self.left[item])
+        right = np.atleast_1d(self.right[item])
+        new.edges = np.append(left, right[-1])
+
+        new.data = np.atleast_1d(self.data[item])
+
+        new.samples = self.samples[:, item]
+        if new.samples.ndim == 1:
+            new.samples = np.atleast_2d(new.samples).T
+
+        new.covariance = np.atleast_2d(self.covariance[item])[item]
+
+        new.method = self.method
+        return new
 
     def is_compatible(self, other: Any, require: bool = False) -> bool:
         if not super().is_compatible(other, require):
@@ -196,7 +202,25 @@ class SampledData(BinwiseData):
         return corr
 
 
-class CorrData(SampledData, AsciiSerializable):
+class CorrData(AsciiSerializable, SampledData):
     info: str
     def plot(): ...
     def plot_corr(): ...
+
+
+class Shiftable(ABC):
+    @abstractmethod
+    def shift(): ...
+    @abstractmethod
+    def rebin(): ...
+
+
+class RedshiftData(CorrData, Shiftable):
+    @classmethod
+    def from_corrfuncs(): ...
+    @classmethod
+    def from_corrdata(): ...
+
+
+class HistData(CorrData, Shiftable):
+    density: bool

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Generic, Literal, Type, TypeVar, Union
 
 import h5py
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 Tkey = TypeVar("Tkey")
 Tvalue = TypeVar("Tvalue")
@@ -79,17 +79,27 @@ class AsciiSerializable(ABC):
 
 
 class Indexer(Generic[Tkey, Tvalue], Iterator):
-    @abstractmethod
+    __slots__ = ("_callback", "_iter_state")
+
+    def __init__(self, slice_callback: Callable[[Tkey], Tvalue]) -> None:
+        self._callback = slice_callback
+        self._iter_state = 0
+
     def __getitem__(self, item: Tkey) -> Tvalue:
-        pass
+        return self._callback(item)
 
-    @abstractmethod
     def __next__(self) -> Tvalue:
-        pass
+        try:
+            item = self._callback(self._iter_state)
+        except IndexError as err:
+            raise StopIteration from err
 
-    @abstractmethod
+        self._iter_state += 1
+        return item
+
     def __iter__(self) -> Iterator[Tvalue]:
-        pass
+        self._iter_state = 0
+        return self
 
 
 class PatchwiseData(ABC):
@@ -98,10 +108,13 @@ class PatchwiseData(ABC):
     def num_patches(self) -> int:
         pass
 
-    @property
     @abstractmethod
-    def patches(self) -> Indexer:
+    def _make_slice(self: Tpatched, item: int | slice) -> Tpatched:
         pass
+
+    @property
+    def patches(self) -> Indexer:
+        return Indexer(self._make_slice)
 
     def is_compatible(self, other: Any, require: bool = False) -> bool:
         if not isinstance(other, type(self)):
@@ -148,10 +161,13 @@ class BinwiseData(ABC):
     def num_bins(self) -> int:
         return len(self.edges) - 1
 
-    @property
     @abstractmethod
-    def bins(self) -> Indexer:
+    def _make_slice(self: Tbinned, item: int | slice) -> Tbinned:
         pass
+
+    @property
+    def bins(self) -> Indexer:
+        return Indexer(self._make_slice)
 
     def is_compatible(self, other: Any, require: bool = False) -> bool:
         if not isinstance(other, type(self)):
