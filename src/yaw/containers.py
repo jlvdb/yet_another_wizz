@@ -6,22 +6,26 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, TypeVar, Literal
+from typing import TYPE_CHECKING, Any, TypeVar, Literal
 
 import numpy as np
+import scipy.optimize
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
 from yaw import io_utils, plot_utils
+from yaw.config import ResamplingConfig
 from yaw.meta import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
 from yaw.plot_utils import Axis
+
+if TYPE_CHECKING:
+    from yaw.correlation.corrfuncs import CorrFunc
 
 Tcov_kind = Literal["full", "diag", "var"]
 Tmethod = Literal["jackknife", "bootstrap"]
 Tsampled = TypeVar("Tsampled", bound="SampledData")
 Tstyle = Literal["point", "line", "step"]
 Tcorr = TypeVar("Tcorr", bound="CorrData")
-Tredshift = TypeVar("Tredshift", bound="RedshiftData")
 
 
 def cov_from_samples(
@@ -219,18 +223,21 @@ class SampledData(BinwiseData):
 
         return True
 
+    _default_style = "point"
+
     def plot(
         self,
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
-        style: Tstyle = "ebar",
+        style: Tstyle | None = None,
         ax: Axis | None = None,
         offset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         indicate_zero: bool = False,
         scale_dz: bool = False,
     ) -> Axis:
+        style = style or self._default_style
         plot_kwargs = plot_kwargs or {}
         plot_kwargs.update(dict(color=color, label=label))
 
@@ -270,15 +277,15 @@ class SampledData(BinwiseData):
 @dataclass(frozen=True, repr=False, eq=False)
 class CorrData(AsciiSerializable, SampledData):
     @property
-    def _dat_desc(self) -> str:
+    def _description_data(self) -> str:
         return "# correlation function estimate with symmetric 68% percentile confidence"
 
     @property
-    def _smp_desc(self) -> str:
+    def _description_samples(self) -> str:
         return f"# {self.num_samples} {self.method} correlation function samples"
 
     @property
-    def _cov_desc(self) -> str:
+    def _description_covariance(self) -> str:
         n = self.num_bins
         return f"# correlation function estimate covariance matrix ({n}x{n})"
 
@@ -292,38 +299,152 @@ class CorrData(AsciiSerializable, SampledData):
 
     def to_files(self, path_prefix: Tpath) -> None:
         path_prefix = Path(path_prefix)
-        io_utils.write_data(path_prefix.with_suffix(".dat"))
-        io_utils.write_samples(path_prefix.with_suffix(".smp"))
+        io_utils.write_data(
+            path_prefix.with_suffix(".dat"),
+            self._description_data,
+            self.left,
+            self.right,
+            self.data,
+            self.error,
+        )
+        io_utils.write_samples(
+            path_prefix.with_suffix(".smp"),
+            self._description_samples,
+            self.samples,
+            self.method,
+        )
         # write covariance for convenience only, it is not required to restore
-        io_utils.write_covariance(path_prefix.with_suffix(".cov"))
-
-
-class Shiftable(ABC):
-    @abstractmethod
-    def shift(): ...
-
-    @abstractmethod
-    def rebin(): ...
+        io_utils.write_covariance(
+            path_prefix.with_suffix(".cov"),
+            self._description_covariance,
+            self.covariance,
+        )
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class RedshiftData(CorrData, Shiftable):
-    @classmethod
-    def from_corrdata(): ...
+class HistData(CorrData):
+    @property
+    def _description_data(self) -> str:
+        n = "normalised " if self.density else " "
+        return f"# n(z) {n}histogram with symmetric 68% percentile confidence"
 
-    @classmethod
-    def from_corrfuncs(): ...
+    @property
+    def _description_samples(self) -> str:
+        n = "normalised " if self.density else " "
+        return f"# {self.n_samples} {self.method} n(z) {n}histogram samples"
 
-    def mean(self) -> float: ...
+    @property
+    def _description_covariance(self) -> str:
+        n = "normalised " if self.density else " "
+        return f"# n(z) {n}histogram covariance matrix ({self.n_bins}x{self.n_bins})"
 
-    def normalised(self) -> Tredshift: ...
+    _default_style = "step"
+
+    def normalised(self, *args, **kwargs) -> HistData:
+        width_correction = (self.edges.min() - self.edges.max()) / (self.num_bins * self.dz)
+        data = self.data * width_correction
+        samples = self.samples * width_correction
+        norm = np.nansum(self.dz * data)
+
+        return type(self)(self.edges, data / norm, samples / norm, method=self.method)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class HistData(CorrData, Shiftable):
-    density: bool = field(kw_only=True)
+class RedshiftData(CorrData):
+    @classmethod
+    def from_corrdata(
+        cls,
+        cross_data: CorrData,
+        ref_data: CorrData | None = None,
+        unk_data: CorrData | None = None,
+    ):
+        w_sp_data = cross_data.data
+        w_sp_samp = cross_data.samples
 
-    def normalised(self) -> HistData:
-        if self.density:
-            return self
-        return super().normalised()
+        if ref_data is None:
+            w_ss_data = np.float64(1.0)
+            w_ss_samp = np.float64(1.0)
+        else:
+            ref_data.is_compatible(cross_data, require=True)
+            w_ss_data = ref_data.data
+            w_ss_samp = ref_data.samples
+
+        if unk_data is None:
+            w_pp_data = np.float64(1.0)
+            w_pp_samp = np.float64(1.0)
+        else:
+            unk_data.is_compatible(cross_data, require=True)
+            w_pp_data = unk_data.data
+            w_pp_samp = unk_data.samples
+
+        N = cross_data.n_samples
+        dz2_data = cross_data.dz**2
+        dz2_samples = np.tile(dz2_data, N).reshape((N, -1))
+        nz_data = w_sp_data / np.sqrt(dz2_data * w_ss_data * w_pp_data)
+        nz_samp = w_sp_samp / np.sqrt(dz2_samples * w_ss_samp * w_pp_samp)
+
+        return cls(
+            edges=cross_data.edges,
+            data=nz_data,
+            samples=nz_samp,
+            method=cross_data.method,
+        )
+
+    @classmethod
+    def from_corrfuncs(
+        cls,
+        cross_corr: CorrFunc,
+        ref_corr: CorrFunc | None = None,
+        unk_corr: CorrFunc | None = None,
+        *,
+        cross_est: str | None = None,
+        ref_est: str | None = None,
+        unk_est: str | None = None,
+        config: ResamplingConfig | None = None,
+    ):
+        config = config or ResamplingConfig()
+
+        if ref_corr is not None:
+            cross_corr.is_compatible(ref_corr, require=True)
+        if unk_corr is not None:
+            cross_corr.is_compatible(unk_corr, require=True)
+
+        cross_data = cross_corr.sample(config, estimator=cross_est)
+        ref_data = ref_corr.sample(config, estimator=ref_est) if ref_corr else None
+        unk_data = unk_corr.sample(config, estimator=unk_est) if unk_corr else None
+
+        return cls.from_corrdata(cross_data, ref_data, unk_data)
+
+    @property
+    def _description_data(self) -> str:
+        return "# n(z) estimate with symmetric 68% percentile confidence"
+
+    @property
+    def _description_samples(self) -> str:
+        return f"# {self.n_samples} {self.method} n(z) samples"
+
+    @property
+    def _description_covariance(self) -> str:
+        return f"# n(z) estimate covariance matrix ({self.num_bins}x{self.num_bins})"
+
+    _default_style = "line"
+
+    def normalised(self, target: Tcorr | None = None) -> RedshiftData:
+        if target is None:
+            norm = np.nansum(self.dz * self.data)
+
+        else:
+            y_from = self.data
+            y_target = target.data
+            mask = np.isfinite(y_from) & np.isfinite(y_target) & (y_target > 0.0)
+
+            popt, _ = scipy.optimize.curve_fit(
+                lambda _, norm: y_from[mask] / norm,
+                xdata=target.mids[mask],
+                ydata=y_target[mask],
+                p0=[1.0],
+                sigma=1 / y_target[mask],  # usually works better for noisy data
+            )
+            norm = popt[0]
+
+        return type(self)(self.edges, self.data / norm, self.samples / norm, method=self.method)
