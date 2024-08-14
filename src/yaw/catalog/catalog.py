@@ -22,7 +22,7 @@ from yaw.catalog.trees import parse_binning
 from yaw.catalog.utils import DataChunk
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 from yaw.abc import Tclosed, Tpath, default_closed
-from yaw.parallel import ParallelHelper
+from yaw.utils.parallel import ParallelHelper
 
 __all__ = [
     "Catalog",
