@@ -11,11 +11,16 @@ import numpy as np
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
-from yaw.meta import AsciiSerializable, BinwiseData, Tclosed, default_closed
+from yaw.meta import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
+from yaw.plot_utils import *
+from yaw.plot_utils import Axis
 
 Tcov_kind = Literal["full", "diag", "var"]
 Tmethod = Literal["jackknife", "bootstrap"]
 Tsampled = TypeVar("Tsampled", bound="SampledData")
+Tstyle = Literal["point", "line", "step"]
+Tcorr = TypeVar("Tcorr", bound="CorrData")
+Tredshift = TypeVar("Tredshift", bound="RedshiftData")
 
 
 def cov_from_samples(
@@ -87,7 +92,7 @@ def cov_from_samples(
     return np.atleast_2d(covmat)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False, eq=False)
 class SampledData(BinwiseData):
     edges: NDArray
     data: NDArray
@@ -213,26 +218,88 @@ class SampledData(BinwiseData):
 
         return True
 
+    def plot(
+        self,
+        *,
+        color: str | NDArray | None = None,
+        label: str | None = None,
+        style: Tstyle = "ebar",
+        ax: Axis | None = None,
+        offset: float = 0.0,
+        plot_kwargs: dict[str, Any] | None = None,
+        indicate_zero: bool = False,
+        scale_dz: bool = False,
+    ) -> Axis:
+        plot_kwargs = plot_kwargs or {}
+        plot_kwargs.update(dict(color=color, label=label))
 
+        if style == "step":
+            x = self.edges + offset
+        else:
+            x = self.mids + offset
+        y = self.data.copy()
+        yerr = self.error.copy()
+        if scale_dz:
+            y *= self.dz
+            yerr *= self.dz
+
+        if indicate_zero:
+            ax = plot_zero_line(ax=ax)
+
+        if style == "point":
+            return plot_point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+        elif style == "line":
+            return plot_line_uncertainty(x, y, yerr, ax, **plot_kwargs)
+        elif style == "step":
+            return plot_step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+
+        raise ValueError(f"invalid plot style '{style}'")
+
+    def plot_corr(
+        self, *, redshift: bool = False, cmap: str = "RdBu_r", ax: Axis | None = None
+    ) -> Axis:
+        return plot_correlation(
+            self.correlation,
+            ticks=self.mids if redshift else None,
+            cmap=cmap,
+            ax=ax,
+        )
+
+
+@dataclass(frozen=True, repr=False, eq=False)
 class CorrData(AsciiSerializable, SampledData):
-    info: str
-    def plot(): ...
-    def plot_corr(): ...
+    @classmethod
+    def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr: ...
+
+    def to_files(self) -> None: ...
 
 
 class Shiftable(ABC):
     @abstractmethod
     def shift(): ...
+
     @abstractmethod
     def rebin(): ...
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class RedshiftData(CorrData, Shiftable):
-    @classmethod
-    def from_corrfuncs(): ...
     @classmethod
     def from_corrdata(): ...
 
+    @classmethod
+    def from_corrfuncs(): ...
 
+    def mean(self) -> float: ...
+
+    def normalised(self) -> Tredshift: ...
+
+
+@dataclass(frozen=True, repr=False, eq=False)
 class HistData(CorrData, Shiftable):
-    density: bool
+    density: bool = field(kw_only=True)
+
+    def normalised(self) -> HistData:
+        if self.density:
+            return self
+        return super().normalised()
