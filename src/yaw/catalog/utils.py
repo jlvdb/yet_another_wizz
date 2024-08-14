@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from yaw.coordinates import CoordsSky
-from yaw.meta import Serialisable, Tclosed, default_closed
+from yaw.abc import Serialisable, Tclosed, default_closed
 
 Tpath = Union[Path, str]
 

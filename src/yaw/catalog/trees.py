@@ -12,7 +12,7 @@ from scipy.spatial import KDTree
 
 from yaw.catalog.utils import groupby_binning, logarithmic_mid
 from yaw.coordinates import Coordinates, CoordsSky, DistsSky
-from yaw.meta import Tclosed, default_closed
+from yaw.abc import Tclosed, default_closed
 
 if TYPE_CHECKING:
     from yaw.catalog.patch import Patch

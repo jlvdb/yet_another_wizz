@@ -14,7 +14,7 @@ from pandas import DataFrame
 from pyarrow import Table, parquet
 
 from yaw.catalog.utils import DataChunk
-from yaw.meta import Tpath
+from yaw.abc import Tpath
 
 __all__ = [
     "DataFrameReader",

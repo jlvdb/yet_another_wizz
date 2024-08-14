@@ -15,11 +15,11 @@ from numpy.typing import NDArray
 
 from yaw import io_utils, plot_utils
 from yaw.config import ResamplingConfig
-from yaw.meta import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
+from yaw.abc import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
 from yaw.plot_utils import Axis
 
 if TYPE_CHECKING:
-    from yaw.correlation.corrfuncs import CorrFunc
+    from yaw.corrfunc import CorrFunc
 
 Tcov_kind = Literal["full", "diag", "var"]
 Tmethod = Literal["jackknife", "bootstrap"]

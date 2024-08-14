@@ -25,18 +25,9 @@ import pandas as pd
 from deprecated import deprecated
 
 from yaw.config import ResamplingConfig
-from yaw.core.abc import (
-    BinnedQuantity,
-    HDFSerializable,
-    PatchedQuantity,
-    concatenate_bin_edges,
-)
-from yaw.core.containers import Indexer, PatchIDs, SampledData
-from yaw.core.math import apply_slice_ndim, outer_triu_sum
 
 if TYPE_CHECKING:
     from numpy.typing import DTypeLike, NDArray
-    from pandas import IntervalIndex
 
 __all__ = ["PatchedTotal", "PatchedCount", "NormalisedCounts"]
 
@@ -46,6 +37,56 @@ _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 TypeSlice = Union[slice, int, None]
 TypeIndex = Union[int, slice, Sequence]
+
+
+def outer_triu_sum(
+    a: ArrayLike, b: ArrayLike, *, k: int = 0, axis: int | None = None
+) -> NDArray:
+    """Compute the sum over the upper triangle of the outer product.
+
+    Shapes of input array must be identical. Equivalent to
+
+    >>> np.triu(np.outer(a, b), k).sum(axis)
+
+    but supports extra dimensions in a and b and does not construct the full
+    outer product matrix in memory.
+
+    Args:
+        a (:obj:`NDArray`):
+            First input array.
+        b (:obj:`NDArray`):
+            Second input array.
+
+    Keyword args:
+        k (:obj:`int`, optional):
+            Diagonal above which to zero elements. `k = 0` (the default) is
+            the main diagonal, `k < 0` is below it and `k > 0` is above.
+        axis (:obj:`int`, optional):
+            Array axis over which the outer product is summed. All by default.
+    """
+    a = np.atleast_1d(a)
+    b = np.atleast_1d(b)
+    if a.shape != b.shape:
+        raise IndexError("shape of 'a' and 'b' does not match")
+    # allocate output array
+    dtype = (a[0] * b[0]).dtype  # correct dtype for product
+    N = len(a)
+    # sum all elements
+    if axis is None:
+        result = np.zeros_like(a[0], dtype=dtype)
+        for i in range(min(N, N - k)):
+            result += (a[i] * b[max(0, i + k) :]).sum(axis=0)
+    # sum row-wise
+    elif axis == 1:
+        result = np.zeros_like(b, dtype=dtype)
+        for i in range(min(N, N - k)):
+            result[i] = (a[i] * b[max(0, i + k) :]).sum(axis=0)
+    # sum column-wise
+    elif axis == 0:
+        result = np.zeros_like(a, dtype=dtype)
+        for i in range(max(0, k), N):
+            result[i] = (a[: min(N, max(0, i - k + 1))] * b[i]).sum(axis=0)
+    return result[()]
 
 
 def sequence_require_type(items: Sequence, class_or_inst: Type | object) -> None:

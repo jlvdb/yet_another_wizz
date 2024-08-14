@@ -21,7 +21,7 @@ from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.trees import parse_binning
 from yaw.catalog.utils import DataChunk
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
-from yaw.meta import Tclosed, Tpath, default_closed
+from yaw.abc import Tclosed, Tpath, default_closed
 from yaw.parallel import ParallelHelper
 
 __all__ = [
