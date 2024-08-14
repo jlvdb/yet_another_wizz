@@ -5,14 +5,15 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
+from pathlib import Path
 from typing import Any, TypeVar, Literal
 
 import numpy as np
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
+from yaw import io_utils, plot_utils
 from yaw.meta import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
-from yaw.plot_utils import *
 from yaw.plot_utils import Axis
 
 Tcov_kind = Literal["full", "diag", "var"]
@@ -244,21 +245,21 @@ class SampledData(BinwiseData):
             yerr *= self.dz
 
         if indicate_zero:
-            ax = plot_zero_line(ax=ax)
+            ax = plot_utils.plot_zero_line(ax=ax)
 
         if style == "point":
-            return plot_point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plot_utils.plot_point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "line":
-            return plot_line_uncertainty(x, y, yerr, ax, **plot_kwargs)
+            return plot_utils.plot_line_uncertainty(x, y, yerr, ax, **plot_kwargs)
         elif style == "step":
-            return plot_step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plot_utils.plot_step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
 
         raise ValueError(f"invalid plot style '{style}'")
 
     def plot_corr(
         self, *, redshift: bool = False, cmap: str = "RdBu_r", ax: Axis | None = None
     ) -> Axis:
-        return plot_correlation(
+        return plot_utils.plot_correlation(
             self.correlation,
             ticks=self.mids if redshift else None,
             cmap=cmap,
@@ -268,10 +269,33 @@ class SampledData(BinwiseData):
 
 @dataclass(frozen=True, repr=False, eq=False)
 class CorrData(AsciiSerializable, SampledData):
-    @classmethod
-    def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr: ...
+    @property
+    def _dat_desc(self) -> str:
+        return "# correlation function estimate with symmetric 68% percentile confidence"
 
-    def to_files(self) -> None: ...
+    @property
+    def _smp_desc(self) -> str:
+        return f"# {self.num_samples} {self.method} correlation function samples"
+
+    @property
+    def _cov_desc(self) -> str:
+        n = self.num_bins
+        return f"# correlation function estimate covariance matrix ({n}x{n})"
+
+    @classmethod
+    def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
+        path_prefix = Path(path_prefix)
+        edges, data = io_utils.load_data(path_prefix.with_suffix(".dat"))
+        samples, method = io_utils.load_samples(path_prefix.with_suffix(".smp"))
+
+        return cls(edges=edges, data=data, samples=samples, method=method)
+
+    def to_files(self, path_prefix: Tpath) -> None:
+        path_prefix = Path(path_prefix)
+        io_utils.write_data(path_prefix.with_suffix(".dat"))
+        io_utils.write_samples(path_prefix.with_suffix(".smp"))
+        # write covariance for convenience only, it is not required to restore
+        io_utils.write_covariance(path_prefix.with_suffix(".cov"))
 
 
 class Shiftable(ABC):
