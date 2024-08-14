@@ -5,12 +5,7 @@ from abc import abstractmethod
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any
-
-try:
-    from typing import Self
-except ImportError:
-    from typing_extensions import Self
+from typing import Any, Self
 
 import numpy as np
 import pyarrow as pa

@@ -9,11 +9,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 
-try:  # pragma: no cover
-    from typing import TypeAlias
-except ImportError:  # pragma: no cover
-    from typing_extensions import TypeAlias
-
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
 
@@ -78,7 +73,7 @@ class CustomCosmology(ABC):
         pass
 
 
-TypeCosmology: TypeAlias = Union[FLRW, CustomCosmology]
+TypeCosmology = Union[FLRW, CustomCosmology]
 
 
 def r_kpc_to_angle(

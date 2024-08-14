@@ -4,13 +4,14 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any, TypeVar, Literal
 
 import numpy as np
 from numpy.exceptions import AxisError
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
-from yaw.meta import AsciiSerializable, BinwiseData, Indexer
+from yaw.meta import AsciiSerializable, BinwiseData, Tclosed, default_closed
 
 Tcov_kind = Literal["full", "diag", "var"]
 Tmethod = Literal["jackknife", "bootstrap"]
@@ -88,11 +89,11 @@ def cov_from_samples(
 
 @dataclass(frozen=True)
 class SampledData(BinwiseData):
-    """TODO: better name?"""
     edges: NDArray
     data: NDArray
     samples: NDArray
     method: Tmethod = field(kw_only=True)
+    closed: Tclosed = field(kw_only=True, default=default_closed)
     covariance: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
@@ -110,13 +111,33 @@ class SampledData(BinwiseData):
         covmat = cov_from_samples(self.samples, self.method)
         object.__setattr__(self, "covariance", covmat)
 
-    @property
+    @cached_property
     def error(self) -> NDArray:
         return np.sqrt(np.diag(self.covariance))
+
+    @cached_property
+    def correlation(self) -> NDArray:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            stdev = self.error
+            corr = self.covariance / np.outer(stdev, stdev)
+
+        corr[self.covariance == 0] = 0
+        return corr
 
     @property
     def num_samples(self) -> int:
         return len(self.samples)
+
+    def __getstate__(self) -> dict:
+        return dict(
+            edges=self.edges,
+            data=self.data,
+            samples=self.samples,
+            covariance=self.covariance,
+            method=self.method,
+            closed=self.closed,
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
@@ -130,7 +151,7 @@ class SampledData(BinwiseData):
             and np.all(self.binning == other.binning)
         )
 
-    def __add__(self, other: object) -> Tsampled:
+    def __add__(self, other: Any) -> Tsampled:
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -142,7 +163,7 @@ class SampledData(BinwiseData):
             method=self.method,
         )
 
-    def __sub__(self, other: object) -> Tsampled:
+    def __sub__(self, other: Any) -> Tsampled:
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -191,15 +212,6 @@ class SampledData(BinwiseData):
             raise ValueError("resampling method does not agree")
 
         return True
-
-    def get_correlation(self) -> NDArray:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            stdev = self.error
-            corr = self.covariance / np.outer(stdev, stdev)
-
-        corr[self.covariance == 0] = 0
-        return corr
 
 
 class CorrData(AsciiSerializable, SampledData):

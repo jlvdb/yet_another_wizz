@@ -8,12 +8,13 @@ from typing import Any, Generic, Literal, Type, TypeVar, Union
 
 import h5py
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
 Tkey = TypeVar("Tkey")
 Tvalue = TypeVar("Tvalue")
 
 Tclosed = Literal["left", "right"]
+default_closed = "right"
 Tpath = Union[Path, str]
 
 Tserialise = TypeVar("Tdict", bound="Serialisable")
@@ -154,7 +155,7 @@ class BinwiseData(ABC):
 
     @property
     @abstractmethod
-    def closed(self) -> str:
+    def closed(self) -> Tclosed:
         pass
 
     @property

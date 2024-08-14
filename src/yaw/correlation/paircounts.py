@@ -19,11 +19,6 @@ from dataclasses import dataclass
 from itertools import accumulate
 from typing import TYPE_CHECKING, NoReturn, Type, Union
 
-try:  # pragma: no cover
-    from typing import TypeAlias
-except ImportError:  # pragma: no cover
-    from typing_extensions import TypeAlias
-
 import h5py
 import numpy as np
 import pandas as pd
@@ -49,8 +44,8 @@ _compression = dict(fletcher32=True, compression="gzip", shuffle=True)
 """default compression settings for :obj:`h5py.Dataset`."""
 
 
-TypeSlice: TypeAlias = Union[slice, int, None]
-TypeIndex: TypeAlias = Union[int, slice, Sequence]
+TypeSlice = Union[slice, int, None]
+TypeIndex = Union[int, slice, Sequence]
 
 
 def sequence_require_type(items: Sequence, class_or_inst: Type | object) -> None:

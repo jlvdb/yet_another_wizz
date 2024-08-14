@@ -7,12 +7,7 @@ from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
 from shutil import get_terminal_size, rmtree
-from typing import Union
-
-try:
-    from typing import Self
-except ImportError:
-    from typing_extensions import Self
+from typing import Self, Union
 
 import numpy as np
 import treecorr
@@ -26,7 +21,7 @@ from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.trees import parse_binning
 from yaw.catalog.utils import DataChunk
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
-from yaw.meta import Tclosed, Tpath
+from yaw.meta import Tclosed, Tpath, default_closed
 from yaw.parallel import ParallelHelper
 
 __all__ = [
@@ -388,7 +383,7 @@ class Catalog(Mapping[int, Patch]):
         self,
         binning: NDArray | None = None,
         *,
-        closed: Tclosed = "left",
+        closed: Tclosed = default_closed,
         leafsize: int = 16,
         force: bool = False,
         progress: bool = False,

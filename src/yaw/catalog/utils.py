@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from yaw.coordinates import CoordsSky
-from yaw.meta import Serialisable, Tclosed
+from yaw.meta import Serialisable, Tclosed, default_closed
 
 Tpath = Union[Path, str]
 
@@ -33,7 +33,7 @@ def groupby_value(
 def groupby_binning(
     values: NDArray,
     binning: NDArray,
-    closed: Tclosed = "right",
+    closed: Tclosed = default_closed,
     **arrays: NDArray,
 ) -> Generator[tuple[NDArray, dict[str, NDArray]], None, None]:
     binning = np.asarray(binning)

@@ -7,15 +7,13 @@ CURRENTLY NOT USED
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sized
-from typing import Any, Literal
+from collections.abc import Iterable, Sized
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.meta import BinwiseData, Serialisable
-
-Tclosed = Literal["left", "right"]
+from yaw.meta import BinwiseData, Serialisable, Tclosed, default_closed
 
 
 def parse_binning(binning: NDArray | None) -> NDArray | None:
@@ -32,7 +30,7 @@ def parse_binning(binning: NDArray | None) -> NDArray | None:
 class Binning(Sized, Iterable, Serialisable, BinwiseData):
     __slots__ = ("edges", "closed")
 
-    def __init__(self, edges: Iterable, *, closed: Tclosed = "right") -> None:
+    def __init__(self, edges: Iterable, *, closed: Tclosed = default_closed) -> None:
         self.edges = np.asarray(edges)
         self.closed = closed
 

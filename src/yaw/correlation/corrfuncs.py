@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
+from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Type, TypeVar
 
 import h5py
@@ -231,9 +232,7 @@ class CorrData(SampledData):
         header = ["z_low", "z_high", "nz", "nz_err"]
         with open(f"{path_prefix}.{ext}", "w") as f:
             write_head(f, comment(self._dat_desc), header, delim=DELIM)
-            for zlow, zhigh, nz, nz_err in zip(
-                self.edges[:-1], self.edges[1:], self.data, self.error
-            ):
+            for (zlow, zhigh), nz, nz_err in zip(pairwise(self.edges), self.data, self.error):
                 values = [fmt_num(val, PREC) for val in (zlow, zhigh, nz, nz_err)]
                 f.write(DELIM.join(values) + "\n")
 
@@ -243,9 +242,7 @@ class CorrData(SampledData):
         header.extend(f"{self.method[:4]}_{i}" for i in range(self.n_samples))
         with open(f"{path_prefix}.{ext}", "w") as f:
             write_head(f, comment(self._smp_desc), header, delim=DELIM)
-            for zlow, zhigh, samples in zip(
-                self.edges[:-1], self.edges[1:], self.samples.T
-            ):
+            for (zlow, zhigh), samples in zip(pairwise(self.edges), self.samples.T):
                 values = [fmt_num(zlow, PREC), fmt_num(zhigh, PREC)]
                 values.extend(fmt_num(val, PREC) for val in samples)
                 f.write(DELIM.join(values) + "\n")

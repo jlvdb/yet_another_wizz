@@ -6,11 +6,6 @@ import sys
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Dict, NoReturn, Tuple
 
-try:  # pragma: no cover
-    from typing import TypeAlias
-except ImportError:  # pragma: no cover
-    from typing_extensions import TypeAlias
-
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -36,7 +31,7 @@ if TYPE_CHECKING:
 __all__ = ["EmptyCatalog", "TreecorrCatalog"]
 
 
-TypeNNResult: TypeAlias = Dict[Tuple[int, int], NNCorrelation]  # supports py3.8
+TypeNNResult = Dict[Tuple[int, int], NNCorrelation]  # supports py3.8
 
 
 def _iter_bin_masks(
