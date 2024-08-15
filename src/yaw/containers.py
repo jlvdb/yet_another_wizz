@@ -348,24 +348,31 @@ class SampledData(BinwiseData):
 class CorrData(AsciiSerializable, SampledData):
     @property
     def _description_data(self) -> str:
-        return "# correlation function with symmetric 68% percentile confidence"
+        return "correlation function with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
-        return f"# {self.num_samples} {self.method} correlation function samples"
+        return f"{self.num_samples} {self.method} correlation function samples"
 
     @property
     def _description_covariance(self) -> str:
         n = self.num_bins
-        return f"# correlation function covariance matrix ({n}x{n})"
+        return f"correlation function covariance matrix ({n}x{n})"
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
         path_prefix = Path(path_prefix)
-        edges, data = io.load_data(path_prefix.with_suffix(".dat"))
-        samples, method = io.load_samples(path_prefix.with_suffix(".smp"))
 
+        edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
         binning = Binning(edges, closed=closed)
+
+        samples, method_key = io.load_samples(path_prefix.with_suffix(".smp"))
+        for method in Tmethod.__args__:
+            if method.startswith(method_key):
+                break
+        else:
+            raise ValueError(f"invalid sampling method key '{method_key}'")
+
         return cls(binning, data, samples, method=method)
 
     def to_files(self, path_prefix: Tpath) -> None:
@@ -373,22 +380,25 @@ class CorrData(AsciiSerializable, SampledData):
         io.write_data(
             path_prefix.with_suffix(".dat"),
             self._description_data,
-            self.left,
-            self.right,
-            self.data,
-            self.error,
+            zleft=self.left,
+            zright=self.right,
+            data=self.data,
+            error=self.error,
+            closed=self.closed,
         )
         io.write_samples(
             path_prefix.with_suffix(".smp"),
             self._description_samples,
-            self.samples,
-            self.method,
+            zleft=self.left,
+            zright=self.right,
+            samples=self.samples,
+            method=self.method,
         )
         # write covariance for convenience only, it is not required to restore
         io.write_covariance(
             path_prefix.with_suffix(".cov"),
             self._description_covariance,
-            self.covariance,
+            covariance=self.covariance,
         )
 
 
@@ -440,17 +450,17 @@ class HistData(CorrData):
     @property
     def _description_data(self) -> str:
         n = "normalised " if self.density else " "
-        return f"# n(z) {n}histogram with symmetric 68% percentile confidence"
+        return f"n(z) {n}histogram with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
         n = "normalised " if self.density else " "
-        return f"# {self.n_samples} {self.method} n(z) {n}histogram samples"
+        return f"{self.n_samples} {self.method} n(z) {n}histogram samples"
 
     @property
     def _description_covariance(self) -> str:
         n = "normalised " if self.density else " "
-        return f"# n(z) {n}histogram covariance matrix ({self.n_bins}x{self.n_bins})"
+        return f"n(z) {n}histogram covariance matrix ({self.n_bins}x{self.n_bins})"
 
     _default_style = "step"
 
@@ -536,15 +546,15 @@ class RedshiftData(CorrData):
 
     @property
     def _description_data(self) -> str:
-        return "# n(z) estimate with symmetric 68% percentile confidence"
+        return "n(z) estimate with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
-        return f"# {self.n_samples} {self.method} n(z) samples"
+        return f"{self.n_samples} {self.method} n(z) samples"
 
     @property
     def _description_covariance(self) -> str:
-        return f"# n(z) estimate covariance matrix ({self.num_bins}x{self.num_bins})"
+        return f"n(z) estimate covariance matrix ({self.num_bins}x{self.num_bins})"
 
     _default_style = "line"
 

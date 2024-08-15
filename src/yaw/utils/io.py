@@ -17,27 +17,69 @@ def format_float_fixed_width(value: float, width: int) -> str:
     return string
 
 
-def write_header(f, description, header):
-    f.write(f"{description}\n")
-    line = " ".join(f"{h:>{PRECISION}s}" for h in header)
-    f.write(f"# {line[2:]}\n")
+def write_header(f, description, columns, extra_info: str | None = None) -> None:
+    line = " ".join(f"{col:>{PRECISION}s}" for col in columns)
+
+    f.write(f"# {description}\n")
+    f.write(f"#{line[1:]}\n")
+    if extra_info is not None:
+        f.write(f"# {extra_info}\n")
 
 
-def write_data(path: Path, description: str, zleft: NDArray, zright: NDArray, data: NDArray, error: NDArray):
+def load_header(path: Path) -> dict[str, str | list[str]]:
+    def unwrap_line(line):
+        return line.lstrip("#").strip()
+
+    header = dict()
+    with path.open() as f:
+        header["description"] = unwrap_line(f.readline())
+        header["columns"] = unwrap_line(f.readable()).split()
+        if (extra_info := f.readable()).startswith("#"):
+            header["extra_info"] = unwrap_line(extra_info)
+    return header
+
+
+def write_data(
+    path: Path,
+    description: str,
+    *,
+    zleft: NDArray,
+    zright: NDArray,
+    data: NDArray,
+    error: NDArray,
+    closed: str,
+) -> None:
     with path.open("w") as f:
-        header = ["z_low", "z_high", "nz", "nz_err"]
-        write_header(f, description, header)
+        columns = ["z_low", "z_high", "nz", "nz_err"]
+        write_header(f, description, columns, extra_info=f"interval closed: {closed}")
 
         for values in zip(zleft, zright, data, error):
             formatted = [format_float_fixed_width(value, PRECISION) for value in values]
             f.write(" ".join(formatted) + "\n")
 
 
-def write_samples(path: Path, description: str, zleft: NDArray, zright: NDArray, samples: NDArray, method: str):
+def load_data(path: Path) -> tuple[NDArray, str, NDArray]:
+    header = load_header(path)
+    _, closed = header["extra_info"].split(": ")
+
+    zleft, zright, data, _ = np.loadtxt(path).T
+    edges = np.append(zleft, zright[-1])
+    return edges, closed, data
+
+
+def write_samples(
+    path: Path,
+    description: str,
+    *,
+    zleft: NDArray,
+    zright: NDArray,
+    samples: NDArray,
+    method: str,
+) -> None:
     with path.open("w") as f:
-        header = ["z_low", "z_high"]
-        header.extend(f"{method[:4]}_{i}" for i in range(len(samples)))
-        write_header(f, description, header)
+        columns = ["z_low", "z_high"]
+        columns.extend(f"{method[:4]}_{i}" for i in range(len(samples)))
+        write_header(f, description, columns)
 
         for zleft, zright, samples in zip(zleft, zright, samples.T):
             formatted = [
@@ -50,7 +92,14 @@ def write_samples(path: Path, description: str, zleft: NDArray, zright: NDArray,
             f.write(" ".join(formatted) + "\n")
 
 
-def write_covariance(path: Path, description: str, covariance: NDArray):
+def load_samples(path: Path) -> tuple[NDArray, str]:
+    header = load_header()
+    method_key, _ = header["columns"][-1].rsplit("_", 1)
+    samples = np.loadtxt(path).T[2:]  # remove binning columns
+    return samples, method_key
+
+
+def write_covariance(path: Path, description: str, *, covariance: NDArray) -> None:
     with path.open("w") as f:
         f.write(f"{description}\n")
 
@@ -60,28 +109,4 @@ def write_covariance(path: Path, description: str, covariance: NDArray):
             f.write("\n")
 
 
-def load_data(path: Path) -> tuple[NDArray, NDArray]:
-    zleft, zright, data, _ = np.loadtxt(path).T
-    edges = np.append(zleft, zright[-1])
-    return edges, data
-
-
-def load_samples(path: Path) -> tuple[NDArray, str]:
-    with path.open() as f:
-        for line in f.readlines():
-            if "z_low" in line:
-                line = line[2:].strip("\n")  # remove leading '# '
-                header = [col for col in line.split(" ") if len(col) > 0]
-                break
-        else:
-            raise ValueError("sample file header misformatted")
-
-    method_key, _ = header[-1].rsplit("_", 1)
-    for method in Tmethod.__args__:
-        if method.startswith(method_key):
-            break
-    else:
-        raise ValueError(f"invalid sampling method key '{method_key}'")
-
-    samples = np.loadtxt(path).T[2:]  # remove binning columns
-    return samples, method
+# NOTE: load_covariance() not required
