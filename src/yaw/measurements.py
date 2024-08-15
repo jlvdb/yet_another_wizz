@@ -18,7 +18,7 @@ from yaw.coordinates import DistsSky
 from yaw.cosmology import r_kpc_to_angle
 from yaw.corrfunc import CorrFunc
 from yaw.paircounts import NormalisedCounts, PatchedCount, PatchedTotal
-from yaw.parallel import ParallelHelper
+from yaw.utils.parallel import ParallelHelper
 
 
 @dataclass(frozen=True, eq=False, slots=True)

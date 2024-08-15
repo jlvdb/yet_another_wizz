@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 from yaw.abc import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
 from yaw.catalog import Catalog, Patch
 from yaw.config import Configuration, ResamplingConfig
-from yaw.utils import io, plot
+from yaw.utils import io, plot, parse_binning
 from yaw.utils.parallel import ParallelHelper
 from yaw.utils.plot import Axis
 
@@ -108,6 +108,8 @@ class SampledData(BinwiseData):
     covariance: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "edges", parse_binning(self.edges))
+
         if self.data.shape != (self.num_bins,):
             raise ValueError("unexpected shape of 'data' array")
 

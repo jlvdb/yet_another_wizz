@@ -10,9 +10,10 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
-from yaw.catalog.utils import groupby_binning, logarithmic_mid
+from yaw.catalog.utils import groupby_binning
 from yaw.coordinates import Coordinates, CoordsSky, DistsSky
 from yaw.abc import Tclosed, default_closed
+from yaw.utils import parse_binning
 
 if TYPE_CHECKING:
     from yaw.catalog.patch import Patch
@@ -21,17 +22,6 @@ __all__ = [
     "AngularTree",
     "BinnedTrees",
 ]
-
-
-def parse_binning(binning: NDArray | None) -> NDArray | None:
-    if binning is None:
-        return None
-
-    binning = np.asarray(binning, dtype=np.float64)
-    if np.all(np.diff(binning) > 0.0):
-        return binning
-
-    raise ValueError("bin edges must increase monotonically")
 
 
 def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
@@ -66,6 +56,12 @@ def get_ang_bins(
         log_bins = log_range.flatten()
 
     return 10.0 ** np.sort(np.unique(log_bins))
+
+
+def logarithmic_mid(edges: NDArray) -> NDArray:
+    log_edges = np.log10(edges)
+    log_mids = (log_edges[:-1] + log_edges[1:]) / 2.0
+    return 10.0**log_mids
 
 
 def dispatch_counts(counts: NDArray, cumulative: bool) -> NDArray:

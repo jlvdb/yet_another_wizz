@@ -44,12 +44,6 @@ def groupby_binning(
             yield binning[i - 1 : i + 1], bin_array
 
 
-def logarithmic_mid(edges: NDArray) -> NDArray:
-    log_edges = np.log10(edges)
-    log_mids = (log_edges[:-1] + log_edges[1:]) / 2.0
-    return 10.0**log_mids
-
-
 class DataChunk(Serialisable):
     __slots__ = ("coords", "weights", "redshifts", "patch_ids")
 

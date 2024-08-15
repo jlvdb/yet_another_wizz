@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
-from yaw.catalog.trees import parse_binning
+from yaw.utils import parse_binning
 from yaw.catalog.utils import DataChunk
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 from yaw.abc import Tclosed, Tpath, default_closed
@@ -202,15 +202,13 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
     create_patchfile(cache_directory, len(patch_paths))
 
     # instantiate patches, which trigger computing the patch meta-data
-    deque(
-        ParallelHelper.iter_unordered(
-            Patch,
-            patch_paths,
-            progress=progress,
-            total=len(patch_paths),
-        ),
-        maxlen=0,
+    patch_iter = ParallelHelper.iter_unordered(
+        Patch,
+        patch_paths,
+        progress=progress,
+        total=len(patch_paths),
     )
+    deque(patch_iter, maxlen=0)
 
 
 class Catalog(Mapping[int, Patch]):
@@ -391,14 +389,12 @@ class Catalog(Mapping[int, Patch]):
         binning = parse_binning(binning)
         patches = self.values()
 
-        deque(
-            ParallelHelper.iter_unordered(
-                BinnedTrees.build,
-                patches,
-                func_args=(binning,),
-                func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
-                progress=progress,
-                total=len(patches),
-            ),
-            maxlen=0,
+        patch_tree_iter = ParallelHelper.iter_unordered(
+            BinnedTrees.build,
+            patches,
+            func_args=(binning,),
+            func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+            progress=progress,
+            total=len(patches),
         )
+        deque(patch_tree_iter, maxlen=0)
