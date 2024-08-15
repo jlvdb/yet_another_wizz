@@ -18,40 +18,21 @@ Author: Jan Luca van den Busch
         (Ruhr-Universität Bochum, Astronomisches Institut)
 """
 
-import logging as _logging
-
-_logging.getLogger(__name__).addHandler(_logging.NullHandler())  # noqa
-
+from yaw.catalog import Catalog
 from yaw.config import Configuration, ResamplingConfig
-from yaw.core.cosmology import Scale
-from yaw.core.math import global_covariance
-from yaw.correlation import CorrData, CorrFunc, autocorrelate, crosscorrelate
-from yaw.old_catalogs import NewCatalog
-from yaw.randoms import UniformRandoms
-from yaw.redshifts import HistData, RedshiftData
-
-# isort: split
-from yaw.deprecated.correlation.corrfuncs import CorrelationData, CorrelationFunction
-from yaw.deprecated.correlation.paircounts import PairCountResult
-from yaw.deprecated.redshifts import HistogramData
+from yaw.containers import CorrData, HistData, RedshiftData
+from yaw.corrfunc import CorrFunc
+from yaw.measurements import autocorrelate, crosscorrelate
 
 __all__ = [
-    "NewCatalog",
+    "Catalog",
     "Configuration",
-    "ResamplingConfig",
-    "Scale",
-    "global_covariance",
     "CorrData",
     "CorrFunc",
+    "HistData",
+    "ResamplingConfig",
+    "RedshiftData",
     "autocorrelate",
     "crosscorrelate",
-    "UniformRandoms",
-    "HistData",
-    "RedshiftData",
-    # deprecated
-    "CorrelationData",
-    "CorrelationFunction",
-    "HistogramData",
-    "PairCountResult",
 ]
-__version__ = "2.5.8"
+__version__ = "3.0.0"
