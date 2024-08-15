@@ -8,8 +8,25 @@ from collections.abc import Iterable, Iterator
 from shutil import get_terminal_size
 from typing import Callable, TypeVar
 
-from mpi4py import MPI
 from tqdm import tqdm
+
+try:
+    from mpi4py import MPI
+
+    COMM = MPI.COMM_WORLD
+
+except ImportError:
+    # mock up COMM_WORLD methods to tell code not to use MPI
+
+    class COMM:
+        @classmethod
+        def Get_rank() -> int:
+            return 0
+
+        @classmethod
+        def Get_size() -> int:
+            return 0
+
 
 Targ = TypeVar("Targ")
 Tresult = TypeVar("Tresult")
@@ -47,7 +64,6 @@ def get_num_threads() -> int:
         return system_threads
 
 
-COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
 MP_THREADS = get_num_threads()
 
