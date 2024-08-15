@@ -16,11 +16,11 @@ except ImportError:
 
 
 __all__ = [
-    "plot_zero_line",
-    "plot_point_uncertainty",
-    "plot_line_uncertainty",
-    "plot_step_uncertainty",
-    "plot_correlation",
+    "zero_line",
+    "point_uncertainty",
+    "line_uncertainty",
+    "step_uncertainty",
+    "correlation_matrix",
 ]
 
 
@@ -88,7 +88,7 @@ def step_uncertainty(edges: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | No
 
 
 @check_plotting_enabled
-def correlation(corr: NDArray, ticks: NDArray | None = None, *, cmap: str = "RdBu_r", ax: Axis | None = None) -> Axis:
+def correlation_matrix(corr: NDArray, ticks: NDArray | None = None, *, cmap: str = "RdBu_r", ax: Axis | None = None) -> Axis:
     ax = ax or plt.gca()
     vlims = dict(vmin=-1.0, vmax=1.0)
 
@@ -96,7 +96,7 @@ def correlation(corr: NDArray, ticks: NDArray | None = None, *, cmap: str = "RdB
         ax.matshow(corr, cmap=cmap, **vlims)
 
     else:
-        ax.pcolormesh(ticks, ticks, np.flipud(corr), cmap=cmap **vlims)
+        ax.pcolormesh(ticks, ticks, np.flipud(corr), cmap=cmap, **vlims)
         ax.xaxis.tick_top()
         ax.set_aspect("equal")
 

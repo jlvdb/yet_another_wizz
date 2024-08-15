@@ -1,7 +1,7 @@
 """This module defines an interface for custom cosmological models, as well as
 routines that depend on cosmological distance calculations.
 """
-
+raise NotImplementedError
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

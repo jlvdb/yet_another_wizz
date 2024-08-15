@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 
 from yaw.abc import AsciiSerializable, BinwiseData, Tpath
 from yaw.config import Configuration, ResamplingConfig
-from yaw.utils import ParallelHelper, io, plot, parse_binning
+from yaw.utils import ParallelHelper, io, plot
 from yaw.utils.plot import Axis
 
 if TYPE_CHECKING:
@@ -80,7 +80,7 @@ class Binning:
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, type(self)):
-            raise NotImplemented
+            return NotImplemented
         return np.array_equal(self.edges, other.edges) and self.closed == other.closed
 
     @property
@@ -336,7 +336,7 @@ class SampledData(BinwiseData):
     def plot_corr(
         self, *, redshift: bool = False, cmap: str = "RdBu_r", ax: Axis | None = None
     ) -> Axis:
-        return plot.correlation(
+        return plot.correlation_matrix(
             self.correlation,
             ticks=self.binning.mids if redshift else None,
             cmap=cmap,
