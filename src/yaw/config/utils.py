@@ -90,7 +90,7 @@ def parse_section_error(
 
 class BaseConfig(DictRepresentation):
     @classmethod
-    def create(cls: Type[T], **kwargs: Any) -> T:
+    def create(cls: type[T], **kwargs: Any) -> T:
         """Create a new configuration object.
 
         By default this is an alias for :meth:`__init__`. Configuration classes
@@ -117,7 +117,7 @@ class BaseConfig(DictRepresentation):
 
     @classmethod
     def from_dict(
-        cls: Type[T],
+        cls: type[T],
         the_dict: dict[str, Any],
         **kwargs: dict[str, Any],  # passing additional constructor data
     ) -> T:

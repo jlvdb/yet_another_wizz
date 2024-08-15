@@ -4,7 +4,7 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, Union
 
 import h5py
 
@@ -27,7 +27,7 @@ Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
 
 class Serialisable(ABC):
     @classmethod
-    def from_dict(cls: Type[Tserialise], the_dict: dict[str, Any]) -> Tserialise:
+    def from_dict(cls: type[Tserialise], the_dict: dict[str, Any]) -> Tserialise:
         return cls(**the_dict)
 
     @abstractmethod
@@ -37,7 +37,7 @@ class Serialisable(ABC):
 
 class JsonSerialisable(ABC):
     @classmethod
-    def from_file(cls: Type[Tjson], path: Tpath) -> Tjson:
+    def from_file(cls: type[Tjson], path: Tpath) -> Tjson:
         with Path(path).open() as f:
             kwarg_dict = json.load(f)
         return cls.from_dict(kwarg_dict)
@@ -50,7 +50,7 @@ class JsonSerialisable(ABC):
 class HdfSerializable(ABC):
     @classmethod
     @abstractmethod
-    def from_hdf(cls: Type[Thdf], source: h5py.Group) -> Thdf:
+    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
         pass
 
     @abstractmethod
@@ -58,7 +58,7 @@ class HdfSerializable(ABC):
         pass
 
     @classmethod
-    def from_file(cls: Type[Thdf], path: Tpath) -> Thdf:
+    def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
@@ -70,7 +70,7 @@ class HdfSerializable(ABC):
 class AsciiSerializable(ABC):
     @classmethod
     @abstractmethod
-    def from_files(cls: Type[Tascii], path_prefix: Tpath) -> Tascii:
+    def from_files(cls: type[Tascii], path_prefix: Tpath) -> Tascii:
         pass
 
     @abstractmethod
@@ -109,14 +109,14 @@ class PatchwiseData(ABC):
         pass
 
     @abstractmethod
-    def _make_slice(self: Tpatched, item: int | slice) -> Tpatched:
+    def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
         pass
 
     @property
     def patches(self) -> Indexer:
-        return Indexer(self._make_slice)
+        return Indexer(self._make_patch_slice)
 
-    def is_compatible(self, other: Any, require: bool = False) -> bool:
+    def is_compatible(self, other: Any, *, require: bool = False) -> bool:
         if not isinstance(other, type(self)):
             if not require:
                 return False
@@ -141,14 +141,14 @@ class BinwiseData(ABC):
         return len(self.binning)
 
     @abstractmethod
-    def _make_slice(self: Tbinned, item: int | slice) -> Tbinned:
+    def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
         pass
 
     @property
     def bins(self) -> Indexer:
-        return Indexer(self._make_slice)
+        return Indexer(self._make_bin_slice)
 
-    def is_compatible(self, other: Any, require: bool = False) -> bool:
+    def is_compatible(self, other: Any, *, require: bool = False) -> bool:
         if not isinstance(other, type(self)):
             if not require:
                 return False

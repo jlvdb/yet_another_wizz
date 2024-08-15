@@ -479,7 +479,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def n_patches(self) -> int:
         return self.dd.n_patches
 
-    def is_compatible(self, other: CorrFunc, require: bool = False) -> bool:
+    def is_compatible(self, other: CorrFunc, *, require: bool = False) -> bool:
         """Check whether this instance is compatible with another instance.
 
         Ensures that the redshift binning and the number of patches are

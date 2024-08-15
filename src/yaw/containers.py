@@ -259,7 +259,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def _make_slice(self, item: int | slice) -> SampledData:
+    def _make_bin_slice(self, item: int | slice) -> SampledData:
         if not isinstance(item, (int, np.integer, slice)):
             raise TypeError("item selector must be a slice or integer type")
 
@@ -276,8 +276,8 @@ class SampledData(BinwiseData):
 
         return new
 
-    def is_compatible(self, other: Any, require: bool = False) -> bool:
-        if not super().is_compatible(other, require):
+    def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        if not super().is_compatible(other, require=require):
             return False
 
         if self.num_samples != other.num_samples:

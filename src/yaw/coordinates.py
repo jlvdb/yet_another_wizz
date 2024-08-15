@@ -64,7 +64,7 @@ class Coordinates(CustomNumpyArray):
 
     @classmethod
     @abstractmethod
-    def from_coords(cls: Type[Tcoord], coords: Iterable[Coordinates]) -> Tcoord:
+    def from_coords(cls: type[Tcoord], coords: Iterable[Coordinates]) -> Tcoord:
         pass
 
     def __eq__(self, other: object) -> NDArray[np.bool_]:
@@ -190,7 +190,7 @@ class Distances(CustomNumpyArray):
 
     @classmethod
     @abstractmethod
-    def from_dists(cls: Type[Tcoord], dists: Iterable[Distances]) -> Tcoord:
+    def from_dists(cls: type[Tcoord], dists: Iterable[Distances]) -> Tcoord:
         pass
 
     def __eq__(self, other: object) -> NDArray[np.bool_]:

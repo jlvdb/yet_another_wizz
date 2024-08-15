@@ -7,7 +7,8 @@ from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
 from shutil import get_terminal_size, rmtree
-from typing import Self, Union
+from typing import Union
+from typing_extensions import Self
 
 import numpy as np
 import treecorr
