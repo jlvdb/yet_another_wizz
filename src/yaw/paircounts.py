@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TypeVar, Any
+from typing_extensions import Self
 
 import h5py
 import numpy as np
 import sparse
 from numpy.typing import NDArray
 
-from yaw.abc import BinwiseData, PatchwiseData, HdfSerializable, Tpath, Thdf, Tpatched, Tbinned
+from yaw.abc import BinwiseData, PatchwiseData, HdfSerializable, Thdf, Tpatched, Tbinned
 from yaw.config import ResamplingConfig
 from yaw.containers import Binning, SampledData
 
@@ -19,6 +20,7 @@ __all__ = [
     "NormalisedCounts",
 ]
 
+Tcounts = TypeVar("Tcounts", bound="PatchedCounts")
 Tnormalised = TypeVar("Tnormalised", bound="NormalisedCounts")
 
 
@@ -81,10 +83,10 @@ class PatchedTotals(BinwisePatchwiseArray):
         self.totals2 = totals2
 
     @classmethod
-    def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
+    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
         raise NotImplementedError
 
-    def to_file(self, path: Tpath) -> None:
+    def to_hdf(self, dest: h5py.Group) -> None:
         raise NotImplementedError
 
     @property
@@ -92,7 +94,7 @@ class PatchedTotals(BinwisePatchwiseArray):
         raise NotImplementedError
 
     def __eq__(self, other: Any) -> bool:
-        pass
+        raise NotImplementedError
 
     def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
         raise NotImplementedError
@@ -122,10 +124,10 @@ class PatchedCounts(BinwisePatchwiseArray):
         raise NotADirectoryError
 
     @classmethod
-    def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
+    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
         raise NotImplementedError
 
-    def to_file(self, path: Tpath) -> None:
+    def to_hdf(self, dest: h5py.Group) -> None:
         raise NotImplementedError
 
     @property
@@ -134,6 +136,15 @@ class PatchedCounts(BinwisePatchwiseArray):
 
     def __eq__(self, other: Any) -> bool:
         pass
+
+    def __add__(self: Tcounts, other: Any) -> Tcounts:
+        raise NotImplementedError
+
+    def __radd__(self: Tcounts, other: Any) -> Tcounts:
+        raise NotImplementedError
+
+    def __mul__(self: Tcounts, other: Any) -> Tcounts:
+        raise NotImplementedError
 
     def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
         raise NotImplementedError
@@ -156,54 +167,86 @@ class PatchedCounts(BinwisePatchwiseArray):
 
 @dataclass(frozen=True, eq=False, repr=False, slots=True)
 class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
-    count: PatchedCounts
-    total: PatchedTotals
+    counts: PatchedCounts
+    totals: PatchedTotals
 
     def __post_init__(self) -> None:
-        if self.count.num_patches != self.total.num_patches:
-            raise ValueError("number of patches of 'count' and total' do not match")
-        if self.count.num_bins != self.total.num_bins:
-            raise ValueError("number of bins of 'count' and total' do not match")
+        if self.counts.num_patches != self.totals.num_patches:
+            raise ValueError("number of patches of 'count' and total' does not match")
+        if self.counts.num_bins != self.totals.num_bins:
+            raise ValueError("number of bins of 'count' and total' does not match")
 
     @classmethod
-    def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
-        raise NotImplementedError
+    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
+        counts = PatchedCounts.from_hdf(source["counts"])
+        totals = PatchedTotals.from_hdf(source["totals"])
+        return cls(counts=counts, totals=totals)
 
-    def to_file(self, path: Tpath) -> None:
-        raise NotImplementedError
+    def to_hdf(self, dest: h5py.Group) -> None:
+        group = dest.create_group("counts")
+        self.counts.to_hdf(group)
+
+        group = dest.create_group("totals")
+        self.totals.to_hdf(group)
 
     @property
     def binning(self) -> Binning:
-        raise NotImplementedError
+        return self.counts.binning
 
     @property
     def auto(self) -> bool:
-        raise NotImplementedError
+        return self.counts.auto
 
     @property
     def num_patches(self) -> int:
-        raise NotImplementedError
+        return self.counts.num_patches
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
-        raise NotImplementedError
+        if not isinstance(other, type(self)):
+            if not require:
+                return False
+            raise TypeError(f"{type(other)} is not compatible with {type(self)}")
+
+        return self.counts.is_compatible(other.counts)
 
     def __eq__(self, other: Any) -> bool:
-        raise NotImplementedError
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.counts == other.counts and self.totals == other.totals
 
     def __add__(self: Tnormalised, other: Any) -> Tnormalised:
-        raise NotImplementedError
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        if self.totals != other.totals:
+            raise ValueError("totals must be identical for operation")
+        return type(self)(self.counts + other.counts, self.totals)
 
     def __radd__(self: Tnormalised, other: Any) -> Tnormalised:
-        raise NotImplementedError
+        if np.isscalar(other) and other == 0:
+            return self  # allows using sum() on an iterable of NormalisedCounts
+        return other.__add__(self)
 
     def __mul__(self: Tnormalised, other: Any) -> Tnormalised:
-        raise NotImplementedError
+        return type(self)(self.count * other, self.total)
 
     def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
-        raise NotImplementedError
+        counts = self.bins[item]
+        totals = self.bins[item]
+        return type(self)(counts, totals)
 
     def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
-        raise NotImplementedError
+        counts = self.patches[item]
+        totals = self.patches[item]
+        return type(self)(counts, totals)
 
-    def sample_sum(self, config: ResamplingConfig) -> SampledData:
-        raise NotImplementedError
+    def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
+        config = config or ResamplingConfig()
+
+        counts = self.counts.sample_sum(config)
+        totals = self.totals.sample_sum(config)
+
+        data = counts.data / totals.data
+        samples = counts.samples / totals.samples
+        return SampledData(self.binning, data, samples, method=config.method)
