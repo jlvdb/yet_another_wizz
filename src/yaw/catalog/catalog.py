@@ -18,11 +18,11 @@ from tqdm import tqdm
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
-from yaw.utils import parse_binning
+from yaw.binning import Tclosed, default_closed, parse_binning
 from yaw.catalog.utils import DataChunk
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
-from yaw.abc import Tclosed, Tpath, default_closed
-from yaw.utils.parallel import ParallelHelper
+from yaw.abc import Tpath
+from yaw.utils import ParallelHelper
 
 __all__ = [
     "Catalog",
@@ -386,7 +386,7 @@ class Catalog(Mapping[int, Patch]):
         force: bool = False,
         progress: bool = False,
     ) -> None:
-        binning = parse_binning(binning)
+        binning = parse_binning(binning, optional=True)
         patches = self.values()
 
         patch_tree_iter = ParallelHelper.iter_unordered(

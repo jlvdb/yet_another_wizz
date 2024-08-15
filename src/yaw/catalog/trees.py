@@ -12,8 +12,7 @@ from scipy.spatial import KDTree
 
 from yaw.catalog.utils import groupby_binning
 from yaw.coordinates import Coordinates, CoordsSky, DistsSky
-from yaw.abc import Tclosed, default_closed
-from yaw.utils import parse_binning
+from yaw.binning import Tclosed, default_closed, parse_binning
 
 if TYPE_CHECKING:
     from yaw.catalog.patch import Patch
@@ -184,7 +183,7 @@ class BinnedTrees(Iterable):
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:
-        binning = parse_binning(binning)
+        binning = parse_binning(binning, optional=True)
 
         try:
             assert not force

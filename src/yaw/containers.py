@@ -12,11 +12,11 @@ import scipy.optimize
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
-from yaw.abc import AsciiSerializable, BinwiseData, Tclosed, Tpath, default_closed
+from yaw.binning import Binning, Tclosed, default_closed
+from yaw.abc import AsciiSerializable, BinwiseData, Tpath
 from yaw.catalog import Catalog, Patch
 from yaw.config import Configuration, ResamplingConfig
-from yaw.utils import io, plot, parse_binning
-from yaw.utils.parallel import ParallelHelper
+from yaw.utils import ParallelHelper, io, plot, parse_binning
 from yaw.utils.plot import Axis
 
 if TYPE_CHECKING:
@@ -100,16 +100,13 @@ def cov_from_samples(
 
 @dataclass(frozen=True, repr=False, eq=False)
 class SampledData(BinwiseData):
-    edges: NDArray
+    binning: Binning
     data: NDArray
     samples: NDArray
     method: Tmethod = field(kw_only=True)
-    closed: Tclosed = field(kw_only=True, default=default_closed)
     covariance: NDArray = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "edges", parse_binning(self.edges))
-
         if self.data.shape != (self.num_bins,):
             raise ValueError("unexpected shape of 'data' array")
 
@@ -144,12 +141,11 @@ class SampledData(BinwiseData):
 
     def __getstate__(self) -> dict:
         return dict(
-            edges=self.edges,
+            binning=self.binning,
             data=self.data,
             samples=self.samples,
             covariance=self.covariance,
             method=self.method,
-            closed=self.closed,
         )
 
     def __eq__(self, other: object) -> bool:
@@ -157,11 +153,10 @@ class SampledData(BinwiseData):
             return NotImplemented
 
         return (
-            self.samples.shape == other.samples.shape
+            self.binning == other.binning
             and self.method == other.method
-            and np.all(self.data == other.data)
-            and np.all(self.samples == other.samples)
-            and np.all(self.binning == other.binning)
+            and np.array_equal(self.data, other.data, equal_nan=True)
+            and np.array_equal(self.samples, other.samples, equal_nan=True)
         )
 
     def __add__(self, other: Any) -> Tsampled:
@@ -170,7 +165,7 @@ class SampledData(BinwiseData):
 
         self.is_compatible(other, require=True)
         return self.__class__(
-            self.edges,
+            self.binning.copy(),
             self.data + other.data,
             self.samples + other.samples,
             method=self.method,
@@ -183,7 +178,7 @@ class SampledData(BinwiseData):
 
         self.is_compatible(other, require=True)
         return self.__class__(
-            self.edges,
+            self.binning.copy(),
             self.data - other.data,
             self.samples - other.samples,
             method=self.method,
@@ -197,20 +192,14 @@ class SampledData(BinwiseData):
         cls = type(self)
         new = cls.__new__(cls)
 
-        left = np.atleast_1d(self.left[item])
-        right = np.atleast_1d(self.right[item])
-        new.edges = np.append(left, right[-1])
-
+        new.binning = self.binning[item]
         new.data = np.atleast_1d(self.data[item])
-
         new.samples = self.samples[:, item]
         if new.samples.ndim == 1:
             new.samples = np.atleast_2d(new.samples).T
-
         new.covariance = np.atleast_2d(self.covariance[item])[item]
-
         new.method = self.method
-        new.closed = self.closed
+
         return new
 
     def is_compatible(self, other: Any, require: bool = False) -> bool:
@@ -248,14 +237,15 @@ class SampledData(BinwiseData):
         plot_kwargs.update(dict(color=color, label=label))
 
         if style == "step":
-            x = self.edges + offset
+            x = self.binning.edges + offset
         else:
-            x = self.mids + offset
-        y = self.data.copy()
-        yerr = self.error.copy()
+            x = self.binning.mids + offset
+        y = self.data
+        yerr = self.error
         if scale_dz:
-            y *= self.dz
-            yerr *= self.dz
+            dz = self.binning.dz
+            y *= dz
+            yerr *= dz
 
         if indicate_zero:
             ax = plot.zero_line(ax=ax)
@@ -274,7 +264,7 @@ class SampledData(BinwiseData):
     ) -> Axis:
         return plot.correlation(
             self.correlation,
-            ticks=self.mids if redshift else None,
+            ticks=self.binning.mids if redshift else None,
             cmap=cmap,
             ax=ax,
         )
@@ -301,7 +291,8 @@ class CorrData(AsciiSerializable, SampledData):
         edges, data = io.load_data(path_prefix.with_suffix(".dat"))
         samples, method = io.load_samples(path_prefix.with_suffix(".smp"))
 
-        return cls(edges, data, samples, method=method, closed=closed)
+        binning = Binning(edges, closed=closed)
+        return cls(binning, data, samples, method=method)
 
     def to_files(self, path_prefix: Tpath) -> None:
         path_prefix = Path(path_prefix)
@@ -365,7 +356,7 @@ class HistData(CorrData):
         sampling_config = sampling_config or ResamplingConfig()
         patch_idx = sampling_config.get_samples(len(counts))
         return cls(
-            config.binning.zbins,
+            Binning(config.binning.zbins, closed=closed),
             data=counts.sum(axis=0),
             samples=counts[patch_idx].sum(axis=1),
             method=sampling_config.method,
@@ -390,18 +381,17 @@ class HistData(CorrData):
     _default_style = "step"
 
     def normalised(self, *args, **kwargs) -> HistData:
-        width_correction = (self.edges.min() - self.edges.max()) / (
-            self.num_bins * self.dz
-        )
+        edges = self.binning.edges
+        dz = self.binning.dz
+        width_correction = (edges.min() - edges.max()) / (self.num_bins * dz)
+
         data = self.data * width_correction
         samples = self.samples * width_correction
-        norm = np.nansum(self.dz * data)
+        norm = np.nansum(dz * data)
 
         data /= norm
         samples /= norm
-        return type(self)(
-            self.edges, data, samples, method=self.method, closed=self.closed
-        )
+        return type(self)(self.binning.copy(), data, samples, method=self.method)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -439,11 +429,10 @@ class RedshiftData(CorrData):
         nz_samples = w_sp_samp / np.sqrt(dz2_samples * w_ss_samp * w_pp_samp)
 
         return cls(
-            cross_data.edges,
+            cross_data.binning.copy(),
             nz_data,
             nz_samples,
             method=cross_data.method,
-            closed=cross_data.closed,
         )
 
     @classmethod
@@ -505,6 +494,4 @@ class RedshiftData(CorrData):
 
         data = self.data / norm
         samples = self.samples / norm
-        return type(self)(
-            self.edges, data, samples, method=self.method, closed=self.closed
-        )
+        return type(self)(self.binning.copy(), data, samples, method=self.method)

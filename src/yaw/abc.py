@@ -10,11 +10,11 @@ import h5py
 import numpy as np
 from numpy.typing import NDArray
 
+from yaw.binning import Binning
+
 Tkey = TypeVar("Tkey")
 Tvalue = TypeVar("Tvalue")
 
-Tclosed = Literal["left", "right"]
-default_closed = "right"
 Tpath = Union[Path, str]
 
 Tserialise = TypeVar("Tdict", bound="Serialisable")
@@ -134,33 +134,12 @@ class PatchwiseData(ABC):
 class BinwiseData(ABC):
     @property
     @abstractmethod
-    def edges(self) -> NDArray:
-        pass
-
-    @property
-    def mids(self) -> NDArray:
-        return (self.edges[:-1] + self.edges[1:]) / 2.0
-
-    @property
-    def left(self) -> NDArray:
-        return self.edges[:-1]
-
-    @property
-    def right(self) -> NDArray:
-        return self.edges[1:]
-
-    @property
-    def dz(self) -> NDArray:
-        return np.diff(self.edges)
-
-    @property
-    @abstractmethod
-    def closed(self) -> Tclosed:
+    def binning(self) -> Binning:
         pass
 
     @property
     def num_bins(self) -> int:
-        return len(self.edges) - 1
+        return len(self.binning)
 
     @abstractmethod
     def _make_slice(self: Tbinned, item: int | slice) -> Tbinned:
@@ -176,15 +155,10 @@ class BinwiseData(ABC):
                 return False
             raise TypeError(f"{type(other)} is not compatible with {type(self)}")
 
-        if self.num_bins != other.num_bins:
+        if self.binning != other.binning:
             if not require:
                 return False
-            raise ValueError("number of bins does not match")
-
-        if np.any(self.edges != other.edges) or self.closed != other.closed:
-            if not require:
-                return False
-            raise ValueError("binning is not identical")
+            raise ValueError("binning does not match")
 
         return True
 
