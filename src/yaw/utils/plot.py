@@ -8,10 +8,12 @@ from numpy.typing import NDArray
 try:
     from matplotlib import pyplot as plt
     from matplotlib.axis import Axis
+
     PLOTTING_ENABLED = True
 
 except ImportError:
     from typing import Any as Axis  # to shut up pylance
+
     PLOTTING_ENABLED = False
 
 
@@ -47,7 +49,14 @@ def zero_line(*, ax: Axis | None = None) -> Axis:
 
 
 @check_plotting_enabled
-def point_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
+def point_uncertainty(
+    x: NDArray,
+    y: NDArray,
+    yerr: NDArray,
+    *,
+    ax: Axis | None = None,
+    **plot_kwargs: dict,
+) -> Axis:
     ax = ax or plt.gca()
 
     ebar_kwargs = dict(fmt=".", ls="none")
@@ -58,7 +67,14 @@ def point_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None 
 
 
 @check_plotting_enabled
-def line_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
+def line_uncertainty(
+    x: NDArray,
+    y: NDArray,
+    yerr: NDArray,
+    *,
+    ax: Axis | None = None,
+    **plot_kwargs: dict,
+) -> Axis:
     ax = ax or plt.gca()
 
     line = ax.plot(x, y, **plot_kwargs)
@@ -69,7 +85,14 @@ def line_uncertainty(x: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None =
 
 
 @check_plotting_enabled
-def step_uncertainty(edges: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | None = None, **plot_kwargs: dict) -> Axis:
+def step_uncertainty(
+    edges: NDArray,
+    y: NDArray,
+    yerr: NDArray,
+    *,
+    ax: Axis | None = None,
+    **plot_kwargs: dict,
+) -> Axis:
     ax = ax or plt.gca()
 
     stair_kwargs = dict(lw=plt.rcParams["lines.linewidth"])
@@ -88,7 +111,13 @@ def step_uncertainty(edges: NDArray, y: NDArray, yerr: NDArray, *, ax: Axis | No
 
 
 @check_plotting_enabled
-def correlation_matrix(corr: NDArray, ticks: NDArray | None = None, *, cmap: str = "RdBu_r", ax: Axis | None = None) -> Axis:
+def correlation_matrix(
+    corr: NDArray,
+    ticks: NDArray | None = None,
+    *,
+    cmap: str = "RdBu_r",
+    ax: Axis | None = None,
+) -> Axis:
     ax = ax or plt.gca()
     vlims = dict(vmin=-1.0, vmax=1.0)
 

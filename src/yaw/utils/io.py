@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-
 PRECISION = 10
 
 

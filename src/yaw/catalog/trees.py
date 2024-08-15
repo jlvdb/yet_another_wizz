@@ -11,8 +11,8 @@ from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
 from yaw.catalog.utils import groupby_binning
-from yaw.coordinates import Coordinates, CoordsSky, DistsSky
 from yaw.containers import Tclosed, default_closed, parse_binning
+from yaw.coordinates import Coordinates, CoordsSky, DistsSky
 
 if TYPE_CHECKING:
     from yaw.catalog.patch import Patch

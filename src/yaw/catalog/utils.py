@@ -7,9 +7,9 @@ from typing import Any, Generator, Union
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from yaw.coordinates import CoordsSky
 from yaw.abc import Serialisable
 from yaw.containers import Tclosed, default_closed
+from yaw.coordinates import CoordsSky
 
 Tpath = Union[Path, str]
 

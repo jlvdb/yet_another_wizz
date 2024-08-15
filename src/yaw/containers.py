@@ -76,7 +76,7 @@ class Binning:
 
     def __iter__(self) -> Iterator[Binning]:
         for i in range(len(self)):
-            yield type(self)(self.edges[i:i+2], closed=self.closed)
+            yield type(self)(self.edges[i : i + 2], closed=self.closed)
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, type(self)):

@@ -13,8 +13,8 @@ from numpy.typing import NDArray
 from pandas import DataFrame
 from pyarrow import Table, parquet
 
-from yaw.catalog.utils import DataChunk
 from yaw.abc import Tpath
+from yaw.catalog.utils import DataChunk
 
 __all__ = [
     "DataFrameReader",

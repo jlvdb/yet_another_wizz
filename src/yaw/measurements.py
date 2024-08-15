@@ -15,8 +15,8 @@ from yaw.catalog import Catalog, Patch
 from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.config import Configuration
 from yaw.coordinates import DistsSky
-from yaw.cosmology import r_kpc_to_angle
 from yaw.corrfunc import CorrFunc
+from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import NormalisedCounts, PatchedCount, PatchedTotal
 from yaw.utils import ParallelHelper
 
