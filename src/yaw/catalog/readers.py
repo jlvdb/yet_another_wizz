@@ -10,11 +10,10 @@ from typing import Any, Self
 import numpy as np
 import pyarrow as pa
 from numpy.typing import NDArray
-from pandas import DataFrame
 from pyarrow import Table, parquet
 
 from yaw.abc import Tpath
-from yaw.catalog.utils import DataChunk
+from yaw.catalog.utils import DataChunk, MockDataFrame as DataFrame
 
 __all__ = [
     "DataFrameReader",

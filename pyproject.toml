@@ -19,23 +19,25 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "deprecated",
-    "tqdm",
-    "numpy",
-    "pandas",
-    "astropandas>=1.2.1",
-    "scipy",
     "astropy",
-    "pyarrow",
+    "deprecated",
     "h5py",
+    "mpi4py",
+    "numpy>=2.0",
+    "pyarrow",
     "pyyaml",
+    "scipy",
+    "sparse",
+    "tqdm",
     "treecorr>=4.3",
 ]
 
 [project.optional-dependencies]
 cli = ["yet_another_wizz_cli>=1.2.1"]
 # rail = ["yet_another_wizz_rail @ git+ssh://git@github.com/jlvdb/yet_another_wizz_rail"]
-plot = ["matplotlib"]
+plot = [
+    "matplotlib",
+]
 # note that yaw_cli is currently necessary to generate the joint docs
 docs = [
     "sphinx",

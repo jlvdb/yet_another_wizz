@@ -12,14 +12,13 @@ from typing import Self, Union
 import numpy as np
 import treecorr
 from numpy.typing import NDArray
-from pandas import DataFrame
 from scipy.cluster import vq
 from tqdm import tqdm
 
 from yaw.abc import Tpath
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
-from yaw.catalog.utils import DataChunk
+from yaw.catalog.utils import DataChunk, MockDataFrame as DataFrame
 from yaw.containers import Tclosed, default_closed, parse_binning
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 from yaw.utils import ParallelHelper

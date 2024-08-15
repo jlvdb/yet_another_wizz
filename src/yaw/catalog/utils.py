@@ -161,3 +161,7 @@ class DataChunk(Serialisable):
             chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
 
         return chunks
+
+
+class MockDataFrame(Sequence):  # avoid explicit pandas dependency
+    pass
