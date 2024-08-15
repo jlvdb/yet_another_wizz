@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
-from yaw.binning import Tclosed, default_closed, parse_binning
+from yaw.containers import Tclosed, default_closed, parse_binning
 from yaw.catalog.utils import DataChunk
 from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 from yaw.abc import Tpath

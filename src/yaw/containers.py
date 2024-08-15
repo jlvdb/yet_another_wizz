@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -12,28 +12,102 @@ import scipy.optimize
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
-from yaw.binning import Binning, Tclosed, default_closed
 from yaw.abc import AsciiSerializable, BinwiseData, Tpath
-from yaw.catalog import Catalog, Patch
 from yaw.config import Configuration, ResamplingConfig
 from yaw.utils import ParallelHelper, io, plot, parse_binning
 from yaw.utils.plot import Axis
 
 if TYPE_CHECKING:
+    from yaw.catalog import Catalog, Patch
     from yaw.corrfunc import CorrFunc
 
+__all__ = [
+    "Binning",
+    "CorrData",
+    "HistData",
+    "RedshiftData",
+    "SampledData",
+]
+
+Tclosed = Literal["left", "right"]
+default_closed = "right"
+
 Tcov_kind = Literal["full", "diag", "var"]
+default_cov_kind = "full"
+
 Tmethod = Literal["jackknife", "bootstrap"]
+default_method = "jackknife"
+
+Tbinning = TypeVar("Tbinning", bound="Binning")
 Tsampled = TypeVar("Tsampled", bound="SampledData")
 Tstyle = Literal["point", "line", "step"]
 Tcorr = TypeVar("Tcorr", bound="CorrData")
+
+
+def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray | None:
+    if optional and binning is None:
+        return None
+
+    binning = np.asarray(binning, dtype=np.float64)
+    if np.all(np.diff(binning) > 0.0):
+        return binning
+
+    raise ValueError("bin edges must increase monotonically")
+
+
+@dataclass(frozen=True, eq=False, repr=False, slots=True)
+class Binning:
+    edges: NDArray
+    closed: Tclosed = field(default=default_closed, kw_only=True)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "edges", parse_binning(self.edges))
+
+    def __getstate__(self) -> dict:
+        return dict(self.edges, self.closed)
+
+    def __len__(self) -> int:
+        return len(self.edges) - 1
+
+    def __getitem__(self, item: int | slice) -> Binning:
+        left = np.atleast_1d(self.left[item])
+        right = np.atleast_1d(self.right[item])
+        return np.append(left, right[-1])
+
+    def __iter__(self) -> Iterator[Binning]:
+        for i in range(len(self)):
+            yield type(self)(self.edges[i:i+2], closed=self.closed)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, type(self)):
+            raise NotImplemented
+        return np.array_equal(self.edges, other.edges) and self.closed == other.closed
+
+    @property
+    def mids(self) -> NDArray:
+        return (self.edges[:-1] + self.edges[1:]) / 2.0
+
+    @property
+    def left(self) -> NDArray:
+        return self.edges[:-1]
+
+    @property
+    def right(self) -> NDArray:
+        return self.edges[1:]
+
+    @property
+    def dz(self) -> NDArray:
+        return np.diff(self.edges)
+
+    def copy(self: Tbinning) -> Tbinning:
+        return Binning(self.edges.copy(), closed=str(self.closed))
 
 
 def cov_from_samples(
     samples: NDArray | Sequence[NDArray],
     method: Tmethod,
     rowvar: bool = False,
-    kind: Tcov_kind = "full",
+    kind: Tcov_kind = default_cov_kind,
 ) -> NDArray:
     """Compute a joint covariance from a sequence of data samples.
 
