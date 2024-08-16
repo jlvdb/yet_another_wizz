@@ -7,7 +7,6 @@ from typing_extensions import Self
 
 import h5py
 import numpy as np
-import sparse
 from numpy.typing import NDArray
 
 from yaw.abc import BinwiseData, PatchwiseData, HdfSerializable, Thdf, Tpatched, Tbinned
@@ -20,6 +19,7 @@ __all__ = [
     "NormalisedCounts",
 ]
 
+Ttotals = TypeVar("Ttotals", bound="PatchedTotals")
 Tcounts = TypeVar("Tcounts", bound="PatchedCounts")
 Tnormalised = TypeVar("Tnormalised", bound="NormalisedCounts")
 
@@ -84,32 +84,57 @@ class PatchedTotals(BinwisePatchwiseArray):
 
     @classmethod
     def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
-        raise NotImplementedError
+        raise NotImplementedError  # TODO
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        raise NotImplementedError
+        raise NotImplementedError  # TODO
 
     @property
     def num_patches(self) -> int:
-        raise NotImplementedError
+        return self.totals1.shape[0]
 
     def __eq__(self, other: Any) -> bool:
-        raise NotImplementedError
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.binning == other.binning and np.array_equal(self.totals1, other.totals1) and np.array_equal(self.totals2, other.totals2) and self.auto == other.auto
 
     def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
-        raise NotImplementedError
+        binning = self.binning[item]
+        if isinstance(item, int):
+            item = [item]
+        return type(self)(binning, self.totals1[:, item], self.totals2[:, item], auto=self.auto)
 
     def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
-        raise NotImplementedError
+        if isinstance(item, int):
+            item = [item]
+        return type(self)(self.binning, self.totals1[item], self.totals2[item], auto=self.auto)
 
     def dense_array(self) -> NDArray:
-        raise NotImplementedError
+        return np.einsum("i...,j...->ij...", self.totals1, self.totals2)
 
-    def _sum_patches(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError
+    def _sum_patches(self) -> NDArray:
+        if self.auto:
+            sum_upper = outer_triu_sum(self.totals1, self.totals2, k=1)
+            sum_diag = np.einsum("i...,i...->...", self.totals1, self.totals2)
+            return sum_upper + 0.5 * sum_diag
 
-    def _sum_jackknife(self, config: ResamplingConfig, sum_patches: NDArray) -> NDArray:
-        raise NotImplementedError
+        else:
+            return np.einsum("i...,j...->...", self.totals1, self.totals2)
+
+    def _sum_jackknife(self, sum_patches: NDArray) -> NDArray:
+        if self.auto:
+            diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
+            # sum along axes of upper triangle (without diagonal) of outer product
+            rows = outer_triu_sum(self.totals1, self.totals2, k=1, axis=1)
+            cols = outer_triu_sum(self.totals1, self.totals2, k=1, axis=0)
+            return sum_patches - rows - cols - 0.5 * diag  # diag not in rows or cols
+
+        else:
+            diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
+            rows = np.einsum("i...,j...->i...", self.totals1, self.totals2)
+            cols = np.einsum("i...,j...->j...", self.totals1, self.totals2)
+            return sum_patches - rows - cols + diag  # subtracted diag twice
 
     def _sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
         raise NotImplementedError
@@ -155,10 +180,10 @@ class PatchedCounts(BinwisePatchwiseArray):
     def dense_array(self) -> NDArray:
         raise NotImplementedError
 
-    def _sum_patches(self, config: ResamplingConfig) -> NDArray:
+    def _sum_patches(self) -> NDArray:
         raise NotImplementedError
 
-    def _sum_jackknife(self, config: ResamplingConfig, sum_patches: NDArray) -> NDArray:
+    def _sum_jackknife(self, sum_patches: NDArray) -> NDArray:
         raise NotImplementedError
 
     def _sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
@@ -232,13 +257,13 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
         return type(self)(self.count * other, self.total)
 
     def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
-        counts = self.bins[item]
-        totals = self.bins[item]
+        counts = self.counts.bins[item]
+        totals = self.totals.bins[item]
         return type(self)(counts, totals)
 
     def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
-        counts = self.patches[item]
-        totals = self.patches[item]
+        counts = self.counts.patches[item]
+        totals = self.totals.patches[item]
         return type(self)(counts, totals)
 
     def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
