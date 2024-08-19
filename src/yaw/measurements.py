@@ -185,8 +185,8 @@ class PatchLinkage:
         binning = pd.IntervalIndex.from_breaks(self.config.binning.zbins)
         num_bins = len(binning)
 
-        totals1 = np.zeros((num_patches, num_bins))
-        totals2 = np.zeros((num_patches, num_bins))
+        totals1 = np.zeros((num_bins, num_patches))
+        totals2 = np.zeros((num_bins, num_patches))
         patched_counts = PatchedCount.zeros(binning, num_patches, auto=auto)
 
         for pair_counts in ParallelHelper.iter_unordered(
@@ -199,14 +199,14 @@ class PatchLinkage:
             id1 = pair_counts.id1
             id2 = pair_counts.id2
 
-            totals1[id1] = pair_counts.totals1
-            totals2[id2] = pair_counts.totals2
+            totals1[:, id1] = pair_counts.totals1
+            totals2[:, id2] = pair_counts.totals2
 
             counts = pair_counts.counts
             if auto and id1 == id2:
                 counts = counts * 0.5  # autocorrelation pairs are counted twice
             # TODO: index 0 selects only the first scale
-            patched_counts.set_measurement((id1, id2), counts[:, 0])
+            patched_counts.set_patch_pair(id1, id2, counts[:, 0])
 
         total = PatchedTotal(
             binning=binning, totals1=totals1, totals2=totals2, auto=auto

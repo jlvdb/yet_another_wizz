@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TypeVar, Any
-from typing_extensions import Self
 
 import h5py
 import numpy as np
@@ -45,12 +44,19 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
     def sample_patch_sum(self, config: ResamplingConfig) -> SampledData:
         bin_patch_array = self.get_array()
 
+        # sum over over all (total of num_paches**2) pairs of patches
         sum_patches = np.einsum("bij->b", bin_patch_array)
 
-        # TODO: properly document the index tricks here
+        # jackknife: apply efficiency trick by taking the sum from above and
+        # correcting the i-th sample from the total contribution of the i-th
+        # patch:
+        # 1) cast the sum to final shape of the samples (num_samples, num_bins)
         sum_tiled = np.tile(sum_patches, (self.num_patches, 1))
+        # 2) compute the sum over pairs formed by the i-th patch and all others
         row_sum = np.einsum("bij->jb", bin_patch_array)
+        # 3) compute the sum over pairs formed by all other patches and the i-th
         col_sum = np.einsum("bij->ib", bin_patch_array)
+        # 4) compute the sum over diagonals because it is counted twice in 2 & 3
         diag = np.einsum("bii->ib", bin_patch_array)
         samples = sum_tiled - row_sum - col_sum + diag
 
@@ -89,22 +95,27 @@ class PatchedTotals(BinwisePatchwiseArray):
 
         return self.binning == other.binning and np.array_equal(self.totals1, other.totals1) and np.array_equal(self.totals2, other.totals2) and self.auto == other.auto
 
-    def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
+    def _make_bin_slice(self: Ttotals, item: int | slice) -> Ttotals:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
         return type(self)(binning, self.totals1[item], self.totals2[item], auto=self.auto)
 
-    def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
+    def _make_patch_slice(self: Ttotals, item: int | slice) -> Ttotals:
         if isinstance(item, int):
             item = [item]
         return type(self)(self.binning, self.totals1[:, item], self.totals2[:, item], auto=self.auto)
 
     def get_array(self) -> NDArray:
+        # construct full array of patch total products, i.e. an array that
+        # holds the product of totals of patch i from source 1 and patch j from
+        # source 2 in the b-th bin when indexed at [b, i, j]
         array = np.einsum("bi,bj->bij", self.totals1, self.totals2)
 
         if self.auto:
+            # for auto-correlation totals we need to set lower trinagle to zero
             array = np.triu(array)
+            # additionally we must halve the totals on diagonals for every bin
             i = np.arange(self.num_patches)
             indices = np.indices((self.num_bins, self.num_patches))
             idx_diags = (indices[0], i, i)
@@ -157,7 +168,7 @@ class PatchedCounts(BinwisePatchwiseArray):
 
     def __radd__(self: Tcounts, other: Any) -> Tcounts:
         if np.isscalar(other) and other == 0:
-            return self
+            return self  # this convenient when applying sum()
         return self.__add__(other)
 
     def __mul__(self: Tcounts, other: Any) -> Tcounts:
@@ -166,19 +177,23 @@ class PatchedCounts(BinwisePatchwiseArray):
 
         return type(self)(self.binning, self.counts * other, auto=self.auto)
 
-    def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
+    def _make_bin_slice(self: Tcounts, item: int | slice) -> Tcounts:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
         return type(self)(binning, self.totals1[item], self.totals2[item], auto=self.auto)
 
-    def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
+    def _make_patch_slice(self: Tcounts, item: int | slice) -> Tcounts:
         if isinstance(item, int):
             item = [item]
         return type(self)(self.binning, self.counts[:, item, item], auto=self.auto)
 
     def get_array(self) -> NDArray:
         return self.counts
+
+    def set_patch_pair(self, patch_id1: int, patch_id2: int, counts_binned: NDArray) -> None:
+        self.counts[:, patch_id1, patch_id2] = counts_binned
+
 
 
 @dataclass(frozen=True, eq=False, repr=False, slots=True)
@@ -247,17 +262,17 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
     def __mul__(self: Tnormalised, other: Any) -> Tnormalised:
         return type(self)(self.count * other, self.total)
 
-    def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
+    def _make_bin_slice(self: Tnormalised, item: int | slice) -> Tnormalised:
         counts = self.counts.bins[item]
         totals = self.totals.bins[item]
         return type(self)(counts, totals)
 
-    def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
+    def _make_patch_slice(self: Tnormalised, item: int | slice) -> Tnormalised:
         counts = self.counts.patches[item]
         totals = self.totals.patches[item]
         return type(self)(counts, totals)
 
-    def sample_sum(self, config: ResamplingConfig | None = None) -> SampledData:
+    def sample_patch_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         config = config or ResamplingConfig()
 
         counts = self.counts.sample_sum(config)
