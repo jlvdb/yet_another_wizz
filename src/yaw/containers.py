@@ -13,7 +13,13 @@ from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
-from yaw.abc import AsciiSerializable, BinwiseData, HdfSerializable, Tpath, hdf_compression
+from yaw.abc import (
+    AsciiSerializable,
+    BinwiseData,
+    HdfSerializable,
+    Tpath,
+    hdf_compression,
+)
 from yaw.config import Configuration, ResamplingConfig
 from yaw.utils import ParallelHelper, io, plot
 from yaw.utils.plot import Axis

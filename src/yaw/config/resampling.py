@@ -9,8 +9,8 @@ from numpy.typing import NDArray
 from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
 from yaw.config.abc import BaseConfig
-from yaw.config.utils import ConfigError
 from yaw.config.doc_utils import Parameter
+from yaw.config.utils import ConfigError
 
 __all__ = ["ResamplingConfig"]
 

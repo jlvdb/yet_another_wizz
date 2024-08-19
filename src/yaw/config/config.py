@@ -5,8 +5,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, get_args
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 import yaml
+from numpy.typing import ArrayLike, NDArray
 
 from yaw.abc import Tpath
 from yaw.config import OPTIONS
@@ -15,9 +15,9 @@ from yaw.config import utils
 from yaw.config.abc import BaseConfig
 from yaw.config.backend import BackendConfig
 from yaw.config.binning import BinningConfig
+from yaw.config.doc_utils import Parameter
 from yaw.config.scales import ScalesConfig
 from yaw.cosmology import TypeCosmology, get_default_cosmology, r_kpc_to_angle
-from yaw.config.doc_utils import Parameter
 
 __all__ = ["Configuration"]
 

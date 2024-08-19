@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import TypeVar, Any
+from typing import Any, TypeVar
 
 import h5py
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.abc import BinwiseData, PatchwiseData, HdfSerializable, hdf_compression
+from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData, hdf_compression
 from yaw.config import ResamplingConfig
 from yaw.containers import Binning, SampledData
 
@@ -34,8 +34,9 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
         pass
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
-        return BinwiseData.is_compatible(self, other, require=require) \
-           and PatchwiseData.is_compatible(self, other, require=require)
+        b_ic = BinwiseData.is_compatible
+        p_ic = PatchwiseData.is_compatible
+        return b_ic(self, other, require=require) and p_ic(self, other, require=require)
 
     @abstractmethod
     def get_array(self) -> NDArray:
@@ -65,7 +66,9 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
 class PatchedTotals(BinwisePatchwiseArray):
     __slots__ = ("binning", "auto", "totals1", "totals2")
 
-    def __init__(self, binning: Binning, totals1: NDArray, totals2: NDArray, *, auto: bool) -> None:
+    def __init__(
+        self, binning: Binning, totals1: NDArray, totals2: NDArray, *, auto: bool
+    ) -> None:
         self.binning = binning
         self.auto = auto
 
@@ -112,18 +115,27 @@ class PatchedTotals(BinwisePatchwiseArray):
         if not isinstance(other, type(self)):
             return NotImplemented
 
-        return self.binning == other.binning and np.array_equal(self.totals1, other.totals1) and np.array_equal(self.totals2, other.totals2) and self.auto == other.auto
+        return (
+            self.binning == other.binning
+            and np.array_equal(self.totals1, other.totals1)
+            and np.array_equal(self.totals2, other.totals2)
+            and self.auto == other.auto
+        )
 
     def _make_bin_slice(self: Ttotals, item: int | slice) -> Ttotals:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
-        return type(self)(binning, self.totals1[item], self.totals2[item], auto=self.auto)
+        return type(self)(
+            binning, self.totals1[item], self.totals2[item], auto=self.auto
+        )
 
     def _make_patch_slice(self: Ttotals, item: int | slice) -> Ttotals:
         if isinstance(item, int):
             item = [item]
-        return type(self)(self.binning, self.totals1[:, item], self.totals2[:, item], auto=self.auto)
+        return type(self)(
+            self.binning, self.totals1[:, item], self.totals2[:, item], auto=self.auto
+        )
 
     def get_array(self) -> NDArray:
         # construct full array of patch total products, i.e. an array that
@@ -152,12 +164,16 @@ class PatchedCounts(BinwisePatchwiseArray):
         if counts.shape[0] != self.num_bins:
             raise ValueError("first dimension of 'counts' must match 'binning'")
         if counts.shape[1] != counts.shape[2]:
-            raise ValueError("'counts' must have shape (num_bins, num_patches, num_patches)")
+            raise ValueError(
+                "'counts' must have shape (num_bins, num_patches, num_patches)"
+            )
 
         self.counts = counts.astype(np.float64)
 
     @classmethod
-    def zeros(cls: type[Tcounts], binning: Binning, num_patches: int, *, auto: bool) -> Tcounts:
+    def zeros(
+        cls: type[Tcounts], binning: Binning, num_patches: int, *, auto: bool
+    ) -> Tcounts:
         num_bins = len(binning)
         counts = np.zeros((num_bins, num_patches, num_patches))
         return cls(binning, counts, auto=auto)
@@ -171,7 +187,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         patch_pairs = source["keys" if is_legacy else "patch_pairs"][:]
         binned_counts = source["data" if is_legacy else "binned_counts"][:]
         auto = source["auto"][()]
- 
+
         new = cls.zeros(binning, num_patches, auto=auto)
         for (patch_id1, patch_id2), counts in zip(patch_pairs, binned_counts):
             new.set_patch_pair(patch_id1, patch_id2, counts)
@@ -202,7 +218,11 @@ class PatchedCounts(BinwisePatchwiseArray):
         if not isinstance(other, type(self)):
             return NotImplemented
 
-        return self.binning == other.binning and np.array_equal(self.counts, other.counts) and self.auto == other.auto
+        return (
+            self.binning == other.binning
+            and np.array_equal(self.counts, other.counts)
+            and self.auto == other.auto
+        )
 
     def __add__(self: Tcounts, other: Any) -> Tcounts:
         if not isinstance(other, self.__class__):
@@ -226,7 +246,9 @@ class PatchedCounts(BinwisePatchwiseArray):
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
-        return type(self)(binning, self.totals1[item], self.totals2[item], auto=self.auto)
+        return type(self)(
+            binning, self.totals1[item], self.totals2[item], auto=self.auto
+        )
 
     def _make_patch_slice(self: Tcounts, item: int | slice) -> Tcounts:
         if isinstance(item, int):
@@ -236,7 +258,9 @@ class PatchedCounts(BinwisePatchwiseArray):
     def get_array(self) -> NDArray:
         return self.counts
 
-    def set_patch_pair(self, patch_id1: int, patch_id2: int, counts_binned: NDArray) -> None:
+    def set_patch_pair(
+        self, patch_id1: int, patch_id2: int, counts_binned: NDArray
+    ) -> None:
         self.counts[:, patch_id1, patch_id2] = counts_binned
 
 

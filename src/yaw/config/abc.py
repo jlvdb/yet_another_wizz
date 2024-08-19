@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import asdict
-from typing import Type, Any, TypeVar
+from typing import Any, Type, TypeVar
 
 from yaw.config import default as DEFAULT
 

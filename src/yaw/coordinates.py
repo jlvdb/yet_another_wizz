@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Iterable, Iterator, Sized
 from functools import total_ordering
-from typing import Type, TypeVar
+from typing import TypeVar
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray

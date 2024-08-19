@@ -6,7 +6,6 @@ from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
-from typing_extensions import Self
 
 import h5py
 import numpy as np
@@ -14,9 +13,11 @@ import pyarrow as pa
 from astropy.io import fits
 from numpy.typing import NDArray
 from pyarrow import Table, parquet
+from typing_extensions import Self
 
 from yaw.abc import Tpath
-from yaw.catalog.utils import DataChunk, MockDataFrame as DataFrame
+from yaw.catalog.utils import DataChunk
+from yaw.catalog.utils import MockDataFrame as DataFrame
 
 __all__ = [
     "DataFrameReader",

@@ -322,7 +322,9 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
         return cls(dd=dd, dr=dr, rd=rd, rr=rr)
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        group_names = dict(dd="data_data", dr="data_random", rd="random_data", rr="random_random")
+        group_names = dict(
+            dd="data_data", dr="data_random", rd="random_data", rr="random_random"
+        )
         for kind, name in group_names.items():
             data: NormalisedCounts | None = getattr(self, kind)
             if data is not None:
@@ -371,7 +373,6 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
 
     def _make_bin_slice(self: Tcorrfunc, item: int | slice) -> Tcorrfunc:
         pass
-
 
     def is_compatible(self, other: CorrFunc, *, require: bool = False) -> bool:
         if not isinstance(other, type(self)):

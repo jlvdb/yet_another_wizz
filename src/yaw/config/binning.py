@@ -9,9 +9,9 @@ from numpy.typing import NDArray
 
 from yaw.config import DEFAULT, OPTIONS
 from yaw.config.abc import BaseConfig
+from yaw.config.doc_utils import Parameter
 from yaw.config.utils import ConfigError
 from yaw.cosmology import BinFactory, TypeCosmology
-from yaw.config.doc_utils import Parameter
 
 __all__ = ["BinningConfig"]
 
