@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.abc import BinwiseData, PatchwiseData, HdfSerializable, Thdf, Tpatched, Tbinned
+from yaw.abc import BinwiseData, PatchwiseData, HdfSerializable, hdf_compression
 from yaw.config import ResamplingConfig
 from yaw.containers import Binning, SampledData
 
@@ -44,17 +44,16 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
     def sample_patch_sum(self, config: ResamplingConfig) -> SampledData:
         bin_patch_array = self.get_array()
 
-        # sum over over all (total of num_paches**2) pairs of patches
+        # sum over all (total of num_paches**2) pairs of patches per bin
         sum_patches = np.einsum("bij->b", bin_patch_array)
 
-        # jackknife: apply efficiency trick by taking the sum from above and
-        # correcting the i-th sample from the total contribution of the i-th
-        # patch:
-        # 1) cast the sum to final shape of the samples (num_samples, num_bins)
+        # jackknife efficiency trick: take the sum from above and, for the i-th
+        # sample, subtract the contribution of pairs containing the i-th patch:
+        # 1) repeat the sum to final shape of samples (num_samples, num_bins)
         sum_tiled = np.tile(sum_patches, (self.num_patches, 1))
-        # 2) compute the sum over pairs formed by the i-th patch and all others
+        # 2) compute the sum over pairs formed by the i-th patch with all others
         row_sum = np.einsum("bij->jb", bin_patch_array)
-        # 3) compute the sum over pairs formed by all other patches and the i-th
+        # 3) compute the sum over pairs formed by all other patches with i-th
         col_sum = np.einsum("bij->ib", bin_patch_array)
         # 4) compute the sum over diagonals because it is counted twice in 2 & 3
         diag = np.einsum("bii->ib", bin_patch_array)
@@ -64,6 +63,8 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
 
 
 class PatchedTotals(BinwisePatchwiseArray):
+    __slots__ = ("binning", "auto", "totals1", "totals2")
+
     def __init__(self, binning: Binning, totals1: NDArray, totals2: NDArray, *, auto: bool) -> None:
         self.binning = binning
         self.auto = auto
@@ -79,11 +80,29 @@ class PatchedTotals(BinwisePatchwiseArray):
         self.totals2 = totals2.astype(np.float64)
 
     @classmethod
-    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
-        raise NotImplementedError  # TODO
+    def from_hdf(cls: type[Ttotals], source: h5py.Group) -> Ttotals:
+        new = cls.__new__(cls)
+
+        if "version" in source.attrs:
+            new.totals1 = source["totals1"][:]
+            new.totals2 = source["totals2"][:]
+
+        else:
+            new.totals1 = np.transpose(source["totals1"][:])
+            new.totals2 = np.transpose(source["totals2"][:])
+
+        new.binning = Binning.from_hdf(source["binning"])
+        new.auto = source["auto"][()]
+        return new
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        raise NotImplementedError  # TODO
+        from yaw import __version__
+
+        dest.attrs["version"] = __version__
+        self.binning.to_hdf(dest.create_group("binning"))
+        dest.create_dataset("totals1", data=self.totals1, **hdf_compression)
+        dest.create_dataset("totals2", data=self.totals2, **hdf_compression)
+        dest.create_dataset("auto", data=self.auto)
 
     @property
     def num_patches(self) -> int:
@@ -116,15 +135,14 @@ class PatchedTotals(BinwisePatchwiseArray):
             # for auto-correlation totals we need to set lower trinagle to zero
             array = np.triu(array)
             # additionally we must halve the totals on diagonals for every bin
-            i = np.arange(self.num_patches)
-            indices = np.indices((self.num_bins, self.num_patches))
-            idx_diags = (indices[0], i, i)
-            array[idx_diags] *= 0.5
+            np.einsum("bii->bi", array)[:] *= 0.5  # view of original array
 
         return array
 
 
 class PatchedCounts(BinwisePatchwiseArray):
+    __slots__ = ("binning", "auto", "counts")
+
     def __init__(self, binning: Binning, counts: NDArray, *, auto: bool) -> None:
         self.binning = binning
         self.auto = auto
@@ -139,15 +157,42 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts = counts.astype(np.float64)
 
     @classmethod
-    def zeros(cls: type[Tnormalised], num_bins: int, num_patches: int, *, auto: bool) -> Tnormalised:
-        return cls(np.zeros((num_bins, num_patches, num_patches)))
+    def zeros(cls: type[Tcounts], binning: Binning, num_patches: int, *, auto: bool) -> Tcounts:
+        num_bins = len(binning)
+        counts = np.zeros((num_bins, num_patches, num_patches))
+        return cls(binning, counts, auto=auto)
 
     @classmethod
-    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
-        raise NotImplementedError
+    def from_hdf(cls: type[Tcounts], source: h5py.Group) -> Tcounts:
+        is_legacy = "version" not in source.attrs
+        binning = Binning.from_hdf(source["binning"])
+
+        num_patches = source["n_patches" if is_legacy else "num_patches"][()]
+        patch_pairs = source["keys" if is_legacy else "patch_pairs"][:]
+        binned_counts = source["data" if is_legacy else "binned_counts"][:]
+        auto = source["auto"][()]
+ 
+        new = cls.zeros(binning, num_patches, auto=auto)
+        for (patch_id1, patch_id2), counts in zip(patch_pairs, binned_counts):
+            new.set_patch_pair(patch_id1, patch_id2, counts)
+
+        return new
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        raise NotImplementedError
+        from yaw import __version__
+
+        dest.attrs["version"] = __version__
+        self.binning.to_hdf(dest.create_group("binning"))
+
+        is_nonzero = np.any(self.counts, axis=0)
+        patch_ids1, patch_ids2 = np.nonzero(is_nonzero)
+        patch_pairs = np.column_stack([patch_ids1, patch_ids2])
+        binned_counts = self.counts[:, patch_ids1, patch_ids2]
+
+        dest.create_dataset("num_patches", data=self.num_patches)
+        dest.create_dataset("patch_pairs", data=patch_pairs, **hdf_compression)
+        dest.create_dataset("binned_counts", data=binned_counts, **hdf_compression)
+        dest.create_dataset("auto", data=self.auto)
 
     @property
     def num_patches(self) -> int:
@@ -195,7 +240,6 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts[:, patch_id1, patch_id2] = counts_binned
 
 
-
 @dataclass(frozen=True, eq=False, repr=False, slots=True)
 class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
     counts: PatchedCounts
@@ -208,7 +252,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
             raise ValueError("number of bins of 'count' and total' does not match")
 
     @classmethod
-    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
+    def from_hdf(cls: type[Tnormalised], source: h5py.Group) -> Tnormalised:
         counts = PatchedCounts.from_hdf(source["counts"])
         totals = PatchedTotals.from_hdf(source["totals"])
         return cls(counts=counts, totals=totals)

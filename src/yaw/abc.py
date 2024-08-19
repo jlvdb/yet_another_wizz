@@ -24,6 +24,8 @@ Tascii = TypeVar("Tascii", bound="AsciiSerializable")
 Tbinned = TypeVar("Tbinned", bound="BinwiseData")
 Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
 
+hdf_compression = dict(fletcher32=True, compression="gzip", shuffle=True)
+
 
 class Serialisable(ABC):
     @classmethod

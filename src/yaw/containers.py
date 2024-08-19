@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
 import scipy.optimize
+from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
-from yaw.abc import AsciiSerializable, BinwiseData, Tpath
+from yaw.abc import AsciiSerializable, BinwiseData, HdfSerializable, Tpath, hdf_compression
 from yaw.config import Configuration, ResamplingConfig
 from yaw.utils import ParallelHelper, io, plot
 from yaw.utils.plot import Axis
@@ -56,12 +57,34 @@ def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray
 
 
 @dataclass(frozen=True, eq=False, repr=False, slots=True)
-class Binning:
+class Binning(HdfSerializable):
     edges: NDArray
     closed: Tclosed = field(default=default_closed, kw_only=True)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "edges", parse_binning(self.edges))
+
+    @classmethod
+    def from_hdf(cls: type[Tbinning], source: Group) -> Tbinning:
+        new = cls.__new__(cls)
+
+        if "version" in source.attrs:
+            new.edges = source["edges"][:]
+            new.closed = source.attrs["closed"]
+
+        else:
+            dset = source["binning"]
+            new.edges = np.append(dset[:, 0], dset[-1, 1])
+            new.closed = dset.attrs["closed"]
+
+        return new
+
+    def to_hdf(self, dest: Group) -> None:
+        from yaw import __version__
+
+        dest.create_dataset("edges", data=self.edges, **hdf_compression)
+        dest.attrs["closed"] = self.closed
+        dest.attrs["version"] = __version__
 
     def __getstate__(self) -> dict:
         return dict(self.edges, self.closed)
