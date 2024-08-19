@@ -1,7 +1,6 @@
 """This module defines an interface for custom cosmological models, as well as
 routines that depend on cosmological distance calculations.
 """
-raise NotImplementedError
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -204,9 +203,9 @@ class BinFactory:
             self.nbins + 1,
         )
         # construct a spline mapping from comoving distance to redshift
-        zarray = np.linspace(0, 10.0, 5000)
-        carray = self.cosmology.comoving_distance(zarray).value
-        return np.interp(cbinning, xp=carray, fp=zarray)  # redshift @ cbinning
+        z_array = np.linspace(0, 10.0, 5000)
+        comov_array = self.cosmology.comoving_distance(z_array).value
+        return np.interp(cbinning, xp=comov_array, fp=z_array)  # redshift @ cbinning
 
     def logspace(self) -> NDArray[np.float64]:
         """Generate a binning with equal width in logarithmic redshift

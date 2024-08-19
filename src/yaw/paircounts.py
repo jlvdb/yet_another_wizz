@@ -282,7 +282,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
                 return False
             raise TypeError(f"{type(other)} is not compatible with {type(self)}")
 
-        return self.counts.is_compatible(other.counts)
+        return self.counts.is_compatible(other.counts, require=require)
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, type(self)):

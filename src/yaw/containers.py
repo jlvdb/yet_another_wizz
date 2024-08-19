@@ -197,9 +197,9 @@ def cov_from_samples(
 
 @dataclass(frozen=True, repr=False, eq=False)
 class SampledData(BinwiseData):
-    binning: Binning
-    data: NDArray
-    samples: NDArray
+    binning: Binning = field()
+    data: NDArray = field()
+    samples: NDArray = field()
     method: Tmethod = field(kw_only=True)
     covariance: NDArray = field(init=False)
 

@@ -1,26 +1,23 @@
 from __future__ import annotations
 
-import logging
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 from dataclasses import dataclass, field, fields
-from itertools import pairwise
-from typing import TYPE_CHECKING, Any, Type, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import h5py
 import numpy as np
-import pandas as pd
 from deprecated import deprecated
 
-from yaw.config import OPTIONS, ResamplingConfig
+from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
+from yaw.config import ResamplingConfig
+from yaw.containers import Binning, CorrData
+from yaw.paircounts import NormalisedCounts
 
 if TYPE_CHECKING:
-    from matplotlib.axis import Axis
     from numpy.typing import NDArray
-    from pandas import IntervalIndex
 
-    from yaw.config import Configuration
+Tcorrfunc = TypeVar("Tcorrfunc", bound="CorrFunc")
 
 
 class EstimatorError(Exception):
@@ -284,240 +281,127 @@ class LandySzalay(CorrelationEstimator):
 
 
 @dataclass(frozen=True)
-class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
-    """Container object for measured correlation pair counts.
-
-    Container returned by :meth:`~yaw.old_catalogs.BaseCatalog.correlate` that
-    computes the correlations between data catalogs. The correlation function
-    can be computed from four kinds of pair counts, data-data (DD), data-random
-    (DR), random-data (RD), and random-random (RR).
-
-    .. Note::
-        DD is always required, but DR, RD, and RR are optional as long as at
-        least one is provided.
-
-    Provides methods to read and write data to disk and compute the actual
-    correlation function values (see :class:`~yaw.CorrData`) using spatial
-    resampling (see :class:`~yaw.ResamplingConfig`).
-
-    The container supports comparison with ``==`` and ``!=`` on the pair count
-    level. The supported arithmetic operations between two correlation
-    functions, addition and subtraction, are applied between all internally
-    stored pair counts data. The same applies to rescaling of the counts by a
-    scalar, see some examples below.
-
-    .. rubric:: Examples
-
-    Create a new instance by sampling a correlation function:
-
-    >>> from yaw.examples import w_sp
-    >>> dd, dr = w_sp.dd, w_sp.dr  # get example data-data and data-rand counts
-    >>> corr = yaw.CorrFunc(dd=dd, dr=dr)
-    >>> corr
-    CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=64)
-
-    Access the pair counts:
-
-    >>> corr.dd
-    NormalisedCounts(n_bins=30, z='0.070...1.420', n_patches=64)
-
-    Check if it is an autocorrelation function measurement:
-
-    >>> corr.auto
-    False
-
-    Check which pair counts are available to compute the correlation function:
-
-    >>> corr.estimators
-    {'DP': yaw.correlation.estimators.DavisPeebles}
-
-    Sample the correlation function
-
-    >>> corr.sample()  # uses the default ResamplingConfig
-    CorrData(n_bins=30, z='0.070...1.420', n_samples=64, method='jackknife')
-
-    Note how the indicated shape changes when a patch subset is selected:
-
-    >>> corr.patches[:10]
-    CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=10)
-
-    Note how the indicated redshift range and shape change when a bin subset is
-    selected:
-
-    >>> corr.bins[:3]
-    CorrFunc(n_bins=3, z='0.070...0.205', dd=True, dr=True, rd=False, rr=False, n_patches=64)
-
-    Args:
-        dd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`):
-            Pair counts from a data-data count measurement.
-        dr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
-            Pair counts from a data-random count measurement.
-        rd (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
-            Pair counts from a random-data count measurement.
-        rr (:obj:`~yaw.correlation.paircounts.NormalisedCounts`, optional):
-            Pair counts from a random-random count measurement.
-    """
-
+class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
     dd: NormalisedCounts
-    """Pair counts for a data-data correlation measurement"""
     dr: NormalisedCounts | None = field(default=None)
-    """Pair counts from a data-random count measurement."""
     rd: NormalisedCounts | None = field(default=None)
-    """Pair counts from a random-data count measurement."""
     rr: NormalisedCounts | None = field(default=None)
-    """Pair counts from a random-random count measurement."""
 
     def __post_init__(self) -> None:
-        # check if any random pairs are required
         if self.dr is None and self.rd is None and self.rr is None:
             raise ValueError("either 'dr', 'rd' or 'rr' is required")
-        # check that the pair counts are compatible
+
         for kind in ("dr", "rd", "rr"):
             pairs: NormalisedCounts | None = getattr(self, kind)
-            if pairs is None:
-                continue
-            try:
-                self.dd.is_compatible(pairs, require=True)
-                assert self.dd.n_patches == pairs.n_patches
-            except (ValueError, AssertionError) as e:
-                raise ValueError(
-                    f"pair counts '{kind}' and 'dd' are not compatible"
-                ) from e
+            if pairs is not None:
+                try:
+                    self.dd.is_compatible(pairs, require=True)
+                except ValueError as err:
+                    msg = f"pair counts '{kind}' and 'dd' are not compatible"
+                    raise ValueError(msg) from err
 
-    def __repr__(self) -> str:
-        string = super().__repr__()[:-1]
-        pairs = f"dd=True, dr={self.dr is not None}, "
-        pairs += f"rd={self.rd is not None}, rr={self.rr is not None}"
-        other = f"n_patches={self.n_patches}"
-        return f"{string}, {pairs}, {other})"
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, self.__class__):
-            for cfield in fields(self):
-                kind = cfield.name
-                if getattr(self, kind) != getattr(other, kind):
-                    return False
-            return True
-        return NotImplemented
-
-    def __add__(self, other: object) -> CorrFunc:
-        if isinstance(other, self.__class__):
-            # check that the pair counts are set consistently
-            kinds = []
-            for cfield in fields(self):
-                kind = cfield.name
-                self_set = getattr(self, kind) is not None
-                other_set = getattr(other, kind) is not None
-                if (self_set and not other_set) or (not self_set and other_set):
-                    raise ValueError(
-                        f"pair counts for '{kind}' not set for both operands"
-                    )
-                elif self_set and other_set:
-                    kinds.append(kind)
-
-            kwargs = {
-                kind: getattr(self, kind) + getattr(other, kind) for kind in kinds
-            }
-            return self.__class__(**kwargs)
-        return NotImplemented
-
-    def __radd__(self, other: object) -> CorrFunc:
-        if np.isscalar(other) and other == 0:
-            return self
-        return other.__add__(self)
-
-    def __mul__(self, other: object) -> CorrFunc:
-        if np.isscalar(other) and not isinstance(other, (bool, np.bool_)):
-            # check that the pair counts are set consistently
-            kwargs = {}
-            for cfield in fields(self):
-                kind = cfield.name
-                counts = getattr(self, kind)
-                if counts is not None:
-                    kwargs[kind] = counts * other
-            return self.__class__(**kwargs)
-        return NotImplemented
+    @property
+    def binning(self) -> Binning:
+        return self.dd.binning
 
     @property
     def auto(self) -> bool:
-        """Whether the stored data are from an autocorrelation measurement."""
         return self.dd.auto
 
-    @property
-    def bins(self) -> Indexer[TypeIndex, CorrFunc]:
-        def builder(inst: CorrFunc, item: TypeIndex) -> CorrFunc:
-            if isinstance(item, int):
-                item = [item]
-            kwargs = {}
-            for cfield in fields(inst):
-                pairs: NormalisedCounts | None = getattr(inst, cfield.name)
-                if pairs is None:
-                    kwargs[cfield.name] = None
-                else:
-                    kwargs[cfield.name] = pairs.bins[item]
-            return CorrFunc(**kwargs)
+    @classmethod
+    def from_hdf(cls: type[Tcorrfunc], source: h5py.Group) -> Tcorrfunc:
+        def _try_load(root: h5py.Group, name: str) -> NormalisedCounts | None:
+            try:
+                return NormalisedCounts.from_hdf(root[name])
+            except KeyError:
+                return None
 
-        return Indexer(self, builder)
+        dd = NormalisedCounts.from_hdf(source["data_data"])
+        dr = _try_load(source, "data_random")
+        rd = _try_load(source, "random_data")
+        rr = _try_load(source, "random_random")
+        return cls(dd=dd, dr=dr, rd=rd, rr=rr)
 
-    @property
-    def patches(self) -> Indexer[TypeIndex, CorrFunc]:
-        def builder(inst: CorrFunc, item: TypeIndex) -> CorrFunc:
-            kwargs = {}
-            for cfield in fields(inst):
-                counts: NormalisedCounts | None = getattr(inst, cfield.name)
-                if counts is not None:
-                    counts = counts.patches[item]
-                kwargs[cfield.name] = counts
-            return CorrFunc(**kwargs)
-
-        return Indexer(self, builder)
-
-    def get_binning(self) -> IntervalIndex:
-        return self.dd.get_binning()
+    def to_hdf(self, dest: h5py.Group) -> None:
+        group_names = dict(dd="data_data", dr="data_random", rd="random_data", rr="random_random")
+        for kind, name in group_names.items():
+            data: NormalisedCounts | None = getattr(self, kind)
+            if data is not None:
+                group = dest.create_group(name)
+                data.to_hdf(group)
 
     @property
-    def n_patches(self) -> int:
-        return self.dd.n_patches
+    def num_patches(self) -> int:
+        return self.dd.num_patches
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
+        for kind in ("dd", "dr", "rd", "rr"):
+            if getattr(self, kind) != getattr(other, kind):
+                return False
+
+        return True
+
+    def __add__(self: Tcorrfunc, other: object) -> Tcorrfunc:
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
+        self.is_compatible(other)
+        kwargs = {
+            kind: getattr(self, kind) + getattr(other, kind)
+            for kind in ("dd", "dr", "rd", "rr")
+            if getattr(self, kind) is not None
+        }
+        return type(self)(**kwargs)
+
+    def __mul__(self: Tcorrfunc, other: object) -> Tcorrfunc:
+        if not np.isscalar(other) or isinstance(other, (bool, np.bool_)):
+            return NotImplemented
+
+        kwargs = {
+            kind: getattr(self, kind) * kind
+            for kind in ("dd", "dr", "rd", "rr")
+            if getattr(self, kind) is not None
+        }
+        return type(self)(**kwargs)
+
+    def _make_patch_slice(self: Tcorrfunc, item: int | slice) -> Tcorrfunc:
+        pass
+
+    def _make_bin_slice(self: Tcorrfunc, item: int | slice) -> Tcorrfunc:
+        pass
+
 
     def is_compatible(self, other: CorrFunc, *, require: bool = False) -> bool:
-        """Check whether this instance is compatible with another instance.
+        if not isinstance(other, type(self)):
+            if not require:
+                return False
+            raise TypeError(f"{type(other)} is not compatible with {type(self)}")
 
-        Ensures that the redshift binning and the number of patches are
-        identical.
-
-        Args:
-            other (:obj:`BinnedQuantity`):
-                Object instance to compare to.
-            require (:obj:`bool`)
-                Raise a ValueError if any of the checks fail.
-
-        Returns:
-            :obj:`bool`
-        """
-        if self.dd.n_patches != other.dd.n_patches:
-            if require:
-                raise ValueError("number of patches does not agree")
+        dims_compatible = self.counts.is_compatible(other.counts, require=require)
+        if not dims_compatible:
             return False
-        return self.dd.is_compatible(other.dd, require)
+
+        for kind in ("dr", "rd", "rr"):
+            if (getattr(self, kind) is None) != (getattr(other, kind) is None):
+                if require:
+                    raise ValueError(f"'{kind}' is not compatible")
+                return False
+
+        return True
 
     @property
     def estimators(self) -> dict[str, CorrelationEstimator]:
-        """Get a listing of correlation estimators implemented, depending on
-        which pair counts are available.
-
-        Returns:
-            :obj:`dict`: Mapping from correlation estimator name abbreviation to
-            correlation function class.
-        """
-        # figure out which of dd, dr, ... are not None
+        """TODO: revise"""
         available = set()
-        # iterate all dataclass attributes that are in __init__
         for attr in fields(self):
             if getattr(self, attr.name) is not None:
                 available.add(cts_from_code(attr.name))
-        # check which estimators are supported
+
         estimators = {}
-        for estimator in CorrelationEstimator.variants:  # registered estimators
+        for estimator in CorrelationEstimator.variants:
             if set(estimator.requires) <= available:
                 estimators[estimator.short] = estimator
         return estimators
@@ -525,6 +409,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
     def _check_and_select_estimator(
         self, estimator: str | None = None
     ) -> type[CorrelationEstimator]:
+        """TODO: revise"""
         options = self.estimators
         if estimator is None:
             for shortname in ["LS", "DP", "PH"]:  # preferred hierarchy
@@ -548,12 +433,10 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
                     raise EstimatorError(f"estimator requires {name}")
         # select the correct estimator
         cls = options[estimator]
-        logger.debug(
-            "selecting estimator '%s' from %s", cls.short, "/".join(self.estimators)
-        )
         return cls
 
     def _getattr_from_cts(self, cts: Cts) -> NormalisedCounts | None:
+        """TODO: revise"""
         if isinstance(cts, CtsMix):
             for code in str(cts).split("_"):
                 value = getattr(self, code)
@@ -563,47 +446,17 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
         else:
             return getattr(self, str(cts))
 
-    @deprecated(reason="renamed to CorrFunc.sample", version="2.3.1")
-    def get(self, *args, **kwargs):
-        """
-        .. deprecated:: 2.3.1
-            Renamed to :meth:`sample`.
-        """
-        return self.sample(*args, **kwargs)  # pragma: no cover
-
     def sample(
-        self,
+        self: Tcorrfunc,
         config: ResamplingConfig | None = None,
         *,
         estimator: str | None = None,
-        info: str | None = None,
-    ) -> CorrData:
-        """Compute the correlation function from the stored pair counts,
-        including an error estimate from spatial resampling of patches.
-
-        Args:
-            config (:obj:`~yaw.ResamplingConfig`):
-                Specify the resampling method and its configuration.
-
-        Keyword Args:
-            estimator (:obj:`str`, optional):
-                The name abbreviation for the correlation estimator to use.
-                Defaults to Landy-Szalay if RR is available, otherwise to
-                Davis-Peebles.
-            info (:obj:`str`, optional):
-                Descriptive text passed on to the output :obj:`CorrData`
-                object.
-
-        Returns:
-            :obj:`CorrData`:
-                Correlation function data, including redshift binning, function
-                values and samples.
-        """
+    ) -> Tcorrfunc:
+        """TODO: revise"""
         if config is None:
             config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
-        logger.debug("computing correlation and %s samples", config.method)
-        # get the pair counts for the required terms (DD, maybe DR and/or RR)
+
         required_data = {}
         required_samples = {}
         for cts in est_fun.requires:
@@ -614,7 +467,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             except AttributeError as e:
                 if "NoneType" not in e.args[0]:
                     raise
-        # get the pair counts for the optional terms (e.g. RD)
+
         optional_data = {}
         optional_samples = {}
         for cts in est_fun.optional:
@@ -625,69 +478,7 @@ class CorrFunc(PatchedQuantity, BinnedQuantity, HDFSerializable):
             except AttributeError as e:
                 if "NoneType" not in e.args[0]:
                     raise
-        # evaluate the correlation estimator
+
         data = est_fun.eval(**required_data, **optional_data)
         samples = est_fun.eval(**required_samples, **optional_samples)
-        return CorrData(
-            binning=self.get_binning(),
-            data=data,
-            samples=samples,
-            method=config.method,
-            info=info,
-        )
-
-    @classmethod
-    def from_hdf(cls, source: h5py.File | h5py.Group) -> CorrFunc:
-        def _try_load(root: h5py.Group, name: str) -> NormalisedCounts | None:
-            try:
-                return NormalisedCounts.from_hdf(root[name])
-            except KeyError:
-                return None
-
-        dd = NormalisedCounts.from_hdf(source["data_data"])
-        dr = _try_load(source, "data_random")
-        rd = _try_load(source, "random_data")
-        rr = _try_load(source, "random_random")
-        return cls(dd=dd, dr=dr, rd=rd, rr=rr)
-
-    def to_hdf(self, dest: h5py.File | h5py.Group) -> None:
-        group = dest.create_group("data_data")
-        self.dd.to_hdf(group)
-        group_names = dict(dr="data_random", rd="random_data", rr="random_random")
-        for kind, name in group_names.items():
-            data: NormalisedCounts | None = getattr(self, kind)
-            if data is not None:
-                group = dest.create_group(name)
-                data.to_hdf(group)
-        dest.create_dataset("n_patches", data=self.n_patches)
-
-    @classmethod
-    def from_file(cls, path: TypePathStr) -> CorrFunc:
-        logger.debug("reading pair counts from '%s'", path)
-        with h5py.File(str(path)) as f:
-            return cls.from_hdf(f)
-
-    def to_file(self, path: TypePathStr) -> None:
-        logger.info("writing pair counts to '%s'", path)
-        with h5py.File(str(path), mode="w") as f:
-            self.to_hdf(f)
-
-    def concatenate_patches(self, *cfs: CorrFunc) -> CorrFunc:
-        check_mergable([self, *cfs])
-        merged = {}
-        for kind in ("dd", "dr", "rd", "rr"):
-            self_pcounts = getattr(self, kind)
-            if self_pcounts is not None:
-                other_pcounts = [getattr(cf, kind) for cf in cfs]
-                merged[kind] = self_pcounts.concatenate_patches(*other_pcounts)
-        return self.__class__(**merged)
-
-    def concatenate_bins(self, *cfs: CorrFunc) -> CorrFunc:
-        check_mergable([self, *cfs])
-        merged = {}
-        for kind in ("dd", "dr", "rd", "rr"):
-            self_pcounts = getattr(self, kind)
-            if self_pcounts is not None:
-                other_pcounts = [getattr(cf, kind) for cf in cfs]
-                merged[kind] = self_pcounts.concatenate_bins(*other_pcounts)
-        return self.__class__(**merged)
+        return CorrData(self.binning, data, samples, method=config.method)

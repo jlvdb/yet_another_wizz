@@ -307,19 +307,19 @@ class FitsReader(FileReader):
         return len(self._hdu.data)
 
     def _load_next_chunk(self) -> DataChunk:
-        data = self._hdu.data
+        hdu_data = self._hdu.data
         offset = self._chunk_idx * self.chunksize
         group_slice = slice(offset, offset + self.chunksize)
 
         data = {
-            attr: swap_byteorder(data[col][group_slice])
+            attr: swap_byteorder(hdu_data[col][group_slice])
             for attr, col in zip(self.attrs, self.columns)
         }
         return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
-            attr: swap_byteorder(self._hdu[col][::sparse])
+            attr: swap_byteorder(self._hdu.data[col][::sparse])
             for attr, col in zip(self.attrs, self.columns)
         }
         return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)

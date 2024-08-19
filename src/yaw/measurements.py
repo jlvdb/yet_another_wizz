@@ -17,7 +17,7 @@ from yaw.config import Configuration
 from yaw.coordinates import DistsSky
 from yaw.corrfunc import CorrFunc
 from yaw.cosmology import r_kpc_to_angle
-from yaw.paircounts import NormalisedCounts, PatchedCount, PatchedTotal
+from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import ParallelHelper
 
 
@@ -187,7 +187,7 @@ class PatchLinkage:
 
         totals1 = np.zeros((num_bins, num_patches))
         totals2 = np.zeros((num_bins, num_patches))
-        patched_counts = PatchedCount.zeros(binning, num_patches, auto=auto)
+        patched_counts = PatchedCounts.zeros(binning, num_patches, auto=auto)
 
         for pair_counts in ParallelHelper.iter_unordered(
             process_patch_pair,
@@ -208,7 +208,7 @@ class PatchLinkage:
             # TODO: index 0 selects only the first scale
             patched_counts.set_patch_pair(id1, id2, counts[:, 0])
 
-        total = PatchedTotal(
+        total = PatchedTotals(
             binning=binning, totals1=totals1, totals2=totals2, auto=auto
         )
         return NormalisedCounts(count=patched_counts, total=total)
