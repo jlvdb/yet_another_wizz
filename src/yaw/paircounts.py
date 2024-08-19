@@ -39,32 +39,22 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
            and PatchwiseData.is_compatible(other, require=require)
 
     @abstractmethod
-    def dense_array(self) -> NDArray:
+    def get_array(self) -> NDArray:
         pass
 
-    @abstractmethod
-    def _sum_patches(self, config: ResamplingConfig) -> NDArray:
-        pass
+    def sample_patch_sum(self, config: ResamplingConfig) -> SampledData:
+        bin_patch_array = self.get_array()
 
-    @abstractmethod
-    def _sum_jackknife(self, config: ResamplingConfig, sum_patches: NDArray) -> NDArray:
-        pass
+        sum_patches = np.einsum("bij->b", bin_patch_array)
 
-    @abstractmethod
-    def _sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
-        pass
+        # TODO: properly document the index tricks here
+        sum_tiled = np.tile(sum_patches, (self.num_patches, 1))
+        row_sum = np.einsum("bij->jb", bin_patch_array)
+        col_sum = np.einsum("bij->ib", bin_patch_array)
+        diag = np.einsum("bii->ib", bin_patch_array)
+        samples = sum_tiled - row_sum - col_sum + diag
 
-    def sample_sum(self, config: ResamplingConfig) -> SampledData:
-        data = self._sum_patches(config)
-
-        if self.num_patches == 1:
-            samples = np.atleast_2d(data)
-        elif config.method == "bootstrap":
-            samples = self._sum_bootstrap(config)
-        else:
-            samples = self._sum_jackknife(config, sum_patches=data)
-
-        return SampledData(self.binning, data, samples, method=config.method)
+        return SampledData(self.binning, sum_patches, samples, method=config.method)
 
 
 class PatchedTotals(BinwisePatchwiseArray):
@@ -73,14 +63,14 @@ class PatchedTotals(BinwisePatchwiseArray):
         self.auto = auto
 
         if totals1.ndim != totals2.ndim != 2:
-            raise ValueError("'totals1/2' must be two dimensional")
+            raise ValueError("'totals1/2' must be two-dimensional")
         if totals1.shape != totals2.shape:
             raise ValueError("'totals1' and 'totals2' must have the same shape")
-        if totals1.shape[1] != self.num_bins:
-            raise ValueError("size of 'totals1/2' does not match 'binning'")
+        if totals1.shape[0] != self.num_bins:
+            raise ValueError("first dimension of 'totals1/2' must match 'binning'")
 
-        self.totals1 = totals1
-        self.totals2 = totals2
+        self.totals1 = totals1.astype(np.float64)
+        self.totals2 = totals2.astype(np.float64)
 
     @classmethod
     def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
@@ -91,7 +81,7 @@ class PatchedTotals(BinwisePatchwiseArray):
 
     @property
     def num_patches(self) -> int:
-        return self.totals1.shape[0]
+        return self.totals1.shape[1]
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, type(self)):
@@ -103,50 +93,43 @@ class PatchedTotals(BinwisePatchwiseArray):
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
-        return type(self)(binning, self.totals1[:, item], self.totals2[:, item], auto=self.auto)
+        return type(self)(binning, self.totals1[item], self.totals2[item], auto=self.auto)
 
     def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
         if isinstance(item, int):
             item = [item]
-        return type(self)(self.binning, self.totals1[item], self.totals2[item], auto=self.auto)
+        return type(self)(self.binning, self.totals1[:, item], self.totals2[:, item], auto=self.auto)
 
-    def dense_array(self) -> NDArray:
-        return np.einsum("i...,j...->ij...", self.totals1, self.totals2)
+    def get_array(self) -> NDArray:
+        array = np.einsum("bi,bj->bij", self.totals1, self.totals2)
 
-    def _sum_patches(self) -> NDArray:
         if self.auto:
-            sum_upper = outer_triu_sum(self.totals1, self.totals2, k=1)
-            sum_diag = np.einsum("i...,i...->...", self.totals1, self.totals2)
-            return sum_upper + 0.5 * sum_diag
+            array = np.triu(array)
+            i = np.arange(self.num_patches)
+            indices = np.indices((self.num_bins, self.num_patches))
+            idx_diags = (indices[0], i, i)
+            array[idx_diags] *= 0.5
 
-        else:
-            return np.einsum("i...,j...->...", self.totals1, self.totals2)
-
-    def _sum_jackknife(self, sum_patches: NDArray) -> NDArray:
-        if self.auto:
-            diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
-            # sum along axes of upper triangle (without diagonal) of outer product
-            rows = outer_triu_sum(self.totals1, self.totals2, k=1, axis=1)
-            cols = outer_triu_sum(self.totals1, self.totals2, k=1, axis=0)
-            return sum_patches - rows - cols - 0.5 * diag  # diag not in rows or cols
-
-        else:
-            diag = np.einsum("i...,i...->i...", self.totals1, self.totals2)
-            rows = np.einsum("i...,j...->i...", self.totals1, self.totals2)
-            cols = np.einsum("i...,j...->j...", self.totals1, self.totals2)
-            return sum_patches - rows - cols + diag  # subtracted diag twice
-
-    def _sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError
+        return array
 
 
 class PatchedCounts(BinwisePatchwiseArray):
-    def __init__(self, binning: Binning, *unknown_args, auto: bool) -> None:
-        raise NotImplementedError
+    def __init__(self, binning: Binning, counts: NDArray, *, auto: bool) -> None:
+        self.binning = binning
+        self.auto = auto
+
+        if counts.ndim != 3:
+            raise ValueError("'counts' must be three-dimensional")
+        if counts.shape[0] != self.num_bins:
+            raise ValueError("first dimension of 'counts' must match 'binning'")
+        if counts.shape[1] != counts.shape[2]:
+            raise ValueError("'counts' must have shape (num_bins, num_patches, num_patches)")
+
+        self.counts = counts.astype(np.float64)
 
     @classmethod
     def zeros(cls: type[Tnormalised], num_bins: int, num_patches: int, *, auto: bool) -> Tnormalised:
-        raise NotADirectoryError
+        return cls(np.zeros((num_bins, num_patches, num_patches)))
 
     @classmethod
     def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
@@ -157,37 +140,45 @@ class PatchedCounts(BinwisePatchwiseArray):
 
     @property
     def num_patches(self) -> int:
-        raise NotImplementedError
+        return self.counts.shape[1]
 
     def __eq__(self, other: Any) -> bool:
-        pass
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.binning == other.binning and np.array_equal(self.counts, other.counts) and self.auto == other.auto
 
     def __add__(self: Tcounts, other: Any) -> Tcounts:
-        raise NotImplementedError
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
+        self.is_compatible(other, require=True)
+        return type(self)(self.binning, self.counts + other.counts, auto=self.auto)
 
     def __radd__(self: Tcounts, other: Any) -> Tcounts:
-        raise NotImplementedError
+        if np.isscalar(other) and other == 0:
+            return self
+        return self.__add__(other)
 
     def __mul__(self: Tcounts, other: Any) -> Tcounts:
-        raise NotImplementedError
+        if not np.isscalar(other) or isinstance(other, (bool, np.bool_)):
+            return NotImplemented
+
+        return type(self)(self.binning, self.counts * other, auto=self.auto)
 
     def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
-        raise NotImplementedError
+        binning = self.binning[item]
+        if isinstance(item, int):
+            item = [item]
+        return type(self)(binning, self.totals1[item], self.totals2[item], auto=self.auto)
 
     def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
-        raise NotImplementedError
+        if isinstance(item, int):
+            item = [item]
+        return type(self)(self.binning, self.counts[:, item, item], auto=self.auto)
 
-    def dense_array(self) -> NDArray:
-        raise NotImplementedError
-
-    def _sum_patches(self) -> NDArray:
-        raise NotImplementedError
-
-    def _sum_jackknife(self, sum_patches: NDArray) -> NDArray:
-        raise NotImplementedError
-
-    def _sum_bootstrap(self, config: ResamplingConfig) -> NDArray:
-        raise NotImplementedError
+    def get_array(self) -> NDArray:
+        return self.counts
 
 
 @dataclass(frozen=True, eq=False, repr=False, slots=True)
@@ -251,7 +242,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
     def __radd__(self: Tnormalised, other: Any) -> Tnormalised:
         if np.isscalar(other) and other == 0:
             return self  # allows using sum() on an iterable of NormalisedCounts
-        return other.__add__(self)
+        return self.__add__(other)
 
     def __mul__(self: Tnormalised, other: Any) -> Tnormalised:
         return type(self)(self.count * other, self.total)
