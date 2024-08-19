@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, TypeVar
 
 import h5py
 import numpy as np
-from deprecated import deprecated
 
 from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
 from yaw.config import ResamplingConfig

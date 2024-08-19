@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from itertools import compress
 
 import numpy as np
-import pandas as pd  # TODO: remove dependecy?
 from numpy.typing import NDArray
 
 from yaw.catalog import Catalog, Patch
+from yaw.containers import Binning
 from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.config import Configuration
 from yaw.coordinates import DistsSky
@@ -182,7 +182,7 @@ class PatchLinkage:
         num_patches = len(catalogs[0])
         patch_pairs = self.get_patch_pairs(*catalogs)
 
-        binning = pd.IntervalIndex.from_breaks(self.config.binning.zbins)
+        binning = Binning(self.config.binning.zbins, closed="right")
         num_bins = len(binning)
 
         totals1 = np.zeros((num_bins, num_patches))
@@ -208,10 +208,8 @@ class PatchLinkage:
             # TODO: index 0 selects only the first scale
             patched_counts.set_patch_pair(id1, id2, counts[:, 0])
 
-        total = PatchedTotals(
-            binning=binning, totals1=totals1, totals2=totals2, auto=auto
-        )
-        return NormalisedCounts(count=patched_counts, total=total)
+        totals = PatchedTotals(binning, totals1, totals2, auto=auto)
+        return NormalisedCounts(patched_counts, totals)
 
 
 def autocorrelate(
@@ -228,7 +226,7 @@ def autocorrelate(
     links = PatchLinkage.from_catalogs(config, data, random)
     dd = links.count_pairs(data, progress=progress)
     dr = links.count_pairs(data, random, progress=progress)
-    rr = links.count_pairs(progress=progress) if count_rr else None
+    rr = links.count_pairs(random, progress=progress) if count_rr else None
 
     return CorrFunc(dd, dr, rr)
 
