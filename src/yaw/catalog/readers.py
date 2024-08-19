@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 from typing_extensions import Self
 
+import h5py
 import numpy as np
 import pyarrow as pa
+from astropy.io import fits
 from numpy.typing import NDArray
 from pyarrow import Table, parquet
 
@@ -295,28 +297,22 @@ class ParquetReader(FileReader):
 
 class FitsReader(FileReader):
     def _init_source(self, source: Tpath, hdu: int = 1) -> None:
-        try:
-            import fitsio
-        except ImportError:
-            raise OptionalDependencyError(
-                "reading FITS files requires installing 'fitsio'"
-            )
-
         self.path = Path(source)
-        self._file = fitsio.FITS(self.path)
+        self._file = fits.open(str(self.path))
         self._hdu = self._file[hdu]
         super()._init_source(source)
 
     @property
     def num_records(self) -> int:
-        return self._hdu.get_nrows()
+        return len(self._hdu.data)
 
     def _load_next_chunk(self) -> DataChunk:
+        data = self._hdu.data
         offset = self._chunk_idx * self.chunksize
-        group = self._hdu[self.columns][offset : offset + self.chunksize]
+        group_slice = slice(offset, offset + self.chunksize)
 
         data = {
-            attr: swap_byteorder(group[col])
+            attr: swap_byteorder(data[col][group_slice])
             for attr, col in zip(self.attrs, self.columns)
         }
         return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
@@ -331,13 +327,6 @@ class FitsReader(FileReader):
 
 class HDFReader(FileReader):
     def _init_source(self, source: Tpath) -> None:
-        try:
-            import h5py
-        except ImportError:
-            raise OptionalDependencyError(
-                "reading HDF files requires installing 'h5py'"
-            )
-
         self.path = Path(source)
         self._file = h5py.File(self.path, mode="r")
         super()._init_source(source)
