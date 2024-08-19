@@ -2,19 +2,16 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from yaw.config import DEFAULT, OPTIONS
 from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
-from yaw.core.cosmology import BinFactory, TypeCosmology
-from yaw.core.docs import Parameter
-from yaw.core.math import array_equal
-
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
+from yaw.cosmology import BinFactory, TypeCosmology
+from yaw.config.doc_utils import Parameter
 
 __all__ = ["BinningConfig"]
 
@@ -83,7 +80,7 @@ class BinningConfig(BaseConfig):
     def __eq__(self, other) -> bool:
         if not isinstance(other, self.__class__):
             return False
-        if self.method != other.method or not array_equal(self.zbins, other.zbins):
+        if self.method != other.method or not np.array_equal(self.zbins, other.zbins):
             return False
         return True
 

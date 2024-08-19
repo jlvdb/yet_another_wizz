@@ -2,20 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 import numpy as np
 from deprecated import deprecated
+from numpy.typing import NDArray
 
 from yaw.config import default as DEFAULT
 from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
-from yaw.core.cosmology import Scale
-from yaw.core.docs import Parameter
-from yaw.core.math import array_equal
-
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
+from yaw.cosmology import Scale
+from yaw.config.doc_utils import Parameter
 
 __all__ = ["ScalesConfig"]
 
@@ -123,7 +119,7 @@ class ScalesConfig(BaseConfig):
     def __eq__(self, other: object) -> bool:
         if isinstance(other, self.__class__):
             return (
-                array_equal(self.as_array(), other.as_array())
+                np.array_equal(self.as_array(), other.as_array())
                 and self.rweight == other.rweight
                 and self.rbin_num == other.rbin_num
             )

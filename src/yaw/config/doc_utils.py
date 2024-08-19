@@ -4,14 +4,12 @@ of default configuration files.
 
 from __future__ import annotations
 
+from argparse import ArgumentParser
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import MISSING, Field, asdict, dataclass, field, fields
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import yaml
-
-if TYPE_CHECKING:
-    from argparse import ArgumentParser
 
 __all__ = ["Parameter", "get_doc_args", "populate_parser"]
 

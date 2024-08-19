@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from yaw.config import DEFAULT
 from yaw.config.abc import BaseConfig
-from yaw.core.docs import Parameter
+from yaw.config.doc_utils import Parameter
 
 __all__ = ["BackendConfig"]
 

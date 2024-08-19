@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
 from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError
-from yaw.core.docs import Parameter
-
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
+from yaw.config.doc_utils import Parameter
 
 __all__ = ["ResamplingConfig"]
 
