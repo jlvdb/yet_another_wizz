@@ -338,12 +338,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
     def to_dict(self) -> dict[str, NormalisedCounts]:
         attrs = ("dd", "dr", "rd", "rr")
-        the_dict = {}
-        for attr in attrs:
-            counts = getattr(self, attr)
-            if counts is not None:
-                the_dict[attr] = counts
-        return the_dict
+        return {attr: counts for attr in attrs if (counts := getattr(self, attr))}
 
     @property
     def num_patches(self) -> int:

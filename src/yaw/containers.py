@@ -465,8 +465,8 @@ class HistData(CorrData):
 
         return cls(
             Binning(config.binning.zbins, closed=closed),
-            data=counts.sum(axis=0),
-            samples=resample_jackknife(counts),
+            counts.sum(axis=0),
+            resample_jackknife(counts),
             closed=closed,
         )
 
@@ -498,7 +498,7 @@ class HistData(CorrData):
 
         data /= norm
         samples /= norm
-        return type(self)(self.binning.copy(), data, samples)
+        return type(self)(self.binning, data, samples)
 
 
 class RedshiftData(CorrData):
@@ -534,11 +534,7 @@ class RedshiftData(CorrData):
         nz_data = w_sp_data / np.sqrt(dz2_data * w_ss_data * w_pp_data)
         nz_samples = w_sp_samp / np.sqrt(dz2_samples * w_ss_samp * w_pp_samp)
 
-        return cls(
-            cross_data.binning.copy(),
-            nz_data,
-            nz_samples,
-        )
+        return cls(cross_data.binning, nz_data, nz_samples)
 
     @classmethod
     def from_corrfuncs(
@@ -596,4 +592,4 @@ class RedshiftData(CorrData):
 
         data = self.data / norm
         samples = self.samples / norm
-        return type(self)(self.binning.copy(), data, samples)
+        return type(self)(self.binning, data, samples)

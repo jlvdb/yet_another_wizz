@@ -61,5 +61,4 @@ class Options:
         return ("full", "diag", "var")
 
 
-
 OPTIONS = Options()
