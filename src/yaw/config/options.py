@@ -10,14 +10,6 @@ __all__ = ["OPTIONS"]
 
 class Options:
     @property
-    def backend(self) -> tuple[str]:
-        """Lists the names of the currently available backends for correlation
-        measurements."""
-        from yaw.old_catalogs import BaseCatalog
-
-        return tuple(sorted(BaseCatalog._backends.keys()))
-
-    @property
     def binning(self) -> tuple[str]:
         """Lists the currently implemented methods to generate redshift bins
         with the :obj:`~yaw.config.BinningConfig` class.
@@ -67,38 +59,6 @@ class Options:
         ``var``: Compute the variance, i.e. only the diagonal elements.
         """
         return ("full", "diag", "var")
-
-    @property
-    def merge(self) -> tuple[str]:
-        """Lists the available modes to merge correlation measurements.
-
-        .. rubric:: Values
-
-        ``patches``: Merge measurements by concatenating spatial patches, i.e.
-        extending the area over which measurements are taken. This may miss out
-        some correlation signal between the two measurements.
-
-        ``redshift``: Merge measurements by concatenating redshift bins, i.e.
-        extending the redshift range.
-        """
-        return ("patches", "redshift")
-
-    @property
-    def method(self) -> tuple[str]:
-        """Lists the currently implemented methods for spatial resampling.
-
-        Resampling uses the spatial patches to get uncertainty estimates for the
-        correlation function measurements.
-
-        .. rubric:: Values
-
-        ``jackknife``: Use jackknife resampling (generate samples and leave out
-        one patch at a time).
-
-        ``bootstrap``: Use bootstrap resampling (generate samples by randomly
-        drawing patches with replacement).
-        """
-        return ("jackknife", "bootstrap")
 
 
 OPTIONS = Options()

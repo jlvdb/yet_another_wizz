@@ -20,7 +20,7 @@ Author: Jan Luca van den Busch
 
 from yaw._version import __version__
 from yaw.catalog import Catalog
-from yaw.config import Configuration, ResamplingConfig
+from yaw.config import Configuration
 from yaw.containers import CorrData, HistData, RedshiftData
 from yaw.corrfunc import CorrFunc
 from yaw.measurements import autocorrelate, crosscorrelate
@@ -32,7 +32,6 @@ __all__ = [
     "CorrData",
     "CorrFunc",
     "HistData",
-    "ResamplingConfig",
     "RedshiftData",
     "autocorrelate",
     "crosscorrelate",

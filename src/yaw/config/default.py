@@ -7,10 +7,7 @@ __all__ = [
     "NotSet",
     "Scales",
     "Binning",
-    "Backend",
     "Configuration",
-    "Resampling",
-    "backend",
 ]
 
 
@@ -42,25 +39,7 @@ class Binning:
 AutoBinning = Binning  # keep for backwards compatibilty
 
 
-class Backend:
-    thread_num = None
-    crosspatch = True
-    rbin_slop = 0.01
-
-
 class Configuration:
     scales = Scales
     binning = Binning
-    backend = Backend
     cosmology = "Planck15"
-
-
-class Resampling:
-    method = "jackknife"
-    crosspatch = True
-    n_boot = 500
-    global_norm = False
-    seed = 12345
-
-
-backend = "scipy"

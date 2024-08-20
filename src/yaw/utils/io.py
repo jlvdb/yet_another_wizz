@@ -73,11 +73,10 @@ def write_samples(
     zleft: NDArray,
     zright: NDArray,
     samples: NDArray,
-    method: str,
 ) -> None:
     with path.open("w") as f:
         columns = ["z_low", "z_high"]
-        columns.extend(f"{method[:4]}_{i}" for i in range(len(samples)))
+        columns.extend(f"jack_{i}" for i in range(len(samples)))
         write_header(f, description, columns)
 
         for zleft, zright, samples in zip(zleft, zright, samples.T):
@@ -91,11 +90,8 @@ def write_samples(
             f.write(" ".join(formatted) + "\n")
 
 
-def load_samples(path: Path) -> tuple[NDArray, str]:
-    header = load_header()
-    method_key, _ = header["columns"][-1].rsplit("_", 1)
-    samples = np.loadtxt(path).T[2:]  # remove binning columns
-    return samples, method_key
+def load_samples(path: Path) -> NDArray:
+    return np.loadtxt(path).T[2:]  # remove binning columns
 
 
 def write_covariance(path: Path, description: str, *, covariance: NDArray) -> None:

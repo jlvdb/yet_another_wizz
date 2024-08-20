@@ -8,7 +8,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
-from yaw.config import ResamplingConfig
 from yaw.containers import (
     Binning,
     SampledData,
@@ -48,7 +47,7 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
     def get_array(self) -> NDArray:
         pass
 
-    def sample_patch_sum(self, config: ResamplingConfig) -> SampledData:
+    def sample_patch_sum(self) -> SampledData:
         bin_patch_array = self.get_array()
 
         # sum over all (total of num_paches**2) pairs of patches per bin
@@ -66,7 +65,7 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
         diag = np.einsum("bii->ib", bin_patch_array)
         samples = sum_tiled - row_sum - col_sum + diag
 
-        return SampledData(self.binning, sum_patches, samples, method=config.method)
+        return SampledData(self.binning, sum_patches, samples)
 
 
 class PatchedTotals(BinwisePatchwiseArray):
@@ -360,12 +359,10 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
         totals = self.totals.patches[item]
         return type(self)(counts, totals)
 
-    def sample_patch_sum(self, config: ResamplingConfig | None = None) -> SampledData:
-        config = config or ResamplingConfig()
-
-        counts = self.counts.sample_patch_sum(config)
-        totals = self.totals.sample_patch_sum(config)
+    def sample_patch_sum(self) -> SampledData:
+        counts = self.counts.sample_patch_sum()
+        totals = self.totals.sample_patch_sum()
 
         data = counts.data / totals.data
         samples = counts.samples / totals.samples
-        return SampledData(self.binning, data, samples, method=config.method)
+        return SampledData(self.binning, data, samples)
