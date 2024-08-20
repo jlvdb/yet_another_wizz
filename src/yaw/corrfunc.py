@@ -25,15 +25,17 @@ def shortname(key):
         @wraps(func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
-        
+
         wrapper.name = key
         return wrapper
-    
+
     return decorator
 
 
 @shortname("DP")
-def davis_peebles(dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = None) -> NDArray:
+def davis_peebles(
+    dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = None
+) -> NDArray:
     if dr is None and rd is None:
         raise EstimatorError("either 'dr' or 'rd' is required")
 
@@ -42,7 +44,9 @@ def davis_peebles(dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = N
 
 
 @shortname("LS")
-def landy_szalay(dd: NDArray, dr: NDArray, rr: NDArray, rd: NDArray | None = None) -> NDArray:
+def landy_szalay(
+    dd: NDArray, dr: NDArray, rr: NDArray, rd: NDArray | None = None
+) -> NDArray:
     if rd is None:
         rd = dr
     return ((dd - dr) + (rr - rd)) / rr
@@ -161,12 +165,12 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         else:
             estimator = landy_szalay
 
-        counts_resampled = {
-            pp: counts.sample_patch_sum()
-            for pp, counts in self.to_dict().items()
-        }
-        counts_values = {pp: counts.data for pp, counts in counts_resampled.items()}
-        counts_samples = {pp: counts.samples for pp, counts in counts_resampled.items()}
+        counts_values = {}
+        counts_samples = {}
+        for kind, paircounts in self.to_dict().items():
+            resampled = paircounts.sample_patch_sum()
+            counts_values[kind] = resampled.data
+            counts_samples[kind] = resampled.samples
 
         corr_data = estimator(**counts_values)
         corr_samples = estimator(**counts_samples)
