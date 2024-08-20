@@ -28,7 +28,7 @@ __all__ = [
 
 def check_plotting_enabled(func):
     @wraps(func)
-    def wrapper(*args, **kwargs) -> None:
+    def wrapper(*args, **kwargs):
         if not PLOTTING_ENABLED:
             raise ImportError("optional dependency 'matplotlib' required for plotting")
         return func(*args, **kwargs)

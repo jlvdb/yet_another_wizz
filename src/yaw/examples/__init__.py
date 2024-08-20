@@ -40,12 +40,12 @@ normalised_counts = w_sp.dd
 (:obj:`~yaw.correlation.paircounts.NormalisedCounts` instance,
 from :obj:`w_sp.dd`)"""
 
-patched_count = normalised_counts.count
+patched_count = normalised_counts.counts
 """Example data for patch-wise pair counts
 (:obj:`~yaw.correlation.paircounts.PatchedCount` instance,
 from :obj:`w_sp.dd.count`)"""
 
-patched_total = normalised_counts.total
+patched_total = normalised_counts.totals
 """Example data for patch-wise total number of objects
 (:obj:`~yaw.correlation.paircounts.PatchedTotal` instance,
 from :obj:`w_sp.dd.total`)"""
