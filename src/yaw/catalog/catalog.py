@@ -96,13 +96,13 @@ class ChunkProcessor(Callable):
         else:
             self.patch_centers = patch_centers.to_3d()
 
-    def compute_patch_ids(self, chunk: DataChunk) -> NDArray[np.int32]:
+    def _compute_patch_ids(self, chunk: DataChunk) -> NDArray[np.int32]:
         patches, _ = vq.vq(chunk.coords.to_3d(), self.patch_centers)
         return patches.astype(np.int32, copy=False)
 
     def __call__(self, chunk: DataChunk) -> dict[int, DataChunk]:
         if self.patch_centers is not None:
-            patch_ids = self.compute_patch_ids(chunk)
+            patch_ids = self._compute_patch_ids(chunk)
             chunk.set_patch_ids(patch_ids)
 
         return chunk.split_patches()

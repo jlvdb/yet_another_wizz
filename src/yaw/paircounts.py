@@ -240,6 +240,7 @@ class PatchedCounts(BinwisePatchwiseArray):
     def __radd__(self, other: Any) -> PatchedCounts:
         if np.isscalar(other) and other == 0:
             return self  # this convenient when applying sum()
+
         return self.__add__(other)
 
     def __mul__(self, other: Any) -> PatchedCounts:
@@ -252,6 +253,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
+
         return type(self)(
             binning, self.totals1[item], self.totals2[item], auto=self.auto
         )
@@ -259,6 +261,7 @@ class PatchedCounts(BinwisePatchwiseArray):
     def _make_patch_slice(self, item: int | slice) -> PatchedCounts:
         if isinstance(item, int):
             item = [item]
+
         return type(self)(self.binning, self.counts[:, item, item], auto=self.auto)
 
     def get_array(self) -> NDArray:
@@ -338,6 +341,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
     def __radd__(self, other: Any) -> NormalisedCounts:
         if np.isscalar(other) and other == 0:
             return self  # allows using sum() on an iterable of NormalisedCounts
+
         return self.__add__(other)
 
     def __mul__(self, other: Any) -> NormalisedCounts:

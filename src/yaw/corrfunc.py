@@ -37,7 +37,7 @@ def davis_peebles(
     dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = None
 ) -> NDArray:
     if dr is None and rd is None:
-        raise EstimatorError("either 'dr' or 'rd' is required")
+        raise EstimatorError("either 'dr' or 'rd' are required")
 
     mixed = dr if rd is None else rd
     return (dd - mixed) / mixed
@@ -63,7 +63,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         rr: NormalisedCounts | None = None,
     ) -> None:
         if dr is None and rd is None and rr is None:
-            raise ValueError("either 'dr', 'rd' or 'rr' is required")
+            raise EstimatorError("either 'dr', 'rd' or 'rr' are required")
 
         self.dd = dd
         for kind, counts in zip(("dr", "rd", "rr"), (dr, rd, rr)):
@@ -73,6 +73,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
                 except ValueError as err:
                     msg = f"pair counts '{kind}' and 'dd' are not compatible"
                     raise ValueError(msg) from err
+
             setattr(self, kind, counts)
 
     @property
@@ -160,11 +161,6 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return self.dd.is_compatible(other.dd, require=require)
 
     def sample(self) -> CorrData:
-        if self.rr is None:
-            estimator = davis_peebles
-        else:
-            estimator = landy_szalay
-
         counts_values = {}
         counts_samples = {}
         for kind, paircounts in self.to_dict().items():
@@ -172,6 +168,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
             counts_values[kind] = resampled.data
             counts_samples[kind] = resampled.samples
 
+        estimator = landy_szalay if "rr" in counts_values else davis_peebles
         corr_data = estimator(**counts_values)
         corr_samples = estimator(**counts_samples)
         return CorrData(self.binning, corr_data, corr_samples)

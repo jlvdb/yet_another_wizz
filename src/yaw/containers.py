@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator, Sequence
-from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
@@ -123,6 +122,7 @@ class Binning(HdfSerializable):
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, type(self)):
             return NotImplemented
+
         return np.array_equal(self.edges, other.edges) and self.closed == other.closed
 
     @property
@@ -206,7 +206,7 @@ def cov_from_samples(
 
 
 class SampledData(BinwiseData):
-    __slots__ = ("binning", "data", "samples", "covariance")
+    __slots__ = ("binning", "data", "samples")
 
     def __init__(
         self,
@@ -226,20 +226,24 @@ class SampledData(BinwiseData):
         if not self.samples.shape[1] == self.num_bins:
             raise ValueError("number of bins for 'data' and 'samples' do not match")
 
-        self.covariance = cov_from_samples(self.samples)
-
-    @cached_property
+    @property
     def error(self) -> NDArray:
         return np.sqrt(np.diag(self.covariance))
 
-    @cached_property
+    @property
+    def covariance(self) -> NDArray:
+        return cov_from_samples(self.samples)
+
+    @property
     def correlation(self) -> NDArray:
+        covar = self.covariance
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            stdev = self.error
-            corr = self.covariance / np.outer(stdev, stdev)
+            stdev = np.sqrt(np.diag(covar))
+            corr = covar / np.outer(stdev, stdev)
 
-        corr[self.covariance == 0] = 0
+        corr[covar == 0] = 0
         return corr
 
     @property
@@ -251,7 +255,6 @@ class SampledData(BinwiseData):
             binning=self.binning,
             data=self.data,
             samples=self.samples,
-            covariance=self.covariance,
         )
 
     def __eq__(self, other: object) -> bool:
@@ -300,7 +303,6 @@ class SampledData(BinwiseData):
         new.samples = self.samples[:, item]
         if new.samples.ndim == 1:
             new.samples = np.atleast_2d(new.samples).T
-        new.covariance = np.atleast_2d(self.covariance[item])[item]
 
         return new
 
