@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 from yaw.abc import JsonSerialisable, Serialisable, Tpath
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import DataChunk
-from yaw.coordinates import CoordsSky, DistsSky
+from yaw.coordinates import AngularCoordinates, AngularDistances
 
 __all__ = [
     "PatchWriter",
@@ -83,13 +83,22 @@ class PatchWriter:
 
 @dataclass
 class Metadata(JsonSerialisable):
-    num_records: int
-    total: float
-    center: CoordsSky
-    radius: DistsSky
+    __slots__ = ("num_records", "total", "center", "radius")
+
+    def __init__(
+        self,
+        num_records: int,
+        total: float,
+        center: AngularCoordinates,
+        radius: AngularDistances,
+    ) -> None:
+        self.num_records = num_records
+        self.total = total
+        self.center = center
+        self.radius = radius
 
     @classmethod
-    def compute(cls, coords: CoordsSky, weights: NDArray | None = None) -> Metadata:
+    def compute(cls, coords: AngularCoordinates, weights: NDArray | None = None) -> Metadata:
         new = super().__new__(cls)
         new.num_records = len(coords)
         if weights is None:
@@ -98,26 +107,26 @@ class Metadata(JsonSerialisable):
             new.total = float(np.sum(weights))
 
         new.center = coords.mean()
-        new.radius = coords.distance(new.center).max().to_sky()
+        new.radius = coords.distance(new.center).max()
         return new
 
     @classmethod
     def from_dict(cls, kwarg_dict: dict) -> Metadata:
-        center = CoordsSky(kwarg_dict.pop("center"))
-        radius = DistsSky(kwarg_dict.pop("radius"))
+        center = AngularCoordinates(kwarg_dict.pop("center"))
+        radius = AngularDistances(kwarg_dict.pop("radius"))
         return cls(center=center, radius=radius, **kwarg_dict)
 
     def to_dict(self) -> dict:
         return dict(
             num_records=int(self.num_records),
             total=float(self.total),
-            center=self.center.to_sky().tolist()[0],  # 2-dim by default
+            center=self.center.tolist()[0],  # 2-dim by default
             radius=self.radius.tolist()[0],  # 1-dim by default
         )
 
 
 class Patch(Sized, Serialisable):
-    meta: Metadata
+    __slots__ = ("meta", "cache_path")
 
     def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
@@ -134,7 +143,8 @@ class Patch(Sized, Serialisable):
         return dict(cache_path=self.cache_path, meta=self.meta)
 
     def __setstate__(self, state) -> None:
-        self.__dict__.update(state)
+        for key, value in state.items():
+            setattr(self, key, value)
 
     def __len__(self) -> int:
         return self.meta.num_records
@@ -151,9 +161,9 @@ class Patch(Sized, Serialisable):
         return path.exists()
 
     @property
-    def coords(self) -> CoordsSky:
+    def coords(self) -> AngularCoordinates:
         data = np.fromfile(self.cache_path / "coords")
-        return CoordsSky(data.reshape((-1, 2)))
+        return AngularCoordinates(data.reshape((-1, 2)))
 
     @property
     def weights(self) -> NDArray | None:

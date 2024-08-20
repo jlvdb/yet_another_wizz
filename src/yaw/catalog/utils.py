@@ -9,7 +9,7 @@ from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from yaw.abc import Serialisable
 from yaw.containers import Tclosed, default_closed
-from yaw.coordinates import CoordsSky
+from yaw.coordinates import AngularCoordinates
 
 __all__ = [
     "DataChunk",
@@ -56,7 +56,7 @@ class DataChunk(Serialisable):
 
     def __init__(
         self,
-        coords: CoordsSky,
+        coords: AngularCoordinates,
         weights: NDArray | None = None,
         redshifts: NDArray | None = None,
         patch_ids: NDArray[np.int32] | None = None,
@@ -91,7 +91,7 @@ class DataChunk(Serialisable):
             coords = np.deg2rad(coords)
 
         return cls(
-            coords=CoordsSky(coords),
+            coords=AngularCoordinates(coords),
             weights=parser(weights, np.float64),
             redshifts=parser(redshifts, np.float64),
             patch_ids=parser(patch_ids, np.int32),
@@ -109,7 +109,7 @@ class DataChunk(Serialisable):
             raise ValueError(f"not all chunks have '{attr}' set")
 
         return DataChunk(
-            coords=CoordsSky.from_coords(chunk.coords for chunk in chunks),
+            coords=AngularCoordinates.from_coords(chunk.coords for chunk in chunks),
             weights=concat_optional_attr("weights"),
             redshifts=concat_optional_attr("redshifts"),
             patch_ids=concat_optional_attr("patch_ids"),
@@ -127,12 +127,12 @@ class DataChunk(Serialisable):
 
     def split(self, num_chunks: int) -> list[DataChunk]:
         splitted = dict(
-            coords=[CoordsSky(v) for v in np.array_split(self.coords, num_chunks)]
+            coords=[AngularCoordinates(v) for v in np.array_split(self.coords, num_chunks)]
         )
         for attr, values in self.to_dict().items():
             splits = np.array_split(values, num_chunks)
             if attr == "coords":
-                splits = [CoordsSky(split) for split in splits]
+                splits = [AngularCoordinates(split) for split in splits]
             splitted[attr] = splits
 
         return [
@@ -163,7 +163,7 @@ class DataChunk(Serialisable):
 
         chunks = {}
         for patch_id, attr_dict in groupby_value(self.patch_ids, **self.to_dict()):
-            coords = CoordsSky(attr_dict.pop("coords"))
+            coords = AngularCoordinates(attr_dict.pop("coords"))
             chunks[int(patch_id)] = DataChunk(coords, **attr_dict)
 
         return chunks

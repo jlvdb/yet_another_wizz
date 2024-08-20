@@ -1,23 +1,19 @@
 from __future__ import annotations
 
-from abc import abstractmethod
 from collections.abc import Iterable, Iterator, Sized
 from functools import total_ordering
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 __all__ = [
-    "Coords3D",
     "CoordsSky",
     "Dists3D",
     "DistsSky",
 ]
 
 Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
-Tcoord = TypeVar("Tcoord", bound="Coordinates")
-Tdist = TypeVar("Tdist", bound="Distances")
 
 
 def sgn(val: ArrayLike) -> ArrayLike:
@@ -53,102 +49,36 @@ class CustomNumpyArray(Iterable, Sized):
         return self.data.tolist()
 
 
-class Coordinates(CustomNumpyArray):
+class AngularCoordinates(CustomNumpyArray):
     def __init__(self, data: ArrayLike) -> None:
         self.data = np.atleast_2d(data).astype(np.float64, copy=False)
-        if not self.data.shape[1] == self.ndim:
-            raise ValueError(
-                f"invalid number of coordinate dimensions, expected {self.ndim}"
-            )
+        if not self.data.shape[1] == 2:
+            raise ValueError(f"invalid coordinate dimensions, expected 2")
 
     @classmethod
-    @abstractmethod
-    def from_coords(cls: type[Tcoord], coords: Iterable[Coordinates]) -> Tcoord:
-        pass
+    def from_coords(cls, coords: Iterable[AngularCoordinates]) -> AngularCoordinates:
+        return cls(np.concatenate(list(coords)))
 
-    def __eq__(self, other: object) -> NDArray[np.bool_]:
-        if type(self) is type(other):
-            return self.data == other.data
-        return NotImplemented
-
-    @property
-    @abstractmethod
-    def ndim(self) -> int:
-        pass
-
-    @abstractmethod
-    def mean(self: Tcoord) -> Tcoord:
-        pass
-
-    @abstractmethod
-    def to_3d(self) -> Coords3D:
-        pass
-
-    @abstractmethod
-    def to_sky(self) -> CoordsSky:
-        pass
-
-    @abstractmethod
-    def distance(self, other: Coordinates) -> Dists3D | DistsSky:
-        pass
-
-
-class Coords3D(Coordinates):
     @classmethod
-    def from_coords(cls, coords: Iterable[Coordinates]) -> Coords3D:
-        data = [coord.to_3d().data for coord in coords]
-        return cls(np.concatenate(data))
-
-    @property
-    def x(self) -> NDArray[np.float64]:
-        return self.data[:, 0]
-
-    @property
-    def y(self) -> NDArray[np.float64]:
-        return self.data[:, 1]
-
-    @property
-    def z(self) -> NDArray[np.float64]:
-        return self.data[:, 2]
-
-    @property
-    def ndim(self) -> int:
-        return 3
-
-    def mean(self) -> Coords3D:
-        return Coords3D(self.data.mean(axis=0))
-
-    def to_3d(self) -> Coords3D:
-        return self
-
-    def to_sky(self) -> CoordsSky:
-        x = self.x
-        y = self.y
-        z = self.z
+    def from_3d(cls, xyz: ArrayLike) -> AngularCoordinates:
+        x, y, z = np.transpose(xyz)
 
         r_d2 = np.sqrt(x * x + y * y)
         r_d3 = np.sqrt(x * x + y * y + z * z)
         x_normed = np.ones_like(x)  # fallback for zero-division, arccos(1)=0.0
         np.divide(x, r_d2, where=r_d2 > 0.0, out=x_normed)
 
-        radec = np.empty((len(self), 2))
-        radec[:, 0] = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
-        radec[:, 1] = np.arcsin(self.z / r_d3)
+        ra = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
+        dec = np.arcsin(z / r_d3)
+        ra_dec = np.column_stack([ra, dec])
+        return cls(ra_dec)
 
-        return CoordsSky(radec)
-
-    def distance(self, other: Coordinates) -> Dists3D:
-        diff = self.data - other.to_3d().data
-        diff_sq = diff**2
-        dist = np.sqrt(diff_sq.sum(axis=1))
-        return Dists3D(dist)
-
-
-class CoordsSky(Coordinates):
-    @classmethod
-    def from_coords(cls, coords: Iterable[Coordinates]) -> CoordsSky:
-        data = [coord.to_sky().data for coord in coords]
-        return cls(np.concatenate(data))
+    def to_3d(self) -> NDArray:
+        cos_dec = np.cos(self.dec)
+        x = np.cos(self.ra) * cos_dec
+        y = np.sin(self.ra) * cos_dec
+        z = np.sin(self.dec)
+        return np.column_stack([x, y, z])
 
     @property
     def ra(self) -> NDArray[np.float64]:
@@ -158,116 +88,73 @@ class CoordsSky(Coordinates):
     def dec(self) -> NDArray[np.float64]:
         return self.data[:, 1]
 
-    @property
-    def ndim(self) -> int:
-        return 2
+    def __eq__(self, other: Any) -> NDArray[np.bool_]:
+        if type(self) is not type(other):
+            return NotImplemented
 
-    def mean(self) -> CoordsSky:
-        return self.to_3d().mean().to_sky()
+        return self.data == other.data
 
-    def to_3d(self) -> Coords3D:
-        cos_dec = np.cos(self.dec)
+    def mean(self) -> AngularCoordinates:
+        mean_xyz = self.to_3d().mean(axis=0)
+        return type(self).from_3d(mean_xyz)
 
-        xyz = np.empty((len(self), 3))
-        xyz[:, 0] = np.cos(self.ra) * cos_dec
-        xyz[:, 1] = np.sin(self.ra) * cos_dec
-        xyz[:, 2] = np.sin(self.dec)
+    def distance(self, other: AngularCoordinates) -> AngularDistances:
+        if not isinstance(other, type(self)):
+            raise TypeError(f"cannot compute distance with type {type(other)}")
 
-        return Coords3D(xyz)
-
-    def to_sky(self) -> CoordsSky:
-        return self
-
-    def distance(self, other: Coordinates) -> DistsSky:
-        return self.to_3d().distance(other).to_sky()
+        self_xyz = self.to_3d()
+        other_xyz = other.to_3d()
+        coord_diff_sq = (self_xyz - other_xyz)**2
+        dists = np.sqrt(coord_diff_sq.sum(axis=1))
+        return AngularDistances.from_3d(dists)
 
 
 @total_ordering
-class Distances(CustomNumpyArray):
+class AngularDistances(CustomNumpyArray):
     def __init__(self, data: ArrayLike) -> None:
         self.data = np.atleast_1d(data).astype(np.float64, copy=False)
 
     @classmethod
-    @abstractmethod
-    def from_dists(cls: type[Tcoord], dists: Iterable[Distances]) -> Tcoord:
-        pass
+    def from_dists(cls, dists: Iterable[AngularDistances]) -> AngularDistances:
+        return cls(np.concatenate(list(dists)))
 
-    def __eq__(self, other: object) -> NDArray[np.bool_]:
-        if type(self) is type(other):
-            return self.data == other.data
-        return NotImplemented
+    @classmethod
+    def from_3d(cls, dists: ArrayLike) -> AngularDistances:
+        if np.any(dists > 2.0):
+            raise ValueError("distance exceeds size of unit sphere")
 
-    def __lt__(self, other: object) -> NDArray[np.bool_]:
-        if type(self) is type(other):
-            return self.data < other.data
-        return NotImplemented
+        angles = 2.0 * np.arcsin(dists / 2.0)
+        return cls(angles)
 
-    @abstractmethod
-    def __add__(self: Tdist, other: object) -> Tdist:
-        pass
+    def to_3d(self) -> NDArray:
+        return 2.0 * np.sin(self.data / 2.0)
 
-    @abstractmethod
-    def __sub__(self: Tdist, other: object) -> Tdist:
-        pass
+    def __eq__(self, other: Any) -> NDArray[np.bool_]:
+        if type(self) is not type(other):
+            return NotImplemented
 
-    def min(self: Tdist) -> Tdist:
+        return self.data == other.data
+
+    def __lt__(self, other: Any) -> NDArray[np.bool_]:
+        if type(self) is not type(other):
+            return NotImplemented
+
+        return self.data < other.data
+
+    def __add__(self, other: Any) -> AngularDistances:
+        if type(self) is not type(other):
+            return NotImplemented
+
+        return type(self)(self.data + other.data)
+
+    def __sub__(self, other: Any) -> AngularDistances:
+        if type(self) is not type(other):
+            return NotImplemented
+    
+        return type(self)(self.data - other.data)
+
+    def min(self) -> AngularDistances:
         return type(self)(self.data.min())
 
-    def max(self: Tdist) -> Tdist:
+    def max(self) -> AngularDistances:
         return type(self)(self.data.max())
-
-    @abstractmethod
-    def to_3d(self) -> Dists3D:
-        pass
-
-    @abstractmethod
-    def to_sky(self) -> DistsSky:
-        pass
-
-
-class Dists3D(Distances):
-    @classmethod
-    def from_dists(cls, dists: Iterable[Distances]) -> Dists3D:
-        data = [dist.to_3d().data for dist in dists]
-        return cls(np.concatenate(data))
-
-    def __add__(self, other: object) -> Dists3D:
-        if type(self) is type(other):
-            return type(self)(self.data + other.data)
-        return NotImplemented
-
-    def __sub__(self, other: object) -> Dists3D:
-        if type(self) is type(other):
-            return type(self)(self.data - other.data)
-        return NotImplemented
-
-    def to_3d(self) -> Dists3D:
-        return self
-
-    def to_sky(self) -> DistsSky:
-        if np.any(self.data > 2.0):
-            raise ValueError("distance exceeds size of unit sphere")
-        return DistsSky(2.0 * np.arcsin(self.data / 2.0))
-
-
-class DistsSky(Distances):
-    @classmethod
-    def from_dists(cls, dists: Iterable[Distances]) -> DistsSky:
-        data = [dist.to_sky().data for dist in dists]
-        return cls(np.concatenate(data))
-
-    def __add__(self, other: object) -> Dists3D:
-        if type(self) is type(other):
-            return (self.to_3d() + other.to_3d()).to_sky()
-        return NotImplemented
-
-    def __sub__(self, other: object) -> Dists3D:
-        if type(self) is type(other):
-            return (self.to_3d() - other.to_3d()).to_sky()
-        return NotImplemented
-
-    def to_3d(self) -> Dists3D:
-        return Dists3D(2.0 * np.sin(self.data / 2.0))
-
-    def to_sky(self) -> DistsSky:
-        return self

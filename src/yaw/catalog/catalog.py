@@ -22,14 +22,14 @@ from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, default_closed, parse_binning
-from yaw.coordinates import Coordinates, Coords3D, CoordsSky, DistsSky
 from yaw.utils import ParallelHelper
+from yaw.coordinates import AngularCoordinates, AngularDistances
 
 __all__ = [
     "Catalog",
 ]
 
-Tcenters = Union["Catalog", Coordinates]
+Tcenters = Union["Catalog", AngularCoordinates]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
 PATCHFILE_NAME = "num_patches"
@@ -67,9 +67,7 @@ class PatchMode(Enum):
         raise ValueError("no patch method specified")
 
 
-def create_patch_centers(
-    reader: BaseReader, patch_num: int, probe_size: int
-) -> CoordsSky:
+def create_patch_centers(reader: BaseReader, patch_num: int, probe_size: int) -> AngularCoordinates:
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
     sparse_factor = np.ceil(reader.num_records / probe_size)
@@ -84,11 +82,13 @@ def create_patch_centers(
         config=dict(num_threads=ParallelHelper.num_threads),
     )
     xyz = np.atleast_2d(cat.patch_centers)
-    return Coords3D(xyz).to_sky()
+    return AngularCoordinates.from_3d(xyz)
 
 
 class ChunkProcessor(Callable):
-    def __init__(self, patch_centers: CoordsSky | None) -> None:
+    __slots__ = ("patch_centers",)
+
+    def __init__(self, patch_centers: AngularCoordinates | None) -> None:
         if patch_centers is None:
             self.patch_centers = None
         else:
@@ -151,7 +151,7 @@ class CatalogWriter(AbstractContextManager):
 def write_patches(
     path: Tpath,
     reader: BaseReader,
-    patch_centers: Tcenters | None,
+    patch_centers: Tcenters,
     overwrite: bool,
     progress: bool,
     num_threads: int | None = None,
@@ -160,8 +160,8 @@ def write_patches(
 
     if isinstance(patch_centers, Catalog):
         patch_centers = patch_centers.get_centers()
-    if isinstance(patch_centers, Coordinates):
-        patch_centers = patch_centers.to_sky()
+    elif not isinstance(patch_centers, AngularCoordinates):
+        raise TypeError("'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'")
     preprocess = ChunkProcessor(patch_centers)
 
     chunk_iter_progress_optional = tqdm(
@@ -372,11 +372,11 @@ class Catalog(Mapping[int, Patch]):
     def get_totals(self) -> tuple[float]:
         return tuple(patch.meta.total for patch in self.values())
 
-    def get_centers(self) -> CoordsSky:
-        return CoordsSky.from_coords(patch.meta.center for patch in self.values())
+    def get_centers(self) -> AngularCoordinates:
+        return AngularCoordinates.from_coords(patch.meta.center for patch in self.values())
 
-    def get_radii(self) -> DistsSky:
-        return DistsSky.from_dists(patch.meta.radius for patch in self.values())
+    def get_radii(self) -> AngularDistances:
+        return AngularDistances.from_dists(patch.meta.radius for patch in self.values())
 
     def build_trees(
         self,
