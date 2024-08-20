@@ -28,6 +28,12 @@ except ImportError:
             return 0
 
 
+__all__ = [
+    "ParallelHelper",
+    "get_num_threads",
+    "get_physical_cores",
+]
+
 Targ = TypeVar("Targ")
 Tresult = TypeVar("Tresult")
 Titer = TypeVar("Titer")

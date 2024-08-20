@@ -11,6 +11,12 @@ from yaw.abc import Serialisable
 from yaw.containers import Tclosed, default_closed
 from yaw.coordinates import CoordsSky
 
+__all__ = [
+    "DataChunk",
+    "groupby_value",
+    "groupby_binning",
+]
+
 Tpath = Union[Path, str]
 
 

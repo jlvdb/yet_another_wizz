@@ -16,11 +16,11 @@ if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
 __all__ = [
-    "get_default_cosmology",
-    "CustomCosmology",
-    "r_kpc_to_angle",
-    "Scale",
     "BinFactory",
+    "CustomCosmology",
+    "Scale",
+    "get_default_cosmology",
+    "r_kpc_to_angle",
 ]
 
 

@@ -146,7 +146,7 @@ def build_binned_trees(
 ) -> tuple[AngularTree]:
     if not patch.has_redshifts():
         raise ValueError("patch has no 'redshifts' attached")
-    extra_attrs = {"weights": patch.weights} if patch.weights else {}
+    extra_attrs = {} if patch.weights is None else {"weights": patch.weights}
 
     trees = []
     for _, bin_data in groupby_binning(

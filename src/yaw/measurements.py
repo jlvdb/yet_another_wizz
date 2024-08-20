@@ -20,6 +20,12 @@ from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import ParallelHelper
 
+__all__ = [
+    "PatchLinkage",
+    "autocorrelate",
+    "crosscorrelate",
+]
+
 
 @dataclass(frozen=True, eq=False, slots=True)
 class PatchPair:

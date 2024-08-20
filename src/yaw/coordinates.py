@@ -15,7 +15,6 @@ __all__ = [
     "DistsSky",
 ]
 
-
 Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
 Tcoord = TypeVar("Tcoord", bound="Coordinates")
 Tdist = TypeVar("Tdist", bound="Distances")

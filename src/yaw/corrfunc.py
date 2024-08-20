@@ -16,6 +16,10 @@ from yaw.paircounts import NormalisedCounts
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+__all__ = [
+    "CorrFunc",
+]
+
 Tcorrfunc = TypeVar("Tcorrfunc", bound="CorrFunc")
 
 
