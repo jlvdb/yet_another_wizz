@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
@@ -13,6 +12,7 @@ from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
+from yaw._version import __version__
 from yaw.abc import (
     AsciiSerializable,
     BinwiseData,
@@ -51,6 +51,29 @@ Tstyle = Literal["point", "line", "step"]
 Tcorr = TypeVar("Tcorr", bound="CorrData")
 
 
+def write_version_tag(dest: Group) -> None:
+    dest.create_dataset("version", data=__version__)
+
+
+def load_version_tag(source: Group) -> str:
+    try:
+        return source["version"][()]
+    except KeyError:
+        return "2.x.x"
+
+
+def is_legacy_dataset(source: Group) -> bool:
+    return "version" not in source
+
+
+def load_legacy_binning(source: Group) -> Binning:
+    dataset = source["binning"]
+    left, right = dataset[:].T
+    edges = np.append(left, right[-1])
+    closed = dataset.attrs["closed"]
+    return Binning(edges, closed=closed)
+
+
 def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray | None:
     if optional and binning is None:
         return None
@@ -62,35 +85,27 @@ def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray
     raise ValueError("bin edges must increase monotonically")
 
 
-@dataclass(frozen=True, eq=False, repr=False, slots=True)
 class Binning(HdfSerializable):
-    edges: NDArray
-    closed: Tclosed = field(default=default_closed, kw_only=True)
+    __slots__ = ("edges", "closed")
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "edges", parse_binning(self.edges))
+    def __init__(self, edges: Sequence, closed: Tclosed = default_closed) -> None:
+        if closed not in Tclosed.__args__:
+            raise ValueError("invalid value for 'closed'")
+
+        self.edges = parse_binning(edges)
+        self.closed = closed
 
     @classmethod
     def from_hdf(cls: type[Tbinning], source: Group) -> Tbinning:
-        new = cls.__new__(cls)
-
-        if "version" in source.attrs:
-            new.edges = source["edges"][:]
-            new.closed = source.attrs["closed"]
-
-        else:
-            dset = source["binning"]
-            new.edges = np.append(dset[:, 0], dset[-1, 1])
-            new.closed = dset.attrs["closed"]
-
-        return new
+        # ignore "version" since there is no equivalent in legacy
+        edges = source["edges"][:]
+        closed = source["closed"][()].decode('utf-8')
+        return cls(edges, closed=closed)
 
     def to_hdf(self, dest: Group) -> None:
-        from yaw import __version__
-
+        write_version_tag(dest)
+        dest.create_dataset("closed", data=self.closed)
         dest.create_dataset("edges", data=self.edges, **hdf_compression)
-        dest.attrs["closed"] = self.closed
-        dest.attrs["version"] = __version__
 
     def __getstate__(self) -> dict:
         return dict(self.edges, self.closed)
@@ -201,28 +216,33 @@ def cov_from_samples(
     return np.atleast_2d(covmat)
 
 
-@dataclass(frozen=True, repr=False, eq=False)
 class SampledData(BinwiseData):
-    binning: Binning = field()
-    data: NDArray = field()
-    samples: NDArray = field()
-    method: Tmethod = field(kw_only=True)
-    covariance: NDArray = field(init=False)
+    __slots__ = ("binning", "data", "samples", "covariance", "method")
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        binning: Binning,
+        data: Sequence,
+        samples: Sequence,
+        *,
+        method: Tmethod,
+    ) -> None:
+        if method not in Tmethod.__args__:
+            raise ValueError(f"unknown sampling method '{self.method}'")
+        self.method = method
+        self.binning = binning
+
+        self.data = np.asarray(data)
         if self.data.shape != (self.num_bins,):
             raise ValueError("unexpected shape of 'data' array")
 
+        self.samples = np.asarray(samples)
         if self.samples.ndim != 2:
             raise ValueError("'samples' must be two-dimensional")
-        if not self.samples.shape[1] == self.n_bins:
+        if not self.samples.shape[1] == self.num_bins:
             raise ValueError("number of bins for 'data' and 'samples' do not match")
 
-        if self.method not in Tmethod.__args__:
-            raise ValueError(f"unknown sampling method '{self.method}'")
-
-        covmat = cov_from_samples(self.samples, self.method)
-        object.__setattr__(self, "covariance", covmat)
+        self.covariance = cov_from_samples(self.samples, self.method)
 
     @cached_property
     def error(self) -> NDArray:
@@ -330,7 +350,7 @@ class SampledData(BinwiseData):
         label: str | None = None,
         style: Tstyle | None = None,
         ax: Axis | None = None,
-        offset: float = 0.0,
+        xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
         indicate_zero: bool = False,
         scale_dz: bool = False,
@@ -340,9 +360,9 @@ class SampledData(BinwiseData):
         plot_kwargs.update(dict(color=color, label=label))
 
         if style == "step":
-            x = self.binning.edges + offset
+            x = self.binning.edges + xoffset
         else:
-            x = self.binning.mids + offset
+            x = self.binning.mids + xoffset
         y = self.data
         yerr = self.error
         if scale_dz:
@@ -356,7 +376,7 @@ class SampledData(BinwiseData):
         if style == "point":
             return plot.point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "line":
-            return plot.line_uncertainty(x, y, yerr, ax, **plot_kwargs)
+            return plot.line_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "step":
             return plot.step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
 
@@ -373,7 +393,6 @@ class SampledData(BinwiseData):
         )
 
 
-@dataclass(frozen=True, repr=False, eq=False)
 class CorrData(AsciiSerializable, SampledData):
     @property
     def _description_data(self) -> str:
@@ -443,7 +462,6 @@ def _redshift_histogram(patch: Patch, edges: NDArray, closed: Tclosed) -> NDArra
     return counts.astype(np.float64)
 
 
-@dataclass(frozen=True, repr=False, eq=False)
 class HistData(CorrData):
     @classmethod
     def from_catalog(
@@ -484,12 +502,12 @@ class HistData(CorrData):
     @property
     def _description_samples(self) -> str:
         n = "normalised " if self.density else " "
-        return f"{self.n_samples} {self.method} n(z) {n}histogram samples"
+        return f"{self.num_samples} {self.method} n(z) {n}histogram samples"
 
     @property
     def _description_covariance(self) -> str:
         n = "normalised " if self.density else " "
-        return f"n(z) {n}histogram covariance matrix ({self.n_bins}x{self.n_bins})"
+        return f"n(z) {n}histogram covariance matrix ({self.num_bins}x{self.num_bins})"
 
     _default_style = "step"
 
@@ -507,7 +525,6 @@ class HistData(CorrData):
         return type(self)(self.binning.copy(), data, samples, method=self.method)
 
 
-@dataclass(frozen=True, repr=False, eq=False)
 class RedshiftData(CorrData):
     @classmethod
     def from_corrdata(
@@ -535,8 +552,8 @@ class RedshiftData(CorrData):
             w_pp_data = unk_data.data
             w_pp_samp = unk_data.samples
 
-        N = cross_data.n_samples
-        dz2_data = cross_data.dz**2
+        N = cross_data.num_samples
+        dz2_data = cross_data.binning.dz**2
         dz2_samples = np.tile(dz2_data, N).reshape((N, -1))
         nz_data = w_sp_data / np.sqrt(dz2_data * w_ss_data * w_pp_data)
         nz_samples = w_sp_samp / np.sqrt(dz2_samples * w_ss_samp * w_pp_samp)
@@ -579,17 +596,17 @@ class RedshiftData(CorrData):
 
     @property
     def _description_samples(self) -> str:
-        return f"{self.n_samples} {self.method} n(z) samples"
+        return f"{self.num_samples} {self.method} n(z) samples"
 
     @property
     def _description_covariance(self) -> str:
         return f"n(z) estimate covariance matrix ({self.num_bins}x{self.num_bins})"
 
-    _default_style = "line"
+    _default_style = "point"
 
     def normalised(self, target: Tcorr | None = None) -> RedshiftData:
         if target is None:
-            norm = np.nansum(self.dz * self.data)
+            norm = np.nansum(self.binning.dz * self.data)
 
         else:
             y_from = self.data

@@ -23,6 +23,7 @@ from yaw.config import Configuration, ResamplingConfig
 from yaw.containers import CorrData, HistData, RedshiftData
 from yaw.corrfunc import CorrFunc
 from yaw.measurements import autocorrelate, crosscorrelate
+from yaw._version import __version__
 
 __all__ = [
     "Catalog",
@@ -35,4 +36,3 @@ __all__ = [
     "autocorrelate",
     "crosscorrelate",
 ]
-__version__ = "3.0.0"

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from dataclasses import dataclass
 from typing import Any, TypeVar
 
 import h5py
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData, hdf_compression
+from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
 from yaw.config import ResamplingConfig
-from yaw.containers import Binning, SampledData
+from yaw.containers import Binning, SampledData, hdf_compression, load_legacy_binning, is_legacy_dataset, write_version_tag
 
 __all__ = [
     "PatchedTotals",
@@ -85,27 +84,26 @@ class PatchedTotals(BinwisePatchwiseArray):
     @classmethod
     def from_hdf(cls: type[Ttotals], source: h5py.Group) -> Ttotals:
         new = cls.__new__(cls)
-
-        if "version" in source.attrs:
-            new.totals1 = source["totals1"][:]
-            new.totals2 = source["totals2"][:]
-
-        else:
-            new.totals1 = np.transpose(source["totals1"][:])
-            new.totals2 = np.transpose(source["totals2"][:])
-
-        new.binning = Binning.from_hdf(source["binning"])
         new.auto = source["auto"][()]
+
+        new.totals1 = source["totals1"][:]
+        new.totals2 = source["totals2"][:]
+        if is_legacy_dataset(source):
+            new.totals1 = np.transpose(new.totals1)
+            new.totals2 = np.transpose(new.totals2)
+            new.binning = load_legacy_binning(source)
+        else:
+            new.binning = Binning.from_hdf(source["binning"])
+
         return new
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        from yaw import __version__
-
-        dest.attrs["version"] = __version__
+        write_version_tag(dest)
         self.binning.to_hdf(dest.create_group("binning"))
+        dest.create_dataset("auto", data=self.auto)
+
         dest.create_dataset("totals1", data=self.totals1, **hdf_compression)
         dest.create_dataset("totals2", data=self.totals2, **hdf_compression)
-        dest.create_dataset("auto", data=self.auto)
 
     @property
     def num_patches(self) -> int:
@@ -180,13 +178,22 @@ class PatchedCounts(BinwisePatchwiseArray):
 
     @classmethod
     def from_hdf(cls: type[Tcounts], source: h5py.Group) -> Tcounts:
-        is_legacy = "version" not in source.attrs
-        binning = Binning.from_hdf(source["binning"])
-
-        num_patches = source["n_patches" if is_legacy else "num_patches"][()]
-        patch_pairs = source["keys" if is_legacy else "patch_pairs"][:]
-        binned_counts = source["data" if is_legacy else "binned_counts"][:]
         auto = source["auto"][()]
+
+        if is_legacy_dataset(source):
+            binning = load_legacy_binning(source)
+
+            num_patches = source["n_patches"][()]
+            patch_pairs = source["keys"][:]
+            binned_counts = source["data"][:]
+
+        else:
+            binning = Binning.from_hdf(source["binning"])
+
+            num_patches = source["num_patches"][()]
+            patch_pairs = source["patch_pairs"][:]
+            binned_counts = source["binned_counts"][:]
+
 
         new = cls.zeros(binning, num_patches, auto=auto)
         for (patch_id1, patch_id2), counts in zip(patch_pairs, binned_counts):
@@ -195,20 +202,20 @@ class PatchedCounts(BinwisePatchwiseArray):
         return new
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        from yaw import __version__
+        write_version_tag(dest)
 
-        dest.attrs["version"] = __version__
         self.binning.to_hdf(dest.create_group("binning"))
+        dest.create_dataset("auto", data=self.auto)
+        dest.create_dataset("num_patches", data=self.num_patches)
 
         is_nonzero = np.any(self.counts, axis=0)
         patch_ids1, patch_ids2 = np.nonzero(is_nonzero)
         patch_pairs = np.column_stack([patch_ids1, patch_ids2])
-        binned_counts = self.counts[:, patch_ids1, patch_ids2]
-
-        dest.create_dataset("num_patches", data=self.num_patches)
         dest.create_dataset("patch_pairs", data=patch_pairs, **hdf_compression)
+
+        counts = self.counts[:, patch_ids1, patch_ids2]
+        binned_counts = np.moveaxis(counts, 0, -1)  # match patch_pairs
         dest.create_dataset("binned_counts", data=binned_counts, **hdf_compression)
-        dest.create_dataset("auto", data=self.auto)
 
     @property
     def num_patches(self) -> int:
@@ -264,24 +271,31 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts[:, patch_id1, patch_id2] = counts_binned
 
 
-@dataclass(frozen=True, eq=False, repr=False, slots=True)
 class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
-    counts: PatchedCounts
-    totals: PatchedTotals
+    __slots__ = ("counts", "totals")
 
-    def __post_init__(self) -> None:
-        if self.counts.num_patches != self.totals.num_patches:
+    def __init__(self, counts: PatchedCounts, totals: PatchedTotals) -> None:
+        if counts.num_patches != totals.num_patches:
             raise ValueError("number of patches of 'count' and total' does not match")
-        if self.counts.num_bins != self.totals.num_bins:
+        if counts.num_bins != totals.num_bins:
             raise ValueError("number of bins of 'count' and total' does not match")
+        
+        self.counts = counts
+        self.totals = totals
 
     @classmethod
     def from_hdf(cls: type[Tnormalised], source: h5py.Group) -> Tnormalised:
-        counts = PatchedCounts.from_hdf(source["counts"])
-        totals = PatchedTotals.from_hdf(source["totals"])
+        name = "count" if is_legacy_dataset(source) else "counts"
+        counts = PatchedCounts.from_hdf(source[name])
+
+        name = "total" if is_legacy_dataset(source) else "totals"
+        totals = PatchedTotals.from_hdf(source[name])
+
         return cls(counts=counts, totals=totals)
 
     def to_hdf(self, dest: h5py.Group) -> None:
+        write_version_tag(dest)
+
         group = dest.create_group("counts")
         self.counts.to_hdf(group)
 
@@ -343,8 +357,8 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
     def sample_patch_sum(self, config: ResamplingConfig | None = None) -> SampledData:
         config = config or ResamplingConfig()
 
-        counts = self.counts.sample_sum(config)
-        totals = self.totals.sample_sum(config)
+        counts = self.counts.sample_patch_sum(config)
+        totals = self.totals.sample_patch_sum(config)
 
         data = counts.data / totals.data
         samples = counts.samples / totals.samples

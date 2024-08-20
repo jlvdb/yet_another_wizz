@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import warnings
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, TypeVar
 
 import h5py
 import numpy as np
 
-from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
+from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
 from yaw.config import ResamplingConfig
-from yaw.containers import Binning, CorrData
+from yaw.containers import Binning, CorrData, write_version_tag
 from yaw.paircounts import NormalisedCounts
 
 if TYPE_CHECKING:
@@ -283,25 +282,28 @@ class LandySzalay(CorrelationEstimator):
         return (dd - (dr + rd) + rr) / rr
 
 
-@dataclass(frozen=True)
-class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
-    dd: NormalisedCounts
-    dr: NormalisedCounts | None = field(default=None)
-    rd: NormalisedCounts | None = field(default=None)
-    rr: NormalisedCounts | None = field(default=None)
+class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
+    __slots__ = ("dd", "dr", "rd", "rr")
 
-    def __post_init__(self) -> None:
-        if self.dr is None and self.rd is None and self.rr is None:
+    def __init__(
+        self,
+        dd: NormalisedCounts,
+        dr: NormalisedCounts | None = None,
+        rd: NormalisedCounts | None = None,
+        rr: NormalisedCounts | None = None,
+    ) -> None:
+        if dr is None and rd is None and rr is None:
             raise ValueError("either 'dr', 'rd' or 'rr' is required")
 
-        for kind in ("dr", "rd", "rr"):
-            pairs: NormalisedCounts | None = getattr(self, kind)
-            if pairs is not None:
+        self.dd = dd
+        for kind, counts in zip(("dr", "rd", "rr"), (dr, rd, rr)):
+            if counts is not None:
                 try:
-                    self.dd.is_compatible(pairs, require=True)
+                    dd.is_compatible(counts, require=True)
                 except ValueError as err:
                     msg = f"pair counts '{kind}' and 'dd' are not compatible"
                     raise ValueError(msg) from err
+            setattr(self, kind, counts)
 
     @property
     def binning(self) -> Binning:
@@ -314,26 +316,35 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
     @classmethod
     def from_hdf(cls: type[Tcorrfunc], source: h5py.Group) -> Tcorrfunc:
         def _try_load(root: h5py.Group, name: str) -> NormalisedCounts | None:
-            try:
+            if name in root:
                 return NormalisedCounts.from_hdf(root[name])
-            except KeyError:
-                return None
 
-        dd = NormalisedCounts.from_hdf(source["data_data"])
-        dr = _try_load(source, "data_random")
-        rd = _try_load(source, "random_data")
-        rr = _try_load(source, "random_random")
-        return cls(dd=dd, dr=dr, rd=rd, rr=rr)
+        # ignore "version" since this method did not change from legacy
+        names = ("data_data", "data_random", "random_data", "random_random")
+        kwargs = {
+            kind: _try_load(source, name)
+            for kind, name in zip(("dd", "dr", "rd", "rr"), names)
+        }
+        return cls(**kwargs)
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        group_names = dict(
-            dd="data_data", dr="data_random", rd="random_data", rr="random_random"
-        )
-        for kind, name in group_names.items():
-            data: NormalisedCounts | None = getattr(self, kind)
-            if data is not None:
+        write_version_tag(dest)
+
+        names = ("data_data", "data_random", "random_data", "random_random")
+        counts = (self.dd, self.dr, self.rd, self.rr)
+        for name, count in zip(names, counts):
+            if count is not None:
                 group = dest.create_group(name)
-                data.to_hdf(group)
+                count.to_hdf(group)
+
+    def to_dict(self) -> dict[str, NormalisedCounts]:
+        attrs = ("dd", "dr", "rd", "rr")
+        the_dict = {}
+        for attr in attrs:
+            counts = getattr(self, attr)
+            if counts is not None:
+                the_dict[attr] = counts
+        return the_dict
 
     @property
     def num_patches(self) -> int:
@@ -343,7 +354,7 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
         if not isinstance(other, self.__class__):
             return NotImplemented
 
-        for kind in ("dd", "dr", "rd", "rr"):
+        for kind in set(self.to_dict()) | set(other.to_dict()):
             if getattr(self, kind) != getattr(other, kind):
                 return False
 
@@ -354,22 +365,14 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
             return NotImplemented
 
         self.is_compatible(other)
-        kwargs = {
-            kind: getattr(self, kind) + getattr(other, kind)
-            for kind in ("dd", "dr", "rd", "rr")
-            if getattr(self, kind) is not None
-        }
+        kwargs = {attr: counts + getattr(other, attr) for attr, counts in self.to_dict().items()}
         return type(self)(**kwargs)
 
     def __mul__(self: Tcorrfunc, other: object) -> Tcorrfunc:
         if not np.isscalar(other) or isinstance(other, (bool, np.bool_)):
             return NotImplemented
 
-        kwargs = {
-            kind: getattr(self, kind) * kind
-            for kind in ("dd", "dr", "rd", "rr")
-            if getattr(self, kind) is not None
-        }
+        kwargs = {attr: counts * other for attr, counts in self.to_dict().items()}
         return type(self)(**kwargs)
 
     def _make_patch_slice(self: Tcorrfunc, item: int | slice) -> Tcorrfunc:
@@ -384,25 +387,12 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
                 return False
             raise TypeError(f"{type(other)} is not compatible with {type(self)}")
 
-        dims_compatible = self.counts.is_compatible(other.counts, require=require)
-        if not dims_compatible:
-            return False
-
-        for kind in ("dr", "rd", "rr"):
-            if (getattr(self, kind) is None) != (getattr(other, kind) is None):
-                if require:
-                    raise ValueError(f"'{kind}' is not compatible")
-                return False
-
-        return True
+        return self.dd.is_compatible(other.dd, require=require)
 
     @property
     def estimators(self) -> dict[str, CorrelationEstimator]:
         """TODO: revise"""
-        available = set()
-        for attr in fields(self):
-            if getattr(self, attr.name) is not None:
-                available.add(cts_from_code(attr.name))
+        available = {cts_from_code(attr) for attr in self.to_dict()}
 
         estimators = {}
         for estimator in CorrelationEstimator.variants:
@@ -430,11 +420,9 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
             except ValueError as e:
                 raise ValueError(f"invalid estimator '{estimator}'") from e
             # determine which pair counts are missing
-            for attr in fields(self):
-                name = attr.name
-                cts = cts_from_code(name)
-                if getattr(self, name) is None and cts in est_class.requires:
-                    raise EstimatorError(f"estimator requires {name}")
+            available_counts = {cts_from_code(name) for name in self.to_dict()}
+            for missing in est_class.requires - available_counts:
+                raise EstimatorError(f"estimator requires {missing}")
         # select the correct estimator
         cls = options[estimator]
         return cls
@@ -465,7 +453,7 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
         required_samples = {}
         for cts in est_fun.requires:
             try:  # if pairs are None, estimator with throw error
-                pairs = self._getattr_from_cts(cts).sample(config)
+                pairs = self._getattr_from_cts(cts).sample_patch_sum(config)
                 required_data[str(cts)] = pairs.data
                 required_samples[str(cts)] = pairs.samples
             except AttributeError as e:
@@ -476,7 +464,7 @@ class CorrFunc(BinwiseData, PatchwiseData, HdfSerializable):
         optional_samples = {}
         for cts in est_fun.optional:
             try:  # if pairs are None, estimator with throw error
-                pairs = self._getattr_from_cts(cts).sample(config)
+                pairs = self._getattr_from_cts(cts).sample_patch_sum(config)
                 optional_data[str(cts)] = pairs.data
                 optional_samples[str(cts)] = pairs.samples
             except AttributeError as e:

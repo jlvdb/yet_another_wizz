@@ -48,7 +48,7 @@ class Serialisable(ABC):
         return self.__getstate__()
 
 
-class JsonSerialisable(ABC):
+class JsonSerialisable(Serialisable):
     @classmethod
     def from_file(cls: type[Tjson], path: Tpath) -> Tjson:
         with Path(path).open() as f:
