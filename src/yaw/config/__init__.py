@@ -27,10 +27,8 @@ from yaw.config import default as DEFAULT
 from yaw.config.options import OPTIONS
 
 # isort: split
-from yaw.config.backend import BackendConfig
 from yaw.config.binning import BinningConfig
 from yaw.config.config import Configuration
-from yaw.config.resampling import ResamplingConfig
 from yaw.config.scales import ScalesConfig
 
 __all__ = [

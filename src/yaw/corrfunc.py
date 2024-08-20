@@ -8,7 +8,6 @@ import h5py
 import numpy as np
 
 from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
-from yaw.config import ResamplingConfig
 from yaw.containers import Binning, CorrData, write_version_tag
 from yaw.paircounts import NormalisedCounts
 
@@ -443,20 +442,17 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
     def sample(
         self: Tcorrfunc,
-        config: ResamplingConfig | None = None,
         *,
         estimator: str | None = None,
     ) -> Tcorrfunc:
         """TODO: revise"""
-        if config is None:
-            config = ResamplingConfig()
         est_fun = self._check_and_select_estimator(estimator)
 
         required_data = {}
         required_samples = {}
         for cts in est_fun.requires:
             try:  # if pairs are None, estimator with throw error
-                pairs = self._getattr_from_cts(cts).sample_patch_sum(config)
+                pairs = self._getattr_from_cts(cts).sample_patch_sum()
                 required_data[str(cts)] = pairs.data
                 required_samples[str(cts)] = pairs.samples
             except AttributeError as e:
@@ -467,7 +463,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         optional_samples = {}
         for cts in est_fun.optional:
             try:  # if pairs are None, estimator with throw error
-                pairs = self._getattr_from_cts(cts).sample_patch_sum(config)
+                pairs = self._getattr_from_cts(cts).sample_patch_sum()
                 optional_data[str(cts)] = pairs.data
                 optional_samples[str(cts)] = pairs.samples
             except AttributeError as e:
@@ -476,4 +472,4 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
         data = est_fun.eval(**required_data, **optional_data)
         samples = est_fun.eval(**required_samples, **optional_samples)
-        return CorrData(self.binning, data, samples, method=config.method)
+        return CorrData(self.binning, data, samples)

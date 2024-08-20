@@ -13,7 +13,6 @@ from yaw.config import OPTIONS
 from yaw.config import default as DEFAULT
 from yaw.config import utils
 from yaw.config.abc import BaseConfig
-from yaw.config.backend import BackendConfig
 from yaw.config.binning import BinningConfig
 from yaw.config.doc_utils import Parameter
 from yaw.config.scales import ScalesConfig
@@ -65,8 +64,6 @@ class Configuration(BaseConfig):
     """The configuration of the measurement scales."""
     binning: BinningConfig
     """The redshift binning configuration."""
-    backend: BackendConfig = field(default_factory=BackendConfig)
-    """The backend-specific configuration."""
     cosmology: TypeCosmology | str | None = field(
         default=DEFAULT.Configuration.cosmology,
         metadata=Parameter(
@@ -108,10 +105,6 @@ class Configuration(BaseConfig):
         zbin_num: int | None = DEFAULT.Configuration.binning.zbin_num,
         method: str = DEFAULT.Configuration.binning.method,
         zbins: NDArray[np.float64] | None = None,
-        # BackendConfig
-        thread_num: int | None = DEFAULT.Configuration.backend.thread_num,
-        crosspatch: bool = DEFAULT.Configuration.backend.crosspatch,
-        rbin_slop: float = DEFAULT.Configuration.backend.rbin_slop,
     ) -> Configuration:
         """Create a new configuration object.
 
@@ -177,10 +170,7 @@ class Configuration(BaseConfig):
             method=method,
             zbins=zbins,
         )
-        backend = BackendConfig.create(
-            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
-        )
-        return cls(scales=scales, binning=binning, backend=backend, cosmology=cosmology)
+        return cls(scales=scales, binning=binning, cosmology=cosmology)
 
     def modify(
         self,
@@ -197,10 +187,6 @@ class Configuration(BaseConfig):
         zbin_num: int | None = DEFAULT.NotSet,
         method: str | None = DEFAULT.NotSet,
         zbins: NDArray[np.float64] | None = DEFAULT.NotSet,
-        # BackendConfig
-        thread_num: int | None = DEFAULT.NotSet,
-        crosspatch: bool | None = DEFAULT.NotSet,
-        rbin_slop: float | None = DEFAULT.NotSet,
     ) -> Configuration:
         if cosmology is DEFAULT.NotSet:
             cosmology = self.cosmology
@@ -217,12 +203,7 @@ class Configuration(BaseConfig):
             zbins=zbins,
             cosmology=cosmology,
         )
-        backend = self.backend.modify(
-            thread_num=thread_num, crosspatch=crosspatch, rbin_slop=rbin_slop
-        )
-        return self.__class__(
-            cosmology=cosmology, scales=scales, binning=binning, backend=backend
-        )
+        return self.__class__(cosmology=cosmology, scales=scales, binning=binning)
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> Configuration:
@@ -241,19 +222,11 @@ class Configuration(BaseConfig):
             binning = BinningConfig.from_dict(binning_dict, cosmology=cosmology)
         except (TypeError, KeyError) as e:
             utils.parse_section_error(e, "binning")
-        # parse the optional subgroups
-        try:
-            backend_dict = config.pop("backend")
-            backend = BackendConfig.from_dict(backend_dict)
-        except KeyError:
-            backend = BackendConfig()
-        except TypeError as e:
-            utils.parse_section_error(e, "backend")
         # check that there are no entries left
         if len(config) > 0:
             key = next(iter(config.keys()))
             raise utils.ConfigError(f"encountered unknown section '{key}'")
-        return cls(scales=scales, binning=binning, backend=backend, cosmology=cosmology)
+        return cls(scales=scales, binning=binning, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
         values = dict()
