@@ -14,33 +14,12 @@ __all__ = [
 ]
 
 Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
-Tcoord = TypeVar("Tcoord", bound="AngularCoordinates")
-Tdist = TypeVar("Tdist", bound="AngularDistances")
 
 
 def sgn(val: ArrayLike) -> ArrayLike:
     """Compute the sign of a (array of) numbers, with positive numbers and 0
     returning 1, negative number returning -1."""
     return np.where(val == 0, 1.0, np.sign(val))
-
-
-def coord_xyz_to_sky(xyz: ArrayLike) -> NDArray:
-    x, y, z = np.transpose(xyz)
-
-    r_d2 = np.sqrt(x * x + y * y)
-    r_d3 = np.sqrt(x * x + y * y + z * z)
-    x_normed = np.ones_like(x)  # fallback for zero-division, arccos(1)=0.0
-    np.divide(x, r_d2, where=r_d2 > 0.0, out=x_normed)
-
-    ra = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
-    dec = np.arcsin(z / r_d3)
-    return np.column_stack([ra, dec])
-
-
-def dist_xyz_to_sky(dist: ArrayLike) -> NDArray:
-    if np.any(dist > 2.0):
-        raise ValueError("distance exceeds size of unit sphere")
-    return 2.0 * np.arcsin(dist / 2.0)
 
 
 class CustomNumpyArray(Iterable, Sized):
@@ -77,12 +56,22 @@ class AngularCoordinates(CustomNumpyArray):
             raise ValueError(f"invalid coordinate dimensions, expected 2")
 
     @classmethod
-    def from_coords(cls: type[Tcoord], coords: Iterable[AngularCoordinates]) -> Tcoord:
-        return cls([coord.to_sky().data for coord in coords])
+    def from_coords(cls, coords: Iterable[AngularCoordinates]) -> AngularCoordinates:
+        return cls(np.concatenate(list(coords)))
 
     @classmethod
-    def from_3d(cls: type[Tcoord], xyz: ArrayLike) -> Tcoord:
-        return cls(coord_xyz_to_sky(xyz))
+    def from_3d(cls, xyz: ArrayLike) -> AngularCoordinates:
+        x, y, z = np.transpose(xyz)
+
+        r_d2 = np.sqrt(x * x + y * y)
+        r_d3 = np.sqrt(x * x + y * y + z * z)
+        x_normed = np.ones_like(x)  # fallback for zero-division, arccos(1)=0.0
+        np.divide(x, r_d2, where=r_d2 > 0.0, out=x_normed)
+
+        ra = np.arccos(x_normed) * sgn(y) % (2.0 * np.pi)
+        dec = np.arcsin(z / r_d3)
+        ra_dec = np.column_stack([ra, dec])
+        return cls(ra_dec)
 
     def to_3d(self) -> NDArray:
         cos_dec = np.cos(self.dec)
@@ -105,10 +94,9 @@ class AngularCoordinates(CustomNumpyArray):
 
         return self.data == other.data
 
-    def mean(self: Tcoord) -> Tcoord:
+    def mean(self) -> AngularCoordinates:
         mean_xyz = self.to_3d().mean(axis=0)
-        mean = coord_xyz_to_sky(mean_xyz)
-        return type(self)(mean)
+        return type(self).from_3d(mean_xyz)
 
     def distance(self, other: AngularCoordinates) -> AngularDistances:
         if not isinstance(other, type(self)):
@@ -127,12 +115,16 @@ class AngularDistances(CustomNumpyArray):
         self.data = np.atleast_1d(data).astype(np.float64, copy=False)
 
     @classmethod
-    def from_dists(cls: type[Tdist], dists: Iterable[AngularDistances]) -> Tdist:
-        return cls(np.concatenate([dist.to_sky() for dist in dists]))
+    def from_dists(cls, dists: Iterable[AngularDistances]) -> AngularDistances:
+        return cls(np.concatenate(list(dists)))
 
     @classmethod
-    def from_3d(cls: type[Tcoord], dists: ArrayLike) -> Tcoord:
-        return cls(dist_xyz_to_sky(dists))
+    def from_3d(cls, dists: ArrayLike) -> AngularDistances:
+        if np.any(dists > 2.0):
+            raise ValueError("distance exceeds size of unit sphere")
+
+        angles = 2.0 * np.arcsin(dists / 2.0)
+        return cls(angles)
 
     def to_3d(self) -> NDArray:
         return 2.0 * np.sin(self.data / 2.0)
@@ -149,20 +141,20 @@ class AngularDistances(CustomNumpyArray):
 
         return self.data < other.data
 
-    def __add__(self: Tdist, other: Any) -> Tdist:
+    def __add__(self, other: Any) -> AngularDistances:
         if type(self) is not type(other):
             return NotImplemented
 
-        return dist_xyz_to_sky(self.to_3d() + other.to_3d())
+        return type(self)(self.data + other.data)
 
-    def __sub__(self: Tdist, other: Any) -> Tdist:
+    def __sub__(self, other: Any) -> AngularDistances:
         if type(self) is not type(other):
             return NotImplemented
     
-        return dist_xyz_to_sky(self.to_3d() - other.to_3d())
+        return type(self)(self.data - other.data)
 
-    def min(self: Tdist) -> Tdist:
+    def min(self) -> AngularDistances:
         return type(self)(self.data.min())
 
-    def max(self: Tdist) -> Tdist:
+    def max(self) -> AngularDistances:
         return type(self)(self.data.max())
