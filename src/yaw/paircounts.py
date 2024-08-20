@@ -9,7 +9,14 @@ from numpy.typing import NDArray
 
 from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
 from yaw.config import ResamplingConfig
-from yaw.containers import Binning, SampledData, hdf_compression, load_legacy_binning, is_legacy_dataset, write_version_tag
+from yaw.containers import (
+    Binning,
+    SampledData,
+    hdf_compression,
+    is_legacy_dataset,
+    load_legacy_binning,
+    write_version_tag,
+)
 
 __all__ = [
     "PatchedTotals",
@@ -194,7 +201,6 @@ class PatchedCounts(BinwisePatchwiseArray):
             patch_pairs = source["patch_pairs"][:]
             binned_counts = source["binned_counts"][:]
 
-
         new = cls.zeros(binning, num_patches, auto=auto)
         for (patch_id1, patch_id2), counts in zip(patch_pairs, binned_counts):
             new.set_patch_pair(patch_id1, patch_id2, counts)
@@ -279,7 +285,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
             raise ValueError("number of patches of 'count' and total' does not match")
         if counts.num_bins != totals.num_bins:
             raise ValueError("number of bins of 'count' and total' does not match")
-        
+
         self.counts = counts
         self.totals = totals
 

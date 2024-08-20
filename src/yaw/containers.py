@@ -99,7 +99,7 @@ class Binning(HdfSerializable):
     def from_hdf(cls: type[Tbinning], source: Group) -> Tbinning:
         # ignore "version" since there is no equivalent in legacy
         edges = source["edges"][:]
-        closed = source["closed"][()].decode('utf-8')
+        closed = source["closed"][()].decode("utf-8")
         return cls(edges, closed=closed)
 
     def to_hdf(self, dest: Group) -> None:

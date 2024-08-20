@@ -365,7 +365,10 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
             return NotImplemented
 
         self.is_compatible(other)
-        kwargs = {attr: counts + getattr(other, attr) for attr, counts in self.to_dict().items()}
+        kwargs = {
+            attr: counts + getattr(other, attr)
+            for attr, counts in self.to_dict().items()
+        }
         return type(self)(**kwargs)
 
     def __mul__(self: Tcorrfunc, other: object) -> Tcorrfunc:

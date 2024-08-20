@@ -18,14 +18,15 @@ Author: Jan Luca van den Busch
         (Ruhr-Universität Bochum, Astronomisches Institut)
 """
 
+from yaw._version import __version__
 from yaw.catalog import Catalog
 from yaw.config import Configuration, ResamplingConfig
 from yaw.containers import CorrData, HistData, RedshiftData
 from yaw.corrfunc import CorrFunc
 from yaw.measurements import autocorrelate, crosscorrelate
-from yaw._version import __version__
 
 __all__ = [
+    "__version__",
     "Catalog",
     "Configuration",
     "CorrData",

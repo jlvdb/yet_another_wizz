@@ -17,7 +17,7 @@ from yaw.config.backend import BackendConfig
 from yaw.config.binning import BinningConfig
 from yaw.config.doc_utils import Parameter
 from yaw.config.scales import ScalesConfig
-from yaw.cosmology import TypeCosmology, get_default_cosmology, r_kpc_to_angle
+from yaw.cosmology import TypeCosmology, get_default_cosmology
 
 __all__ = ["Configuration"]
 
