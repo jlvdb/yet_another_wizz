@@ -542,19 +542,15 @@ class RedshiftData(CorrData):
         cross_corr: CorrFunc,
         ref_corr: CorrFunc | None = None,
         unk_corr: CorrFunc | None = None,
-        *,
-        cross_est: str | None = None,
-        ref_est: str | None = None,
-        unk_est: str | None = None,
     ) -> RedshiftData:
         if ref_corr is not None:
             cross_corr.is_compatible(ref_corr, require=True)
         if unk_corr is not None:
             cross_corr.is_compatible(unk_corr, require=True)
 
-        cross_data = cross_corr.sample(estimator=cross_est)
-        ref_data = ref_corr.sample(estimator=ref_est) if ref_corr else None
-        unk_data = unk_corr.sample(estimator=unk_est) if unk_corr else None
+        cross_data = cross_corr.sample()
+        ref_data = ref_corr.sample() if ref_corr else None
+        unk_data = unk_corr.sample() if unk_corr else None
 
         return cls.from_corrdata(cross_data, ref_data, unk_data)
 

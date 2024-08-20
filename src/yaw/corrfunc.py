@@ -159,7 +159,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
         return self.dd.is_compatible(other.dd, require=require)
 
-    def sample(self, *, estimator: str | None = None) -> CorrData:
+    def sample(self) -> CorrData:
         if self.rr is None:
             estimator = davis_peebles
         else:
