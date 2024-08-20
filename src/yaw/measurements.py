@@ -14,11 +14,11 @@ from yaw.catalog import Catalog, Patch
 from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.config import Configuration
 from yaw.containers import Binning
+from yaw.coordinates import AngularDistances
 from yaw.corrfunc import CorrFunc
 from yaw.cosmology import r_kpc_to_angle
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import ParallelHelper
-from yaw.coordinates import AngularDistances
 
 __all__ = [
     "PatchLinkage",
@@ -83,7 +83,9 @@ def check_patch_conistency(catalog: Catalog, *catalogs: Catalog, rtol: float = 0
             raise InconsistentPatchesError("patch centers are not aligned")
 
 
-def get_max_angle(config: Configuration, redshift_limit: float = 0.05) -> AngularDistances:
+def get_max_angle(
+    config: Configuration, redshift_limit: float = 0.05
+) -> AngularDistances:
     min_redshift = max(config.binning.zmin, redshift_limit)
 
     phys_scales = config.scales.as_array()

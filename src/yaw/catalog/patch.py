@@ -98,7 +98,9 @@ class Metadata(JsonSerialisable):
         self.radius = radius
 
     @classmethod
-    def compute(cls, coords: AngularCoordinates, weights: NDArray | None = None) -> Metadata:
+    def compute(
+        cls, coords: AngularCoordinates, weights: NDArray | None = None
+    ) -> Metadata:
         new = super().__new__(cls)
         new.num_records = len(coords)
         if weights is None:

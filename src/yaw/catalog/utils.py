@@ -127,7 +127,9 @@ class DataChunk(Serialisable):
 
     def split(self, num_chunks: int) -> list[DataChunk]:
         splitted = dict(
-            coords=[AngularCoordinates(v) for v in np.array_split(self.coords, num_chunks)]
+            coords=[
+                AngularCoordinates(v) for v in np.array_split(self.coords, num_chunks)
+            ]
         )
         for attr, values in self.to_dict().items():
             splits = np.array_split(values, num_chunks)

@@ -8,9 +8,8 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 __all__ = [
-    "CoordsSky",
-    "Dists3D",
-    "DistsSky",
+    "AngularCoordinates",
+    "AngularDistances",
 ]
 
 Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
@@ -53,7 +52,7 @@ class AngularCoordinates(CustomNumpyArray):
     def __init__(self, data: ArrayLike) -> None:
         self.data = np.atleast_2d(data).astype(np.float64, copy=False)
         if not self.data.shape[1] == 2:
-            raise ValueError(f"invalid coordinate dimensions, expected 2")
+            raise ValueError("invalid coordinate dimensions, expected 2")
 
     @classmethod
     def from_coords(cls, coords: Iterable[AngularCoordinates]) -> AngularCoordinates:
@@ -104,7 +103,7 @@ class AngularCoordinates(CustomNumpyArray):
 
         self_xyz = self.to_3d()
         other_xyz = other.to_3d()
-        coord_diff_sq = (self_xyz - other_xyz)**2
+        coord_diff_sq = (self_xyz - other_xyz) ** 2
         dists = np.sqrt(coord_diff_sq.sum(axis=1))
         return AngularDistances.from_3d(dists)
 
@@ -150,7 +149,7 @@ class AngularDistances(CustomNumpyArray):
     def __sub__(self, other: Any) -> AngularDistances:
         if type(self) is not type(other):
             return NotImplemented
-    
+
         return type(self)(self.data - other.data)
 
     def min(self) -> AngularDistances:

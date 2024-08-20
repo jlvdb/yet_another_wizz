@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 __all__ = [
     "CorrFunc",
 ]
-
-Tcorrfunc = TypeVar("Tcorrfunc", bound="CorrFunc")
 
 
 class EstimatorError(Exception):
@@ -437,7 +435,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         else:
             return getattr(self, str(cts))
 
-    def sample(self, *, estimator: str | None = None,) -> Tcorrfunc:
+    def sample(self, *, estimator: str | None = None) -> CorrData:
         """TODO: revise"""
         est_fun = self._check_and_select_estimator(estimator)
 

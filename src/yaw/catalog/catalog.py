@@ -22,8 +22,8 @@ from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, default_closed, parse_binning
-from yaw.utils import ParallelHelper
 from yaw.coordinates import AngularCoordinates, AngularDistances
+from yaw.utils import ParallelHelper
 
 __all__ = [
     "Catalog",
@@ -67,7 +67,9 @@ class PatchMode(Enum):
         raise ValueError("no patch method specified")
 
 
-def create_patch_centers(reader: BaseReader, patch_num: int, probe_size: int) -> AngularCoordinates:
+def create_patch_centers(
+    reader: BaseReader, patch_num: int, probe_size: int
+) -> AngularCoordinates:
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
     sparse_factor = np.ceil(reader.num_records / probe_size)
@@ -161,7 +163,9 @@ def write_patches(
     if isinstance(patch_centers, Catalog):
         patch_centers = patch_centers.get_centers()
     elif not isinstance(patch_centers, AngularCoordinates):
-        raise TypeError("'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'")
+        raise TypeError(
+            "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
+        )
     preprocess = ChunkProcessor(patch_centers)
 
     chunk_iter_progress_optional = tqdm(
@@ -373,7 +377,9 @@ class Catalog(Mapping[int, Patch]):
         return tuple(patch.meta.total for patch in self.values())
 
     def get_centers(self) -> AngularCoordinates:
-        return AngularCoordinates.from_coords(patch.meta.center for patch in self.values())
+        return AngularCoordinates.from_coords(
+            patch.meta.center for patch in self.values()
+        )
 
     def get_radii(self) -> AngularDistances:
         return AngularDistances.from_dists(patch.meta.radius for patch in self.values())
