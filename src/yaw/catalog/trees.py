@@ -12,7 +12,7 @@ from scipy.spatial import KDTree
 
 from yaw.catalog.utils import groupby_binning
 from yaw.containers import Tclosed, default_closed, parse_binning
-from yaw.coordinates import Coordinates, CoordsSky, DistsSky
+from yaw.coordinates import AngularCoordinates, AngularDistances
 
 if TYPE_CHECKING:
     from yaw.catalog.patch import Patch
@@ -82,9 +82,11 @@ def get_counts_for_limits(
 
 
 class AngularTree(Sized):
+    __slots__ = ("num_records", "weights", "total", "tree")
+
     def __init__(
         self,
-        coords: Coordinates,
+        coords: AngularCoordinates,
         weights: NDArray | None = None,
         *,
         leafsize: int = 16,
@@ -123,7 +125,7 @@ class AngularTree(Sized):
         try:
             counts = self.tree.count_neighbors(
                 other.tree,
-                r=DistsSky(ang_bins).to_3d(),
+                r=AngularDistances(ang_bins).to_3d(),
                 weights=(self.weights, other.weights),
                 cumulative=cumulative,
             ).astype(np.float64)
@@ -156,7 +158,7 @@ def build_binned_trees(
         coords=patch.coords,
         **extra_attrs,
     ):
-        bin_data["coords"] = CoordsSky(bin_data["coords"])
+        bin_data["coords"] = AngularCoordinates(bin_data["coords"])
         tree = AngularTree(**bin_data, leafsize=leafsize)
         trees.append(tree)
 
@@ -164,7 +166,7 @@ def build_binned_trees(
 
 
 class BinnedTrees(Iterable):
-    _patch: Patch
+    __slots__ = ("_patch", "binning")
 
     def __init__(self, patch: Patch) -> None:
         self._patch = patch
