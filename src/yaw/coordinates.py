@@ -93,8 +93,8 @@ class AngularCoordinates(CustomNumpyArray):
 
         return self.data == other.data
 
-    def mean(self) -> AngularCoordinates:
-        mean_xyz = self.to_3d().mean(axis=0)
+    def mean(self, weights: ArrayLike | None = None) -> AngularCoordinates:
+        mean_xyz = np.average(self.to_3d(), weights=weights, axis=0)
         return type(self).from_3d(mean_xyz)
 
     def distance(self, other: AngularCoordinates) -> AngularDistances:

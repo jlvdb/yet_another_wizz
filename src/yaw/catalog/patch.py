@@ -108,7 +108,7 @@ class Metadata(JsonSerialisable):
         else:
             new.total = float(np.sum(weights))
 
-        new.center = coords.mean()
+        new.center = coords.mean(weights)
         new.radius = coords.distance(new.center).max()
         return new
 
