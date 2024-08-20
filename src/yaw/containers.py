@@ -10,7 +10,7 @@ import numpy as np
 import scipy.optimize
 from h5py import Group
 from numpy.exceptions import AxisError
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from yaw._version import __version__
 from yaw.abc import (
@@ -88,7 +88,7 @@ def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray
 class Binning(HdfSerializable):
     __slots__ = ("edges", "closed")
 
-    def __init__(self, edges: Sequence, closed: Tclosed = default_closed) -> None:
+    def __init__(self, edges: ArrayLike, closed: Tclosed = default_closed) -> None:
         if closed not in Tclosed.__args__:
             raise ValueError("invalid value for 'closed'")
 
@@ -222,8 +222,8 @@ class SampledData(BinwiseData):
     def __init__(
         self,
         binning: Binning,
-        data: Sequence,
-        samples: Sequence,
+        data: ArrayLike,
+        samples: ArrayLike,
         *,
         method: Tmethod,
     ) -> None:

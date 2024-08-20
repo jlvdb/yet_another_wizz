@@ -5,7 +5,6 @@ routines that depend on cosmological distance calculations.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 
@@ -76,9 +75,7 @@ class CustomCosmology(ABC):
 TypeCosmology = Union[FLRW, CustomCosmology]
 
 
-def r_kpc_to_angle(
-    r_kpc: NDArray[np.float64] | Sequence[float], z: float, cosmology: TypeCosmology
-) -> NDArray[np.float64]:
+def r_kpc_to_angle(r_kpc: ArrayLike, z: float, cosmology: TypeCosmology) -> NDArray:
     """Convert from a physical separation in kpc to angles in radian at a given
     redshift.
 
