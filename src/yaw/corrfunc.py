@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import h5py
 import numpy as np
@@ -314,7 +314,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return self.dd.auto
 
     @classmethod
-    def from_hdf(cls: type[Tcorrfunc], source: h5py.Group) -> Tcorrfunc:
+    def from_hdf(cls, source: h5py.Group) -> CorrFunc:
         def _try_load(root: h5py.Group, name: str) -> NormalisedCounts | None:
             if name in root:
                 return NormalisedCounts.from_hdf(root[name])
@@ -325,7 +325,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
             kind: _try_load(source, name)
             for kind, name in zip(("dd", "dr", "rd", "rr"), names)
         }
-        return cls(**kwargs)
+        return cls.from_dict(kwargs)
 
     def to_hdf(self, dest: h5py.Group) -> None:
         write_version_tag(dest)
@@ -350,7 +350,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
     def num_patches(self) -> int:
         return self.dd.num_patches
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, self.__class__):
             return NotImplemented
 
@@ -360,7 +360,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
         return True
 
-    def __add__(self: Tcorrfunc, other: object) -> Tcorrfunc:
+    def __add__(self, other: Any) -> CorrFunc:
         if not isinstance(other, self.__class__):
             return NotImplemented
 
@@ -369,20 +369,22 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
             attr: counts + getattr(other, attr)
             for attr, counts in self.to_dict().items()
         }
-        return type(self)(**kwargs)
+        return type(self).from_dict(kwargs)
 
-    def __mul__(self: Tcorrfunc, other: object) -> Tcorrfunc:
+    def __mul__(self, other: Any) -> CorrFunc:
         if not np.isscalar(other) or isinstance(other, (bool, np.bool_)):
             return NotImplemented
 
         kwargs = {attr: counts * other for attr, counts in self.to_dict().items()}
-        return type(self)(**kwargs)
+        return type(self).from_dict(kwargs)
 
-    def _make_patch_slice(self: Tcorrfunc, item: int | slice) -> Tcorrfunc:
-        pass
+    def _make_bin_slice(self, item: int | slice) -> CorrFunc:
+        kwargs = {attr: counts.bins[item] for attr, counts in self.to_dict().items()}
+        return type(self).from_dict(kwargs)
 
-    def _make_bin_slice(self: Tcorrfunc, item: int | slice) -> Tcorrfunc:
-        pass
+    def _make_patch_slice(self, item: int | slice) -> CorrFunc:
+        kwargs = {attr: counts.patches[item] for attr, counts in self.to_dict().items()}
+        return type(self).from_dict(kwargs)
 
     def is_compatible(self, other: CorrFunc, *, require: bool = False) -> bool:
         if not isinstance(other, type(self)):
@@ -441,12 +443,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         else:
             return getattr(self, str(cts))
 
-    def sample(
-        self: Tcorrfunc,
-        config: ResamplingConfig | None = None,
-        *,
-        estimator: str | None = None,
-    ) -> Tcorrfunc:
+    def sample(self, config: ResamplingConfig | None = None, *, estimator: str | None = None) -> CorrData:
         """TODO: revise"""
         if config is None:
             config = ResamplingConfig()

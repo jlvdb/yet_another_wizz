@@ -532,7 +532,7 @@ class RedshiftData(CorrData):
         cross_data: CorrData,
         ref_data: CorrData | None = None,
         unk_data: CorrData | None = None,
-    ):
+    ) -> RedshiftData:
         w_sp_data = cross_data.data
         w_sp_samp = cross_data.samples
 
@@ -576,7 +576,7 @@ class RedshiftData(CorrData):
         ref_est: str | None = None,
         unk_est: str | None = None,
         config: ResamplingConfig | None = None,
-    ):
+    ) -> RedshiftData:
         config = config or ResamplingConfig()
 
         if ref_corr is not None:

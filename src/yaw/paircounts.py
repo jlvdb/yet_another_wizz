@@ -24,10 +24,6 @@ __all__ = [
     "NormalisedCounts",
 ]
 
-Ttotals = TypeVar("Ttotals", bound="PatchedTotals")
-Tcounts = TypeVar("Tcounts", bound="PatchedCounts")
-Tnormalised = TypeVar("Tnormalised", bound="NormalisedCounts")
-
 
 class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
     @property
@@ -89,7 +85,7 @@ class PatchedTotals(BinwisePatchwiseArray):
         self.totals2 = totals2.astype(np.float64)
 
     @classmethod
-    def from_hdf(cls: type[Ttotals], source: h5py.Group) -> Ttotals:
+    def from_hdf(cls, source: h5py.Group) -> PatchedTotals:
         new = cls.__new__(cls)
         new.auto = source["auto"][()]
 
@@ -127,7 +123,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def _make_bin_slice(self: Ttotals, item: int | slice) -> Ttotals:
+    def _make_bin_slice(self, item: int | slice) -> PatchedTotals:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
@@ -135,7 +131,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             binning, self.totals1[item], self.totals2[item], auto=self.auto
         )
 
-    def _make_patch_slice(self: Ttotals, item: int | slice) -> Ttotals:
+    def _make_patch_slice(self, item: int | slice) -> PatchedTotals:
         if isinstance(item, int):
             item = [item]
         return type(self)(
@@ -176,15 +172,13 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts = counts.astype(np.float64)
 
     @classmethod
-    def zeros(
-        cls: type[Tcounts], binning: Binning, num_patches: int, *, auto: bool
-    ) -> Tcounts:
+    def zeros(cls, binning: Binning, num_patches: int, *, auto: bool) -> PatchedCounts:
         num_bins = len(binning)
         counts = np.zeros((num_bins, num_patches, num_patches))
         return cls(binning, counts, auto=auto)
 
     @classmethod
-    def from_hdf(cls: type[Tcounts], source: h5py.Group) -> Tcounts:
+    def from_hdf(cls, source: h5py.Group) -> PatchedCounts:
         auto = source["auto"][()]
 
         if is_legacy_dataset(source):
@@ -237,25 +231,25 @@ class PatchedCounts(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def __add__(self: Tcounts, other: Any) -> Tcounts:
+    def __add__(self, other: Any) -> PatchedCounts:
         if not isinstance(other, self.__class__):
             return NotImplemented
 
         self.is_compatible(other, require=True)
         return type(self)(self.binning, self.counts + other.counts, auto=self.auto)
 
-    def __radd__(self: Tcounts, other: Any) -> Tcounts:
+    def __radd__(self, other: Any) -> PatchedCounts:
         if np.isscalar(other) and other == 0:
             return self  # this convenient when applying sum()
         return self.__add__(other)
 
-    def __mul__(self: Tcounts, other: Any) -> Tcounts:
+    def __mul__(self, other: Any) -> PatchedCounts:
         if not np.isscalar(other) or isinstance(other, (bool, np.bool_)):
             return NotImplemented
 
         return type(self)(self.binning, self.counts * other, auto=self.auto)
 
-    def _make_bin_slice(self: Tcounts, item: int | slice) -> Tcounts:
+    def _make_bin_slice(self, item: int | slice) -> PatchedCounts:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
@@ -263,7 +257,7 @@ class PatchedCounts(BinwisePatchwiseArray):
             binning, self.totals1[item], self.totals2[item], auto=self.auto
         )
 
-    def _make_patch_slice(self: Tcounts, item: int | slice) -> Tcounts:
+    def _make_patch_slice(self, item: int | slice) -> PatchedCounts:
         if isinstance(item, int):
             item = [item]
         return type(self)(self.binning, self.counts[:, item, item], auto=self.auto)
@@ -290,7 +284,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
         self.totals = totals
 
     @classmethod
-    def from_hdf(cls: type[Tnormalised], source: h5py.Group) -> Tnormalised:
+    def from_hdf(cls, source: h5py.Group) -> NormalisedCounts:
         name = "count" if is_legacy_dataset(source) else "counts"
         counts = PatchedCounts.from_hdf(source[name])
 
@@ -334,7 +328,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
 
         return self.counts == other.counts and self.totals == other.totals
 
-    def __add__(self: Tnormalised, other: Any) -> Tnormalised:
+    def __add__(self, other: Any) -> NormalisedCounts:
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -342,20 +336,20 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
             raise ValueError("totals must be identical for operation")
         return type(self)(self.counts + other.counts, self.totals)
 
-    def __radd__(self: Tnormalised, other: Any) -> Tnormalised:
+    def __radd__(self, other: Any) -> NormalisedCounts:
         if np.isscalar(other) and other == 0:
             return self  # allows using sum() on an iterable of NormalisedCounts
         return self.__add__(other)
 
-    def __mul__(self: Tnormalised, other: Any) -> Tnormalised:
+    def __mul__(self, other: Any) -> NormalisedCounts:
         return type(self)(self.count * other, self.total)
 
-    def _make_bin_slice(self: Tnormalised, item: int | slice) -> Tnormalised:
+    def _make_bin_slice(self, item: int | slice) -> NormalisedCounts:
         counts = self.counts.bins[item]
         totals = self.totals.bins[item]
         return type(self)(counts, totals)
 
-    def _make_patch_slice(self: Tnormalised, item: int | slice) -> Tnormalised:
+    def _make_patch_slice(self, item: int | slice) -> NormalisedCounts:
         counts = self.counts.patches[item]
         totals = self.totals.patches[item]
         return type(self)(counts, totals)
