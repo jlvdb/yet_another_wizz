@@ -7,8 +7,7 @@ from typing import Any, Generator, Union
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from yaw.abc import Serialisable
-from yaw.containers import Tclosed, default_closed
+from yaw.containers import Serialisable, Tclosed, default_closed
 from yaw.coordinates import AngularCoordinates
 
 __all__ = [

@@ -8,9 +8,9 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.abc import JsonSerialisable, Serialisable, Tpath
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import DataChunk
+from yaw.containers import JsonSerialisable, Serialisable, Tpath
 from yaw.coordinates import AngularCoordinates, AngularDistances
 
 __all__ = [

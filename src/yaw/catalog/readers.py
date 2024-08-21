@@ -15,9 +15,9 @@ from numpy.typing import NDArray
 from pyarrow import Table, parquet
 from typing_extensions import Self
 
-from yaw.abc import Tpath
 from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
+from yaw.containers import Tpath
 
 __all__ = [
     "DataFrameReader",

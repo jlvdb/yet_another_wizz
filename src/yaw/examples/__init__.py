@@ -49,3 +49,5 @@ patched_total = normalised_counts.totals
 """Example data for patch-wise total number of objects
 (:obj:`~yaw.correlation.paircounts.PatchedTotal` instance,
 from :obj:`w_sp.dd.total`)"""
+
+del _path

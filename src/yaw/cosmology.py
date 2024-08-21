@@ -14,7 +14,7 @@ __all__ = [
     "separation_physical_to_angle",
 ]
 
-TypeCosmology = Union[FLRW, "CustomCosmology"]
+Tcosmology = Union[FLRW, "CustomCosmology"]
 
 
 def get_default_cosmology() -> FLRW:
@@ -35,7 +35,7 @@ def separation_physical_to_angle(
     separation_kpc: ArrayLike,
     redshift: ArrayLike,
     *,
-    cosmology: TypeCosmology | None = None,
+    cosmology: Tcosmology | None = None,
 ) -> NDArray:
     cosmology = cosmology or get_default_cosmology()
 

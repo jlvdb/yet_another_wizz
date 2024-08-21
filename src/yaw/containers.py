@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import warnings
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, Union, get_args
 
+import h5py
 import numpy as np
 import scipy.optimize
 from astropy import cosmology, units
@@ -12,21 +15,13 @@ from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import ArrayLike, NDArray
 
-from yaw._version import __version__
-from yaw.abc import (
-    AsciiSerializable,
-    BinwiseData,
-    HdfSerializable,
-    Tpath,
-    hdf_compression,
-)
-from yaw.config import Configuration
 from yaw.cosmology import TypeCosmology, get_default_cosmology
 from yaw.utils import ParallelHelper, io, plot
 from yaw.utils.plot import Axis
 
 if TYPE_CHECKING:
     from yaw.catalog import Catalog, Patch
+    from yaw.config import Configuration
     from yaw.corrfunc import CorrFunc
 
 __all__ = [
@@ -37,6 +32,26 @@ __all__ = [
     "SampledData",
 ]
 
+# generic types
+Tkey = TypeVar("Tkey")
+Tvalue = TypeVar("Tvalue")
+
+# meta-class types
+Tserialise = TypeVar("Tdict", bound="Serialisable")
+Tjson = TypeVar("Tjson", bound="JsonSerialisable")
+Thdf = TypeVar("Thdf", bound="HdfSerializable")
+Tascii = TypeVar("Tascii", bound="AsciiSerializable")
+Tbinned = TypeVar("Tbinned", bound="BinwiseData")
+Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
+
+# container class types
+Tbinning = TypeVar("Tbinning", bound="Binning")
+Tsampled = TypeVar("Tsampled", bound="SampledData")
+Tcorr = TypeVar("Tcorr", bound="CorrData")
+
+# concrete types
+Tpath = Union[Path, str]
+
 Tclosed = Literal["left", "right"]
 default_closed = "right"
 
@@ -46,34 +61,144 @@ default_bin_method = "linear"
 Tcov_kind = Literal["full", "diag", "var"]
 default_cov_kind = "full"
 
-Tbinning = TypeVar("Tbinning", bound="Binning")
-Tsampled = TypeVar("Tsampled", bound="SampledData")
 Tstyle = Literal["point", "line", "step"]
-Tcorr = TypeVar("Tcorr", bound="CorrData")
 
 
-def write_version_tag(dest: Group) -> None:
-    dest.create_dataset("version", data=__version__)
+class Serialisable(ABC):
+    @classmethod
+    def from_dict(cls: type[Tserialise], the_dict: dict[str, Any]) -> Tserialise:
+        return cls(**the_dict)
+
+    @abstractmethod
+    def to_dict(self) -> dict[str, Any]:
+        return self.__getstate__()
 
 
-def load_version_tag(source: Group) -> str:
-    try:
-        return source["version"][()]
-    except KeyError:
-        return "2.x.x"
+class JsonSerialisable(Serialisable):
+    @classmethod
+    def from_file(cls: type[Tjson], path: Tpath) -> Tjson:
+        with Path(path).open() as f:
+            kwarg_dict = json.load(f)
+        return cls.from_dict(kwarg_dict)
+
+    def to_file(self, path: Tpath) -> None:
+        with Path(path).open(mode="w") as f:
+            json.dump(self.to_dict(), f, indent=4)
 
 
-def is_legacy_dataset(source: Group) -> bool:
-    return "version" not in source
+class HdfSerializable(ABC):
+    @classmethod
+    @abstractmethod
+    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
+        pass
+
+    @abstractmethod
+    def to_hdf(self, dest: h5py.Group) -> None:
+        pass
+
+    @classmethod
+    def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
+        with h5py.File(str(path)) as f:
+            return cls.from_hdf(f)
+
+    def to_file(self, path: Tpath) -> None:
+        with h5py.File(str(path), mode="w") as f:
+            self.to_hdf(f)
 
 
-def load_legacy_binning(source: Group) -> Binning:
-    dataset = source["binning"]
-    left, right = dataset[:].T
-    edges = np.append(left, right[-1])
+class AsciiSerializable(ABC):
+    @classmethod
+    @abstractmethod
+    def from_files(cls: type[Tascii], path_prefix: Tpath) -> Tascii:
+        pass
 
-    closed = dataset.attrs["closed"]
-    return Binning(edges, closed=closed)
+    @abstractmethod
+    def to_files(self, path_prefix: Tpath) -> None:
+        pass
+
+
+class Indexer(Generic[Tkey, Tvalue], Iterator):
+    __slots__ = ("_callback", "_iter_state")
+
+    def __init__(self, slice_callback: Callable[[Tkey], Tvalue]) -> None:
+        self._callback = slice_callback
+        self._iter_state = 0
+
+    def __getitem__(self, item: Tkey) -> Tvalue:
+        return self._callback(item)
+
+    def __next__(self) -> Tvalue:
+        try:
+            item = self._callback(self._iter_state)
+        except IndexError as err:
+            raise StopIteration from err
+
+        self._iter_state += 1
+        return item
+
+    def __iter__(self) -> Iterator[Tvalue]:
+        self._iter_state = 0
+        return self
+
+
+class PatchwiseData(ABC):
+    @property
+    @abstractmethod
+    def num_patches(self) -> int:
+        pass
+
+    @abstractmethod
+    def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
+        pass
+
+    @property
+    def patches(self) -> Indexer:
+        return Indexer(self._make_patch_slice)
+
+    def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        if not isinstance(other, type(self)):
+            if not require:
+                return False
+            raise TypeError(f"{type(other)} is not compatible with {type(self)}")
+
+        if self.num_patches != other.num_patches:
+            if not require:
+                return False
+            raise ValueError("number of patches does not match")
+
+        return True
+
+
+class BinwiseData(ABC):
+    @property
+    @abstractmethod
+    def binning(self) -> Binning:
+        pass
+
+    @property
+    def num_bins(self) -> int:
+        return len(self.binning)
+
+    @abstractmethod
+    def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
+        pass
+
+    @property
+    def bins(self) -> Indexer:
+        return Indexer(self._make_bin_slice)
+
+    def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        if not isinstance(other, type(self)):
+            if not require:
+                return False
+            raise TypeError(f"{type(other)} is not compatible with {type(self)}")
+
+        if self.binning != other.binning:
+            if not require:
+                return False
+            raise ValueError("binning does not match")
+
+        return True
 
 
 def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray | None:
@@ -87,11 +212,20 @@ def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray
     raise ValueError("bin edges must increase monotonically")
 
 
+def load_legacy_binning(source: Group) -> Binning:
+    dataset = source["binning"]
+    left, right = dataset[:].T
+    edges = np.append(left, right[-1])
+
+    closed = dataset.attrs["closed"]
+    return Binning(edges, closed=closed)
+
+
 class Binning(HdfSerializable):
     __slots__ = ("edges", "closed")
 
     def __init__(self, edges: ArrayLike, closed: Tclosed = default_closed) -> None:
-        if closed not in Tclosed.__args__:
+        if closed not in get_args(Tclosed):
             raise ValueError("invalid value for 'closed'")
 
         self.edges = parse_binning(edges)
@@ -105,9 +239,9 @@ class Binning(HdfSerializable):
         return cls(edges, closed=closed)
 
     def to_hdf(self, dest: Group) -> None:
-        write_version_tag(dest)
+        io.write_version_tag(dest)
         dest.create_dataset("closed", data=self.closed)
-        dest.create_dataset("edges", data=self.edges, **hdf_compression)
+        dest.create_dataset("edges", data=self.edges, **io.HDF_COMPRESSION)
 
     def __getstate__(self) -> dict:
         return dict(self.edges, self.closed)
@@ -168,10 +302,8 @@ class RedshiftBinningFactory:
         if not isinstance(comov_edges, units.Quantity):
             comov_edges = comov_edges * units.Mpc
 
-        edges = cosmology.z_at_value(
-            self.cosmology.comoving_distance, comov_edges
-        ).value
-        return Binning(edges, closed=closed)
+        edges = cosmology.z_at_value(self.cosmology.comoving_distance, comov_edges)
+        return Binning(edges.value, closed=closed)
 
     def logspace(
         self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
@@ -183,8 +315,9 @@ class RedshiftBinningFactory:
     def get_method(
         self, method: Tbin_method = default_bin_method
     ) -> Callable[..., Binning]:
-        if method not in Tbin_method.__args__:
+        if method not in get_args(Tbin_method):
             raise ValueError(f"invalid binning method '{method}'")
+
         return getattr(self, method)
 
 
@@ -210,7 +343,7 @@ def cov_from_samples(
             Determines the kind of covariance computed, see
             :obj:`~yaw.config.options.Options.kind`.
     """
-    if kind not in Tcov_kind.__args__:
+    if kind not in get_args(Tcov_kind):
         raise ValueError(f"invalid covariance kind '{kind}'")
 
     ax_samples = 1 if rowvar else 0

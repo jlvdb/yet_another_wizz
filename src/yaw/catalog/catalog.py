@@ -16,12 +16,11 @@ from scipy.cluster import vq
 from tqdm import tqdm
 from typing_extensions import Self
 
-from yaw.abc import Tpath
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
-from yaw.containers import Tclosed, default_closed, parse_binning
+from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
 from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.utils import ParallelHelper
 

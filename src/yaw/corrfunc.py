@@ -7,9 +7,16 @@ import h5py
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
-from yaw.containers import Binning, CorrData, write_version_tag
+from yaw.containers import (
+    Binning,
+    BinwiseData,
+    CorrData,
+    HdfSerializable,
+    PatchwiseData,
+    Serialisable,
+)
 from yaw.paircounts import NormalisedCounts
+from yaw.utils import io
 
 __all__ = [
     "CorrFunc",
@@ -99,7 +106,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return cls.from_dict(kwargs)
 
     def to_hdf(self, dest: h5py.Group) -> None:
-        write_version_tag(dest)
+        io.write_version_tag(dest)
 
         names = ("data_data", "data_random", "random_data", "random_random")
         counts = (self.dd, self.dr, self.rd, self.rr)
