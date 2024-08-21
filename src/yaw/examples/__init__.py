@@ -8,7 +8,7 @@ CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_p
 
 from pathlib import Path
 
-import yaw
+from yaw.corrfunc import CorrFunc
 
 __all__ = [
     "w_sp",
@@ -22,15 +22,15 @@ __all__ = [
 
 _path = Path(__file__).parent
 
-w_sp = yaw.CorrFunc.from_file(_path / "cross_1.hdf")
+w_sp = CorrFunc.from_file(_path / "cross_1.hdf")
 """Example data from a crosscorrelation measurement
 (:obj:`~yaw.correlation.CorrFunc` instance)."""
 
-w_ss = yaw.CorrFunc.from_file(_path / "auto_reference.hdf")
+w_ss = CorrFunc.from_file(_path / "auto_reference.hdf")
 """Example data from a reference sample autocorrelation measurement
 (:obj:`~yaw.correlation.CorrFunc` instance)."""
 
-w_pp = yaw.CorrFunc.from_file(_path / "auto_unknown_1.hdf")
+w_pp = CorrFunc.from_file(_path / "auto_unknown_1.hdf")
 """Example data from a unknown sample autocorrelation measurement
 (:obj:`~yaw.correlation.CorrFunc` instance)."""
 
