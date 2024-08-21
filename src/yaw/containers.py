@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
 import scipy.optimize
+from astropy import cosmology, units
 from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import ArrayLike, NDArray
@@ -20,6 +21,7 @@ from yaw.abc import (
     hdf_compression,
 )
 from yaw.config import Configuration
+from yaw.cosmology import TypeCosmology, get_default_cosmology
 from yaw.utils import ParallelHelper, io, plot
 from yaw.utils.plot import Axis
 
@@ -37,6 +39,9 @@ __all__ = [
 
 Tclosed = Literal["left", "right"]
 default_closed = "right"
+
+Tbin_method = Literal["linear", "comoving", "logspace"]
+default_bin_method = "linear"
 
 Tcov_kind = Literal["full", "diag", "var"]
 default_cov_kind = "full"
@@ -143,6 +148,44 @@ class Binning(HdfSerializable):
 
     def copy(self: Tbinning) -> Tbinning:
         return Binning(self.edges.copy(), closed=str(self.closed))
+
+
+class RedshiftBinningFactory:
+    def __init__(self, cosmology: TypeCosmology | None = None) -> None:
+        self.cosmology = cosmology or get_default_cosmology()
+
+    def linear(
+        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+    ) -> Binning:
+        edges = np.linspace(min, max, num_bins + 1)
+        return Binning(edges, closed=closed)
+
+    def comoving(
+        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+    ) -> Binning:
+        comov_min, comov_cmax = self.cosmology.comoving_distance([min, max])
+        comov_edges = np.linspace(comov_min, comov_cmax, num_bins + 1)
+        if not isinstance(comov_edges, units.Quantity):
+            comov_edges = comov_edges * units.Mpc
+
+        edges = cosmology.z_at_value(
+            self.cosmology.comoving_distance, comov_edges
+        ).value
+        return Binning(edges, closed=closed)
+
+    def logspace(
+        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+    ) -> Binning:
+        log_min, log_max = np.log([1.0 + min, 1.0 + max])
+        edges = np.logspace(log_min, log_max, num_bins + 1, base=np.e) - 1.0
+        return Binning(edges, closed=closed)
+
+    def get_method(
+        self, method: Tbin_method = default_bin_method
+    ) -> Callable[..., Binning]:
+        if method not in Tbin_method.__args__:
+            raise ValueError(f"invalid binning method '{method}'")
+        return getattr(self, method)
 
 
 def cov_from_samples(
