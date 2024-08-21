@@ -206,10 +206,13 @@ def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray
         return None
 
     binning = np.asarray(binning, dtype=np.float64)
-    if np.all(np.diff(binning) > 0.0):
-        return binning
+    if binning.ndim != 1 or len(binning) < 2:
+        raise ValueError("bin edges must be one-dimensionals with length > 2")
 
-    raise ValueError("bin edges must increase monotonically")
+    if np.any(np.diff(binning) <= 0.0):
+        raise ValueError("bin edges must increase monotonically")
+
+    return binning
 
 
 def load_legacy_binning(source: Group) -> Binning:
