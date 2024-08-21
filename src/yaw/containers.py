@@ -14,7 +14,7 @@ from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import ArrayLike, NDArray
 
-from yaw.cosmology import TypeCosmology, get_default_cosmology
+from yaw.cosmology import Tcosmology, get_default_cosmology
 from yaw.utils import io, plot
 from yaw.utils.plot import Axis
 
@@ -278,7 +278,7 @@ class Binning(HdfSerializable):
 
 
 class RedshiftBinningFactory:
-    def __init__(self, cosmology: TypeCosmology | None = None) -> None:
+    def __init__(self, cosmology: Tcosmology | None = None) -> None:
         self.cosmology = cosmology or get_default_cosmology()
 
     def linear(

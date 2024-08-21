@@ -11,15 +11,15 @@ from yaw.corrfunc import CorrData, CorrFunc, Tcorr
 from yaw.utils import ParallelHelper
 
 
-def _redshift_histogram(patch: Patch, edges: NDArray, closed: Tclosed) -> NDArray:
+def _redshift_histogram(patch: Patch, binning: Binning) -> NDArray:
     redshifts = patch.redshifts
     # numpy histogram uses the bin edges as closed intervals on both sides
-    if closed == "right":
-        mask = redshifts > edges[0]
+    if binning.closed == "right":
+        mask = redshifts > binning.edges[0]
     else:
-        mask = redshifts < edges[-1]
+        mask = redshifts < binning.edges[-1]
 
-    counts = np.histogram(redshifts[mask], edges, weights=patch.weights[mask])
+    counts = np.histogram(redshifts[mask], binning.edges, weights=patch.weights[mask])
     return counts.astype(np.float64)
 
 
@@ -41,26 +41,24 @@ class HistData(CorrData):
         cls,
         catalog: Catalog,
         config: Configuration,
-        closed: Tclosed = "right",
         progress: bool = False,
     ) -> HistData:
         patch_count_iter = ParallelHelper.iter_unordered(
             _redshift_histogram,
             catalog.values(),
-            func_kwargs=dict(edges=config.binning.zbins, closed=closed),
+            func_kwargs=dict(binning=config.binning.binning),
             progress=progress,
             total=len(catalog),
         )
 
-        counts = np.empty((len(catalog), config.binning.zbin_num))
+        counts = np.empty((len(catalog), config.binning.num_bins))
         for i, patch_count in enumerate(patch_count_iter):
             counts[i] = patch_count
 
         return cls(
-            Binning(config.binning.zbins, closed=closed),
+            config.binning.binning.copy(),
             counts.sum(axis=0),
             resample_jackknife(counts),
-            closed=closed,
         )
 
     @property

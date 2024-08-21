@@ -13,7 +13,7 @@ from numpy.typing import NDArray
 
 from yaw.containers import Binning, RedshiftBinningFactory, Serialisable
 from yaw.containers import Tbin_method as Tbin_method_auto
-from yaw.containers import Tclosed, Tpath, default_bin_method
+from yaw.containers import Tclosed, Tpath, default_bin_method, default_closed
 from yaw.cosmology import (
     CustomCosmology,
     Tcosmology,
@@ -111,8 +111,9 @@ class BaseConfig(YamlSerialisable, Immutable):
         pass
 
     @classmethod
+    @abstractmethod
     def create(cls: type[Tbase_config], **kwargs: Any) -> Tbase_config:
-        return cls.from_dict(kwargs)
+        pass
 
     @abstractmethod
     def modify(self: Tbase_config, **kwargs: Any | NotSet) -> Tbase_config:
@@ -160,7 +161,7 @@ class ScalesConfig(BaseConfig):
         if len(rmin) != len(rmax):
             raise ConfigError("number of elements in 'rmin' and 'rmax' does not match")
 
-        if np.any(np.diff(rmin, rmax) <= 0.0):
+        if np.any((rmax - rmin) <= 0.0):
             raise ConfigError("'rmin' must be smaller than corresponding 'rmax'")
 
         # ensure a YAML-friendly, i.e. native python, type
@@ -193,13 +194,15 @@ class ScalesConfig(BaseConfig):
 
     @classmethod
     def create(
-        self,
+        cls,
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
         rweight: float | None = default_rweight,
         resolution: int | None = default_resolution,
     ) -> ScalesConfig:
-        return super().create(rmin, rmax, rweight, resolution)
+        return cls(
+            rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
+        )
 
     def modify(
         self,
@@ -231,6 +234,10 @@ class BinningConfig(BaseConfig):
         if method not in get_args(Tbin_method_auto) and method != "manual":
             raise ValueError(f"invalid binning method '{method}'")
         object.__setattr__(self, "method", method)
+
+    @property
+    def edges(self) -> NDArray:
+        return self.binning.edges
 
     @property
     def zmin(self) -> float:
@@ -294,7 +301,7 @@ class BinningConfig(BaseConfig):
         num_bins: int = default_num_bins,
         method: Tbin_method_all = default_bin_method,
         edges: Iterable[float] | None = None,
-        closed: Tclosed | None = None,
+        closed: Tclosed = default_closed,
         cosmology: Tcosmology | str | None = None,
     ) -> BinningConfig:
         auto_args_set = (zmin is not None, zmax is not None)
@@ -308,12 +315,12 @@ class BinningConfig(BaseConfig):
                     "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
                 )
             bin_func = RedshiftBinningFactory(cosmology).get_method(method)
-            edges = bin_func(zmin, zmax, num_bins, closed=closed)
+            binning = bin_func(zmin, zmax, num_bins, closed=closed)
 
         else:  # use provided bin edges
             method = "manual"
+            binning = Binning(edges, closed=closed)
 
-        binning = Binning(edges, closed=closed)
         return cls(binning, method=method)
 
     def modify(
@@ -426,7 +433,7 @@ class Configuration(BaseConfig):
         num_bins: int = default_num_bins,
         method: Tbin_method_all = default_bin_method,
         edges: Iterable[float] | None = None,
-        closed: Tclosed | None = None,
+        closed: Tclosed = default_closed,
     ) -> Configuration:
         cosmology = parse_cosmology(cosmology)
         scales = ScalesConfig.create(

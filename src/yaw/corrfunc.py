@@ -75,18 +75,20 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         rd: NormalisedCounts | None = None,
         rr: NormalisedCounts | None = None,
     ) -> None:
+        def check_compatible(counts: NormalisedCounts, attr_name: str) -> None:
+            try:
+                dd.is_compatible(counts, require=True)
+            except ValueError as err:
+                msg = f"pair counts '{attr_name}' and 'dd' are not compatible"
+                raise ValueError(msg) from err
+
         if dr is None and rd is None and rr is None:
             raise EstimatorError("either 'dr', 'rd' or 'rr' are required")
 
         self.dd = dd
         for kind, counts in zip(("dr", "rd", "rr"), (dr, rd, rr)):
             if counts is not None:
-                try:
-                    dd.is_compatible(counts, require=True)
-                except ValueError as err:
-                    msg = f"pair counts '{kind}' and 'dd' are not compatible"
-                    raise ValueError(msg) from err
-
+                check_compatible(counts, attr_name=kind)
             setattr(self, kind, counts)
 
     @property
