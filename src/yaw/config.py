@@ -9,10 +9,17 @@ from typing import Any, Literal, TypeVar, Union, get_args
 import astropy.cosmology
 import numpy as np
 import yaml
-from numpy.typing import NDArray, ArrayLike
+from numpy.typing import NDArray
 
-from yaw.containers import Serialisable, Tpath, Binning, parse_binning, RedshiftBinningFactory, Tclosed, Tbin_method as Tbin_method_auto, default_closed, default_bin_method
-from yaw.cosmology import CustomCosmology, Tcosmology, get_default_cosmology, cosmology_is_equal
+from yaw.containers import Binning, RedshiftBinningFactory, Serialisable
+from yaw.containers import Tbin_method as Tbin_method_auto
+from yaw.containers import Tclosed, Tpath, default_bin_method
+from yaw.cosmology import (
+    CustomCosmology,
+    Tcosmology,
+    cosmology_is_equal,
+    get_default_cosmology,
+)
 
 T = TypeVar("T")
 Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
@@ -217,7 +224,7 @@ class BinningConfig(BaseConfig):
         method: Tbin_method_all = default_bin_method,
     ) -> None:
         if not isinstance(binning, Binning):
-            raise TypeError(f"'binning' must be of type 'type(binning)'")
+            raise TypeError(f"'binning' must be of type '{type(binning)}'")
         object.__setattr__(self, "binning", binning)
 
         method = parse_optional(method, str)
@@ -297,8 +304,9 @@ class BinningConfig(BaseConfig):
 
         elif all(auto_args_set):  # generate bin edges
             if all(manual_args_set):
-                warn_msg = "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
-                warnings.warn(warn_msg)
+                warnings.warn(
+                    "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
+                )
             bin_func = RedshiftBinningFactory(cosmology).get_method(method)
             edges = bin_func(zmin, zmax, num_bins, closed=closed)
 
@@ -376,7 +384,7 @@ class Configuration(BaseConfig):
         try:  # binning
             binning_dict = the_dict.pop("binning")
             binning = BinningConfig.from_dict(binning_dict, cosmology=cosmology)
-        except (TypeError, KeyError) as e:
+        except (TypeError, KeyError) as err:
             raise ConfigError("failed parsing the 'binning' section") from err
 
         if len(the_dict) > 0:
@@ -396,7 +404,11 @@ class Configuration(BaseConfig):
         if not isinstance(other, type(self)):
             return False
 
-        return self.binning == other.binning and self.scales == other.scales and cosmology_is_equal(self.cosmology, other.cosmology)
+        return (
+            self.binning == other.binning
+            and self.scales == other.scales
+            and cosmology_is_equal(self.cosmology, other.cosmology)
+        )
 
     @classmethod
     def create(
@@ -448,8 +460,12 @@ class Configuration(BaseConfig):
         edges: Iterable[float] | None = NotSet,
         closed: Tclosed | NotSet = NotSet,
     ) -> Configuration:
-        cosmology = self.cosmology if cosmology is NotSet else parse_cosmology(cosmology)
-        scales = self.scales.modify(rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution)
+        cosmology = (
+            self.cosmology if cosmology is NotSet else parse_cosmology(cosmology)
+        )
+        scales = self.scales.modify(
+            rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
+        )
         binning = self.binning.modify(
             zmin=zmin,
             zmax=zmax,

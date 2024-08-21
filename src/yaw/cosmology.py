@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from abc import ABC, abstractmethod
 from typing import Union, get_args
 
@@ -11,17 +10,12 @@ from numpy.typing import ArrayLike, NDArray
 
 __all__ = [
     "CustomCosmology",
-    "cosmology_equal"
     "cosmology_is_equal",
     "get_default_cosmology",
     "separation_physical_to_angle",
 ]
 
 Tcosmology = Union[FLRW, "CustomCosmology"]
-
-
-def get_default_cosmology() -> FLRW:
-    return Planck15
 
 
 class CustomCosmology(ABC):
@@ -50,6 +44,10 @@ def cosmology_is_equal(cosmo1: Tcosmology, cosmo2: Tcosmology) -> bool:
         return cosmology_equal(cosmo1, cosmo2)
 
     return False
+
+
+def get_default_cosmology() -> FLRW:
+    return Planck15
 
 
 def separation_physical_to_angle(
