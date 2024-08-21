@@ -95,6 +95,7 @@ addopts = [
 
 [tool.isort]
 profile = "black"
+skip_glob = ["*_version.py"]
 
 [tool.black]
 include = ".pyi?$"
@@ -111,3 +112,4 @@ exclude = """
     | dist
 )/
 """
+extend-exclude = "_version.py$"
