@@ -18,7 +18,7 @@ Author: Jan Luca van den Busch
         (Ruhr-Universität Bochum, Astronomisches Institut)
 """
 
-from yaw._version import __version__
+from yaw._version import __version__, __version_tuple__
 from yaw.catalog import Catalog
 from yaw.config import Configuration
 from yaw.containers import CorrData, HistData, RedshiftData
@@ -27,6 +27,7 @@ from yaw.measurements import autocorrelate, crosscorrelate
 
 __all__ = [
     "__version__",
+    "__version_tuple__",
     "Catalog",
     "Configuration",
     "CorrData",
