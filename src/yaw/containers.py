@@ -237,7 +237,11 @@ class Binning(HdfSerializable):
         dest.create_dataset("edges", data=self.edges, **io.HDF_COMPRESSION)
 
     def __getstate__(self) -> dict:
-        return dict(self.edges, self.closed)
+        return dict(edges=self.edges, closed=self.closed)
+
+    def __setstate__(self, state) -> None:
+        for key, value in state.items():
+            setattr(self, key, value)
 
     def __len__(self) -> int:
         return len(self.edges) - 1

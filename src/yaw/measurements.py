@@ -45,7 +45,8 @@ class PatchPaircounts:
 
 
 def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPaircounts:
-    zmids = (config.binning.zbins[:-1] + config.binning.zbins[1:]) / 2.0
+    zmids = config.binning.binning.mids
+    num_bins = len(zmids)
     angle_min = separation_physical_to_angle(
         config.scales.rmin, zmids, cosmology=config.cosmology
     )
@@ -56,9 +57,9 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     trees1 = iter(patch_pair.patch1.get_trees())
     trees2 = iter(patch_pair.patch2.get_trees())
 
-    binned_counts = np.empty((config.binning.zbin_num, config.scales.num_scales))
-    totals1 = np.empty((config.binning.zbin_num,))
-    totals2 = np.empty((config.binning.zbin_num,))
+    binned_counts = np.empty((num_bins, config.scales.num_scales))
+    totals1 = np.empty((num_bins,))
+    totals2 = np.empty((num_bins,))
 
     for i, (tree1, tree2) in enumerate(zip(trees1, trees2)):
         # TODO: implement a binning class that can be iterated here
@@ -67,7 +68,7 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
             angle_min[i],
             angle_max[i],
             weight_scale=config.scales.rweight,
-            weight_res=config.scales.rbin_num,
+            weight_res=config.scales.resolution,
         )
 
         binned_counts[i] = counts
@@ -95,8 +96,8 @@ def get_max_angle(
 ) -> AngularDistances:
     min_redshift = max(config.binning.zmin, redshift_limit)
 
-    phys_scales = config.scales.as_array()
-    angles = separation_physical_to_angle(phys_scales, min_redshift, config.cosmology)
+    phys_scales = config.scales.rmax
+    angles = separation_physical_to_angle(phys_scales, min_redshift, cosmology=config.cosmology)
 
     return AngularDistances(angles.max())
 
@@ -197,7 +198,7 @@ class PatchLinkage:
         num_patches = len(catalogs[0])
         patch_pairs = self.get_patch_pairs(*catalogs)
 
-        binning = Binning(self.config.binning.zbins, closed="right")
+        binning = self.config.binning.binning
         num_bins = len(binning)
 
         totals1 = np.zeros((num_bins, num_patches))
@@ -235,8 +236,9 @@ def autocorrelate(
     count_rr: bool = True,
     progress: bool = False,
 ) -> CorrFunc:
-    data.build_trees(config.binning.zbins, progress=progress)
-    random.build_trees(config.binning.zbins, progress=progress)
+    binning = config.binning.binning
+    data.build_trees(binning.edges, closed=binning.closed, progress=progress)
+    random.build_trees(binning.edges, closed=binning.closed, progress=progress)
 
     links = PatchLinkage.from_catalogs(config, data, random)
     dd = links.count_pairs(data, progress=progress)
@@ -262,10 +264,11 @@ def crosscorrelate(
         raise ValueError("at least one random dataset must be provided")
     randoms = []
 
-    reference.build_trees(config.binning.zbins, progress=progress)
+    binning = config.binning.binning
+    reference.build_trees(binning.edges, closed=binning.closed, progress=progress)
     unknown.build_trees(None, progress=progress)
     if count_rd:
-        ref_rand.build_trees(config.binning.zbins, progress=progress)
+        ref_rand.build_trees(binning.edges, closed=binning.closed, progress=progress)
         randoms.append(ref_rand)
     if count_dr:
         unk_rand.build_trees(None, progress=progress)

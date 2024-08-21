@@ -90,7 +90,7 @@ class PatchedTotals(BinwisePatchwiseArray):
 
         new.totals1 = source["totals1"][:]
         new.totals2 = source["totals2"][:]
-        if io.s_legacy_dataset(source):
+        if io.is_legacy_dataset(source):
             new.totals1 = np.transpose(new.totals1)
             new.totals2 = np.transpose(new.totals2)
             new.binning = load_legacy_binning(source)
