@@ -16,7 +16,7 @@ from yaw.config import Configuration
 from yaw.containers import Binning
 from yaw.coordinates import AngularDistances
 from yaw.corrfunc import CorrFunc
-from yaw.cosmology import r_kpc_to_angle
+from yaw.cosmology import separation_physical_to_angle
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import ParallelHelper
 
@@ -46,6 +46,13 @@ class PatchPaircounts:
 
 def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPaircounts:
     zmids = (config.binning.zbins[:-1] + config.binning.zbins[1:]) / 2.0
+    angle_min = separation_physical_to_angle(
+        config.scales.rmin, zmids, cosmology=config.cosmology
+    )
+    angle_max = separation_physical_to_angle(
+        config.scales.rmax, zmids, cosmology=config.cosmology
+    )
+
     trees1 = iter(patch_pair.patch1.get_trees())
     trees2 = iter(patch_pair.patch2.get_trees())
 
@@ -57,8 +64,8 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
         # TODO: implement a binning class that can be iterated here
         counts = tree1.count(
             tree2,
-            r_kpc_to_angle(config.scales.rmin, zmids[i], config.cosmology),
-            r_kpc_to_angle(config.scales.rmax, zmids[i], config.cosmology),
+            angle_min[i],
+            angle_max[i],
             weight_scale=config.scales.rweight,
             weight_res=config.scales.rbin_num,
         )
@@ -89,9 +96,9 @@ def get_max_angle(
     min_redshift = max(config.binning.zmin, redshift_limit)
 
     phys_scales = config.scales.as_array()
-    max_angle = r_kpc_to_angle(phys_scales, min_redshift, config.cosmology).max()
+    angles = separation_physical_to_angle(phys_scales, min_redshift, config.cosmology)
 
-    return AngularDistances(max_angle)
+    return AngularDistances(angles.max())
 
 
 class PatchLinkage:

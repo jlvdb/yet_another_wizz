@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+from h5py import Group
 from numpy.typing import NDArray
+
+HDF_COMPRESSION = dict(fletcher32=True, compression="gzip", shuffle=True)
 
 PRECISION = 10
 
@@ -105,3 +108,20 @@ def write_covariance(path: Path, description: str, *, covariance: NDArray) -> No
 
 
 # NOTE: load_covariance() not required
+
+
+def write_version_tag(dest: Group) -> None:
+    from yaw._version import __version__
+
+    dest.create_dataset("version", data=__version__)
+
+
+def load_version_tag(source: Group) -> str:
+    try:
+        return source["version"][()]
+    except KeyError:
+        return "2.x.x"
+
+
+def is_legacy_dataset(source: Group) -> bool:
+    return "version" not in source

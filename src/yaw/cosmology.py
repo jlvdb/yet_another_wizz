@@ -44,4 +44,4 @@ def separation_physical_to_angle(
         rad_per_mpc = rad_per_mpc.value
 
     separation_mpc = np.asarray(separation_kpc) / 1000.0
-    return np.outer(separation_mpc, rad_per_mpc)
+    return np.outer(rad_per_mpc, separation_mpc)
