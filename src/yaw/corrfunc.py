@@ -1,26 +1,32 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Any
+from pathlib import Path
+from typing import Any, TypeVar
 
 import h5py
 import numpy as np
 from numpy.typing import NDArray
 
 from yaw.containers import (
+    AsciiSerializable,
     Binning,
     BinwiseData,
-    CorrData,
     HdfSerializable,
     PatchwiseData,
+    SampledData,
     Serialisable,
+    Tpath,
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io
 
 __all__ = [
     "CorrFunc",
+    "CorrData",
 ]
+
+Tcorr = TypeVar("Tcorr", bound="CorrData")
 
 
 class EstimatorError(Exception):
@@ -179,3 +185,54 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         corr_data = estimator(**counts_values)
         corr_samples = estimator(**counts_samples)
         return CorrData(self.binning, corr_data, corr_samples)
+
+
+class CorrData(AsciiSerializable, SampledData):
+    @property
+    def _description_data(self) -> str:
+        return "correlation function with symmetric 68% percentile confidence"
+
+    @property
+    def _description_samples(self) -> str:
+        return f"{self.num_samples} correlation function jackknife samples"
+
+    @property
+    def _description_covariance(self) -> str:
+        n = self.num_bins
+        return f"correlation function covariance matrix ({n}x{n})"
+
+    @classmethod
+    def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
+        path_prefix = Path(path_prefix)
+
+        edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
+        binning = Binning(edges, closed=closed)
+
+        samples = io.load_samples(path_prefix.with_suffix(".smp"))
+
+        return cls(binning, data, samples)
+
+    def to_files(self, path_prefix: Tpath) -> None:
+        path_prefix = Path(path_prefix)
+        io.write_data(
+            path_prefix.with_suffix(".dat"),
+            self._description_data,
+            zleft=self.left,
+            zright=self.right,
+            data=self.data,
+            error=self.error,
+            closed=self.closed,
+        )
+        io.write_samples(
+            path_prefix.with_suffix(".smp"),
+            self._description_samples,
+            zleft=self.left,
+            zright=self.right,
+            samples=self.samples,
+        )
+        # write covariance for convenience only, it is not required to restore
+        io.write_covariance(
+            path_prefix.with_suffix(".cov"),
+            self._description_covariance,
+            covariance=self.covariance,
+        )

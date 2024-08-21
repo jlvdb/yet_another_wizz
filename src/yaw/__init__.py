@@ -21,9 +21,9 @@ Author: Jan Luca van den Busch
 from yaw._version import __version__, __version_tuple__
 from yaw.catalog import Catalog
 from yaw.config import Configuration
-from yaw.containers import CorrData, HistData, RedshiftData
-from yaw.corrfunc import CorrFunc
+from yaw.corrfunc import CorrData, CorrFunc
 from yaw.measurements import autocorrelate, crosscorrelate
+from yaw.redshifts import HistData, RedshiftData
 
 __all__ = [
     "__version__",
