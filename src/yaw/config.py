@@ -200,9 +200,7 @@ class ScalesConfig(BaseConfig):
         rweight: float | None = default_rweight,
         resolution: int | None = default_resolution,
     ) -> ScalesConfig:
-        return cls(
-            rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
-        )
+        return cls(rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution)
 
     def modify(
         self,

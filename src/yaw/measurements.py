@@ -13,7 +13,6 @@ from numpy.typing import NDArray
 from yaw.catalog import Catalog, Patch
 from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.config import Configuration
-from yaw.containers import Binning
 from yaw.coordinates import AngularDistances
 from yaw.corrfunc import CorrFunc
 from yaw.cosmology import separation_physical_to_angle
@@ -97,7 +96,9 @@ def get_max_angle(
     min_redshift = max(config.binning.zmin, redshift_limit)
 
     phys_scales = config.scales.rmax
-    angles = separation_physical_to_angle(phys_scales, min_redshift, cosmology=config.cosmology)
+    angles = separation_physical_to_angle(
+        phys_scales, min_redshift, cosmology=config.cosmology
+    )
 
     return AngularDistances(angles.max())
 

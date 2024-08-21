@@ -6,14 +6,13 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
-from shutil import get_terminal_size, rmtree
+from shutil import rmtree
 from typing import Union
 
 import numpy as np
 import treecorr
 from numpy.typing import NDArray
 from scipy.cluster import vq
-from tqdm import tqdm
 from typing_extensions import Self
 
 from yaw.catalog.patch import BinnedTrees, Patch, PatchWriter
@@ -23,6 +22,7 @@ from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
 from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.utils import ParallelHelper
+from yaw.utils.progress import make_pbar
 
 __all__ = [
     "Catalog",
@@ -167,10 +167,9 @@ def write_patches(
         )
     preprocess = ChunkProcessor(patch_centers)
 
-    chunk_iter_progress_optional = tqdm(
+    chunk_iter_progress_optional = make_pbar(
         reader,
         total=reader.num_chunks,
-        ncols=min(80, get_terminal_size()[0]),
         disable=(not progress),
     )
 

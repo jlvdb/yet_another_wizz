@@ -5,10 +5,9 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterable, Iterator
-from shutil import get_terminal_size
 from typing import Callable, TypeVar
 
-from tqdm import tqdm
+from .progress import make_pbar
 
 try:
     from mpi4py import MPI
@@ -197,6 +196,7 @@ class ParallelHelper:
         func_kwargs: dict | None = None,
         progress: bool = False,
         total: int | None = None,
+        description: str | None = None,
     ) -> Iterator[Tresult]:
         iter_kwargs = dict(
             func_args=(func_args or tuple()),
@@ -209,11 +209,10 @@ class ParallelHelper:
             parallel_method = multiprocessing_iter_unordered
             iter_kwargs["num_threads"] = cls.num_threads
 
-        result_iter_progress_optional = tqdm(
+        result_iter_progress_optional = make_pbar(
             parallel_method(func, iterable, **iter_kwargs),
             total=total,
-            ncols=min(80, get_terminal_size()[0]),
+            description=description,
             disable=(not progress or cls.on_worker()),
         )
-
         yield from result_iter_progress_optional

@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 from yaw.catalog import Catalog, Patch
 from yaw.config import Configuration
-from yaw.containers import Binning, Tclosed
+from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc, Tcorr
 from yaw.utils import ParallelHelper
 
