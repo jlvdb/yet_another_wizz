@@ -223,18 +223,19 @@ class CorrData(AsciiSerializable, SampledData):
         io.write_data(
             path_prefix.with_suffix(".dat"),
             self._description_data,
-            zleft=self.left,
-            zright=self.right,
+            zleft=self.binning.left,
+            zright=self.binning.right,
             data=self.data,
             error=self.error,
-            closed=self.closed,
+            closed=self.binning.closed,
         )
         io.write_samples(
             path_prefix.with_suffix(".smp"),
             self._description_samples,
-            zleft=self.left,
-            zright=self.right,
+            zleft=self.binning.left,
+            zright=self.binning.right,
             samples=self.samples,
+            closed=self.binning.closed,
         )
         # write covariance for convenience only, it is not required to restore
         io.write_covariance(

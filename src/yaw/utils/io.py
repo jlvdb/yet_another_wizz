@@ -19,26 +19,32 @@ def format_float_fixed_width(value: float, width: int) -> str:
     return string
 
 
-def write_header(f, description, columns, extra_info: str | None = None) -> None:
+def create_columns(columns: list[str], closed: str) -> list[str]:
+    if closed == "left":
+        all_columns = ["[z_low", "z_high)"]
+    else:
+        all_columns = ["(z_low", "z_high]"]
+    all_columns.extend(columns)
+    return all_columns
+
+
+def write_header(f, description, columns) -> None:
     line = " ".join(f"{col:>{PRECISION}s}" for col in columns)
 
     f.write(f"# {description}\n")
     f.write(f"#{line[1:]}\n")
-    if extra_info is not None:
-        f.write(f"# {extra_info}\n")
 
 
-def load_header(path: Path) -> dict[str, str | list[str]]:
+def load_header(path: Path) -> tuple[str, list[str], str]:
     def unwrap_line(line):
         return line.lstrip("#").strip()
 
-    header = dict()
     with path.open() as f:
-        header["description"] = unwrap_line(f.readline())
-        header["columns"] = unwrap_line(f.readable()).split()
-        if (extra_info := f.readable()).startswith("#"):
-            header["extra_info"] = unwrap_line(extra_info)
-    return header
+        description = unwrap_line(f.readline())
+        columns = unwrap_line(f.readline()).split()
+
+    closed = "left" if columns[0][0] == "[" else "right"
+    return description, columns, closed
 
 
 def write_data(
@@ -52,8 +58,7 @@ def write_data(
     closed: str,
 ) -> None:
     with path.open("w") as f:
-        columns = ["z_low", "z_high", "nz", "nz_err"]
-        write_header(f, description, columns, extra_info=f"interval closed: {closed}")
+        write_header(f, description, create_columns(["nz", "nz_err"], closed))
 
         for values in zip(zleft, zright, data, error):
             formatted = [format_float_fixed_width(value, PRECISION) for value in values]
@@ -61,8 +66,7 @@ def write_data(
 
 
 def load_data(path: Path) -> tuple[NDArray, str, NDArray]:
-    header = load_header(path)
-    _, closed = header["extra_info"].split(": ")
+    _, _, closed = load_header(path)
 
     zleft, zright, data, _ = np.loadtxt(path).T
     edges = np.append(zleft, zright[-1])
@@ -76,11 +80,11 @@ def write_samples(
     zleft: NDArray,
     zright: NDArray,
     samples: NDArray,
+    closed: str,
 ) -> None:
     with path.open("w") as f:
-        columns = ["z_low", "z_high"]
-        columns.extend(f"jack_{i}" for i in range(len(samples)))
-        write_header(f, description, columns)
+        sample_columns = [f"jack_{i}" for i in range(len(samples))]
+        write_header(f, description, create_columns(sample_columns, closed))
 
         for zleft, zright, samples in zip(zleft, zright, samples.T):
             formatted = [
