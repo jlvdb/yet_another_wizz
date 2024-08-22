@@ -9,6 +9,7 @@ from yaw.config import Configuration
 from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc, Tcorr
 from yaw.utils import ParallelHelper
+from yaw.utils import progress as util_progress
 
 
 def _redshift_histogram(patch: Patch, binning: Binning) -> NDArray:
@@ -48,6 +49,10 @@ class HistData(CorrData):
             catalog.values(),
             func_kwargs=dict(binning=config.binning.binning),
         )
+        if progress:
+            patch_count_iter = util_progress.Indicator(
+                patch_count_iter, len(catalog), description="n(z) hist"
+            )
 
         counts = np.empty((len(catalog), config.binning.num_bins))
         for i, patch_count in enumerate(patch_count_iter):

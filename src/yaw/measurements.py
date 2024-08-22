@@ -18,6 +18,7 @@ from yaw.corrfunc import CorrFunc
 from yaw.cosmology import separation_physical_to_angle
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import ParallelHelper
+from yaw.utils.progress import Indicator, use_description
 
 __all__ = [
     "PatchLinkage",
@@ -206,11 +207,15 @@ class PatchLinkage:
         totals2 = np.zeros((num_bins, num_patches))
         patched_counts = PatchedCounts.zeros(binning, num_patches, auto=auto)
 
-        for pair_counts in ParallelHelper.iter_unordered(
+        count_iter = ParallelHelper.iter_unordered(
             process_patch_pair,
             patch_pairs,
             func_args=(self.config,),
-        ):
+        )
+        if progress:
+            count_iter = Indicator(count_iter, len(patch_pairs), "counts")
+
+        for pair_counts in count_iter:
             id1 = pair_counts.id1
             id2 = pair_counts.id2
 
@@ -236,13 +241,18 @@ def autocorrelate(
     progress: bool = False,
 ) -> CorrFunc:
     binning = config.binning.binning
-    data.build_trees(binning.edges, closed=binning.closed, progress=progress)
-    random.build_trees(binning.edges, closed=binning.closed, progress=progress)
+    with use_description("trees D"):
+        data.build_trees(binning.edges, closed=binning.closed, progress=progress)
+    with use_description("trees R"):
+        random.build_trees(binning.edges, closed=binning.closed, progress=progress)
 
     links = PatchLinkage.from_catalogs(config, data, random)
-    dd = links.count_pairs(data, progress=progress)
-    dr = links.count_pairs(data, random, progress=progress)
-    rr = links.count_pairs(random, progress=progress) if count_rr else None
+    with use_description("count DD"):
+        dd = links.count_pairs(data, progress=progress)
+    with use_description("count DR"):
+        dr = links.count_pairs(data, random, progress=progress)
+    with use_description("count RR"):
+        rr = links.count_pairs(random, progress=progress) if count_rr else None
 
     return CorrFunc(dd, dr, rr)
 
@@ -261,22 +271,43 @@ def crosscorrelate(
     count_rr = count_rd and count_dr
     if not count_rd and not count_dr:
         raise ValueError("at least one random dataset must be provided")
-    randoms = []
 
-    binning = config.binning.binning
-    reference.build_trees(binning.edges, closed=binning.closed, progress=progress)
-    unknown.build_trees(None, progress=progress)
+    edges = config.binning.binning.edges
+    closed = config.binning.binning.closed
+
+    with use_description("trees Dref"):
+        reference.build_trees(edges, closed=closed, progress=progress)
+    with use_description("trees Dunk"):
+        unknown.build_trees(None, progress=progress)
+
+    randoms = []
     if count_rd:
-        ref_rand.build_trees(binning.edges, closed=binning.closed, progress=progress)
+        with use_description("trees Rref"):
+            ref_rand.build_trees(edges, closed=closed, progress=progress)
         randoms.append(ref_rand)
     if count_dr:
-        unk_rand.build_trees(None, progress=progress)
+        with use_description("trees Runk"):
+            unk_rand.build_trees(None, progress=progress)
         randoms.append(unk_rand)
 
     links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
-    dd = links.count_pairs(reference, unknown, progress=progress)
-    dr = links.count_pairs(reference, unk_rand, progress=progress) if count_dr else None
-    rd = links.count_pairs(ref_rand, unknown, progress=progress) if count_rd else None
-    rr = links.count_pairs(ref_rand, unk_rand, progress=progress) if count_rr else None
+
+    with use_description("count DD"):
+        dd = links.count_pairs(reference, unknown, progress=progress)
+
+    dr = None
+    if count_dr:
+        with use_description("count DR"):
+            dr = links.count_pairs(reference, unk_rand, progress=progress)
+
+    rd = None
+    if count_rd:
+        with use_description("count RD"):
+            rd = links.count_pairs(ref_rand, unknown, progress=progress)
+
+    rr = None
+    if count_rr:
+        with use_description("count RR"):
+            rr = links.count_pairs(ref_rand, unk_rand, progress=progress)
 
     return CorrFunc(dd, dr, rd, rr)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from abc import abstractmethod
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sized
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
@@ -38,7 +38,7 @@ class OptionalDependencyError(Exception):
     pass
 
 
-class BaseReader(Iterator[DataChunk], AbstractContextManager):
+class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
     @abstractmethod
     def __init__(
         self,
@@ -94,6 +94,9 @@ class BaseReader(Iterator[DataChunk], AbstractContextManager):
     @abstractmethod
     def _load_next_chunk(self) -> DataChunk:
         pass
+
+    def __len__(self) -> int:
+        return self.num_chunks
 
     def __next__(self) -> DataChunk:
         if self._chunk_idx >= self._num_chunks:

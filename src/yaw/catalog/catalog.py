@@ -22,6 +22,7 @@ from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
 from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.utils import ParallelHelper
+from yaw.utils.progress import Indicator
 
 __all__ = [
     "Catalog",
@@ -166,7 +167,11 @@ def write_patches(
     writer = CatalogWriter(path, overwrite=overwrite)
     pool = multiprocessing.Pool(num_threads)
     with reader, writer, pool:
-        for chunk in reader:
+        chunk_iter = iter(reader)
+        if progress:
+            chunk_iter = Indicator(reader, description="I/O")
+
+        for chunk in chunk_iter:
             thread_chunks = chunk.split(num_threads)
 
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
@@ -196,6 +201,9 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
 
     # instantiate patches, which trigger computing the patch meta-data
     patch_iter = ParallelHelper.iter_unordered(Patch, patch_paths)
+    if progress:
+        patch_iter = Indicator(patch_iter, len(patch_paths), "metadata")
+
     deque(patch_iter, maxlen=0)
 
 
@@ -385,4 +393,7 @@ class Catalog(Mapping[int, Patch]):
             func_args=(binning,),
             func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
         )
+        if progress:
+            patch_tree_iter = Indicator(patch_tree_iter, len(self), description="trees")
+
         deque(patch_tree_iter, maxlen=0)
