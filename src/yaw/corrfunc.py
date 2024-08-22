@@ -47,7 +47,7 @@ def shortname(key):
 
 @shortname("DP")
 def davis_peebles(
-    dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = None
+    *, dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = None
 ) -> NDArray:
     if dr is None and rd is None:
         raise EstimatorError("either 'dr' or 'rd' are required")
@@ -58,7 +58,7 @@ def davis_peebles(
 
 @shortname("LS")
 def landy_szalay(
-    dd: NDArray, dr: NDArray, rr: NDArray, rd: NDArray | None = None
+    *, dd: NDArray, dr: NDArray, rd: NDArray | None = None, rr: NDArray
 ) -> NDArray:
     if rd is None:
         rd = dr
@@ -125,7 +125,10 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
     def to_dict(self) -> dict[str, NormalisedCounts]:
         attrs = ("dd", "dr", "rd", "rr")
-        return {attr: counts for attr in attrs if (counts := getattr(self, attr))}
+        return {
+            attr: counts for attr in attrs
+            if (counts := getattr(self, attr)) is not None
+        }
 
     @property
     def num_patches(self) -> int:
@@ -145,7 +148,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         if not isinstance(other, self.__class__):
             return NotImplemented
 
-        self.is_compatible(other)
+        self.is_compatible(other, require=True)
         kwargs = {
             attr: counts + getattr(other, attr)
             for attr, counts in self.to_dict().items()

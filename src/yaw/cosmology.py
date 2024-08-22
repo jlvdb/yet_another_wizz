@@ -37,7 +37,7 @@ def cosmology_is_equal(cosmo1: Tcosmology, cosmo2: Tcosmology) -> bool:
     is_custom_1 = isinstance(cosmo1, CustomCosmology)
     is_custom_2 = isinstance(cosmo2, CustomCosmology)
 
-    if is_custom_1 and is_custom_1:
+    if is_custom_1 and is_custom_2:
         return cosmo1 == cosmo2
 
     elif not is_custom_1 and not is_custom_2:
