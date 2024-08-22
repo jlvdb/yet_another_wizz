@@ -255,9 +255,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         if isinstance(item, int):
             item = [item]
 
-        return type(self)(
-            binning, self.totals1[item], self.totals2[item], auto=self.auto
-        )
+        return type(self)(binning, self.counts[item], auto=self.auto)
 
     def _make_patch_slice(self, item: Tindexing) -> PatchedCounts:
         if isinstance(item, int):
