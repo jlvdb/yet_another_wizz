@@ -41,6 +41,7 @@ Tsampled = TypeVar("Tsampled", bound="SampledData")
 
 # concrete types
 Tpath = Union[Path, str]
+Tindexing = Union[int, slice]
 
 Tclosed = Literal["left", "right"]
 default_closed = "right"
@@ -138,11 +139,11 @@ class PatchwiseData(ABC):
         pass
 
     @abstractmethod
-    def _make_patch_slice(self: Tpatched, item: int | slice) -> Tpatched:
+    def _make_patch_slice(self: Tpatched, item: Tindexing) -> Tpatched:
         pass
 
     @property
-    def patches(self) -> Indexer:
+    def patches(self: Tpatched) -> Indexer[Tindexing, Tpatched]:
         return Indexer(self._make_patch_slice)
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
@@ -170,11 +171,11 @@ class BinwiseData(ABC):
         return len(self.binning)
 
     @abstractmethod
-    def _make_bin_slice(self: Tbinned, item: int | slice) -> Tbinned:
+    def _make_bin_slice(self: Tbinned, item: Tindexing) -> Tbinned:
         pass
 
     @property
-    def bins(self) -> Indexer:
+    def bins(self: Tbinned) -> Indexer[Tindexing, Tbinned]:
         return Indexer(self._make_bin_slice)
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
@@ -246,10 +247,11 @@ class Binning(HdfSerializable):
     def __len__(self) -> int:
         return len(self.edges) - 1
 
-    def __getitem__(self, item: int | slice) -> Binning:
+    def __getitem__(self, item: Tindexing) -> Binning:
         left = np.atleast_1d(self.left[item])
         right = np.atleast_1d(self.right[item])
-        return np.append(left, right[-1])
+        edges = np.append(left, right[-1])
+        return type(self)(edges, closed=self.closed)
 
     def __iter__(self) -> Iterator[Binning]:
         for i in range(len(self)):
@@ -464,7 +466,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def _make_bin_slice(self, item: int | slice) -> SampledData:
+    def _make_bin_slice(self: Tsampled, item: Tindexing) -> Tsampled:
         if not isinstance(item, (int, np.integer, slice)):
             raise TypeError("item selector must be a slice or integer type")
 

@@ -17,6 +17,7 @@ from yaw.containers import (
     SampledData,
     Serialisable,
     Tpath,
+    Tindexing,
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io
@@ -163,11 +164,11 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         kwargs = {attr: counts * other for attr, counts in self.to_dict().items()}
         return type(self).from_dict(kwargs)
 
-    def _make_bin_slice(self, item: int | slice) -> CorrFunc:
+    def _make_bin_slice(self, item: Tindexing) -> CorrFunc:
         kwargs = {attr: counts.bins[item] for attr, counts in self.to_dict().items()}
         return type(self).from_dict(kwargs)
 
-    def _make_patch_slice(self, item: int | slice) -> CorrFunc:
+    def _make_patch_slice(self, item: Tindexing) -> CorrFunc:
         kwargs = {attr: counts.patches[item] for attr, counts in self.to_dict().items()}
         return type(self).from_dict(kwargs)
 
