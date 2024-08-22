@@ -22,7 +22,6 @@ from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
 from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.utils import ParallelHelper
-from yaw.utils.progress import make_pbar
 
 __all__ = [
     "Catalog",
@@ -108,9 +107,7 @@ class ChunkProcessor(Callable):
 
 
 class CatalogWriter(AbstractContextManager):
-    def __init__(
-        self, cache_directory: Tpath, overwrite: bool = True, progress: bool = False
-    ) -> None:
+    def __init__(self, cache_directory: Tpath, overwrite: bool = True) -> None:
         self.cache_directory = Path(cache_directory)
         if self.cache_directory.exists():
             if overwrite:
@@ -119,7 +116,6 @@ class CatalogWriter(AbstractContextManager):
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
 
         self.cache_directory.mkdir()
-        self.progress = progress
         self._writers: dict[int, PatchWriter] = {}
 
     def __enter__(self) -> Self:
@@ -167,16 +163,10 @@ def write_patches(
         )
     preprocess = ChunkProcessor(patch_centers)
 
-    chunk_iter_progress_optional = make_pbar(
-        reader,
-        total=reader.num_chunks,
-        disable=(not progress),
-    )
-
-    writer = CatalogWriter(path, overwrite=overwrite, progress=progress)
+    writer = CatalogWriter(path, overwrite=overwrite)
     pool = multiprocessing.Pool(num_threads)
     with reader, writer, pool:
-        for chunk in chunk_iter_progress_optional:
+        for chunk in reader:
             thread_chunks = chunk.split(num_threads)
 
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
@@ -205,12 +195,7 @@ def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
     create_patchfile(cache_directory, len(patch_paths))
 
     # instantiate patches, which trigger computing the patch meta-data
-    patch_iter = ParallelHelper.iter_unordered(
-        Patch,
-        patch_paths,
-        progress=progress,
-        total=len(patch_paths),
-    )
+    patch_iter = ParallelHelper.iter_unordered(Patch, patch_paths)
     deque(patch_iter, maxlen=0)
 
 
@@ -399,7 +384,5 @@ class Catalog(Mapping[int, Patch]):
             patches,
             func_args=(binning,),
             func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
-            progress=progress,
-            total=len(patches),
         )
         deque(patch_tree_iter, maxlen=0)

@@ -209,9 +209,7 @@ class PatchLinkage:
         for pair_counts in ParallelHelper.iter_unordered(
             process_patch_pair,
             patch_pairs,
-            total=len(patch_pairs),
             func_args=(self.config,),
-            progress=progress,
         ):
             id1 = pair_counts.id1
             id2 = pair_counts.id2

@@ -47,8 +47,6 @@ class HistData(CorrData):
             _redshift_histogram,
             catalog.values(),
             func_kwargs=dict(binning=config.binning.binning),
-            progress=progress,
-            total=len(catalog),
         )
 
         counts = np.empty((len(catalog), config.binning.num_bins))
