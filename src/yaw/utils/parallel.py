@@ -7,23 +7,7 @@ import sys
 from collections.abc import Iterable, Iterator
 from typing import Callable, TypeVar
 
-try:
-    from mpi4py import MPI
-
-    COMM = MPI.COMM_WORLD
-
-except ImportError:
-    # mock up COMM_WORLD methods to tell code not to use MPI
-
-    class COMM:
-        @classmethod
-        def Get_rank() -> int:
-            return 0
-
-        @classmethod
-        def Get_size() -> int:
-            return 0
-
+from mpi4py import MPI
 
 __all__ = [
     "ParallelHelper",
@@ -67,6 +51,7 @@ def get_num_threads() -> int:
         return system_threads
 
 
+COMM = MPI.COMM_WORLD
 SIZE = COMM.Get_size()
 MP_THREADS = get_num_threads()
 
@@ -205,3 +190,4 @@ class ParallelHelper:
             iter_kwargs["num_threads"] = cls.num_threads
 
         yield from parallel_method(func, iterable, **iter_kwargs)
+        cls.comm.Barrier()
