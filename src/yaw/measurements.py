@@ -57,7 +57,7 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     trees1 = iter(patch_pair.patch1.get_trees())
     trees2 = iter(patch_pair.patch2.get_trees())
 
-    binned_counts = np.empty((num_bins, config.scales.num_scales))
+    binned_counts = np.empty((config.scales.num_scales, num_bins))
     totals1 = np.empty((num_bins,))
     totals2 = np.empty((num_bins,))
 
@@ -71,7 +71,7 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
             weight_res=config.scales.resolution,
         )
 
-        binned_counts[i] = counts
+        binned_counts[:, i] = counts
         totals1[i] = tree1.total
         totals2[i] = tree2.total
 
@@ -195,7 +195,7 @@ class PatchLinkage:
         self,
         *catalogs: Catalog,
         progress: bool = False,
-    ) -> NormalisedCounts:
+    ) -> list[NormalisedCounts]:
         auto = len(catalogs) == 1
         num_patches = len(catalogs[0])
         patch_pairs = self.get_patch_pairs(*catalogs)
@@ -205,7 +205,10 @@ class PatchLinkage:
 
         totals1 = np.zeros((num_bins, num_patches))
         totals2 = np.zeros((num_bins, num_patches))
-        patched_counts = PatchedCounts.zeros(binning, num_patches, auto=auto)
+        scale_counts = [
+            PatchedCounts.zeros(binning, num_patches, auto=auto)
+            for _ in range(self.config.scales.num_scales)
+        ]
 
         count_iter = ParallelHelper.iter_unordered(
             process_patch_pair,
@@ -222,14 +225,13 @@ class PatchLinkage:
             totals1[:, id1] = pair_counts.totals1
             totals2[:, id2] = pair_counts.totals2
 
-            counts = pair_counts.counts
-            if auto and id1 == id2:
-                counts = counts * 0.5  # autocorrelation pairs are counted twice
-            # TODO: index 0 selects only the first scale
-            patched_counts.set_patch_pair(id1, id2, counts[:, 0])
+            for i, counts in enumerate(pair_counts.counts):
+                if auto and id1 == id2:
+                    counts = counts * 0.5  # autocorrelation pairs are counted twice
+                scale_counts[i].set_patch_pair(id1, id2, counts)
 
         totals = PatchedTotals(binning, totals1, totals2, auto=auto)
-        return NormalisedCounts(patched_counts, totals)
+        return [NormalisedCounts(counts, totals) for counts in scale_counts]
 
 
 def autocorrelate(
@@ -239,22 +241,32 @@ def autocorrelate(
     *,
     count_rr: bool = True,
     progress: bool = False,
-) -> CorrFunc:
-    binning = config.binning.binning
+) -> list[CorrFunc]:
+    edges = config.binning.binning.edges
+    closed = config.binning.binning.closed
+
     with use_description("trees D"):
-        data.build_trees(binning.edges, closed=binning.closed, progress=progress)
+        data.build_trees(edges, closed=closed, progress=progress)
+
     with use_description("trees R"):
-        random.build_trees(binning.edges, closed=binning.closed, progress=progress)
+        random.build_trees(edges, closed=closed, progress=progress)
 
     links = PatchLinkage.from_catalogs(config, data, random)
-    with use_description("count DD"):
-        dd = links.count_pairs(data, progress=progress)
-    with use_description("count DR"):
-        dr = links.count_pairs(data, random, progress=progress)
-    with use_description("count RR"):
-        rr = links.count_pairs(random, progress=progress) if count_rr else None
 
-    return CorrFunc(dd, dr, rr)
+    with use_description("count DD"):
+        DD = links.count_pairs(data, progress=progress)
+
+    with use_description("count DR"):
+        DR = links.count_pairs(data, random, progress=progress)
+
+    with use_description("count RR"):
+        RR = (
+            links.count_pairs(random, progress=progress)
+            if count_rr
+            else [None] * config.scales.num_scales
+        )
+
+    return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
 
 
 def crosscorrelate(
@@ -265,7 +277,7 @@ def crosscorrelate(
     ref_rand: Catalog | None = None,
     unk_rand: Catalog | None = None,
     progress: bool = False,
-) -> CorrFunc:
+) -> list[CorrFunc]:
     count_rd = ref_rand is not None
     count_dr = unk_rand is not None
     count_rr = count_rd and count_dr
@@ -274,40 +286,46 @@ def crosscorrelate(
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
+    randoms = []
 
     with use_description("trees Dref"):
         reference.build_trees(edges, closed=closed, progress=progress)
+    with use_description("trees Rref"):
+        if count_rd:
+            ref_rand.build_trees(edges, closed=closed, progress=progress)
+            randoms.append(ref_rand)
+
     with use_description("trees Dunk"):
         unknown.build_trees(None, progress=progress)
-
-    randoms = []
-    if count_rd:
-        with use_description("trees Rref"):
-            ref_rand.build_trees(edges, closed=closed, progress=progress)
-        randoms.append(ref_rand)
-    if count_dr:
-        with use_description("trees Runk"):
+    with use_description("trees Runk"):
+        if count_dr:
             unk_rand.build_trees(None, progress=progress)
-        randoms.append(unk_rand)
+            randoms.append(unk_rand)
 
     links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
 
     with use_description("count DD"):
-        dd = links.count_pairs(reference, unknown, progress=progress)
+        DD = links.count_pairs(reference, unknown, progress=progress)
 
-    dr = None
-    if count_dr:
-        with use_description("count DR"):
-            dr = links.count_pairs(reference, unk_rand, progress=progress)
+    with use_description("count DR"):
+        DR = (
+            links.count_pairs(reference, unk_rand, progress=progress)
+            if count_dr
+            else [None] * config.scales.num_scales
+        )
 
-    rd = None
-    if count_rd:
-        with use_description("count RD"):
-            rd = links.count_pairs(ref_rand, unknown, progress=progress)
+    with use_description("count RD"):
+        RD = (
+            links.count_pairs(ref_rand, unknown, progress=progress)
+            if count_rd
+            else [None] * config.scales.num_scales
+        )
 
-    rr = None
-    if count_rr:
-        with use_description("count RR"):
-            rr = links.count_pairs(ref_rand, unk_rand, progress=progress)
+    with use_description("count RR"):
+        RR = (
+            links.count_pairs(ref_rand, unk_rand, progress=progress)
+            if count_rr
+            else [None] * config.scales.num_scales
+        )
 
-    return CorrFunc(dd, dr, rd, rr)
+    return [CorrFunc(dd, dr, rd, rr) for dd, dr, rd, rr in zip(DD, DR, RD, RR)]

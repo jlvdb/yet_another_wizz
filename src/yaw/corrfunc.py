@@ -16,8 +16,8 @@ from yaw.containers import (
     PatchwiseData,
     SampledData,
     Serialisable,
-    Tpath,
     Tindexing,
+    Tpath,
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io

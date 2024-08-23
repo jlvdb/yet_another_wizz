@@ -13,8 +13,8 @@ from yaw.containers import (
     HdfSerializable,
     PatchwiseData,
     SampledData,
+    Tindexing,
     load_legacy_binning,
-    Tindexing
 )
 from yaw.utils import io
 
