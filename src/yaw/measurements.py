@@ -13,11 +13,9 @@ from numpy.typing import NDArray
 from yaw.catalog import Catalog, Patch
 from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.config import Configuration
-from yaw.coordinates import AngularDistances
 from yaw.corrfunc import CorrFunc
-from yaw.cosmology import separation_physical_to_angle
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
-from yaw.utils import ParallelHelper
+from yaw.utils import AngularDistances, ParallelHelper, separation_physical_to_angle
 from yaw.utils.progress import Indicator, use_description
 
 __all__ = [

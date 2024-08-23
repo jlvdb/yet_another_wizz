@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import DataChunk
 from yaw.containers import JsonSerialisable, Serialisable, Tpath
-from yaw.coordinates import AngularCoordinates, AngularDistances
+from yaw.utils import AngularCoordinates, AngularDistances
 
 __all__ = [
     "PatchWriter",

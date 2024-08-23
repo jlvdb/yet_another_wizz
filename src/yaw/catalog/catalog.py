@@ -20,8 +20,7 @@ from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
-from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.utils import ParallelHelper
+from yaw.utils import AngularCoordinates, AngularDistances, ParallelHelper
 from yaw.utils.progress import Indicator
 
 __all__ = [

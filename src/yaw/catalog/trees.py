@@ -12,7 +12,7 @@ from scipy.spatial import KDTree
 
 from yaw.catalog.utils import groupby_binning
 from yaw.containers import Tclosed, default_closed, parse_binning
-from yaw.coordinates import AngularCoordinates, AngularDistances
+from yaw.utils import AngularCoordinates, AngularDistances
 
 if TYPE_CHECKING:
     from yaw.catalog.patch import Patch

@@ -14,8 +14,8 @@ from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import ArrayLike, NDArray
 
-from yaw.cosmology import Tcosmology, get_default_cosmology
 from yaw.utils import io, plot
+from yaw.utils.cosmology import Tcosmology, get_default_cosmology
 from yaw.utils.plot import Axis
 
 __all__ = [

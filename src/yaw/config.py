@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from yaw.containers import Binning, RedshiftBinningFactory, Serialisable
 from yaw.containers import Tbin_method as Tbin_method_auto
 from yaw.containers import Tclosed, Tpath, default_bin_method, default_closed
-from yaw.cosmology import (
+from yaw.utils.cosmology import (
     CustomCosmology,
     Tcosmology,
     cosmology_is_equal,

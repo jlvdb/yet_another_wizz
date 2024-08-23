@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from yaw.containers import Serialisable, Tclosed, default_closed
-from yaw.coordinates import AngularCoordinates
+from yaw.utils import AngularCoordinates
 
 __all__ = [
     "DataChunk",
