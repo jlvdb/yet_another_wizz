@@ -30,7 +30,7 @@ def use_description(description: str):
 
 def format_time(elapsed: float) -> str:
     minutes, seconds = divmod(elapsed, 60)
-    return f"{minutes: .0f}m{seconds: 05.2f}s"
+    return f"{minutes:.0f}m{seconds:05.2f}s"
 
 
 class Indicator(Iterable[T]):
@@ -66,7 +66,7 @@ class Indicator(Iterable[T]):
                 template += "step {:d} t={:s}\r"
             else:
                 num_items = self.num_items
-                template += f"{{: d}}/{num_items: d} ({{frac: .0%}}) t={{: s}}\r"
+                template += f"{{:d}}/{num_items: d} ({{frac:.0%}}) t={{:s}}\r"
 
             min_interval = self.min_interval
             stream = self.stream
