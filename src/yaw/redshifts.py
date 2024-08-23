@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import scipy.optimize
 from numpy.typing import NDArray
@@ -10,6 +12,8 @@ from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc, Tcorr
 from yaw.utils import ParallelHelper
 from yaw.utils import progress as util_progress
+
+logger = logging.getLogger(__name__)
 
 
 def _redshift_histogram(patch: Patch, binning: Binning) -> NDArray:

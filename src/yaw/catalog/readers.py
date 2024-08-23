@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from abc import abstractmethod
 from collections.abc import Iterable, Iterator, Sized
@@ -28,6 +29,8 @@ __all__ = [
 ]
 
 CHUNKSIZE = 16_777_216
+
+logger = logging.getLogger(__name__)
 
 
 def swap_byteorder(array: NDArray) -> NDArray:

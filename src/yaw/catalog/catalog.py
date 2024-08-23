@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import multiprocessing
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping
@@ -30,6 +31,8 @@ __all__ = [
 Tcenters = Union["Catalog", AngularCoordinates]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
+
+logger = logging.getLogger("yaw.catalog")
 PATCHFILE_NAME = "num_patches"
 
 

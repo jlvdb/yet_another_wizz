@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from functools import wraps
 from pathlib import Path
 from typing import Any, TypeVar
@@ -28,6 +29,8 @@ __all__ = [
 ]
 
 Tcorr = TypeVar("Tcorr", bound="CorrData")
+
+logger = logging.getLogger(__name__)
 
 
 class EstimatorError(Exception):

@@ -1,7 +1,6 @@
-# TODO: multiple scales
-
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass
@@ -23,6 +22,8 @@ __all__ = [
     "autocorrelate",
     "crosscorrelate",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, eq=False, slots=True)

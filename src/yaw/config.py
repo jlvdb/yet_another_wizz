@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import warnings
 from abc import abstractmethod
 from collections.abc import Iterable
@@ -26,6 +27,8 @@ Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
 Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
 
 Tbin_method_all = Union[Tbin_method_auto | Literal["manual"]]
+
+logger = logging.getLogger(__name__)
 
 
 class _NotSet_meta(type):
