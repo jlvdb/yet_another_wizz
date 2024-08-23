@@ -60,6 +60,8 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         self._init(ra_name, dec_name, weight_name, redshift_name, patch_name, chunksize)
         self._init_source(source, **reader_kwargs)
 
+        logger.debug("selecting input columns: %s", ", ".join(self.columns))
+
     def _init(
         self,
         ra_name: str,
@@ -158,6 +160,12 @@ class DataFrameReader(BaseReader):
     def _init_source(self, source: Any, **reader_kwargs) -> None:
         self._data = source
         super()._init_source(source)
+
+        logger.info(
+            "loading %i records in %i chunk from memory",
+            self.num_records,
+            self.num_chunks,
+        )
 
     def __enter__(self) -> Self:
         return self
@@ -263,6 +271,13 @@ class ParquetReader(FileReader):
         self._cache = self._file.get_empty_group()
         super()._init_source(path)
 
+        logger.info(
+            "loading %i records in %i chunk from Parquet file: %s",
+            self.num_records,
+            self.num_chunks,
+            self.path,
+        )
+
     @property
     def path(self) -> Path:
         return self._file.path
@@ -309,6 +324,13 @@ class FitsReader(FileReader):
         self._hdu = self._file[hdu]
         super()._init_source(source)
 
+        logger.info(
+            "loading %i records in %i chunk from FITS file: %s",
+            self.num_records,
+            self.num_chunks,
+            self.path,
+        )
+
     @property
     def num_records(self) -> int:
         return len(self._hdu.data)
@@ -337,6 +359,13 @@ class HDFReader(FileReader):
         self.path = Path(source)
         self._file = h5py.File(self.path, mode="r")
         super()._init_source(source)
+
+        logger.info(
+            "loading %i records in %i chunk from HDF5 file: %s",
+            self.num_records,
+            self.num_chunks,
+            self.path,
+        )
 
     @property
     def num_records(self) -> int:

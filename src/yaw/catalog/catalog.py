@@ -31,9 +31,9 @@ __all__ = [
 Tcenters = Union["Catalog", AngularCoordinates]
 
 PATCH_NAME_TEMPLATE = "patch_{:}"
+PATCHFILE_NAME = "num_patches"
 
 logger = logging.getLogger("yaw.catalog")
-PATCHFILE_NAME = "num_patches"
 
 
 class InconsistentPatchesError(Exception):
@@ -56,13 +56,18 @@ class PatchMode(Enum):
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
+        log_sink = logger.debug
+
         if patch_centers is not None:
+            log_sink("applying patch %i centers", len(patch_centers))
             return PatchMode.apply
 
         if patch_name is not None:
+            log_sink("dividing patches based on '%s'", patch_name)
             return PatchMode.divide
 
         elif patch_num is not None:
+            log_sink("creating %i patches", patch_num)
             return PatchMode.create
 
         raise ValueError("no patch method specified")
@@ -75,6 +80,8 @@ def create_patch_centers(
         probe_size = int(100_000 * np.sqrt(patch_num))
     sparse_factor = np.ceil(reader.num_records / probe_size)
     test_sample = reader.read(int(sparse_factor))
+
+    logger.info("computing patch centers from %ix sparse sampling", sparse_factor)
 
     cat = treecorr.Catalog(
         ra=test_sample.coords.ra,
@@ -114,9 +121,12 @@ class CatalogWriter(AbstractContextManager):
         self.cache_directory = Path(cache_directory)
         if self.cache_directory.exists():
             if overwrite:
+                logger.info("overwriting cache directory: %s", cache_directory)
                 rmtree(self.cache_directory)
             else:
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
+        else:
+            logger.info("using cache directory: %s", cache_directory)
 
         self.cache_directory.mkdir()
         self._writers: dict[int, PatchWriter] = {}
@@ -180,6 +190,11 @@ def write_patches(
                 writer.process_patches(patch_chunks)
 
 
+def patch_id_from_path(patch_path: Tpath) -> int:
+    _, id_str = Path(patch_path).name.split("_")
+    return int(id_str)
+
+
 def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
     with (cache_directory / PATCHFILE_NAME).open("w") as f:
         f.write(str(num_patches))
@@ -196,42 +211,44 @@ def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
         raise ValueError(f"expected {num_expect} patches but found {num_patches}")
 
 
-def compute_patch_metadata(cache_directory: Tpath, progress: bool = False):
-    cache_directory = Path(cache_directory)
-    patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
-    create_patchfile(cache_directory, len(patch_paths))
+def compute_patch_metadata(
+    cache_directory: Tpath, progress: bool = False
+) -> dict[int, Patch]:
+    if ParallelHelper.on_root():
+        cache_directory = Path(cache_directory)
+        patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
+        create_patchfile(cache_directory, len(patch_paths))
+    else:
+        patch_paths = None
+    patch_paths = ParallelHelper.comm.bcast(patch_paths, root=0)
 
     # instantiate patches, which trigger computing the patch meta-data
     patch_iter = ParallelHelper.iter_unordered(Patch, patch_paths)
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_paths), "metadata")
 
-    deque(patch_iter, maxlen=0)
+    patches = {patch_id_from_path(patch.cache_path): patch for patch in patch_iter}
+    return ParallelHelper.comm.bcast(patches, root=0)
 
 
 class Catalog(Mapping[int, Patch]):
-    _patches = dict[int, Patch]
+    patches = dict[int, Patch]
 
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
+        logger.info("restoring from cache directory: %s", cache_directory)
 
         if ParallelHelper.on_root():
             template = PATCH_NAME_TEMPLATE.format("*")
             patch_paths = tuple(self.cache_directory.glob(template))
             verify_patchfile(self.cache_directory, len(patch_paths))
 
-            patches = {}
-            for cache in patch_paths:
-                patch_id = int(cache.name.split("_")[1])
-                patches[patch_id] = Patch(cache)
+            patches = {patch_id_from_path(cache): Patch(cache) for cache in patch_paths}
 
         else:
             patches = None
 
-        if ParallelHelper.use_mpi():
-            self._patches = ParallelHelper.comm.bcast(patches, root=0)
-        else:
-            self._patches = patches
+        self.patches = ParallelHelper.comm.bcast(patches, root=0)
 
     @classmethod
     def from_dataframe(
@@ -273,8 +290,10 @@ class Catalog(Mapping[int, Patch]):
             write_patches(cache_directory, reader, patch_centers, overwrite, progress)
         ParallelHelper.comm.Barrier()
 
-        compute_patch_metadata(cache_directory, progress)
-        return cls(cache_directory)
+        new = cls.__new__(cls)
+        new.cache_directory = Path(cache_directory)
+        new.patches = compute_patch_metadata(cache_directory, progress)
+        return new
 
     @classmethod
     def from_file(
@@ -316,8 +335,10 @@ class Catalog(Mapping[int, Patch]):
             write_patches(cache_directory, reader, patch_centers, overwrite, progress)
         ParallelHelper.comm.Barrier()
 
-        compute_patch_metadata(cache_directory, progress)
-        return cls(cache_directory)
+        new = cls.__new__(cls)
+        new.cache_directory = Path(cache_directory)
+        new.patches = compute_patch_metadata(cache_directory, progress)
+        return new
 
     def __repr__(self) -> str:
         num_patches = len(self)
@@ -326,13 +347,13 @@ class Catalog(Mapping[int, Patch]):
         return f"{type(self).__name__}({num_patches=}, {weights=}, {redshifts=})"
 
     def __len__(self) -> int:
-        return len(self._patches)
+        return len(self.patches)
 
     def __getitem__(self, patch_id: int) -> Patch:
-        return self._patches[patch_id]
+        return self.patches[patch_id]
 
     def __iter__(self) -> Iterator[int]:
-        yield from sorted(self._patches.keys())
+        yield from sorted(self.patches.keys())
 
     def has_weights(self) -> bool:
         has_weights = tuple(patch.has_weights() for patch in self.values())
