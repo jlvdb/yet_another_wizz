@@ -239,7 +239,7 @@ class CorrData(AsciiSerializable, SampledData):
         return cls(binning, data, samples)
 
     def to_files(self, path_prefix: Tpath) -> None:
-        logger.info("writing %s to: %s.{dat,smp}", type(self).__name__, path_prefix)
+        logger.info("writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix)
 
         path_prefix = Path(path_prefix)
 

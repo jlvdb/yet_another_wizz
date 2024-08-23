@@ -108,7 +108,7 @@ class PatchLinkage:
         self.config = config
         self.patch_links = patch_links
 
-        logger.debug("created patch linkage with %d links", self.num_links)
+        logger.debug("created patch linkage with %d patch pairs", self.num_links)
 
     @classmethod
     def from_catalogs(
@@ -122,7 +122,7 @@ class PatchLinkage:
         max_scale_angle = get_max_angle(config)
 
         logger.debug(
-            "computing patch linkage with max. separation of %.3e rad",
+            "computing patch linkage with max. separation of %.2e rad",
             max_scale_angle.data[0],
         )
 

@@ -5,6 +5,8 @@ import os
 import sys
 from logging import Filter, Formatter, Logger
 
+from .progress import set_indicator_prefix
+
 __all__ = [
     "get_default_logger",
 ]
@@ -78,6 +80,7 @@ def get_default_logger(
 
     if pretty:
         formatter = CustomFormatter()
+        set_indicator_prefix("    |-> ")
     else:
         formatter = Formatter("%(asctime)s - %(levelname)s - %(name)s > %(message)s")
     handler.setFormatter(formatter)

@@ -15,6 +15,13 @@ __all__ = [
 
 T = TypeVar("T")
 
+INDICATOR_PREFIX = ""
+
+
+def set_indicator_prefix(prefix: str) -> None:
+    global INDICATOR_PREFIX
+    INDICATOR_PREFIX = str(prefix)
+
 
 def format_time(elapsed: float) -> str:
     minutes, seconds = divmod(elapsed, 60)
@@ -43,14 +50,14 @@ class Indicator(Iterable[T]):
 
     def __iter__(self) -> Iterator[T]:
         if on_root():
-            prefix = "    "
             if self.num_items is None:
                 num_items = nan
-                template = prefix + "done {:d} t={:s}\r"
+                template = INDICATOR_PREFIX + "processed {:d} t={:s}\r"
             else:
                 num_items = self.num_items
                 template = (
-                    prefix + f"done {{:d}}/{num_items:d} ({{frac:.0%}}) t={{:s}}\r"
+                    INDICATOR_PREFIX
+                    + f"processed {{:d}}/{num_items:d} ({{frac:.0%}}) t={{:s}}\r"
                 )
 
             min_interval = self.min_interval
