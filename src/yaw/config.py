@@ -408,6 +408,15 @@ class Configuration(BaseConfig):
             cosmology=cosmology_to_yaml(self.cosmology),
         )
 
+    @classmethod
+    def from_file(cls, path: Tpath) -> Configuration:
+        logger.info("reading configuration file: %s", path)
+        return super().from_file(path)
+
+    def to_file(self, path: Tpath) -> None:
+        logger.info("writing configuration file: %s", path)
+        return super().to_file(path)
+
     def __eq__(self, other) -> bool:
         if not isinstance(other, type(self)):
             return False

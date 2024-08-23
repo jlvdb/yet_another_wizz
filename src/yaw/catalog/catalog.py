@@ -59,7 +59,7 @@ class PatchMode(Enum):
         log_sink = logger.debug
 
         if patch_centers is not None:
-            log_sink("applying patch %i centers", len(patch_centers))
+            log_sink("applying patch %d centers", len(patch_centers))
             return PatchMode.apply
 
         if patch_name is not None:
@@ -67,7 +67,7 @@ class PatchMode(Enum):
             return PatchMode.divide
 
         elif patch_num is not None:
-            log_sink("creating %i patches", patch_num)
+            log_sink("creating %d patches", patch_num)
             return PatchMode.create
 
         raise ValueError("no patch method specified")
@@ -81,7 +81,7 @@ def create_patch_centers(
     sparse_factor = np.ceil(reader.num_records / probe_size)
     test_sample = reader.read(int(sparse_factor))
 
-    logger.info("computing patch centers from %ix sparse sampling", sparse_factor)
+    logger.info("computing patch centers from %dx sparse sampling", sparse_factor)
 
     cat = treecorr.Catalog(
         ra=test_sample.coords.ra,
@@ -181,7 +181,7 @@ def write_patches(
     with reader, writer, pool:
         chunk_iter = iter(reader)
         if progress:
-            chunk_iter = Indicator(reader, description="I/O")
+            chunk_iter = Indicator(reader)
 
         for chunk in chunk_iter:
             thread_chunks = chunk.split(num_threads)
@@ -214,6 +214,8 @@ def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
 def compute_patch_metadata(
     cache_directory: Tpath, progress: bool = False
 ) -> dict[int, Patch]:
+    logger.info("computing patch metadata")
+
     if ParallelHelper.on_root():
         cache_directory = Path(cache_directory)
         patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
@@ -225,7 +227,7 @@ def compute_patch_metadata(
     # instantiate patches, which trigger computing the patch meta-data
     patch_iter = ParallelHelper.iter_unordered(Patch, patch_paths)
     if progress:
-        patch_iter = Indicator(patch_iter, len(patch_paths), "metadata")
+        patch_iter = Indicator(patch_iter, len(patch_paths))
 
     patches = {patch_id_from_path(patch.cache_path): patch for patch in patch_iter}
     return ParallelHelper.comm.bcast(patches, root=0)
@@ -408,15 +410,18 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
     ) -> None:
         binning = parse_binning(binning, optional=True)
-        patches = self.values()
+        if binning is None:
+            logger.debug("building patch-wise, unbinned trees")
+        else:
+            logger.debug("building patch-wise trees using %d bins", len(binning) - 1)
 
         patch_tree_iter = ParallelHelper.iter_unordered(
             BinnedTrees.build,
-            patches,
+            self.values(),
             func_args=(binning,),
             func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
         )
         if progress:
-            patch_tree_iter = Indicator(patch_tree_iter, len(self), description="trees")
+            patch_tree_iter = Indicator(patch_tree_iter, len(self))
 
         deque(patch_tree_iter, maxlen=0)

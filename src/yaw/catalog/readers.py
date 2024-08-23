@@ -33,6 +33,21 @@ CHUNKSIZE = 16_777_216
 logger = logging.getLogger(__name__)
 
 
+def long_num_format(x: float | int) -> str:
+    """Format a floating point number as string with a numerical suffix.
+
+    E.g.: 1234.0 is converted to ``1.24K``.
+    """
+    x = float(f"{x:.3g}")
+    exp = 0
+    while abs(x) >= 1000:
+        exp += 1
+        x /= 1000.0
+    prefix = str(x).rstrip("0").rstrip(".")
+    suffix = ["", "K", "M", "B", "T"][exp]
+    return prefix + suffix
+
+
 def swap_byteorder(array: NDArray) -> NDArray:
     return array.view(array.dtype.newbyteorder()).byteswap()
 
@@ -131,6 +146,15 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         return DataChunk.from_chunks(chunks)
 
 
+def issue_io_log(num_records: int, num_chunks: int, source: str) -> None:
+    logger.info(
+        "loading %s records in %d chunks from %s",
+        long_num_format(num_records),
+        num_chunks,
+        source,
+    )
+
+
 class DataFrameReader(BaseReader):
     def __init__(
         self,
@@ -161,11 +185,7 @@ class DataFrameReader(BaseReader):
         self._data = source
         super()._init_source(source)
 
-        logger.info(
-            "loading %i records in %i chunk from memory",
-            self.num_records,
-            self.num_chunks,
-        )
+        issue_io_log(self.num_records, self.num_chunks, "memory")
 
     def __enter__(self) -> Self:
         return self
@@ -271,11 +291,8 @@ class ParquetReader(FileReader):
         self._cache = self._file.get_empty_group()
         super()._init_source(path)
 
-        logger.info(
-            "loading %i records in %i chunk from Parquet file: %s",
-            self.num_records,
-            self.num_chunks,
-            self.path,
+        issue_io_log(
+            self.num_records, self.num_chunks, f"from Parquet file: {self.path}"
         )
 
     @property
@@ -324,12 +341,7 @@ class FitsReader(FileReader):
         self._hdu = self._file[hdu]
         super()._init_source(source)
 
-        logger.info(
-            "loading %i records in %i chunk from FITS file: %s",
-            self.num_records,
-            self.num_chunks,
-            self.path,
-        )
+        issue_io_log(self.num_records, self.num_chunks, f"from FITS file: {self.path}")
 
     @property
     def num_records(self) -> int:
@@ -360,12 +372,7 @@ class HDFReader(FileReader):
         self._file = h5py.File(self.path, mode="r")
         super()._init_source(source)
 
-        logger.info(
-            "loading %i records in %i chunk from HDF5 file: %s",
-            self.num_records,
-            self.num_chunks,
-            self.path,
-        )
+        issue_io_log(self.num_records, self.num_chunks, f"from HDF5 file: {self.path}")
 
     @property
     def num_records(self) -> int:

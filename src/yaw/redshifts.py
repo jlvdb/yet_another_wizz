@@ -48,15 +48,15 @@ class HistData(CorrData):
         config: Configuration,
         progress: bool = False,
     ) -> HistData:
+        logger.info("computing redshift histogram")
+
         patch_count_iter = ParallelHelper.iter_unordered(
             _redshift_histogram,
             catalog.values(),
             func_kwargs=dict(binning=config.binning.binning),
         )
         if progress:
-            patch_count_iter = util_progress.Indicator(
-                patch_count_iter, len(catalog), description="n(z) hist"
-            )
+            patch_count_iter = util_progress.Indicator(patch_count_iter, len(catalog))
 
         counts = np.empty((len(catalog), config.binning.num_bins))
         for i, patch_count in enumerate(patch_count_iter):
@@ -86,6 +86,8 @@ class HistData(CorrData):
     _default_style = "step"
 
     def normalised(self, *args, **kwargs) -> HistData:
+        logger.debug("normalising %s", type(self).__name__)
+
         edges = self.binning.edges
         dz = self.binning.dz
         width_correction = (edges.min() - edges.max()) / (self.num_bins * dz)
@@ -107,6 +109,9 @@ class RedshiftData(CorrData):
         ref_data: CorrData | None = None,
         unk_data: CorrData | None = None,
     ) -> RedshiftData:
+        logger.debug("computing clustering redshifts from correlation function samples")
+        log_msg_mitigate = []
+
         w_sp_data = cross_data.data
         w_sp_samp = cross_data.samples
 
@@ -117,6 +122,7 @@ class RedshiftData(CorrData):
             ref_data.is_compatible(cross_data, require=True)
             w_ss_data = ref_data.data
             w_ss_samp = ref_data.samples
+            log_msg_mitigate.append("reference")
 
         if unk_data is None:
             w_pp_data = np.float64(1.0)
@@ -125,6 +131,10 @@ class RedshiftData(CorrData):
             unk_data.is_compatible(cross_data, require=True)
             w_pp_data = unk_data.data
             w_pp_samp = unk_data.samples
+            log_msg_mitigate.append("unknown")
+
+        if len(log_msg_mitigate) > 0:
+            logger.debug("mitigating %s sample bias", " and ".join(log_msg_mitigate))
 
         N = cross_data.num_samples
         dz2_data = cross_data.binning.dz**2
@@ -168,9 +178,13 @@ class RedshiftData(CorrData):
 
     def normalised(self, target: Tcorr | None = None) -> RedshiftData:
         if target is None:
+            logger.debug("normalising %s", type(self).__name__)
+
             norm = np.nansum(self.binning.dz * self.data)
 
         else:
+            logger.debug("normalising %s to target distribution", type(self).__name__)
+
             y_from = self.data
             y_target = target.data
             mask = np.isfinite(y_from) & np.isfinite(y_target) & (y_target > 0.0)

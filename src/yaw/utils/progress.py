@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
 from io import TextIOBase
 from math import nan
 from timeit import default_timer
@@ -12,20 +11,9 @@ from .parallel import on_root
 
 __all__ = [
     "Indicator",
-    "use_description",
 ]
 
 T = TypeVar("T")
-
-DESCRIPTION = ""
-
-
-@contextmanager
-def use_description(description: str):
-    global DESCRIPTION
-    DESCRIPTION = description
-    yield
-    DESCRIPTION = ""
 
 
 def format_time(elapsed: float) -> str:
@@ -34,13 +22,12 @@ def format_time(elapsed: float) -> str:
 
 
 class Indicator(Iterable[T]):
-    __slots__ = ("iterable", "num_items", "description", "min_interval", "stream")
+    __slots__ = ("iterable", "num_items", "min_interval", "stream")
 
     def __init__(
         self,
         iterable: Iterable[T],
         num_items: int | None = None,
-        description: str | None = None,
         *,
         min_interval: float = 0.001,
         stream: TextIOBase = sys.stderr,
@@ -51,22 +38,20 @@ class Indicator(Iterable[T]):
         if num_items is None and hasattr(iterable, "__len__"):
             self.num_items = len(iterable)
 
-        self.description = str(DESCRIPTION or description or "")
-        if self.description != "":
-            self.description += ": "
-
         self.min_interval = float(min_interval)
         self.stream = stream
 
     def __iter__(self) -> Iterator[T]:
         if on_root():
-            template = self.description
+            prefix = "    "
             if self.num_items is None:
                 num_items = nan
-                template += "step {:d} t={:s}\r"
+                template = prefix + "done {:d} t={:s}\r"
             else:
                 num_items = self.num_items
-                template += f"{{:d}}/{num_items: d} ({{frac:.0%}}) t={{:s}}\r"
+                template = (
+                    prefix + f"done {{:d}}/{num_items:d} ({{frac:.0%}}) t={{:s}}\r"
+                )
 
             min_interval = self.min_interval
             stream = self.stream
@@ -77,7 +62,7 @@ class Indicator(Iterable[T]):
             stream.flush()
 
             start = default_timer()
-            for i, item in enumerate(self.iterable):
+            for i, item in enumerate(self.iterable, 1):
                 elapsed = default_timer() - start
 
                 if elapsed - last_update > min_interval:
@@ -93,11 +78,8 @@ class Indicator(Iterable[T]):
 
             elapsed = default_timer() - start
 
-            pad = len(line)
-            end_string = "{:s}done t={:s}".format(
-                self.description, format_time(elapsed)
-            )
-            stream.write(end_string.ljust(pad) + "\n")
+            line = template.format(i, format_time(elapsed), frac=(i / num_items))
+            stream.write(line + "\n")
             stream.flush()
 
         else:

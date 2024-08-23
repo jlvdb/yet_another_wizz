@@ -37,7 +37,7 @@ class EstimatorError(Exception):
     pass
 
 
-def shortname(key):
+def named(key):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -49,7 +49,7 @@ def shortname(key):
     return decorator
 
 
-@shortname("DP")
+@named("DP")
 def davis_peebles(
     *, dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = None
 ) -> NDArray:
@@ -60,7 +60,7 @@ def davis_peebles(
     return (dd - mixed) / mixed
 
 
-@shortname("LS")
+@named("LS")
 def landy_szalay(
     *, dd: NDArray, dr: NDArray, rd: NDArray | None = None, rr: NDArray
 ) -> NDArray:
@@ -127,6 +127,15 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
                 group = dest.create_group(name)
                 count.to_hdf(group)
 
+    @classmethod
+    def from_file(cls, path: Tpath) -> CorrFunc:
+        logger.info("reading %s from: %s", cls.__name__, path)
+        return super().from_file(path)
+
+    def to_file(self, path: Tpath) -> None:
+        logger.info("writing %s to: %s", type(self).__name__, path)
+        return super().to_file(path)
+
     def to_dict(self) -> dict[str, NormalisedCounts]:
         attrs = ("dd", "dr", "rd", "rr")
         return {
@@ -184,6 +193,12 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return self.dd.is_compatible(other.dd, require=require)
 
     def sample(self) -> CorrData:
+        estimator = landy_szalay if self.rr is not None else davis_peebles
+
+        logger.debug(
+            "sampling correlation function with estimator '%s'", estimator.name
+        )
+
         counts_values = {}
         counts_samples = {}
         for kind, paircounts in self.to_dict().items():
@@ -191,7 +206,6 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
             counts_values[kind] = resampled.data
             counts_samples[kind] = resampled.samples
 
-        estimator = landy_szalay if "rr" in counts_values else davis_peebles
         corr_data = estimator(**counts_values)
         corr_samples = estimator(**counts_samples)
         return CorrData(self.binning, corr_data, corr_samples)
@@ -213,6 +227,8 @@ class CorrData(AsciiSerializable, SampledData):
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
+        logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
+
         path_prefix = Path(path_prefix)
 
         edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
@@ -223,7 +239,10 @@ class CorrData(AsciiSerializable, SampledData):
         return cls(binning, data, samples)
 
     def to_files(self, path_prefix: Tpath) -> None:
+        logger.info("writing %s to: %s.{dat,smp}", type(self).__name__, path_prefix)
+
         path_prefix = Path(path_prefix)
+
         io.write_data(
             path_prefix.with_suffix(".dat"),
             self._description_data,
@@ -233,6 +252,7 @@ class CorrData(AsciiSerializable, SampledData):
             error=self.error,
             closed=self.binning.closed,
         )
+
         io.write_samples(
             path_prefix.with_suffix(".smp"),
             self._description_samples,
@@ -241,6 +261,7 @@ class CorrData(AsciiSerializable, SampledData):
             samples=self.samples,
             closed=self.binning.closed,
         )
+
         # write covariance for convenience only, it is not required to restore
         io.write_covariance(
             path_prefix.with_suffix(".cov"),

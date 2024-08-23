@@ -15,7 +15,7 @@ from yaw.config import Configuration
 from yaw.corrfunc import CorrFunc
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import AngularDistances, ParallelHelper, separation_physical_to_angle
-from yaw.utils.progress import Indicator, use_description
+from yaw.utils.progress import Indicator
 
 __all__ = [
     "PatchLinkage",
@@ -108,6 +108,8 @@ class PatchLinkage:
         self.config = config
         self.patch_links = patch_links
 
+        logger.debug("created patch linkage with %d links", self.num_links)
+
     @classmethod
     def from_catalogs(
         cls,
@@ -118,6 +120,11 @@ class PatchLinkage:
         if any(set(cat.keys()) != catalog.keys() for cat in catalogs):
             raise InconsistentPatchesError("patch IDs do not match")
         max_scale_angle = get_max_angle(config)
+
+        logger.debug(
+            "computing patch linkage with max. separation of %.3e rad",
+            max_scale_angle.data[0],
+        )
 
         # find largest catalog which has best constraints on patch centers/radii
         ref_cat, *other_cats = sorted(
@@ -252,22 +259,25 @@ def autocorrelate(
     count_rr: bool = True,
     progress: bool = False,
 ) -> list[CorrFunc]:
+    logger.info("building trees for 2 datasets")
+
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
 
-    with use_description("trees D"):
-        data.build_trees(edges, closed=closed, progress=progress)
+    data.build_trees(edges, closed=closed, progress=progress)
+    random.build_trees(edges, closed=closed, progress=progress)
 
-    with use_description("trees R"):
-        random.build_trees(edges, closed=closed, progress=progress)
+    logger.info("computing auto-correlation with DD, DR" + (", RR" if count_rr else ""))
+    logger.debug(
+        "using %d scales %s weighting",
+        config.scales.num_scales,
+        "with" if config.scales.rweight else "without",
+    )
 
     links = PatchLinkage.from_catalogs(config, data, random)
-    with use_description("count DD"):
-        DD = links.count_pairs(data, progress=progress)
-    with use_description("count DR"):
-        DR = links.count_pairs(data, random, progress=progress)
-    with use_description("count RR"):
-        RR = links.count_pairs_optional(random if count_rr else None, progress=progress)
+    DD = links.count_pairs(data, progress=progress)
+    DR = links.count_pairs(data, random, progress=progress)
+    RR = links.count_pairs_optional(random if count_rr else None, progress=progress)
 
     return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
 
@@ -281,35 +291,43 @@ def crosscorrelate(
     unk_rand: Catalog | None = None,
     progress: bool = False,
 ) -> list[CorrFunc]:
-    if ref_rand is None and unk_rand is None:
+    count_dr = unk_rand is not None
+    count_rd = ref_rand is not None
+    if not count_dr and not count_rd:
         raise ValueError("at least one random dataset must be provided")
+
+    logger.info("building trees for %d datasets", 2 + count_dr + count_rd)
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
     randoms = []
 
-    with use_description("trees Dref"):
-        reference.build_trees(edges, closed=closed, progress=progress)
-    with use_description("trees Rref"):
-        if ref_rand is not None:
-            ref_rand.build_trees(edges, closed=closed, progress=progress)
-            randoms.append(ref_rand)
+    reference.build_trees(edges, closed=closed, progress=progress)
+    if count_rd:
+        ref_rand.build_trees(edges, closed=closed, progress=progress)
+        randoms.append(ref_rand)
 
-    with use_description("trees Dunk"):
-        unknown.build_trees(None, progress=progress)
-    with use_description("trees Runk"):
-        if unk_rand is not None:
-            unk_rand.build_trees(None, progress=progress)
-            randoms.append(unk_rand)
+    unknown.build_trees(None, progress=progress)
+    if count_dr:
+        unk_rand.build_trees(None, progress=progress)
+        randoms.append(unk_rand)
+
+    logger.info(
+        "computing cross-correlation with DD"
+        + (", DR" if count_dr else "")
+        + (", RD" if count_rd else "")
+        + (", RR" if count_dr and count_dr else "")
+    )
+    logger.debug(
+        "using %d scales %s weighting",
+        config.scales.num_scales,
+        "with" if config.scales.rweight else "without",
+    )
 
     links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
-    with use_description("count DD"):
-        DD = links.count_pairs(reference, unknown, progress=progress)
-    with use_description("count DR"):
-        DR = links.count_pairs_optional(reference, unk_rand, progress=progress)
-    with use_description("count RD"):
-        RD = links.count_pairs_optional(ref_rand, unknown, progress=progress)
-    with use_description("count RR"):
-        RR = links.count_pairs_optional(ref_rand, unk_rand, progress=progress)
+    DD = links.count_pairs(reference, unknown, progress=progress)
+    DR = links.count_pairs_optional(reference, unk_rand, progress=progress)
+    RD = links.count_pairs_optional(ref_rand, unknown, progress=progress)
+    RR = links.count_pairs_optional(ref_rand, unk_rand, progress=progress)
 
     return [CorrFunc(dd, dr, rd, rr) for dd, dr, rd, rr in zip(DD, DR, RD, RR)]
