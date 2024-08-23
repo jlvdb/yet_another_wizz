@@ -11,7 +11,7 @@ from yaw.config import Configuration
 from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc, Tcorr
 from yaw.utils import ParallelHelper
-from yaw.utils import progress as util_progress
+from yaw.utils.logging import Indicator
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class HistData(CorrData):
             func_kwargs=dict(binning=config.binning.binning),
         )
         if progress:
-            patch_count_iter = util_progress.Indicator(patch_count_iter, len(catalog))
+            patch_count_iter = Indicator(patch_count_iter, len(catalog))
 
         counts = np.empty((len(catalog), config.binning.num_bins))
         for i, patch_count in enumerate(patch_count_iter):

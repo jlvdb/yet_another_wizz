@@ -15,7 +15,7 @@ from yaw.config import Configuration
 from yaw.corrfunc import CorrFunc
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import AngularDistances, ParallelHelper, separation_physical_to_angle
-from yaw.utils.progress import Indicator
+from yaw.utils.logging import Indicator
 
 __all__ = [
     "PatchLinkage",

@@ -22,7 +22,7 @@ from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances, ParallelHelper
-from yaw.utils.progress import Indicator
+from yaw.utils.logging import Indicator
 
 __all__ = [
     "Catalog",
