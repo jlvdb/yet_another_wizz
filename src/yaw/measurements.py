@@ -259,7 +259,7 @@ def autocorrelate(
     count_rr: bool = True,
     progress: bool = False,
 ) -> list[CorrFunc]:
-    logger.info("building trees for 2 datasets")
+    logger.info("building trees for 2 catalogs")
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
@@ -296,7 +296,7 @@ def crosscorrelate(
     if not count_dr and not count_rd:
         raise ValueError("at least one random dataset must be provided")
 
-    logger.info("building trees for %d datasets", 2 + count_dr + count_rd)
+    logger.info("building trees for %d catalogs", 2 + count_dr + count_rd)
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed

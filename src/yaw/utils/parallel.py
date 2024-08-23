@@ -146,6 +146,10 @@ class ParallelHelper:
 
     @classmethod
     def set_multiprocessing_threads(cls, num_threads: int) -> None:
+        num_threads = min(int(num_threads), multiprocessing.cpu_count())
+        if num_threads < 1:
+            num_threads = get_physical_cores()
+
         cls.num_threads = num_threads
 
     @classmethod
