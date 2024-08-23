@@ -411,9 +411,9 @@ class Catalog(Mapping[int, Patch]):
     ) -> None:
         binning = parse_binning(binning, optional=True)
         if binning is None:
-            logger.debug("building patch-wise, unbinned trees")
+            logger.debug("building patch-wise trees (unbinned)")
         else:
-            logger.debug("building patch-wise trees using %d bins", len(binning) - 1)
+            logger.debug("building patch-wise trees (using %d bins)", len(binning) - 1)
 
         patch_tree_iter = ParallelHelper.iter_unordered(
             BinnedTrees.build,

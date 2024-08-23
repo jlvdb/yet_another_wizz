@@ -79,7 +79,7 @@ def get_default_logger(
     if pretty:
         formatter = CustomFormatter()
     else:
-        formatter = Formatter("%(levelname)s - %(name)s: %(message)s")
+        formatter = Formatter("%(asctime)s - %(levelname)s - %(name)s > %(message)s")
     handler.setFormatter(formatter)
 
     level = getattr(logging, level.upper())

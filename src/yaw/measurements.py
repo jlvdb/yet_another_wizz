@@ -223,7 +223,7 @@ class PatchLinkage:
             func_args=(self.config,),
         )
         if progress:
-            count_iter = Indicator(count_iter, len(patch_pairs), "counts")
+            count_iter = Indicator(count_iter, len(patch_pairs))
 
         for pair_counts in count_iter:
             id1 = pair_counts.id1
@@ -268,13 +268,13 @@ def autocorrelate(
     random.build_trees(edges, closed=closed, progress=progress)
 
     logger.info("computing auto-correlation with DD, DR" + (", RR" if count_rr else ""))
+
+    links = PatchLinkage.from_catalogs(config, data, random)
     logger.debug(
         "using %d scales %s weighting",
         config.scales.num_scales,
         "with" if config.scales.rweight else "without",
     )
-
-    links = PatchLinkage.from_catalogs(config, data, random)
     DD = links.count_pairs(data, progress=progress)
     DR = links.count_pairs(data, random, progress=progress)
     RR = links.count_pairs_optional(random if count_rr else None, progress=progress)
@@ -318,13 +318,13 @@ def crosscorrelate(
         + (", RD" if count_rd else "")
         + (", RR" if count_dr and count_dr else "")
     )
+
+    links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
     logger.debug(
         "using %d scales %s weighting",
         config.scales.num_scales,
         "with" if config.scales.rweight else "without",
     )
-
-    links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
     DD = links.count_pairs(reference, unknown, progress=progress)
     DR = links.count_pairs_optional(reference, unk_rand, progress=progress)
     RD = links.count_pairs_optional(ref_rand, unknown, progress=progress)
