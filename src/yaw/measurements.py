@@ -193,12 +193,13 @@ class PatchLinkage:
 
     def count_pairs(
         self,
+        catalog: Catalog,
         *catalogs: Catalog,
         progress: bool = False,
     ) -> list[NormalisedCounts]:
-        auto = len(catalogs) == 1
-        num_patches = len(catalogs[0])
-        patch_pairs = self.get_patch_pairs(*catalogs)
+        auto = len(catalogs) == 0
+        num_patches = len(catalog)
+        patch_pairs = self.get_patch_pairs(catalog, *catalogs)
 
         binning = self.config.binning.binning
         num_bins = len(binning)
@@ -233,6 +234,16 @@ class PatchLinkage:
         totals = PatchedTotals(binning, totals1, totals2, auto=auto)
         return [NormalisedCounts(counts, totals) for counts in scale_counts]
 
+    def count_pairs_optional(
+        self,
+        *catalogs: Catalog | None,
+        progress: bool = False,
+    ) -> list[NormalisedCounts | None]:
+        if any(catalog is None for catalog in catalogs):
+            return [None for _ in range(self.config.scales.num_scales)]
+        else:
+            return self.count_pairs(*catalogs, progress=progress)
+
 
 def autocorrelate(
     config: Configuration,
@@ -252,19 +263,12 @@ def autocorrelate(
         random.build_trees(edges, closed=closed, progress=progress)
 
     links = PatchLinkage.from_catalogs(config, data, random)
-
     with use_description("count DD"):
         DD = links.count_pairs(data, progress=progress)
-
     with use_description("count DR"):
         DR = links.count_pairs(data, random, progress=progress)
-
     with use_description("count RR"):
-        RR = (
-            links.count_pairs(random, progress=progress)
-            if count_rr
-            else [None] * config.scales.num_scales
-        )
+        RR = links.count_pairs_optional(random if count_rr else None, progress=progress)
 
     return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
 
@@ -278,10 +282,7 @@ def crosscorrelate(
     unk_rand: Catalog | None = None,
     progress: bool = False,
 ) -> list[CorrFunc]:
-    count_rd = ref_rand is not None
-    count_dr = unk_rand is not None
-    count_rr = count_rd and count_dr
-    if not count_rd and not count_dr:
+    if ref_rand is None and unk_rand is None:
         raise ValueError("at least one random dataset must be provided")
 
     edges = config.binning.binning.edges
@@ -291,41 +292,25 @@ def crosscorrelate(
     with use_description("trees Dref"):
         reference.build_trees(edges, closed=closed, progress=progress)
     with use_description("trees Rref"):
-        if count_rd:
+        if ref_rand is not None:
             ref_rand.build_trees(edges, closed=closed, progress=progress)
             randoms.append(ref_rand)
 
     with use_description("trees Dunk"):
         unknown.build_trees(None, progress=progress)
     with use_description("trees Runk"):
-        if count_dr:
+        if unk_rand is not None:
             unk_rand.build_trees(None, progress=progress)
             randoms.append(unk_rand)
 
     links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
-
     with use_description("count DD"):
         DD = links.count_pairs(reference, unknown, progress=progress)
-
     with use_description("count DR"):
-        DR = (
-            links.count_pairs(reference, unk_rand, progress=progress)
-            if count_dr
-            else [None] * config.scales.num_scales
-        )
-
+        DR = links.count_pairs_optional(reference, unk_rand, progress=progress)
     with use_description("count RD"):
-        RD = (
-            links.count_pairs(ref_rand, unknown, progress=progress)
-            if count_rd
-            else [None] * config.scales.num_scales
-        )
-
+        RD = links.count_pairs_optional(ref_rand, unknown, progress=progress)
     with use_description("count RR"):
-        RR = (
-            links.count_pairs(ref_rand, unk_rand, progress=progress)
-            if count_rr
-            else [None] * config.scales.num_scales
-        )
+        RR = links.count_pairs_optional(ref_rand, unk_rand, progress=progress)
 
     return [CorrFunc(dd, dr, rd, rr) for dd, dr, rd, rr in zip(DD, DR, RD, RR)]
