@@ -10,7 +10,9 @@ from math import nan
 from timeit import default_timer
 from typing import TypeVar
 
-from .parallel import on_root
+from yaw._version import __version__
+
+from .parallel import ParallelHelper, on_root
 
 __all__ = [
     "Indicator",
@@ -153,27 +155,55 @@ class OnlyYAWFilter(Filter):
         return "yaw" in record.name
 
 
+def emit_yaw_message(file: TextIOBase, msg: str, prefix: str = "YAW | ") -> None:
+    file.write(f"{Colors.blu}{prefix}{msg}{Colors.rst}\n")
+    file.flush()
+
+
+def logger_init_messages(
+    logger: Logger,
+    *,
+    pretty: bool,
+    file: TextIOBase,
+) -> None:
+    welcome_msg = f"yet_another_wizz v{__version__}"
+    if pretty:
+        emit_yaw_message(file, welcome_msg)
+    else:
+        logger.info(welcome_msg)
+
+    if ParallelHelper.use_mpi():
+        environment = "MPI"
+        cores = ParallelHelper.size
+    else:
+        environment = "multiprocessing"
+        cores = ParallelHelper.num_threads
+    logger.info(f"running in {environment} environment with {cores} cores")
+
+
 def get_default_logger(
     level: str = "info",
     *,
     pretty: bool = False,
     capture_warnings: bool = True,
+    file: TextIOBase = sys.stdout,
 ) -> Logger:
-    logging.captureWarnings(capture_warnings)
-
-    handler = logging.StreamHandler(sys.stdout)
+    level = getattr(logging, level.upper())
 
     if pretty:
         formatter = CustomFormatter()
         set_indicator_prefix("    |-> ")
     else:
         formatter = Formatter("%(asctime)s - %(levelname)s - %(name)s > %(message)s")
+
+    handler = logging.StreamHandler(file)
     handler.setFormatter(formatter)
-
-    level = getattr(logging, level.upper())
     handler.setLevel(level)
-
     handler.addFilter(OnlyYAWFilter())
 
     logging.basicConfig(level=level, handlers=[handler])
-    return logging.getLogger("yaw")
+    logging.captureWarnings(capture_warnings)
+    logger = logging.getLogger("yaw")
+
+    logger_init_messages(logger, pretty=pretty, file=file)
+    return logger
