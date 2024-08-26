@@ -143,6 +143,7 @@ class AngularTree(Sized):
 def build_binned_trees(
     patch: Patch,
     binning: NDArray,
+    *,
     closed: str,
     leafsize: int,
 ) -> tuple[AngularTree]:
@@ -201,7 +202,9 @@ class BinnedTrees(Iterable):
                 if binning is None:
                     trees = AngularTree(patch.coords, patch.weights, leafsize=leafsize)
                 else:
-                    trees = build_binned_trees(patch, binning, closed, leafsize)
+                    trees = build_binned_trees(
+                        patch, binning, closed=closed, leafsize=leafsize
+                    )
                 pickle.dump(trees, f)
 
             if binning is None:
@@ -209,9 +212,6 @@ class BinnedTrees(Iterable):
             binning.tofile(new.binning_file)
 
         return new
-
-    def to_path(self) -> str:
-        return str(self.cache_path)
 
     @property
     def cache_path(self) -> Path:

@@ -373,19 +373,6 @@ class Catalog(Mapping[int, Patch]):
             return False
         raise InconsistentPatchesError("'redshifts' not consistent")
 
-    def get_redshift_range(self) -> tuple[float, float]:
-        if not self.has_redshifts():
-            raise ValueError("no 'redshifts' attached")
-
-        min_redshifts = []
-        max_redshifts = []
-        for patch in self.values():
-            redshifts = patch.redshifts  # triggers I/O
-            min_redshifts.append(redshifts.min())
-            max_redshifts.append(redshifts.max())
-
-        return float(min(min_redshifts)), float(max(max_redshifts))
-
     def get_num_records(self) -> tuple[int]:
         return tuple(patch.meta.num_records for patch in self.values())
 

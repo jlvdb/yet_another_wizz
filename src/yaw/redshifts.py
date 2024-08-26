@@ -6,7 +6,8 @@ import numpy as np
 import scipy.optimize
 from numpy.typing import NDArray
 
-from yaw.catalog import Catalog, Patch
+from yaw.catalog.catalog import Catalog
+from yaw.catalog.patch import Patch
 from yaw.config import Configuration
 from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc, Tcorr
