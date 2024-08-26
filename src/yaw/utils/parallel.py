@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import multiprocessing
 import os
 import subprocess
@@ -18,6 +19,8 @@ __all__ = [
 Targ = TypeVar("Targ")
 Tresult = TypeVar("Tresult")
 Titer = TypeVar("Titer")
+
+logger = logging.getLogger(__name__)
 
 
 def get_physical_cores() -> int:
@@ -64,6 +67,19 @@ def on_root() -> bool:
     return COMM.Get_rank() == 0
 
 
+def mpi_ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> list[int]:
+    proc_name = MPI.Get_processor_name()
+    proc_names = COMM.gather(proc_name, root=rank)
+
+    on_same_node = []
+    if COMM.Get_rank() == rank:
+        on_same_node = [i for i, name in enumerate(proc_names) if name == proc_name]
+        if max_workers is not None:
+            on_same_node = on_same_node[:max_workers]
+
+    return COMM.bcast(on_same_node, root=rank)
+
+
 class EndOfQueue:
     pass
 
@@ -80,15 +96,16 @@ class ParallelJob:
         return self.func(arg, *self.func_args, **self.func_kwargs)
 
 
-def mpi_root_task(iterable: Iterable) -> Iterator:
+def mpi_root_task(iterable: Iterable, ranks: Iterable[int]) -> Iterator:
     # first pass of assigning tasks to workers dynamically
     active_workers = 0
     for rank in range(1, SIZE):
         try:
+            assert rank in ranks
             COMM.send(next(iterable), dest=rank, tag=1)
             active_workers += 1
-        except StopIteration:
-            # if more workers than tasks, shut down superflous workers
+        except (AssertionError, StopIteration):
+            # shut down any unused workers
             COMM.send(EndOfQueue, dest=rank, tag=1)
 
     # yield results from workers and send new tasks until all have been processed
@@ -116,10 +133,11 @@ def mpi_iter_unordered(
     *,
     func_args: tuple,
     func_kwargs: dict,
+    ranks: Iterable[int],
 ) -> Iterator[Tresult]:
     if on_root():
         iterable = iter(iterable)
-        yield from mpi_root_task(iterable)
+        yield from mpi_root_task(iterable, ranks)
 
     else:
         wrapped_func = ParallelJob(func, func_args, func_kwargs)
@@ -181,6 +199,8 @@ class ParallelHelper:
         *,
         func_args: tuple | None = None,
         func_kwargs: dict | None = None,
+        num_threads: int | None = None,
+        rank0_node_only: bool = False,
     ) -> Iterator[Tresult]:
         iter_kwargs = dict(
             func_args=(func_args or tuple()),
@@ -188,10 +208,20 @@ class ParallelHelper:
         )
 
         if cls.use_mpi():
-            parallel_method = mpi_iter_unordered
-        else:
-            parallel_method = multiprocessing_iter_unordered
-            iter_kwargs["num_threads"] = cls.num_threads
+            if rank0_node_only:
+                ranks = set(mpi_ranks_on_same_node(rank=0, max_workers=num_threads))
+            else:
+                ranks = set(range(min(SIZE, num_threads)))
 
+            num_workers = len(ranks)
+            iter_kwargs["ranks"] = ranks
+            parallel_method = mpi_iter_unordered
+
+        else:
+            num_workers = num_threads or cls.num_threads
+            iter_kwargs["num_threads"] = num_workers
+            parallel_method = multiprocessing_iter_unordered
+
+        logger.debug(f"running parallel jobs on {num_workers} workers")
         yield from parallel_method(func, iterable, **iter_kwargs)
         cls.comm.Barrier()

@@ -174,11 +174,11 @@ def logger_init_messages(
 
     if ParallelHelper.use_mpi():
         environment = "MPI"
-        cores = ParallelHelper.size
+        num_workers = ParallelHelper.size
     else:
         environment = "multiprocessing"
-        cores = ParallelHelper.num_threads
-    logger.info(f"running in {environment} environment with {cores} cores")
+        num_workers = ParallelHelper.num_threads
+    logger.info(f"running in {environment} environment with {num_workers} workers")
 
 
 def get_default_logger(
