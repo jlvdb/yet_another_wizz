@@ -144,6 +144,8 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
             super().to_file(path)
 
+        parallel.COMM.Barrier()
+
     def to_dict(self) -> dict[str, NormalisedCounts]:
         attrs = ("dd", "dr", "rd", "rr")
         return {
@@ -284,3 +286,5 @@ class CorrData(AsciiSerializable, SampledData):
                 self._description_covariance,
                 covariance=self.covariance,
             )
+
+        parallel.COMM.Barrier()

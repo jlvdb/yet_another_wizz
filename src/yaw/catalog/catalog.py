@@ -120,17 +120,20 @@ class ChunkProcessor(Callable):
 class CatalogWriter(AbstractContextManager):
     def __init__(self, cache_directory: Tpath, overwrite: bool = True) -> None:
         self.cache_directory = Path(cache_directory)
+        cache_exists = self.cache_directory.exists()
+
+        if parallel.on_root():
+            logger.info(
+                "%s cache directory: %s",
+                "overwriting" if cache_exists and overwrite else "using",
+                cache_directory,
+            )
 
         if self.cache_directory.exists():
             if overwrite:
-                if parallel.on_root():
-                    logger.info("overwriting cache directory: %s", cache_directory)
                 rmtree(self.cache_directory)
             else:
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
-
-        elif parallel.on_root():
-            logger.info("using cache directory: %s", cache_directory)
 
         self.cache_directory.mkdir()
         self._writers: dict[int, PatchWriter] = {}
@@ -221,12 +224,9 @@ def compute_patch_metadata(
     if parallel.on_root():
         logger.info("computing patch metadata")
 
-        cache_directory = Path(cache_directory)
-        patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
-        create_patchfile(cache_directory, len(patch_paths))
-    else:
-        patch_paths = None
-    patch_paths = parallel.COMM.bcast(patch_paths, root=0)
+    cache_directory = Path(cache_directory)
+    patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
+    create_patchfile(cache_directory, len(patch_paths))
 
     # instantiate patches, which trigger computing the patch meta-data
     patch_iter = parallel.iter_unordered(Patch, patch_paths)
@@ -243,6 +243,8 @@ class Catalog(Mapping[int, Patch]):
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
 
+        patches = None
+
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
 
@@ -251,9 +253,6 @@ class Catalog(Mapping[int, Patch]):
             verify_patchfile(self.cache_directory, len(patch_paths))
 
             patches = {patch_id_from_path(cache): Patch(cache) for cache in patch_paths}
-
-        else:
-            patches = None
 
         self.patches = parallel.COMM.bcast(patches, root=0)
 
@@ -404,11 +403,10 @@ class Catalog(Mapping[int, Patch]):
         binning = parse_binning(binning, optional=True)
 
         if parallel.on_root():
-            if binning is None:
-                args = ("building patch-wise trees (unbinned)",)
-            else:
-                args = ("building patch-wise trees (using %d bins)", len(binning) - 1)
-            logger.debug(*args)
+            logger.debug(
+                "building patch-wise trees (%s)",
+                "unbinned" if binning is None else f"using {len(binning) - 1} bins",
+            )
 
         patch_tree_iter = parallel.iter_unordered(
             BinnedTrees.build,

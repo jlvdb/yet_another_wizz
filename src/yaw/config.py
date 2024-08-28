@@ -418,7 +418,9 @@ class Configuration(BaseConfig):
         if parallel.on_root():
             logger.info("writing configuration file: %s", path)
 
-            return super().to_file(path)
+            super().to_file(path)
+
+        parallel.COMM.Barrier()
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, type(self)):

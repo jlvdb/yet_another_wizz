@@ -58,6 +58,7 @@ class ProgressPrinter:
     def close(self, step: int, step_frac: float, elapsed: float) -> None:
         self.display(step, step_frac, elapsed)
         self.stream.write("\n")
+        self.stream.flush()
 
 
 class Indicator(Iterable[T]):
@@ -80,7 +81,8 @@ class Indicator(Iterable[T]):
         self.min_interval = float(min_interval)
 
         self.printer = ProgressPrinter(self.num_items, stream)
-        self.printer.start()
+        if on_root():
+            self.printer.start()
 
     def __iter__(self) -> Iterator[T]:
         if on_root():
