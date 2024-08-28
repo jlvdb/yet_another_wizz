@@ -221,7 +221,6 @@ def compute_patch_metadata(
     if parallel.on_root():
         logger.info("computing patch metadata")
 
-    if parallel.on_root():
         cache_directory = Path(cache_directory)
         patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
         create_patchfile(cache_directory, len(patch_paths))
@@ -243,10 +242,10 @@ class Catalog(Mapping[int, Patch]):
 
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
+
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
 
-        if parallel.on_root():
             template = PATCH_NAME_TEMPLATE.format("*")
             patch_paths = tuple(self.cache_directory.glob(template))
             verify_patchfile(self.cache_directory, len(patch_paths))

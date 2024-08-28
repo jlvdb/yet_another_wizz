@@ -117,10 +117,11 @@ class RedshiftData(CorrData):
             logger.debug(
                 "computing clustering redshifts from correlation function samples"
             )
-        log_msg_mitigate = []
 
         w_sp_data = cross_data.data
         w_sp_samp = cross_data.samples
+
+        used_autocorrs = []
 
         if ref_data is None:
             w_ss_data = np.float64(1.0)
@@ -129,7 +130,7 @@ class RedshiftData(CorrData):
             ref_data.is_compatible(cross_data, require=True)
             w_ss_data = ref_data.data
             w_ss_samp = ref_data.samples
-            log_msg_mitigate.append("reference")
+            used_autocorrs.append("reference")
 
         if unk_data is None:
             w_pp_data = np.float64(1.0)
@@ -138,14 +139,14 @@ class RedshiftData(CorrData):
             unk_data.is_compatible(cross_data, require=True)
             w_pp_data = unk_data.data
             w_pp_samp = unk_data.samples
-            log_msg_mitigate.append("unknown")
+            used_autocorrs.append("unknown")
 
         if parallel.on_root():
-            if len(log_msg_mitigate) > 0:
-                log_msg = "mitigating %s sample bias", " and ".join(log_msg_mitigate)
+            if len(used_autocorrs) > 0:
+                bias_info_str = " and ".join(used_autocorrs)
             else:
-                log_msg = "skipping bias mitigation"
-            logger.debug(log_msg)
+                bias_info_str = "no"
+            logger.debug("mitigating %s sample bias", bias_info_str)
 
         N = cross_data.num_samples
         dz2_data = cross_data.binning.dz**2

@@ -14,7 +14,7 @@ from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import ArrayLike, NDArray
 
-from yaw.utils import io, parallel, plot
+from yaw.utils import io, plot
 from yaw.utils.cosmology import Tcosmology, get_default_cosmology
 from yaw.utils.plot import Axis
 
@@ -68,20 +68,13 @@ class Serialisable(ABC):
 class YamlSerialisable(Serialisable):
     @classmethod
     def from_file(cls: type[Tyaml], path: Tpath) -> Tyaml:
-        if parallel.on_root():
-            with Path(path).open() as f:
-                kwarg_dict = yaml.safe_load(f)
-            new = cls.from_dict(kwarg_dict)
-
-        else:
-            new = None
-
-        return parallel.COMM.bcast(new, root=0)
+        with Path(path).open() as f:
+            kwarg_dict = yaml.safe_load(f)
+        return cls.from_dict(kwarg_dict)
 
     def to_file(self, path: Tpath) -> None:
-        if parallel.on_root():
-            with Path(path).open(mode="w") as f:
-                yaml.safe_dump(self.to_dict(), f)
+        with Path(path).open(mode="w") as f:
+            yaml.safe_dump(self.to_dict(), f)
 
 
 class HdfSerializable(ABC):
@@ -96,19 +89,12 @@ class HdfSerializable(ABC):
 
     @classmethod
     def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
-        if parallel.on_root():
-            with h5py.File(str(path)) as f:
-                new = cls.from_hdf(f)
-
-        else:
-            new = None
-
-        return parallel.COMM.bcast(new, root=0)
+        with h5py.File(str(path)) as f:
+            return cls.from_hdf(f)
 
     def to_file(self, path: Tpath) -> None:
-        if parallel.on_root():
-            with h5py.File(str(path), mode="w") as f:
-                self.to_hdf(f)
+        with h5py.File(str(path), mode="w") as f:
+            self.to_hdf(f)
 
 
 class AsciiSerializable(ABC):

@@ -24,6 +24,12 @@ from yaw.utils.cosmology import (
     get_default_cosmology,
 )
 
+__all__ = [
+    "BinningConfig",
+    "Configuration",
+    "ScalesConfig",
+]
+
 T = TypeVar("T")
 Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
 
@@ -399,14 +405,20 @@ class Configuration(BaseConfig):
 
     @classmethod
     def from_file(cls, path: Tpath) -> Configuration:
+        new = None
+
         if parallel.on_root():
             logger.info("reading configuration file: %s", path)
-        return super().from_file(path)
+
+            new = super().from_file(path)
+
+        return parallel.COMM.bcast(new, root=0)
 
     def to_file(self, path: Tpath) -> None:
         if parallel.on_root():
             logger.info("writing configuration file: %s", path)
-        return super().to_file(path)
+
+            return super().to_file(path)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, type(self)):

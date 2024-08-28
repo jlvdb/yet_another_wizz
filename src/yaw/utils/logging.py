@@ -34,8 +34,34 @@ def format_time(elapsed: float) -> str:
     return f"{minutes:.0f}m{seconds:05.2f}s"
 
 
+class ProgressPrinter:
+    __slots__ = ("template", "stream")
+
+    def __init__(self, num_items: int | None, stream: TextIOBase) -> None:
+        self.template = INDICATOR_PREFIX
+        if num_items is None:
+            self.template += "processed {:d} t={:s}\r"
+        else:
+            self.template += f"processed {{:d}}/{num_items:d} ({{frac:.0%}}) t={{:s}}\r"
+
+        self.stream = stream
+
+    def start(self) -> None:
+        self.display(0, 0.0, 0.0)
+
+    def display(self, step: int, step_frac: float, elapsed: float) -> None:
+        elapsed_str = format_time(elapsed)
+        line = self.template.format(step, elapsed_str, frac=step_frac)
+        self.stream.write(line)
+        self.stream.flush()
+
+    def close(self, step: int, step_frac: float, elapsed: float) -> None:
+        self.display(step, step_frac, elapsed)
+        self.stream.write("\n")
+
+
 class Indicator(Iterable[T]):
-    __slots__ = ("iterable", "num_items", "min_interval", "stream")
+    __slots__ = ("iterable", "num_items", "min_interval", "printer")
 
     def __init__(
         self,
@@ -52,48 +78,27 @@ class Indicator(Iterable[T]):
             self.num_items = len(iterable)
 
         self.min_interval = float(min_interval)
-        self.stream = stream
+
+        self.printer = ProgressPrinter(self.num_items, stream)
+        self.printer.start()
 
     def __iter__(self) -> Iterator[T]:
         if on_root():
-            if self.num_items is None:
-                num_items = nan
-                template = INDICATOR_PREFIX + "processed {:d} t={:s}\r"
-            else:
-                num_items = self.num_items
-                template = (
-                    INDICATOR_PREFIX
-                    + f"processed {{:d}}/{num_items:d} ({{frac:.0%}}) t={{:s}}\r"
-                )
-
+            num_items = self.num_items or nan
             min_interval = self.min_interval
-            stream = self.stream
             last_update = 0.0
-
-            line = template.format(0, format_time(0.0), frac=0.0)
-            stream.write(line)
-            stream.flush()
 
             start = default_timer()
             for i, item in enumerate(self.iterable, 1):
                 elapsed = default_timer() - start
 
                 if elapsed - last_update > min_interval:
+                    self.printer.display(i, i / num_items, elapsed)
                     last_update = elapsed
-
-                    line = template.format(
-                        i, format_time(elapsed), frac=(i / num_items)
-                    )
-                    stream.write(line)
-                    stream.flush()
 
                 yield item
 
-            elapsed = default_timer() - start
-
-            line = template.format(i, format_time(elapsed), frac=(i / num_items))
-            stream.write(line + "\n")
-            stream.flush()
+            self.printer.close(i, i / num_items, default_timer() - start)
 
         else:
             yield from self.iterable

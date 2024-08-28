@@ -129,14 +129,20 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
     @classmethod
     def from_file(cls, path: Tpath) -> CorrFunc:
+        new = None
+
         if parallel.on_root():
             logger.info("reading %s from: %s", cls.__name__, path)
-        return super().from_file(path)
+
+            new = super().from_file(path)
+
+        return parallel.COMM.bcast(new, root=0)
 
     def to_file(self, path: Tpath) -> None:
         if parallel.on_root():
             logger.info("writing %s to: %s", type(self).__name__, path)
-        return super().to_file(path)
+
+            super().to_file(path)
 
     def to_dict(self) -> dict[str, NormalisedCounts]:
         attrs = ("dd", "dr", "rd", "rr")
@@ -230,20 +236,18 @@ class CorrData(AsciiSerializable, SampledData):
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
+        new = None
+
         if parallel.on_root():
             logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
 
             path_prefix = Path(path_prefix)
 
             edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
+            samples = io.load_samples(path_prefix.with_suffix(".smp"))
             binning = Binning(edges, closed=closed)
 
-            samples = io.load_samples(path_prefix.with_suffix(".smp"))
-
             new = cls(binning, data, samples)
-
-        else:
-            new = None
 
         return parallel.COMM.bcast(new, root=0)
 
