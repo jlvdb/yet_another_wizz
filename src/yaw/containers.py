@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Sequence
@@ -9,6 +8,7 @@ from typing import Any, Generic, Literal, TypeVar, Union, get_args
 
 import h5py
 import numpy as np
+import yaml
 from astropy import cosmology, units
 from h5py import Group
 from numpy.exceptions import AxisError
@@ -29,7 +29,7 @@ Tvalue = TypeVar("Tvalue")
 
 # meta-class types
 Tserialise = TypeVar("Tdict", bound="Serialisable")
-Tjson = TypeVar("Tjson", bound="JsonSerialisable")
+Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
 Thdf = TypeVar("Thdf", bound="HdfSerializable")
 Tascii = TypeVar("Tascii", bound="AsciiSerializable")
 Tbinned = TypeVar("Tbinned", bound="BinwiseData")
@@ -65,23 +65,23 @@ class Serialisable(ABC):
         return self.__getstate__()
 
 
-class JsonSerialisable(Serialisable):
+class YamlSerialisable(Serialisable):
     @classmethod
-    def from_file(cls: type[Tjson], path: Tpath) -> Tjson:
+    def from_file(cls: type[Tyaml], path: Tpath) -> Tyaml:
         if parallel.on_root():
             with Path(path).open() as f:
-                kwarg_dict = json.load(f)
+                kwarg_dict = yaml.safe_load(f)
             new = cls.from_dict(kwarg_dict)
 
         else:
             new = None
 
-        return parallel.comm.bcast(new, root=0)
+        return parallel.COMM.bcast(new, root=0)
 
     def to_file(self, path: Tpath) -> None:
         if parallel.on_root():
             with Path(path).open(mode="w") as f:
-                json.dump(self.to_dict(), f, indent=4)
+                yaml.safe_dump(self.to_dict(), f)
 
 
 class HdfSerializable(ABC):
@@ -103,7 +103,7 @@ class HdfSerializable(ABC):
         else:
             new = None
 
-        return parallel.comm.bcast(new, root=0)
+        return parallel.COMM.bcast(new, root=0)
 
     def to_file(self, path: Tpath) -> None:
         if parallel.on_root():

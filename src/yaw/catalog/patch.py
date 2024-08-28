@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import DataChunk
-from yaw.containers import JsonSerialisable, Serialisable, Tpath
+from yaw.containers import Serialisable, Tpath, YamlSerialisable
 from yaw.utils import AngularCoordinates, AngularDistances
 
 __all__ = [
@@ -82,7 +82,7 @@ class PatchWriter:
 
 
 @dataclass
-class Metadata(JsonSerialisable):
+class Metadata(YamlSerialisable):
     __slots__ = ("num_records", "total", "center", "radius")
 
     def __init__(
@@ -132,7 +132,7 @@ class Patch(Sized, Serialisable):
 
     def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
-        meta_data_file = self.cache_path / "meta.json"
+        meta_data_file = self.cache_path / "meta.yml"
 
         try:
             self.meta = Metadata.from_file(meta_data_file)

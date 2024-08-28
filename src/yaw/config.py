@@ -4,17 +4,18 @@ import logging
 import warnings
 from abc import abstractmethod
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Any, Literal, TypeVar, Union, get_args
 
 import astropy.cosmology
 import numpy as np
-import yaml
 from numpy.typing import NDArray
 
-from yaw.containers import Binning, RedshiftBinningFactory, Serialisable
+# isort: off
+from yaw.containers import Binning, RedshiftBinningFactory, YamlSerialisable
 from yaw.containers import Tbin_method as Tbin_method_auto
 from yaw.containers import Tclosed, Tpath, default_bin_method, default_closed
+
+# isort: on
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
@@ -24,7 +25,6 @@ from yaw.utils.cosmology import (
 )
 
 T = TypeVar("T")
-Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
 Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
 
 Tbin_method_all = Union[Tbin_method_auto | Literal["manual"]]
@@ -82,25 +82,6 @@ def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
         raise ConfigError(f"'cosmology' must be instance of: {which}")
 
     return cosmology
-
-
-class YamlSerialisable(Serialisable):
-    @classmethod
-    def from_file(cls: type[Tyaml], path: Tpath) -> Tyaml:
-        if parallel.on_root():
-            with Path(path).open() as f:
-                kwarg_dict = yaml.safe_load(f)
-            new = cls.from_dict(kwarg_dict)
-
-        else:
-            new = None
-
-        return parallel.COMM.bcast(new, root=0)
-
-    def to_file(self, path: Tpath) -> None:
-        if parallel.on_root():
-            with Path(path).open(mode="w") as f:
-                yaml.safe_dump(self.to_dict(), f)
 
 
 class Immutable:

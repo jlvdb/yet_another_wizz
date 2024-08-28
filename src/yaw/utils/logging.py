@@ -203,5 +203,6 @@ def get_default_logger(
     logging.captureWarnings(capture_warnings)
     logger = logging.getLogger("yaw")
 
-    logger_init_messages(logger, pretty=pretty, file=file)
+    if on_root():
+        logger_init_messages(logger, pretty=pretty, file=file)
     return logger
