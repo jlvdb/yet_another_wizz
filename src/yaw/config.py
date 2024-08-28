@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from yaw.containers import Binning, RedshiftBinningFactory, Serialisable
 from yaw.containers import Tbin_method as Tbin_method_auto
 from yaw.containers import Tclosed, Tpath, default_bin_method, default_closed
+from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
     Tcosmology,
@@ -86,13 +87,20 @@ def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
 class YamlSerialisable(Serialisable):
     @classmethod
     def from_file(cls: type[Tyaml], path: Tpath) -> Tyaml:
-        with Path(path).open() as f:
-            kwarg_dict = yaml.safe_load(f)
-        return cls.from_dict(kwarg_dict)
+        if parallel.on_root():
+            with Path(path).open() as f:
+                kwarg_dict = yaml.safe_load(f)
+            new = cls.from_dict(kwarg_dict)
+
+        else:
+            new = None
+
+        return parallel.COMM.bcast(new, root=0)
 
     def to_file(self, path: Tpath) -> None:
-        with Path(path).open(mode="w") as f:
-            yaml.safe_dump(self.to_dict(), f)
+        if parallel.on_root():
+            with Path(path).open(mode="w") as f:
+                yaml.safe_dump(self.to_dict(), f)
 
 
 class Immutable:
@@ -410,11 +418,13 @@ class Configuration(BaseConfig):
 
     @classmethod
     def from_file(cls, path: Tpath) -> Configuration:
-        logger.info("reading configuration file: %s", path)
+        if parallel.on_root():
+            logger.info("reading configuration file: %s", path)
         return super().from_file(path)
 
     def to_file(self, path: Tpath) -> None:
-        logger.info("writing configuration file: %s", path)
+        if parallel.on_root():
+            logger.info("writing configuration file: %s", path)
         return super().to_file(path)
 
     def __eq__(self, other) -> bool:

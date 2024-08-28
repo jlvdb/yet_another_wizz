@@ -11,7 +11,7 @@ from yaw.catalog.patch import Patch
 from yaw.config import Configuration
 from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc, Tcorr
-from yaw.utils import ParallelHelper
+from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
 logger = logging.getLogger(__name__)
@@ -49,9 +49,10 @@ class HistData(CorrData):
         config: Configuration,
         progress: bool = False,
     ) -> HistData:
-        logger.info("computing redshift histogram")
+        if parallel.on_root():
+            logger.info("computing redshift histogram")
 
-        patch_count_iter = ParallelHelper.iter_unordered(
+        patch_count_iter = parallel.iter_unordered(
             _redshift_histogram,
             catalog.values(),
             func_kwargs=dict(binning=config.binning.binning),
@@ -62,6 +63,7 @@ class HistData(CorrData):
         counts = np.empty((len(catalog), config.binning.num_bins))
         for i, patch_count in enumerate(patch_count_iter):
             counts[i] = patch_count
+        parallel.COMM.Bcast(counts, root=0)
 
         return cls(
             config.binning.binning.copy(),
@@ -87,7 +89,8 @@ class HistData(CorrData):
     _default_style = "step"
 
     def normalised(self, *args, **kwargs) -> HistData:
-        logger.debug("normalising %s", type(self).__name__)
+        if parallel.on_root():
+            logger.debug("normalising %s", type(self).__name__)
 
         edges = self.binning.edges
         dz = self.binning.dz
@@ -110,7 +113,10 @@ class RedshiftData(CorrData):
         ref_data: CorrData | None = None,
         unk_data: CorrData | None = None,
     ) -> RedshiftData:
-        logger.debug("computing clustering redshifts from correlation function samples")
+        if parallel.on_root():
+            logger.debug(
+                "computing clustering redshifts from correlation function samples"
+            )
         log_msg_mitigate = []
 
         w_sp_data = cross_data.data
@@ -134,8 +140,12 @@ class RedshiftData(CorrData):
             w_pp_samp = unk_data.samples
             log_msg_mitigate.append("unknown")
 
-        if len(log_msg_mitigate) > 0:
-            logger.debug("mitigating %s sample bias", " and ".join(log_msg_mitigate))
+        if parallel.on_root():
+            if len(log_msg_mitigate) > 0:
+                log_msg = "mitigating %s sample bias", " and ".join(log_msg_mitigate)
+            else:
+                log_msg = "skipping bias mitigation"
+            logger.debug(log_msg)
 
         N = cross_data.num_samples
         dz2_data = cross_data.binning.dz**2
@@ -178,14 +188,16 @@ class RedshiftData(CorrData):
     _default_style = "point"
 
     def normalised(self, target: Tcorr | None = None) -> RedshiftData:
-        if target is None:
-            logger.debug("normalising %s", type(self).__name__)
+        if parallel.on_root():
+            msg = "normalising %s"
+            if target is not None:
+                msg += " to target distribution"
+            logger.debug(msg, type(self).__name__)
 
+        if target is None:
             norm = np.nansum(self.binning.dz * self.data)
 
         else:
-            logger.debug("normalising %s to target distribution", type(self).__name__)
-
             y_from = self.data
             y_target = target.data
             mask = np.isfinite(y_from) & np.isfinite(y_target) & (y_target > 0.0)

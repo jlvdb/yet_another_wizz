@@ -12,7 +12,7 @@ from typing import TypeVar
 
 from yaw._version import __version__
 
-from .parallel import ParallelHelper, on_root
+from .parallel import get_size, on_root, use_mpi
 
 __all__ = [
     "Indicator",
@@ -172,13 +172,11 @@ def logger_init_messages(
     else:
         logger.info(welcome_msg)
 
-    if ParallelHelper.use_mpi():
+    if use_mpi():
         environment = "MPI"
-        num_workers = ParallelHelper.size
     else:
         environment = "multiprocessing"
-        num_workers = ParallelHelper.num_threads
-    logger.info(f"running in {environment} environment with {num_workers} workers")
+    logger.info(f"running in {environment} environment with {get_size()} workers")
 
 
 def get_default_logger(

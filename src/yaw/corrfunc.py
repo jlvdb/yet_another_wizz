@@ -21,7 +21,7 @@ from yaw.containers import (
     Tpath,
 )
 from yaw.paircounts import NormalisedCounts
-from yaw.utils import io
+from yaw.utils import io, parallel
 
 __all__ = [
     "CorrFunc",
@@ -129,11 +129,13 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
 
     @classmethod
     def from_file(cls, path: Tpath) -> CorrFunc:
-        logger.info("reading %s from: %s", cls.__name__, path)
+        if parallel.on_root():
+            logger.info("reading %s from: %s", cls.__name__, path)
         return super().from_file(path)
 
     def to_file(self, path: Tpath) -> None:
-        logger.info("writing %s to: %s", type(self).__name__, path)
+        if parallel.on_root():
+            logger.info("writing %s to: %s", type(self).__name__, path)
         return super().to_file(path)
 
     def to_dict(self) -> dict[str, NormalisedCounts]:
@@ -195,9 +197,10 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
     def sample(self) -> CorrData:
         estimator = landy_szalay if self.rr is not None else davis_peebles
 
-        logger.debug(
-            "sampling correlation function with estimator '%s'", estimator.name
-        )
+        if parallel.on_root():
+            logger.debug(
+                "sampling correlation function with estimator '%s'", estimator.name
+            )
 
         counts_values = {}
         counts_samples = {}
@@ -227,44 +230,53 @@ class CorrData(AsciiSerializable, SampledData):
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
-        logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
+        if parallel.on_root():
+            logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
 
-        path_prefix = Path(path_prefix)
+            path_prefix = Path(path_prefix)
 
-        edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
-        binning = Binning(edges, closed=closed)
+            edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
+            binning = Binning(edges, closed=closed)
 
-        samples = io.load_samples(path_prefix.with_suffix(".smp"))
+            samples = io.load_samples(path_prefix.with_suffix(".smp"))
 
-        return cls(binning, data, samples)
+            new = cls(binning, data, samples)
+
+        else:
+            new = None
+
+        return parallel.COMM.bcast(new, root=0)
 
     def to_files(self, path_prefix: Tpath) -> None:
-        logger.info("writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix)
+        if parallel.on_root():
+            logger.info(
+                "writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix
+            )
 
-        path_prefix = Path(path_prefix)
+            path_prefix = Path(path_prefix)
 
-        io.write_data(
-            path_prefix.with_suffix(".dat"),
-            self._description_data,
-            zleft=self.binning.left,
-            zright=self.binning.right,
-            data=self.data,
-            error=self.error,
-            closed=self.binning.closed,
-        )
+            io.write_data(
+                path_prefix.with_suffix(".dat"),
+                self._description_data,
+                zleft=self.binning.left,
+                zright=self.binning.right,
+                data=self.data,
+                error=self.error,
+                closed=self.binning.closed,
+            )
 
-        io.write_samples(
-            path_prefix.with_suffix(".smp"),
-            self._description_samples,
-            zleft=self.binning.left,
-            zright=self.binning.right,
-            samples=self.samples,
-            closed=self.binning.closed,
-        )
+            io.write_samples(
+                path_prefix.with_suffix(".smp"),
+                self._description_samples,
+                zleft=self.binning.left,
+                zright=self.binning.right,
+                samples=self.samples,
+                closed=self.binning.closed,
+            )
 
-        # write covariance for convenience only, it is not required to restore
-        io.write_covariance(
-            path_prefix.with_suffix(".cov"),
-            self._description_covariance,
-            covariance=self.covariance,
-        )
+            # write covariance for convenience only, it is not required to restore
+            io.write_covariance(
+                path_prefix.with_suffix(".cov"),
+                self._description_covariance,
+                covariance=self.covariance,
+            )

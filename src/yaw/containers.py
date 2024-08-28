@@ -14,7 +14,7 @@ from h5py import Group
 from numpy.exceptions import AxisError
 from numpy.typing import ArrayLike, NDArray
 
-from yaw.utils import io, plot
+from yaw.utils import io, parallel, plot
 from yaw.utils.cosmology import Tcosmology, get_default_cosmology
 from yaw.utils.plot import Axis
 
@@ -68,13 +68,20 @@ class Serialisable(ABC):
 class JsonSerialisable(Serialisable):
     @classmethod
     def from_file(cls: type[Tjson], path: Tpath) -> Tjson:
-        with Path(path).open() as f:
-            kwarg_dict = json.load(f)
-        return cls.from_dict(kwarg_dict)
+        if parallel.on_root():
+            with Path(path).open() as f:
+                kwarg_dict = json.load(f)
+            new = cls.from_dict(kwarg_dict)
+
+        else:
+            new = None
+
+        return parallel.comm.bcast(new, root=0)
 
     def to_file(self, path: Tpath) -> None:
-        with Path(path).open(mode="w") as f:
-            json.dump(self.to_dict(), f, indent=4)
+        if parallel.on_root():
+            with Path(path).open(mode="w") as f:
+                json.dump(self.to_dict(), f, indent=4)
 
 
 class HdfSerializable(ABC):
@@ -89,12 +96,19 @@ class HdfSerializable(ABC):
 
     @classmethod
     def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
-        with h5py.File(str(path)) as f:
-            return cls.from_hdf(f)
+        if parallel.on_root():
+            with h5py.File(str(path)) as f:
+                new = cls.from_hdf(f)
+
+        else:
+            new = None
+
+        return parallel.comm.bcast(new, root=0)
 
     def to_file(self, path: Tpath) -> None:
-        with h5py.File(str(path), mode="w") as f:
-            self.to_hdf(f)
+        if parallel.on_root():
+            with h5py.File(str(path), mode="w") as f:
+                self.to_hdf(f)
 
 
 class AsciiSerializable(ABC):

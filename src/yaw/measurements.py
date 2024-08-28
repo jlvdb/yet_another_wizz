@@ -14,7 +14,7 @@ from yaw.catalog.patch import Patch
 from yaw.config import Configuration
 from yaw.corrfunc import CorrFunc
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
-from yaw.utils import AngularDistances, ParallelHelper, separation_physical_to_angle
+from yaw.utils import AngularDistances, parallel, separation_physical_to_angle
 from yaw.utils.logging import Indicator
 
 __all__ = [
@@ -108,7 +108,8 @@ class PatchLinkage:
         self.config = config
         self.patch_links = patch_links
 
-        logger.debug("created patch linkage with %d patch pairs", self.num_links)
+        if parallel.on_root():
+            logger.debug("created patch linkage with %d patch pairs", self.num_links)
 
     @classmethod
     def from_catalogs(
@@ -121,10 +122,11 @@ class PatchLinkage:
             raise InconsistentPatchesError("patch IDs do not match")
         max_scale_angle = get_max_angle(config)
 
-        logger.debug(
-            "computing patch linkage with max. separation of %.2e rad",
-            max_scale_angle.data[0],
-        )
+        if parallel.on_root():
+            logger.debug(
+                "computing patch linkage with max. separation of %.2e rad",
+                max_scale_angle.data[0],
+            )
 
         # find largest catalog which has best constraints on patch centers/radii
         ref_cat, *other_cats = sorted(
@@ -217,7 +219,7 @@ class PatchLinkage:
             for _ in range(self.config.scales.num_scales)
         ]
 
-        count_iter = ParallelHelper.iter_unordered(
+        count_iter = parallel.iter_unordered(
             process_patch_pair,
             patch_pairs,
             func_args=(self.config,),
@@ -259,7 +261,8 @@ def autocorrelate(
     count_rr: bool = True,
     progress: bool = False,
 ) -> list[CorrFunc]:
-    logger.info("building trees for 2 catalogs")
+    if parallel.on_root():
+        logger.info("building trees for 2 catalogs")
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
@@ -267,14 +270,18 @@ def autocorrelate(
     data.build_trees(edges, closed=closed, progress=progress)
     random.build_trees(edges, closed=closed, progress=progress)
 
-    logger.info("computing auto-correlation with DD, DR" + (", RR" if count_rr else ""))
+    if parallel.on_root():
+        logger.info(
+            "computing auto-correlation with DD, DR" + (", RR" if count_rr else "")
+        )
 
     links = PatchLinkage.from_catalogs(config, data, random)
-    logger.debug(
-        "using %d scales %s weighting",
-        config.scales.num_scales,
-        "with" if config.scales.rweight else "without",
-    )
+    if parallel.on_root():
+        logger.debug(
+            "using %d scales %s weighting",
+            config.scales.num_scales,
+            "with" if config.scales.rweight else "without",
+        )
     DD = links.count_pairs(data, progress=progress)
     DR = links.count_pairs(data, random, progress=progress)
     RR = links.count_pairs_optional(random if count_rr else None, progress=progress)
@@ -296,7 +303,8 @@ def crosscorrelate(
     if not count_dr and not count_rd:
         raise ValueError("at least one random dataset must be provided")
 
-    logger.info("building trees for %d catalogs", 2 + count_dr + count_rd)
+    if parallel.on_root():
+        logger.info("building trees for %d catalogs", 2 + count_dr + count_rd)
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
@@ -312,19 +320,21 @@ def crosscorrelate(
         unk_rand.build_trees(None, progress=progress)
         randoms.append(unk_rand)
 
-    logger.info(
-        "computing cross-correlation with DD"
-        + (", DR" if count_dr else "")
-        + (", RD" if count_rd else "")
-        + (", RR" if count_dr and count_dr else "")
-    )
+    if parallel.on_root():
+        logger.info(
+            "computing cross-correlation with DD"
+            + (", DR" if count_dr else "")
+            + (", RD" if count_rd else "")
+            + (", RR" if count_dr and count_dr else "")
+        )
 
     links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
-    logger.debug(
-        "using %d scales %s weighting",
-        config.scales.num_scales,
-        "with" if config.scales.rweight else "without",
-    )
+    if parallel.on_root():
+        logger.debug(
+            "using %d scales %s weighting",
+            config.scales.num_scales,
+            "with" if config.scales.rweight else "without",
+        )
     DD = links.count_pairs(reference, unknown, progress=progress)
     DR = links.count_pairs_optional(reference, unk_rand, progress=progress)
     RD = links.count_pairs_optional(ref_rand, unknown, progress=progress)

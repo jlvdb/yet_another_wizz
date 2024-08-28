@@ -21,7 +21,7 @@ from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
 from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
-from yaw.utils import AngularCoordinates, AngularDistances, ParallelHelper
+from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
 
 __all__ = [
@@ -56,7 +56,7 @@ class PatchMode(Enum):
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
-        log_sink = logger.debug
+        log_sink = logger.debug if parallel.on_root() else lambda x: x
 
         if patch_centers is not None:
             log_sink("applying patch %d centers", len(patch_centers))
@@ -81,7 +81,8 @@ def create_patch_centers(
     sparse_factor = np.ceil(reader.num_records / probe_size)
     test_sample = reader.read(int(sparse_factor))
 
-    logger.info("computing patch centers from %dx sparse sampling", sparse_factor)
+    if parallel.on_root():
+        logger.info("computing patch centers from %dx sparse sampling", sparse_factor)
 
     cat = treecorr.Catalog(
         ra=test_sample.coords.ra,
@@ -89,7 +90,7 @@ def create_patch_centers(
         dec=test_sample.coords.dec,
         dec_units="radians",
         npatch=patch_num,
-        config=dict(num_threads=ParallelHelper.num_threads),
+        config=dict(num_threads=parallel.get_size()),
     )
     xyz = np.atleast_2d(cat.patch_centers)
     return AngularCoordinates.from_3d(xyz)
@@ -119,13 +120,16 @@ class ChunkProcessor(Callable):
 class CatalogWriter(AbstractContextManager):
     def __init__(self, cache_directory: Tpath, overwrite: bool = True) -> None:
         self.cache_directory = Path(cache_directory)
+
         if self.cache_directory.exists():
             if overwrite:
-                logger.info("overwriting cache directory: %s", cache_directory)
+                if parallel.on_root():
+                    logger.info("overwriting cache directory: %s", cache_directory)
                 rmtree(self.cache_directory)
             else:
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
-        else:
+
+        elif parallel.on_root():
             logger.info("using cache directory: %s", cache_directory)
 
         self.cache_directory.mkdir()
@@ -164,9 +168,9 @@ def write_patches(
     patch_centers: Tcenters,
     overwrite: bool,
     progress: bool,
-    num_threads: int | None = None,
+    max_workers: int | None = None,
 ) -> None:
-    num_threads = num_threads or ParallelHelper.num_threads
+    max_workers = parallel.get_size(max_workers)
 
     if isinstance(patch_centers, Catalog):
         patch_centers = patch_centers.get_centers()
@@ -177,14 +181,14 @@ def write_patches(
     preprocess = ChunkProcessor(patch_centers)
 
     writer = CatalogWriter(path, overwrite=overwrite)
-    pool = multiprocessing.Pool(num_threads)
+    pool = multiprocessing.Pool(max_workers)
     with reader, writer, pool:
         chunk_iter = iter(reader)
         if progress:
             chunk_iter = Indicator(reader)
 
         for chunk in chunk_iter:
-            thread_chunks = chunk.split(num_threads)
+            thread_chunks = chunk.split(max_workers)
 
             for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
                 writer.process_patches(patch_chunks)
@@ -214,23 +218,24 @@ def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
 def compute_patch_metadata(
     cache_directory: Tpath, progress: bool = False
 ) -> dict[int, Patch]:
-    logger.info("computing patch metadata")
+    if parallel.on_root():
+        logger.info("computing patch metadata")
 
-    if ParallelHelper.on_root():
+    if parallel.on_root():
         cache_directory = Path(cache_directory)
         patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
         create_patchfile(cache_directory, len(patch_paths))
     else:
         patch_paths = None
-    patch_paths = ParallelHelper.comm.bcast(patch_paths, root=0)
+    patch_paths = parallel.COMM.bcast(patch_paths, root=0)
 
     # instantiate patches, which trigger computing the patch meta-data
-    patch_iter = ParallelHelper.iter_unordered(Patch, patch_paths)
+    patch_iter = parallel.iter_unordered(Patch, patch_paths)
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_paths))
 
     patches = {patch_id_from_path(patch.cache_path): patch for patch in patch_iter}
-    return ParallelHelper.comm.bcast(patches, root=0)
+    return parallel.COMM.bcast(patches, root=0)
 
 
 class Catalog(Mapping[int, Patch]):
@@ -238,9 +243,10 @@ class Catalog(Mapping[int, Patch]):
 
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
-        logger.info("restoring from cache directory: %s", cache_directory)
+        if parallel.on_root():
+            logger.info("restoring from cache directory: %s", cache_directory)
 
-        if ParallelHelper.on_root():
+        if parallel.on_root():
             template = PATCH_NAME_TEMPLATE.format("*")
             patch_paths = tuple(self.cache_directory.glob(template))
             verify_patchfile(self.cache_directory, len(patch_paths))
@@ -250,7 +256,7 @@ class Catalog(Mapping[int, Patch]):
         else:
             patches = None
 
-        self.patches = ParallelHelper.comm.bcast(patches, root=0)
+        self.patches = parallel.COMM.bcast(patches, root=0)
 
     @classmethod
     def from_dataframe(
@@ -272,7 +278,7 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        if ParallelHelper.on_root():
+        if parallel.on_root():
             reader = DataFrameReader(
                 dataframe,
                 ra_name=ra_name,
@@ -290,7 +296,7 @@ class Catalog(Mapping[int, Patch]):
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
 
             write_patches(cache_directory, reader, patch_centers, overwrite, progress)
-        ParallelHelper.comm.Barrier()
+        parallel.COMM.Barrier()
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
@@ -317,7 +323,7 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        if ParallelHelper.on_root():
+        if parallel.on_root():
             reader = new_filereader(
                 path,
                 ra_name=ra_name,
@@ -335,7 +341,7 @@ class Catalog(Mapping[int, Patch]):
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
 
             write_patches(cache_directory, reader, patch_centers, overwrite, progress)
-        ParallelHelper.comm.Barrier()
+        parallel.COMM.Barrier()
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
@@ -397,12 +403,15 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
     ) -> None:
         binning = parse_binning(binning, optional=True)
-        if binning is None:
-            logger.debug("building patch-wise trees (unbinned)")
-        else:
-            logger.debug("building patch-wise trees (using %d bins)", len(binning) - 1)
 
-        patch_tree_iter = ParallelHelper.iter_unordered(
+        if parallel.on_root():
+            if binning is None:
+                args = ("building patch-wise trees (unbinned)",)
+            else:
+                args = ("building patch-wise trees (using %d bins)", len(binning) - 1)
+            logger.debug(*args)
+
+        patch_tree_iter = parallel.iter_unordered(
             BinnedTrees.build,
             self.values(),
             func_args=(binning,),

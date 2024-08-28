@@ -11,9 +11,13 @@ from typing import Callable, TypeVar
 from mpi4py import MPI
 
 __all__ = [
-    "ParallelHelper",
-    "get_num_threads",
-    "get_physical_cores",
+    "COMM",
+    "get_size",
+    "iter_unordered",
+    "on_root",
+    "on_worker",
+    "ranks_on_same_node",
+    "use_mpi",
 ]
 
 Targ = TypeVar("Targ")
@@ -22,8 +26,10 @@ Titer = TypeVar("Titer")
 
 logger = logging.getLogger(__name__)
 
+COMM = MPI.COMM_WORLD
 
-def get_physical_cores() -> int:
+
+def _get_physical_cores() -> int:
     try:
         if os.name == "posix":
             output = subprocess.check_output("lscpu")
@@ -43,8 +49,8 @@ def get_physical_cores() -> int:
         return multiprocessing.cpu_count()
 
 
-def get_num_threads() -> int:
-    system_threads = get_physical_cores()
+def _num_processes() -> int:
+    system_threads = _get_physical_cores()
 
     try:
         num_threads = int(os.environ["YAW_NUM_THREADS"])
@@ -54,20 +60,28 @@ def get_num_threads() -> int:
         return system_threads
 
 
-COMM = MPI.COMM_WORLD
-SIZE = COMM.Get_size()
-MP_THREADS = get_num_threads()
-
-
 def use_mpi() -> bool:
-    return SIZE > 1
+    return COMM.Get_size() > 1
+
+
+def get_size(max_workers: int | None = None) -> int:
+    if use_mpi():
+        size = COMM.Get_size()
+    else:
+        size = _num_processes()
+    max_workers = max_workers or size
+    return min(max_workers, size)
 
 
 def on_root() -> bool:
     return COMM.Get_rank() == 0
 
 
-def mpi_ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> list[int]:
+def on_worker() -> bool:
+    return COMM.Get_rank() != 0
+
+
+def ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> list[int]:
     proc_name = MPI.Get_processor_name()
     proc_names = COMM.gather(proc_name, root=rank)
 
@@ -96,10 +110,10 @@ class ParallelJob:
         return self.func(arg, *self.func_args, **self.func_kwargs)
 
 
-def mpi_root_task(iterable: Iterable, ranks: Iterable[int]) -> Iterator:
+def _mpi_root_task(iterable: Iterable, ranks: Iterable[int]) -> Iterator:
     # first pass of assigning tasks to workers dynamically
     active_workers = 0
-    for rank in range(1, SIZE):
+    for rank in range(1, get_size()):
         try:
             assert rank in ranks
             COMM.send(next(iterable), dest=rank, tag=1)
@@ -120,14 +134,14 @@ def mpi_root_task(iterable: Iterable, ranks: Iterable[int]) -> Iterator:
             active_workers -= 1
 
 
-def mpi_worker_task(func: ParallelJob) -> None:
+def _mpi_worker_task(func: ParallelJob) -> None:
     rank = COMM.Get_rank()
     while (arg := COMM.recv(source=0, tag=1)) is not EndOfQueue:
         result = func(arg)
         COMM.send((rank, result), dest=0, tag=2)
 
 
-def mpi_iter_unordered(
+def _mpi_iter_unordered(
     func: Callable[[Targ], Tresult],
     iterable: Iterable[Targ],
     *,
@@ -137,91 +151,58 @@ def mpi_iter_unordered(
 ) -> Iterator[Tresult]:
     if on_root():
         iterable = iter(iterable)
-        yield from mpi_root_task(iterable, ranks)
+        yield from _mpi_root_task(iterable, ranks)
 
     else:
         wrapped_func = ParallelJob(func, func_args, func_kwargs)
-        mpi_worker_task(wrapped_func)
+        _mpi_worker_task(wrapped_func)
 
 
-def multiprocessing_iter_unordered(
+def _multiprocessing_iter_unordered(
     func: Callable[[Targ], Tresult],
     iterable: Iterable[Targ],
     *,
     func_args: tuple,
     func_kwargs: dict,
-    num_threads: int | None = None,
+    num_processes: int | None = None,
 ) -> Iterator[Tresult]:
     wrapped_func = ParallelJob(func, func_args, func_kwargs)
-    with multiprocessing.Pool(num_threads) as pool:
+    with multiprocessing.Pool(num_processes) as pool:
         yield from pool.imap_unordered(wrapped_func, iterable)
 
 
-class ParallelHelper:
-    comm = COMM
-    size = SIZE
-    num_threads = MP_THREADS
+def iter_unordered(
+    func: Callable[[Targ], Tresult],
+    iterable: Iterable[Targ],
+    *,
+    func_args: tuple | None = None,
+    func_kwargs: dict | None = None,
+    max_workers: int | None = None,
+    rank0_node_only: bool = False,
+) -> Iterator[Tresult]:
+    max_workers = get_size(max_workers)
+    iter_kwargs = dict(
+        func_args=(func_args or tuple()),
+        func_kwargs=(func_kwargs or dict()),
+    )
 
-    @classmethod
-    def set_multiprocessing_threads(cls, num_threads: int) -> None:
-        num_threads = min(int(num_threads), multiprocessing.cpu_count())
-        if num_threads < 1:
-            num_threads = get_physical_cores()
-
-        cls.num_threads = num_threads
-
-    @classmethod
-    def use_mpi(cls) -> bool:
-        return use_mpi()
-
-    @classmethod
-    def get_rank(cls) -> int:
-        return cls.comm.Get_rank()
-
-    @classmethod
-    def on_root(cls) -> bool:
-        return on_root()
-
-    @classmethod
-    def on_worker(cls) -> bool:
-        return not cls.on_root()
-
-    @classmethod
-    def print(cls, *args, **kwargs) -> None:
-        if cls.on_root():
-            print(*args, **kwargs)
-
-    @classmethod
-    def iter_unordered(
-        cls,
-        func: Callable[[Targ], Tresult],
-        iterable: Iterable[Targ],
-        *,
-        func_args: tuple | None = None,
-        func_kwargs: dict | None = None,
-        num_threads: int | None = None,
-        rank0_node_only: bool = False,
-    ) -> Iterator[Tresult]:
-        iter_kwargs = dict(
-            func_args=(func_args or tuple()),
-            func_kwargs=(func_kwargs or dict()),
-        )
-
-        if cls.use_mpi():
-            if rank0_node_only:
-                ranks = set(mpi_ranks_on_same_node(rank=0, max_workers=num_threads))
-            else:
-                ranks = set(range(min(SIZE, num_threads)))
-
-            num_workers = len(ranks)
-            iter_kwargs["ranks"] = ranks
-            parallel_method = mpi_iter_unordered
-
+    if use_mpi():
+        if rank0_node_only:
+            ranks = ranks_on_same_node(rank=0, max_workers=max_workers)
         else:
-            num_workers = num_threads or cls.num_threads
-            iter_kwargs["num_threads"] = num_workers
-            parallel_method = multiprocessing_iter_unordered
+            ranks = range(max_workers)
 
+        num_workers = len(ranks)
+        iter_kwargs["ranks"] = set(ranks)
+        parallel_method = _mpi_iter_unordered
+
+    else:
+        num_workers = max_workers
+        iter_kwargs["num_processes"] = max_workers
+        parallel_method = _multiprocessing_iter_unordered
+
+    if on_root():
         logger.debug(f"running parallel jobs on {num_workers} workers")
-        yield from parallel_method(func, iterable, **iter_kwargs)
-        cls.comm.Barrier()
+
+    yield from parallel_method(func, iterable, **iter_kwargs)
+    COMM.Barrier()

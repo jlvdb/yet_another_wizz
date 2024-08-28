@@ -36,9 +36,9 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
         pass
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
-        b_ic = BinwiseData.is_compatible
-        p_ic = PatchwiseData.is_compatible
-        return b_ic(self, other, require=require) and p_ic(self, other, require=require)
+        binnings_compatible = BinwiseData.is_compatible(self, other, require=require)
+        patches_compatible = PatchwiseData.is_compatible(self, other, require=require)
+        return binnings_compatible and patches_compatible
 
     @abstractmethod
     def get_array(self) -> NDArray:
