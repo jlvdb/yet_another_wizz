@@ -10,7 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
-from yaw.catalog.utils import groupby_binning
+from yaw.catalog.utils import DataChunk, groupby
 from yaw.containers import Tclosed, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances
 
@@ -140,30 +140,34 @@ class AngularTree(Sized):
         return get_counts_for_limits(counts, ang_bins, ang_limits)
 
 
-def build_binned_trees(
+def build_trees(
     patch: Patch,
-    binning: NDArray,
+    binning: NDArray | None,
     *,
     closed: str,
     leafsize: int,
 ) -> tuple[AngularTree]:
-    if not patch.has_redshifts():
+    if binning is not None and not patch.meta.has_redshifts:
         raise ValueError("patch has no 'redshifts' attached")
-    extra_attrs = {} if patch.weights is None else {"weights": patch.weights}
+    chunk = patch.load_data()
 
-    trees = []
-    for _, bin_data in groupby_binning(
-        patch.redshifts,
-        binning,
-        closed=closed,
-        coords=patch.coords,
-        **extra_attrs,
-    ):
-        bin_data["coords"] = AngularCoordinates(bin_data["coords"])
-        tree = AngularTree(**bin_data, leafsize=leafsize)
-        trees.append(tree)
+    if binning is None:
+        trees = AngularTree(chunk.coords, chunk.weights, leafsize=leafsize)
 
-    return tuple(trees)
+    else:
+        binning = np.asarray(binning)
+        bin_idx = np.digitize(chunk.redshifts, binning, right=(closed == "right"))
+
+        trees = []
+        for i, bin_data in groupby(bin_idx, chunk.data):
+            if 0 < i < len(binning):
+                bin_chunk = DataChunk(bin_data)
+                tree = AngularTree(
+                    bin_chunk.coords, weights=bin_chunk.weights, leafsize=leafsize
+                )
+                trees.append(tree)
+
+    return trees
 
 
 class BinnedTrees(Iterable):
@@ -199,12 +203,7 @@ class BinnedTrees(Iterable):
             new.binning = binning
 
             with new.trees_file.open(mode="wb") as f:
-                if binning is None:
-                    trees = AngularTree(patch.coords, patch.weights, leafsize=leafsize)
-                else:
-                    trees = build_binned_trees(
-                        patch, binning, closed=closed, leafsize=leafsize
-                    )
+                trees = build_trees(patch, binning, closed=closed, leafsize=leafsize)
                 pickle.dump(trees, f)
 
             if binning is None:

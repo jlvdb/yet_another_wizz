@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import DataChunk
-from yaw.containers import Serialisable, Tpath, YamlSerialisable
+from yaw.containers import Tpath, YamlSerialisable
 from yaw.utils import AngularCoordinates, AngularDistances
 
 __all__ = [
@@ -45,7 +45,7 @@ def read_patch_data(
     cache_path: Tpath,
     has_weights: bool,
     has_redshifts: bool,
-) -> tuple[list[str], NDArray]:
+) -> DataChunk:
     columns = ["ra", "dec"]
     if has_weights:
         columns.append("weights")
@@ -53,11 +53,17 @@ def read_patch_data(
         columns.append("redshifts")
 
     path = Path(cache_path) / DATA_PATH
-    return np.fromfile(path).view("f8").reshape(-1, len(columns))
+    rawdata = np.fromfile(path)
+    num_records = len(rawdata) // len(columns)
+
+    dtype = np.dtype([(col, "f8") for col in columns])
+    data = rawdata.view(dtype).reshape((num_records,))
+
+    return DataChunk(data)
 
 
 class PatchWriter:
-    __slots__ = ("cache_path", "chunksize", "_cachesize", "_shards", "_file")
+    __slots__ = ("cache_path", "buffersize", "_cachesize", "_shards", "_file")
 
     def __init__(
         self,
@@ -65,7 +71,7 @@ class PatchWriter:
         *,
         has_weights: bool,
         has_redshifts: bool,
-        chunksize: int = CHUNKSIZE,
+        buffersize: int = -1,
     ) -> None:
         self.cache_path = Path(cache_path)
         if self.cache_path.exists():
@@ -75,7 +81,7 @@ class PatchWriter:
 
         write_column_info(cache_path, has_weights, has_redshifts)
 
-        self.chunksize = int(chunksize)
+        self.buffersize = CHUNKSIZE if buffersize < 0 else int(buffersize)
         self._cachesize = 0
         self._shards = []
 
@@ -84,7 +90,7 @@ class PatchWriter:
             self._file = open(self.cache_path / DATA_PATH, mode="ab")
 
     def close(self) -> None:
-        self._file.flush()
+        self.flush()
         self._file.close()
         self._file = None
 
@@ -92,7 +98,7 @@ class PatchWriter:
         self._shards.append(chunk.data)
         self._cachesize += len(chunk)
 
-        if self._cachesize >= self.chunksize:
+        if self._cachesize >= self.buffersize:
             self.flush()
 
     def flush(self) -> None:
@@ -174,7 +180,7 @@ class Metadata(YamlSerialisable):
         )
 
 
-class Patch(Serialisable):
+class Patch:
     __slots__ = ("meta", "cache_path")
 
     def __init__(self, cache_path: Tpath) -> None:
@@ -186,14 +192,11 @@ class Patch(Serialisable):
 
         except FileNotFoundError:
             has_weights, has_redshifts = read_and_delete_column_info(self.cache_path)
-            columns, data = read_patch_data(self.cache_path, has_weights, has_redshifts)
-            data_dict = dict(zip(columns, data.T))
+            data = read_patch_data(self.cache_path, has_weights, has_redshifts)
 
-            coords = AngularCoordinates(data[:, :2])
-            weights = data_dict.get("weights", None)
-            redshifts = data_dict.get("redshifts", None)
-
-            self.meta = Metadata.compute(coords, weights=weights, redshifts=redshifts)
+            self.meta = Metadata.compute(
+                data.coords, weights=data.weights, redshifts=data.redshifts
+            )
             self.meta.to_file(meta_data_file)
 
     def __getstate__(self) -> dict:
@@ -203,35 +206,22 @@ class Patch(Serialisable):
         for key, value in state.items():
             setattr(self, key, value)
 
-    def load_data(
-        self,
-        has_weights: bool | None = None,
-        has_redshifts: bool | None = None,
-    ) -> tuple[list[str], NDArray]:
+    def load_data(self) -> DataChunk:
         return read_patch_data(
-            self.cache_path,
-            self.meta.has_weights if has_weights is None else has_weights,
-            self.meta.has_redshifts if has_redshifts is None else has_redshifts,
+            self.cache_path, self.meta.has_weights, self.meta.has_redshifts
         )
 
     @property
     def coords(self) -> AngularCoordinates:
-        _, data = self.load_data()
-        return AngularCoordinates(data[:, :2])
+        return self.load_data().coords
 
     @property
     def weights(self) -> NDArray | None:
-        if self.meta.has_weights:
-            columns, data = self.load_data()
-            return data[:, columns.index("weights")]
-        return None
+        return self.load_data().weights
 
     @property
     def redshifts(self) -> NDArray | None:
-        if self.meta.has_redshifts:
-            columns, data = self.load_data()
-            return data[:, columns.index("redshifts")]
-        return None
+        return self.load_data().redshifts
 
     def get_trees(self) -> BinnedTrees:
         return BinnedTrees(self)

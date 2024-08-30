@@ -97,6 +97,14 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         return f"{name} @ {self._chunk_idx} / {self.num_chunks} chunks"
 
     @property
+    def has_redshifts(self) -> bool:
+        return "redshifts" in self.attrs
+
+    @property
+    def has_weights(self) -> bool:
+        return "weights" in self.attrs
+
+    @property
     @abstractmethod
     def num_records(self) -> int:
         pass

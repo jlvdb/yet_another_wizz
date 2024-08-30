@@ -108,9 +108,11 @@ class DataChunk:
     def dtype(self) -> DTypeLike:
         return self.data.dtype
 
+    @property
     def has_weights(self) -> bool:
         return "weights" in self.data.dtype.fields
 
+    @property
     def has_redshifts(self) -> bool:
         return "redshifts" in self.data.dtype.fields
 
@@ -120,15 +122,23 @@ class DataChunk:
         return AngularCoordinates(view_2d[:, :2])
 
     @property
+    def ra(self) -> NDArray:
+        return self.data["ra"]
+
+    @property
+    def dec(self) -> NDArray:
+        return self.data["dec"]
+
+    @property
     def weights(self) -> NDArray | None:
-        if not self.has_weights():
+        if not self.has_weights:
             return None
 
         return self.data["weights"]
 
     @property
     def redshifts(self) -> NDArray | None:
-        if not self.has_redshifts():
+        if not self.has_redshifts:
             return None
 
         return self.data["redshifts"]

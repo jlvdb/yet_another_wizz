@@ -85,10 +85,11 @@ def create_patch_centers(
         logger.info("computing patch centers from %dx sparse sampling", sparse_factor)
 
     cat = treecorr.Catalog(
-        ra=test_sample.coords.ra,
+        ra=test_sample.ra,
         ra_units="radians",
-        dec=test_sample.coords.dec,
+        dec=test_sample.dec,
         dec_units="radians",
+        w=test_sample.weights,
         npatch=patch_num,
         config=dict(num_threads=parallel.get_size()),
     )
@@ -118,7 +119,15 @@ class ChunkProcessor(Callable):
 
 
 class CatalogWriter(AbstractContextManager):
-    def __init__(self, cache_directory: Tpath, overwrite: bool = True) -> None:
+    def __init__(
+        self,
+        cache_directory: Tpath,
+        *,
+        overwrite: bool = True,
+        has_weights: bool,
+        has_redshifts: bool,
+        buffersize: int = -1,
+    ) -> None:
         self.cache_directory = Path(cache_directory)
         cache_exists = self.cache_directory.exists()
 
@@ -135,6 +144,10 @@ class CatalogWriter(AbstractContextManager):
             else:
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
 
+        self.has_weights = has_weights
+        self.has_redshifts = has_redshifts
+
+        self.buffersize = buffersize
         self.cache_directory.mkdir()
         self._writers: dict[int, PatchWriter] = {}
 
@@ -152,7 +165,12 @@ class CatalogWriter(AbstractContextManager):
             return self._writers[patch_id]
 
         except KeyError:
-            writer = PatchWriter(self.get_writer_path(patch_id))
+            writer = PatchWriter(
+                self.get_writer_path(patch_id),
+                has_weights=self.has_weights,
+                has_redshifts=self.has_redshifts,
+                buffersize=self.buffersize,
+            )
             self._writers[patch_id] = writer
             return writer
 
@@ -162,16 +180,18 @@ class CatalogWriter(AbstractContextManager):
 
     def finalize(self) -> None:
         for writer in self._writers.values():
-            writer.finalize()
+            writer.close()
 
 
 def write_patches(
     path: Tpath,
     reader: BaseReader,
     patch_centers: Tcenters,
+    *,
     overwrite: bool,
     progress: bool,
     max_workers: int | None = None,
+    buffersize: int = -1,
 ) -> None:
     max_workers = parallel.get_size(max_workers)
 
@@ -183,7 +203,13 @@ def write_patches(
         )
     preprocess = ChunkProcessor(patch_centers)
 
-    writer = CatalogWriter(path, overwrite=overwrite)
+    writer = CatalogWriter(
+        path,
+        has_weights=reader.has_weights,
+        has_redshifts=reader.has_redshifts,
+        overwrite=overwrite,
+        buffersize=buffersize,
+    )
     pool = multiprocessing.Pool(max_workers)
     with reader, writer, pool:
         chunk_iter = iter(reader)
@@ -293,7 +319,13 @@ class Catalog(Mapping[int, Patch]):
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
 
-            write_patches(cache_directory, reader, patch_centers, overwrite, progress)
+            write_patches(
+                cache_directory,
+                reader,
+                patch_centers,
+                overwrite=overwrite,
+                progress=progress,
+            )
         parallel.COMM.Barrier()
 
         new = cls.__new__(cls)
@@ -338,7 +370,13 @@ class Catalog(Mapping[int, Patch]):
             if mode == PatchMode.create:
                 patch_centers = create_patch_centers(reader, patch_num, probe_size)
 
-            write_patches(cache_directory, reader, patch_centers, overwrite, progress)
+            write_patches(
+                cache_directory,
+                reader,
+                patch_centers,
+                overwrite=overwrite,
+                progress=progress,
+            )
         parallel.COMM.Barrier()
 
         new = cls.__new__(cls)
@@ -348,8 +386,8 @@ class Catalog(Mapping[int, Patch]):
 
     def __repr__(self) -> str:
         num_patches = len(self)
-        weights = self.has_weights()
-        redshifts = self.has_redshifts()
+        weights = self.has_weights
+        redshifts = self.has_redshifts
         return f"{type(self).__name__}({num_patches=}, {weights=}, {redshifts=})"
 
     def __len__(self) -> int:
@@ -361,16 +399,18 @@ class Catalog(Mapping[int, Patch]):
     def __iter__(self) -> Iterator[int]:
         yield from sorted(self.patches.keys())
 
+    @property
     def has_weights(self) -> bool:
-        has_weights = tuple(patch.has_weights() for patch in self.values())
+        has_weights = tuple(patch.meta.has_weights for patch in self.values())
         if all(has_weights):
             return True
         elif not any(has_weights):
             return False
         raise InconsistentPatchesError("'weights' not consistent")
 
+    @property
     def has_redshifts(self) -> bool:
-        has_redshifts = tuple(patch.has_redshifts() for patch in self.values())
+        has_redshifts = tuple(patch.meta.has_redshifts for patch in self.values())
         if all(has_redshifts):
             return True
         elif not any(has_redshifts):
