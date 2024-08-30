@@ -9,8 +9,8 @@ from itertools import compress
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw.catalog.catalog import Catalog, InconsistentPatchesError
-from yaw.catalog.patch import Patch
+from yaw.catalog import Catalog, Patch
+from yaw.catalog.utils import InconsistentPatchesError
 from yaw.config import Configuration
 from yaw.corrfunc import CorrFunc
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
