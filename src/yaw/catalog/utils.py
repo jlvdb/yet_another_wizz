@@ -10,13 +10,15 @@ from numpy.typing import ArrayLike, DTypeLike, NDArray
 from yaw.containers import Tclosed, default_closed
 from yaw.utils import AngularCoordinates
 
-COLUMN_FILE_NAME = "patch.columns"
-DATA_PATH = "data.bin"
-
-PATCH_NAME_TEMPLATE = "patch_{:}"
-PATCHFILE_NAME = "num_patches"
-
 Tpath = Union[Path, str]
+
+
+class InconsistentPatchesError(Exception):
+    pass
+
+
+class InconsistentTreesError(Exception):
+    pass
 
 
 def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, NDArray]]:
@@ -179,73 +181,3 @@ class DataChunk:
 
 class MockDataFrame(Sequence):  # avoid explicit pandas dependency
     pass
-
-
-class InconsistentPatchesError(Exception):
-    pass
-
-
-class InconsistentTreesError(Exception):
-    pass
-
-
-def write_column_info(
-    cache_path: Tpath, has_weights: bool, has_redshifts: bool
-) -> None:
-    info = (has_weights << 0) | (has_redshifts << 1)
-
-    with open(Path(cache_path) / COLUMN_FILE_NAME, mode="wb") as f:
-        info_bytes = info.to_bytes(1, byteorder="big")
-        f.write(info_bytes)
-
-
-def read_and_delete_column_info(cache_path: Tpath) -> tuple[bool, bool]:
-    with open(Path(cache_path) / COLUMN_FILE_NAME, "rb") as f:
-        info_bytes = f.read()
-        info = int.from_bytes(info_bytes, byteorder="big")
-
-    has_weights = info & (1 << 0)
-    has_redshifts = info & (1 << 1)
-    return has_weights, has_redshifts
-
-
-def read_patch_data(
-    cache_path: Tpath,
-    has_weights: bool,
-    has_redshifts: bool,
-) -> DataChunk:
-    columns = ["ra", "dec"]
-    if has_weights:
-        columns.append("weights")
-    if has_redshifts:
-        columns.append("redshifts")
-
-    path = Path(cache_path) / DATA_PATH
-    rawdata = np.fromfile(path)
-    num_records = len(rawdata) // len(columns)
-
-    dtype = np.dtype([(col, "f8") for col in columns])
-    data = rawdata.view(dtype).reshape((num_records,))
-
-    return DataChunk(data)
-
-
-def patch_id_from_path(patch_path: Tpath) -> int:
-    _, id_str = Path(patch_path).name.split("_")
-    return int(id_str)
-
-
-def create_patchfile(cache_directory: Tpath, num_patches: int) -> None:
-    with (cache_directory / PATCHFILE_NAME).open("w") as f:
-        f.write(str(num_patches))
-
-
-def verify_patchfile(cache_directory: Tpath, num_expect: int) -> None:
-    path = Path(cache_directory) / PATCHFILE_NAME
-    if not path.exists():
-        raise InconsistentPatchesError("patch indicator file not found")
-
-    with path.open() as f:
-        num_patches = int(f.read())
-    if num_expect != num_patches:
-        raise ValueError(f"expected {num_expect} patches but found {num_patches}")

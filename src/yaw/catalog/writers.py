@@ -19,19 +19,22 @@ from scipy.cluster import vq
 from typing_extensions import Self
 
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
-from yaw.catalog.utils import DATA_PATH, PATCH_NAME_TEMPLATE, DataChunk
+from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
-from yaw.catalog.utils import write_column_info
 from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 from yaw.utils.logging import Indicator
 from yaw.utils.parallel import EndOfQueue
 
 __all__ = [
-    "create_patches",
+    "write_catalog",
 ]
 
 Tcenters = Union["HasPatchCenters", AngularCoordinates]
+
+PATCH_NAME_TEMPLATE = "patch_{:}"
+PATCH_COLUMNS_FILE = "patch.columns"
+PATCH_DATA_PATH = "data.bin"
 
 CHUNKSIZE = 65_536
 
@@ -40,6 +43,16 @@ logger = logging.getLogger(__name__)
 
 class HasPatchCenters(Protocol):
     def get_patch_centers() -> AngularCoordinates: ...
+
+
+def write_column_info(
+    cache_path: Tpath, has_weights: bool, has_redshifts: bool
+) -> None:
+    info = (has_weights << 0) | (has_redshifts << 1)
+
+    with open(Path(cache_path) / PATCH_COLUMNS_FILE, mode="wb") as f:
+        info_bytes = info.to_bytes(1, byteorder="big")
+        f.write(info_bytes)
 
 
 class PatchWriter:
@@ -67,7 +80,7 @@ class PatchWriter:
 
     def open(self) -> None:
         if self._file is None:
-            self._file = open(self.cache_path / DATA_PATH, mode="ab")
+            self._file = open(self.cache_path / PATCH_DATA_PATH, mode="ab")
 
     def close(self) -> None:
         self.flush()
@@ -144,6 +157,17 @@ def create_patch_centers(
     )
     xyz = np.atleast_2d(cat.patch_centers)
     return AngularCoordinates.from_3d(xyz)
+
+
+def get_patch_centers(instance: Tcenters) -> AngularCoordinates:
+    try:
+        return instance.get_centers()
+    except AttributeError as err:
+        if isinstance(instance, AngularCoordinates):
+            return instance
+        raise TypeError(
+            "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
+        ) from err
 
 
 class ChunkProcessor:
@@ -233,17 +257,6 @@ class CatalogWriter(AbstractContextManager):
     def finalize(self) -> None:
         for writer in self._writers.values():
             writer.close()
-
-
-def get_patch_centers(instance: Tcenters) -> AngularCoordinates:
-    try:
-        return instance.get_centers()
-    except AttributeError as err:
-        if isinstance(instance, AngularCoordinates):
-            return instance
-        raise TypeError(
-            "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
-        ) from err
 
 
 def _writer_process(
@@ -385,7 +398,7 @@ def write_patches_mpi(
     parallel.COMM.Barrier()
 
 
-def create_patches(
+def write_catalog(
     cache_directory: Tpath,
     source: DataFrame | Tpath,
     *,

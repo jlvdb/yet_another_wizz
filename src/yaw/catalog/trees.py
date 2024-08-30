@@ -15,7 +15,7 @@ from yaw.containers import Tclosed, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances
 
 if TYPE_CHECKING:
-    from yaw.catalog.patch import Patch
+    from yaw.catalog.catalog import Patch
 
 __all__ = [
     "AngularTree",

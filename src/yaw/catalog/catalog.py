@@ -11,16 +11,14 @@ import numpy as np
 from numpy.typing import NDArray
 
 from yaw.catalog.trees import BinnedTrees
-from yaw.catalog.utils import PATCH_NAME_TEMPLATE, DataChunk, InconsistentPatchesError
+from yaw.catalog.utils import DataChunk, InconsistentPatchesError
 from yaw.catalog.utils import MockDataFrame as DataFrame
-from yaw.catalog.utils import (
-    create_patchfile,
-    patch_id_from_path,
-    read_and_delete_column_info,
-    read_patch_data,
-    verify_patchfile,
+from yaw.catalog.writers import (
+    PATCH_COLUMNS_FILE,
+    PATCH_DATA_PATH,
+    PATCH_NAME_TEMPLATE,
+    write_catalog,
 )
-from yaw.catalog.writers import create_patches
 from yaw.containers import (
     Tclosed,
     Tpath,
@@ -37,6 +35,8 @@ __all__ = [
 ]
 
 Tcenters = Union["Catalog", AngularCoordinates]
+
+PATCHFILE_NAME = "num_patches"
 
 logger = logging.getLogger("yaw.catalog")
 
@@ -108,6 +108,37 @@ class Metadata(YamlSerialisable):
         )
 
 
+def read_and_delete_column_info(cache_path: Tpath) -> tuple[bool, bool]:
+    with open(Path(cache_path) / PATCH_COLUMNS_FILE, "rb") as f:
+        info_bytes = f.read()
+        info = int.from_bytes(info_bytes, byteorder="big")
+
+    has_weights = info & (1 << 0)
+    has_redshifts = info & (1 << 1)
+    return has_weights, has_redshifts
+
+
+def read_patch_data(
+    cache_path: Tpath,
+    has_weights: bool,
+    has_redshifts: bool,
+) -> DataChunk:
+    columns = ["ra", "dec"]
+    if has_weights:
+        columns.append("weights")
+    if has_redshifts:
+        columns.append("redshifts")
+
+    path = Path(cache_path) / PATCH_DATA_PATH
+    rawdata = np.fromfile(path)
+    num_records = len(rawdata) // len(columns)
+
+    dtype = np.dtype([(col, "f8") for col in columns])
+    data = rawdata.view(dtype).reshape((num_records,))
+
+    return DataChunk(data)
+
+
 class Patch:
     __slots__ = ("meta", "cache_path")
 
@@ -134,6 +165,11 @@ class Patch:
         for key, value in state.items():
             setattr(self, key, value)
 
+    @staticmethod
+    def id_from_path(cache_path: Tpath) -> int:
+        _, id_str = Path(cache_path).name.split("_")
+        return int(id_str)
+
     def load_data(self) -> DataChunk:
         return read_patch_data(
             self.cache_path, self.meta.has_weights, self.meta.has_redshifts
@@ -155,7 +191,23 @@ class Patch:
         return BinnedTrees(self)
 
 
-def compute_patch_metadata(
+def create_catalog_info(cache_directory: Tpath, num_patches: int) -> None:
+    with (cache_directory / PATCHFILE_NAME).open("w") as f:
+        f.write(str(num_patches))
+
+
+def verify_catalog_info(cache_directory: Tpath, num_expect: int) -> None:
+    path = Path(cache_directory) / PATCHFILE_NAME
+    if not path.exists():
+        raise InconsistentPatchesError("patch indicator file not found")
+
+    with path.open() as f:
+        num_patches = int(f.read())
+    if num_expect != num_patches:
+        raise ValueError(f"expected {num_expect} patches but found {num_patches}")
+
+
+def load_patches_with_metadata(
     cache_directory: Tpath, progress: bool = False
 ) -> dict[int, Patch]:
     if parallel.on_root():
@@ -163,14 +215,14 @@ def compute_patch_metadata(
 
     cache_directory = Path(cache_directory)
     patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
-    create_patchfile(cache_directory, len(patch_paths))
+    create_catalog_info(cache_directory, len(patch_paths))
 
     # instantiate patches, which trigger computing the patch meta-data
     patch_iter = parallel.iter_unordered(Patch, patch_paths)
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_paths))
 
-    patches = {patch_id_from_path(patch.cache_path): patch for patch in patch_iter}
+    patches = {Patch.id_from_path(patch.cache_path): patch for patch in patch_iter}
     return parallel.COMM.bcast(patches, root=0)
 
 
@@ -187,9 +239,9 @@ class Catalog(Mapping[int, Patch]):
 
             template = PATCH_NAME_TEMPLATE.format("*")
             patch_paths = tuple(self.cache_directory.glob(template))
-            verify_patchfile(self.cache_directory, len(patch_paths))
+            verify_catalog_info(self.cache_directory, len(patch_paths))
 
-            patches = {patch_id_from_path(cache): Patch(cache) for cache in patch_paths}
+            patches = {Patch.id_from_path(cache): Patch(cache) for cache in patch_paths}
 
         self.patches = parallel.COMM.bcast(patches, root=0)
 
@@ -213,7 +265,7 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        create_patches(
+        write_catalog(
             cache_directory,
             source=dataframe,
             ra_name=ra_name,
@@ -233,7 +285,7 @@ class Catalog(Mapping[int, Patch]):
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = compute_patch_metadata(cache_directory, progress)
+        new.patches = load_patches_with_metadata(cache_directory, progress)
         return new
 
     @classmethod
@@ -256,7 +308,7 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        create_patches(
+        write_catalog(
             cache_directory,
             source=path,
             ra_name=ra_name,
@@ -276,7 +328,7 @@ class Catalog(Mapping[int, Patch]):
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = compute_patch_metadata(cache_directory, progress)
+        new.patches = load_patches_with_metadata(cache_directory, progress)
         return new
 
     def __repr__(self) -> str:
