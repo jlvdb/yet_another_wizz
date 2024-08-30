@@ -296,6 +296,9 @@ def write_patches_mpi(
         if writer_rank != 0:
             break
     active_ranks.remove(writer_rank)
+    active_comm = parallel.COMM.Split(
+        1 if rank in active_ranks else MPI.UNDEFINED, rank
+    )
 
     if rank == writer_rank:
         _writer_process(
@@ -314,7 +317,7 @@ def write_patches_mpi(
                 chunk_iter = Indicator(reader)
 
             for chunk in chunk_iter:
-                if parallel.on_root():
+                if rank == 0:
                     splitted = chunk.split(len(active_ranks))
                     split_assignments = dict(zip(active_ranks, splitted))
 
@@ -329,8 +332,11 @@ def write_patches_mpi(
                 patches = preprocess.execute(split)
                 parallel.COMM.send(patches, dest=writer_rank, tag=2)
 
-            if parallel.on_root():
+            active_comm.Barrier()
+            if rank == 0:
                 parallel.COMM.send(EndOfQueue, dest=writer_rank, tag=2)
+
+        active_comm.Free()
 
     parallel.COMM.Barrier()
 
