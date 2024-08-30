@@ -64,7 +64,10 @@ class DataChunk:
         weights: NDArray | None = None,
         redshifts: NDArray | None = None,
         patch_ids: NDArray | None = None,
+        chkfinite: bool = False,
     ):
+        asarray = np.asarray_chkfinite if chkfinite else np.asarray
+
         dtype = [("ra", cls.itemtype), ("dec", cls.itemtype)]
         if weights is not None:
             dtype.append(("weights", cls.itemtype))
@@ -72,12 +75,12 @@ class DataChunk:
             dtype.append(("redshifts", cls.itemtype))
 
         data = np.empty(len(ra), dtype=dtype)
-        data["ra"] = ra
-        data["dec"] = dec
+        data["ra"] = asarray(ra)
+        data["dec"] = asarray(dec)
         if weights is not None:
-            data["weights"] = weights
+            data["weights"] = asarray(weights)
         if redshifts is not None:
-            data["redshifts"] = redshifts
+            data["redshifts"] = asarray(redshifts)
 
         return cls(data, patch_ids)
 
@@ -86,6 +89,8 @@ class DataChunk:
         data = np.concatenate([chunk.data for chunk in chunks])
         if any(chunk.patch_ids is not None for chunk in chunks):
             patch_ids = np.concatenate([chunk.patch_ids for chunk in chunks])
+        else:
+            patch_ids = None
 
         return cls(data, patch_ids)
 

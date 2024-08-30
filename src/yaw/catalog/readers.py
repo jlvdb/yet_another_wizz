@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 from abc import abstractmethod
-from collections import defaultdict
 from collections.abc import Iterable, Iterator, Sized
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -17,6 +16,7 @@ from numpy.typing import NDArray
 from pyarrow import Table, parquet
 from typing_extensions import Self
 
+from yaw.catalog.utils import DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tpath
 
@@ -28,15 +28,14 @@ __all__ = [
     "new_filereader",
 ]
 
-Tchunk = dict[str, NDArray]
-
 CHUNKSIZE = 16_777_216
 
 logger = logging.getLogger(__name__)
 
 
 def long_num_format(x: float | int) -> str:
-    """Format a floating point number as string with a numerical suffix.
+    """
+    Format a floating point number as string with a numerical suffix.
 
     E.g.: 1234.0 is converted to ``1.24K``.
     """
@@ -50,28 +49,41 @@ def long_num_format(x: float | int) -> str:
     return prefix + suffix
 
 
-def swap_byteorder(array: NDArray) -> NDArray:
-    return array.view(array.dtype.newbyteorder()).byteswap()
-
-
-class BaseReader(Sized, Iterator[Tchunk], AbstractContextManager):
+class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
     @abstractmethod
     def __init__(
         self,
         source: Any,
         *,
-        columns: Iterable,
+        ra_name: str,
+        dec_name: str,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        patch_name: str | None = None,
         chunksize: int | None = None,
         **reader_kwargs,
     ) -> None:
-        self.columns = list(columns)
-
-        self.chunksize = chunksize or CHUNKSIZE
-        self._chunk_idx = 0
-
+        self._init(ra_name, dec_name, weight_name, redshift_name, patch_name, chunksize)
         self._init_source(source, **reader_kwargs)
 
         logger.debug("selecting input columns: %s", ", ".join(self.columns))
+
+    def _init(
+        self,
+        ra_name: str,
+        dec_name: str,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        patch_name: str | None = None,
+        chunksize: int | None = None,
+    ) -> None:
+        attrs = ("ra", "dec", "weights", "redshifts", "patch_ids")
+        columns = (ra_name, dec_name, weight_name, redshift_name, patch_name)
+        self.attrs = tuple(attr for attr, col in zip(attrs, columns) if col is not None)
+        self.columns = tuple(col for col in columns if col is not None)
+
+        self.chunksize = chunksize or CHUNKSIZE
+        self._chunk_idx = 0
 
     @abstractmethod
     def _init_source(self, source: Any, **reader_kwargs) -> None:
@@ -91,13 +103,13 @@ class BaseReader(Sized, Iterator[Tchunk], AbstractContextManager):
         return self._num_chunks
 
     @abstractmethod
-    def _load_next_chunk(self) -> Tchunk:
+    def _load_next_chunk(self) -> DataChunk:
         pass
 
     def __len__(self) -> int:
         return self.num_chunks
 
-    def __next__(self) -> Tchunk:
+    def __next__(self) -> DataChunk:
         if self._chunk_idx >= self._num_chunks:
             raise StopIteration()
 
@@ -105,29 +117,27 @@ class BaseReader(Sized, Iterator[Tchunk], AbstractContextManager):
         self._chunk_idx += 1
         return chunk
 
-    def __iter__(self) -> Iterator[Tchunk]:
+    def __iter__(self) -> Iterator[DataChunk]:
         self._chunk_idx = 0
         return self
 
     @abstractmethod
-    def read(self, sparse: int) -> Tchunk:
+    def read(self, sparse: int) -> DataChunk:
         n_read = 0
-        chunks: dict[str, list[NDArray]] = defaultdict(list)
+        chunks = []
         for chunk in self:
             # keep track of where the next spare record in the new chunk is located
             chunk_offset = ((n_read // sparse + 1) * sparse - n_read) % sparse
-            chunk_size = len(next(iter(chunk.values())))
+            chunk_size = len(chunk)
 
             sparse_idx = np.arange(chunk_offset, chunk_size, sparse)
+            chunks.append(chunk[sparse_idx])
             n_read += chunk_size
 
-            for colname, array in chunk.items():
-                chunks[colname].append(array[sparse_idx])
-
-        return {colname: np.concatenate(arrays) for colname, arrays in chunks.items()}
+        return DataChunk.from_chunks(chunks)
 
 
-def issue_init_log(num_records: int, num_chunks: int, source: str) -> None:
+def issue_io_log(num_records: int, num_chunks: int, source: str) -> None:
     logger.info(
         "loading %s records in %d chunks from %s",
         long_num_format(num_records),
@@ -136,26 +146,35 @@ def issue_init_log(num_records: int, num_chunks: int, source: str) -> None:
     )
 
 
-def dataframe_to_numpy_dict(df: DataFrame) -> Tchunk:
-    return {colnames: df[colnames].to_numpy() for colnames in df.columns}
-
-
 class DataFrameReader(BaseReader):
     def __init__(
         self,
         data: DataFrame,
         *,
-        columns: Iterable,
+        ra_name: str,
+        dec_name: str,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        patch_name: str | None = None,
         chunksize: int | None = None,
         **reader_kwargs,
     ) -> None:
-        super().__init__(data, columns=columns, chunksize=chunksize, **reader_kwargs)
+        super().__init__(
+            data,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            patch_name=patch_name,
+            chunksize=chunksize,
+            **reader_kwargs,
+        )
 
     def _init_source(self, source: Any, **reader_kwargs) -> None:
         self._data = source
-
         super()._init_source(source)
-        issue_init_log(self.num_records, self.num_chunks, "memory")
+
+        issue_io_log(self.num_records, self.num_chunks, "memory")
 
     def __enter__(self) -> Self:
         return self
@@ -167,14 +186,22 @@ class DataFrameReader(BaseReader):
     def num_records(self) -> int:
         return len(self._data)
 
-    def _load_next_chunk(self) -> Tchunk:
+    def _load_next_chunk(self) -> DataChunk:
         start = self._chunk_idx * self.chunksize
         end = start + self.chunksize
         chunk = self._data[start:end]
-        return dataframe_to_numpy_dict(chunk[self.columns])
 
-    def read(self, sparse: int) -> Tchunk:
-        return dataframe_to_numpy_dict(self._data[self.columns][::sparse])
+        data = {
+            attr: chunk[col].to_numpy() for attr, col in zip(self.attrs, self.columns)
+        }
+        return DataChunk.from_columns(**data, chkfinite=True)
+
+    def read(self, sparse: int) -> DataChunk:
+        data = {
+            attr: self._data[col][::sparse].to_numpy()
+            for attr, col in zip(self.attrs, self.columns)
+        }
+        return DataChunk.from_columns(**data, chkfinite=True)
 
 
 class FileReader(BaseReader):
@@ -182,11 +209,24 @@ class FileReader(BaseReader):
         self,
         path: Tpath,
         *,
-        columns: Iterable,
+        ra_name: str,
+        dec_name: str,
+        weight_name: str | None = None,
+        redshift_name: str | None = None,
+        patch_name: str | None = None,
         chunksize: int | None = None,
         **reader_kwargs,
     ) -> None:
-        super().__init__(path, columns=columns, chunksize=chunksize, **reader_kwargs)
+        super().__init__(
+            path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            patch_name=patch_name,
+            chunksize=chunksize,
+            **reader_kwargs,
+        )
 
     def __enter__(self) -> Self:
         return self
@@ -199,10 +239,9 @@ class ParquetFile(Iterator):
     __slots__ = ("path", "_file", "columns", "_group_idx")
 
     def __init__(self, path: Tpath, columns: Iterable[str]) -> None:
-        self.columns = list(columns)
+        self.columns = tuple(columns)
         self.path = Path(path)
         self._file = parquet.ParquetFile(self.path)
-
         self.rewind()
 
     def close(self) -> None:
@@ -241,9 +280,9 @@ class ParquetReader(FileReader):
     def _init_source(self, path: Tpath) -> None:
         self._file = ParquetFile(path, self.columns)
         self._cache = self._file.get_empty_group()
-
         super()._init_source(path)
-        issue_init_log(
+
+        issue_io_log(
             self.num_records, self.num_chunks, f"from Parquet file: {self.path}"
         )
 
@@ -255,7 +294,7 @@ class ParquetReader(FileReader):
     def num_records(self) -> int:
         return self._file.num_records
 
-    def _load_next_chunk(self) -> Tchunk:
+    def _load_next_chunk(self) -> DataChunk:
         reached_end = False
         while len(self._cache) < self.chunksize:
             try:
@@ -271,15 +310,23 @@ class ParquetReader(FileReader):
         else:
             table = self._cache
 
-        return {colname: table.column(colname).to_numpy() for colname in self.columns}
+        data = {
+            attr: table.column(col).to_numpy()
+            for attr, col in zip(self.attrs, self.columns)
+        }
+        return DataChunk.from_columns(**data, chkfinite=True)
 
-    def __iter__(self) -> Iterator[Tchunk]:
+    def __iter__(self) -> Iterator[DataChunk]:
         self._cache = self._file.get_empty_group()
         self._file.rewind()
         return super().__iter__()
 
-    def read(self, sparse: int) -> Tchunk:
+    def read(self, sparse: int) -> DataChunk:
         return super().read(sparse)
+
+
+def swap_byteorder(array: NDArray) -> NDArray:
+    return array.view(array.dtype.newbyteorder()).byteswap()
 
 
 class FitsReader(FileReader):
@@ -287,42 +334,40 @@ class FitsReader(FileReader):
         self.path = Path(source)
         self._file = fits.open(str(self.path))
         self._hdu = self._file[hdu]
-
         super()._init_source(source)
-        issue_init_log(
-            self.num_records, self.num_chunks, f"from FITS file: {self.path}"
-        )
+
+        issue_io_log(self.num_records, self.num_chunks, f"from FITS file: {self.path}")
 
     @property
     def num_records(self) -> int:
         return len(self._hdu.data)
 
-    def _load_next_chunk(self) -> Tchunk:
+    def _load_next_chunk(self) -> DataChunk:
         hdu_data = self._hdu.data
         offset = self._chunk_idx * self.chunksize
         group_slice = slice(offset, offset + self.chunksize)
 
-        return {
-            colname: swap_byteorder(hdu_data[colname][group_slice])
-            for colname in self.columns
+        data = {
+            attr: swap_byteorder(hdu_data[col][group_slice])
+            for attr, col in zip(self.attrs, self.columns)
         }
+        return DataChunk.from_columns(**data, chkfinite=True)
 
-    def read(self, sparse: int) -> Tchunk:
-        return {
-            colname: swap_byteorder(self._hdu.data[colname][::sparse])
-            for colname in self.columns
+    def read(self, sparse: int) -> DataChunk:
+        data = {
+            attr: swap_byteorder(self._hdu.data[col][::sparse])
+            for attr, col in zip(self.attrs, self.columns)
         }
+        return DataChunk.from_columns(**data, chkfinite=True)
 
 
 class HDFReader(FileReader):
     def _init_source(self, source: Tpath) -> None:
         self.path = Path(source)
         self._file = h5py.File(self.path, mode="r")
-
         super()._init_source(source)
-        issue_init_log(
-            self.num_records, self.num_chunks, f"from HDF5 file: {self.path}"
-        )
+
+        issue_io_log(self.num_records, self.num_chunks, f"from HDF5 file: {self.path}")
 
     @property
     def num_records(self) -> int:
@@ -331,15 +376,20 @@ class HDFReader(FileReader):
             raise IndexError("columns do not have equal length")
         return num_records[0]
 
-    def _load_next_chunk(self) -> Tchunk:
+    def _load_next_chunk(self) -> DataChunk:
         offset = self._chunk_idx * self.chunksize
-        return {
-            colname: self._file[colname][offset : offset + self.chunksize]
-            for colname in self.columns
+        data = {
+            attr: self._file[col][offset : offset + self.chunksize]
+            for attr, col in zip(self.attrs, self.columns)
         }
+        return DataChunk.from_columns(**data, chkfinite=True)
 
-    def read(self, sparse: int) -> Tchunk:
-        return {colname: self._file[colname][::sparse] for colname in self.columns}
+    def read(self, sparse: int) -> DataChunk:
+        data = {
+            attr: self._file[col][::sparse]
+            for attr, col in zip(self.attrs, self.columns)
+        }
+        return DataChunk.from_columns(**data, chkfinite=True)
 
 
 def new_filereader(
@@ -351,7 +401,6 @@ def new_filereader(
     redshift_name: str | None = None,
     patch_name: str | None = None,
     chunksize: int | None = None,
-    degrees: bool = True,
     **reader_kwargs,
 ) -> FileReader:
     _, ext = os.path.splitext(str(path))
@@ -374,6 +423,5 @@ def new_filereader(
         redshift_name=redshift_name,
         patch_name=patch_name,
         chunksize=chunksize,
-        degrees=degrees,
         **reader_kwargs,
     )
