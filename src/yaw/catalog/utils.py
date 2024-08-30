@@ -64,6 +64,7 @@ class DataChunk:
         weights: NDArray | None = None,
         redshifts: NDArray | None = None,
         patch_ids: NDArray | None = None,
+        degrees: bool = True,
         chkfinite: bool = False,
     ):
         asarray = np.asarray_chkfinite if chkfinite else np.asarray
@@ -75,8 +76,8 @@ class DataChunk:
             dtype.append(("redshifts", cls.itemtype))
 
         data = np.empty(len(ra), dtype=dtype)
-        data["ra"] = asarray(ra)
-        data["dec"] = asarray(dec)
+        data["ra"] = np.deg2rad(asarray(ra)) if degrees else asarray(ra)
+        data["dec"] = np.deg2rad(asarray(dec)) if degrees else asarray(dec)
         if weights is not None:
             data["weights"] = asarray(weights)
         if redshifts is not None:

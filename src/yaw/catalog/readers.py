@@ -61,8 +61,11 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         redshift_name: str | None = None,
         patch_name: str | None = None,
         chunksize: int | None = None,
+        degrees: bool = True,
         **reader_kwargs,
     ) -> None:
+        self.degrees = degrees
+
         self._init(ra_name, dec_name, weight_name, redshift_name, patch_name, chunksize)
         self._init_source(source, **reader_kwargs)
 
@@ -157,6 +160,7 @@ class DataFrameReader(BaseReader):
         redshift_name: str | None = None,
         patch_name: str | None = None,
         chunksize: int | None = None,
+        degrees: bool = True,
         **reader_kwargs,
     ) -> None:
         super().__init__(
@@ -167,13 +171,14 @@ class DataFrameReader(BaseReader):
             redshift_name=redshift_name,
             patch_name=patch_name,
             chunksize=chunksize,
+            degrees=degrees,
             **reader_kwargs,
         )
 
     def _init_source(self, source: Any, **reader_kwargs) -> None:
         self._data = source
-        super()._init_source(source)
 
+        super()._init_source(source)
         issue_io_log(self.num_records, self.num_chunks, "memory")
 
     def __enter__(self) -> Self:
@@ -194,14 +199,14 @@ class DataFrameReader(BaseReader):
         data = {
             attr: chunk[col].to_numpy() for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, chkfinite=True)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._data[col][::sparse].to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, chkfinite=True)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
 
 class FileReader(BaseReader):
@@ -215,6 +220,7 @@ class FileReader(BaseReader):
         redshift_name: str | None = None,
         patch_name: str | None = None,
         chunksize: int | None = None,
+        degrees: bool = True,
         **reader_kwargs,
     ) -> None:
         super().__init__(
@@ -225,6 +231,7 @@ class FileReader(BaseReader):
             redshift_name=redshift_name,
             patch_name=patch_name,
             chunksize=chunksize,
+            degrees=degrees,
             **reader_kwargs,
         )
 
@@ -280,8 +287,8 @@ class ParquetReader(FileReader):
     def _init_source(self, path: Tpath) -> None:
         self._file = ParquetFile(path, self.columns)
         self._cache = self._file.get_empty_group()
-        super()._init_source(path)
 
+        super()._init_source(path)
         issue_io_log(
             self.num_records, self.num_chunks, f"from Parquet file: {self.path}"
         )
@@ -314,7 +321,7 @@ class ParquetReader(FileReader):
             attr: table.column(col).to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, chkfinite=True)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def __iter__(self) -> Iterator[DataChunk]:
         self._cache = self._file.get_empty_group()
@@ -334,8 +341,8 @@ class FitsReader(FileReader):
         self.path = Path(source)
         self._file = fits.open(str(self.path))
         self._hdu = self._file[hdu]
-        super()._init_source(source)
 
+        super()._init_source(source)
         issue_io_log(self.num_records, self.num_chunks, f"from FITS file: {self.path}")
 
     @property
@@ -351,22 +358,22 @@ class FitsReader(FileReader):
             attr: swap_byteorder(hdu_data[col][group_slice])
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, chkfinite=True)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: swap_byteorder(self._hdu.data[col][::sparse])
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, chkfinite=True)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
 
 class HDFReader(FileReader):
     def _init_source(self, source: Tpath) -> None:
         self.path = Path(source)
         self._file = h5py.File(self.path, mode="r")
-        super()._init_source(source)
 
+        super()._init_source(source)
         issue_io_log(self.num_records, self.num_chunks, f"from HDF5 file: {self.path}")
 
     @property
@@ -382,14 +389,14 @@ class HDFReader(FileReader):
             attr: self._file[col][offset : offset + self.chunksize]
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, chkfinite=True)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._file[col][::sparse]
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, chkfinite=True)
+        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
 
 
 def new_filereader(
@@ -401,6 +408,7 @@ def new_filereader(
     redshift_name: str | None = None,
     patch_name: str | None = None,
     chunksize: int | None = None,
+    degrees: bool = True,
     **reader_kwargs,
 ) -> FileReader:
     _, ext = os.path.splitext(str(path))
@@ -423,5 +431,6 @@ def new_filereader(
         redshift_name=redshift_name,
         patch_name=patch_name,
         chunksize=chunksize,
+        degrees=degrees,
         **reader_kwargs,
     )
