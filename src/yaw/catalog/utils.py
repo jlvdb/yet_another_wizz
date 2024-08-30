@@ -114,21 +114,23 @@ class DataChunk:
         return "redshifts" in self.data.dtype.fields
 
     @property
-    def view_2d(self) -> NDArray:
-        return self.data.view(self.itemtype).reshape(len(self.data), -1)
-
-    @property
     def coords(self) -> AngularCoordinates:
-        return AngularCoordinates(self.view_2d[:, :2])
+        view_2d = self.data.view(self.itemtype).reshape(len(self.data), -1)
+        return AngularCoordinates(view_2d[:, :2])
 
     @property
     def weights(self) -> NDArray | None:
-        return self.view_2d[:, 2] if self.has_weights() else None
+        if not self.has_weights():
+            return None
+
+        return self.data["weights"]
 
     @property
     def redshifts(self) -> NDArray | None:
-        idx_col = 2 + self.has_weights()
-        return self.view_2d[:, idx_col] if self.has_redshifts() else None
+        if not self.has_redshifts():
+            return None
+
+        return self.data["redshifts"]
 
     def split(self, num_chunks: int) -> list[DataChunk]:
         splits_data = np.array_split(self.data, num_chunks)
@@ -148,6 +150,7 @@ class DataChunk:
             patch_ids = np.asarray(patch_ids)
             if patch_ids.shape != (len(self),):
                 raise ValueError("'patch_ids' has an invalid shape")
+
             patch_ids = patch_ids.astype(np.int32, casting="same_kind", copy=False)
 
         self.patch_ids = patch_ids
