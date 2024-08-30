@@ -6,6 +6,7 @@ from collections import deque
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from enum import Enum
+from itertools import repeat
 from pathlib import Path
 from shutil import rmtree
 from typing import Union
@@ -23,6 +24,7 @@ from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.containers import Tclosed, Tpath, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
+from yaw.utils.parallel import EndOfQueue
 
 __all__ = [
     "Catalog",
@@ -110,12 +112,13 @@ class ChunkProcessor(Callable):
         patches, _ = vq.vq(chunk.coords.to_3d(), self.patch_centers)
         return patches.astype(np.int32, copy=False)
 
-    def __call__(self, chunk: DataChunk) -> dict[int, DataChunk]:
+    def __call__(self, chunk: DataChunk, queue: multiprocessing.Queue) -> None:
         if self.patch_centers is not None:
             patch_ids = self._compute_patch_ids(chunk)
             chunk.set_patch_ids(patch_ids)
 
-        return chunk.split_patches()
+        patches = chunk.split_patches()
+        return queue.put(patches)
 
 
 class CatalogWriter(AbstractContextManager):
@@ -183,6 +186,30 @@ class CatalogWriter(AbstractContextManager):
             writer.close()
 
 
+def writer_process(
+    patch_queue: multiprocessing.Queue,
+    cache_directory: Tpath,
+    *,
+    overwrite: bool = True,
+    has_weights: bool,
+    has_redshifts: bool,
+    buffersize: int = -1,
+) -> None:
+    writer = CatalogWriter(
+        cache_directory,
+        overwrite=overwrite,
+        has_weights=has_weights,
+        has_redshifts=has_redshifts,
+        buffersize=buffersize,
+    )
+    with writer:
+        while True:
+            patches: dict[int, DataChunk] | EndOfQueue = patch_queue.get()
+            if patches is EndOfQueue:
+                break
+            writer.process_patches(patches)
+
+
 def write_patches(
     path: Tpath,
     reader: BaseReader,
@@ -201,26 +228,36 @@ def write_patches(
         raise TypeError(
             "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
         )
-    preprocess = ChunkProcessor(patch_centers)
 
-    writer = CatalogWriter(
-        path,
-        has_weights=reader.has_weights,
-        has_redshifts=reader.has_redshifts,
-        overwrite=overwrite,
-        buffersize=buffersize,
-    )
+    manager = multiprocessing.Manager()
     pool = multiprocessing.Pool(max_workers)
-    with reader, writer, pool:
+    with reader, manager, pool:
+        patch_queue = manager.Queue()
+
+        preprocess = ChunkProcessor(patch_centers)
+
+        writer = multiprocessing.Process(
+            target=writer_process,
+            kwargs=dict(
+                patch_queue=patch_queue,
+                cache_directory=path,
+                overwrite=overwrite,
+                has_weights=reader.has_weights,
+                has_redshifts=reader.has_redshifts,
+                buffersize=buffersize,
+            ),
+        )
+        writer.start()
+
         chunk_iter = iter(reader)
         if progress:
             chunk_iter = Indicator(reader)
 
         for chunk in chunk_iter:
-            thread_chunks = chunk.split(max_workers)
+            pool.starmap(preprocess, zip(chunk.split(max_workers), repeat(patch_queue)))
 
-            for patch_chunks in pool.imap_unordered(preprocess, thread_chunks):
-                writer.process_patches(patch_chunks)
+        patch_queue.put(EndOfQueue)
+        writer.join()
 
 
 def patch_id_from_path(patch_path: Tpath) -> int:
