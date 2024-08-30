@@ -6,13 +6,15 @@ from collections import deque
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from enum import Enum
+from functools import partial
 from itertools import repeat
 from pathlib import Path
 from shutil import rmtree
-from typing import Union
+from typing import Union, get_args
 
 import numpy as np
 import treecorr
+from mpi4py import MPI
 from numpy.typing import NDArray
 from scipy.cluster import vq
 from typing_extensions import Self
@@ -58,7 +60,7 @@ class PatchMode(Enum):
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
-        log_sink = logger.debug if parallel.on_root() else lambda x: x
+        log_sink = logger.debug if parallel.on_root() else lambda *x: x
 
         if patch_centers is not None:
             log_sink("applying patch %d centers", len(patch_centers))
@@ -99,7 +101,7 @@ def create_patch_centers(
     return AngularCoordinates.from_3d(xyz)
 
 
-class ChunkProcessor(Callable):
+class ChunkProcessor:
     __slots__ = ("patch_centers",)
 
     def __init__(self, patch_centers: AngularCoordinates | None) -> None:
@@ -112,13 +114,15 @@ class ChunkProcessor(Callable):
         patches, _ = vq.vq(chunk.coords.to_3d(), self.patch_centers)
         return patches.astype(np.int32, copy=False)
 
-    def __call__(self, chunk: DataChunk, queue: multiprocessing.Queue) -> None:
+    def execute(self, chunk: DataChunk) -> dict[int, DataChunk]:
         if self.patch_centers is not None:
             patch_ids = self._compute_patch_ids(chunk)
             chunk.set_patch_ids(patch_ids)
 
-        patches = chunk.split_patches()
-        return queue.put(patches)
+        return chunk.split_patches()
+
+    def execute_send(self, queue: multiprocessing.Queue, chunk: DataChunk) -> None:
+        queue.put(self.execute(chunk))
 
 
 class CatalogWriter(AbstractContextManager):
@@ -186,8 +190,8 @@ class CatalogWriter(AbstractContextManager):
             writer.close()
 
 
-def writer_process(
-    patch_queue: multiprocessing.Queue,
+def _writer_process(
+    get_method: Callable[[], dict[int, DataChunk] | EndOfQueue],
     cache_directory: Tpath,
     *,
     overwrite: bool = True,
@@ -204,13 +208,13 @@ def writer_process(
     )
     with writer:
         while True:
-            patches: dict[int, DataChunk] | EndOfQueue = patch_queue.get()
+            patches = get_method()
             if patches is EndOfQueue:
                 break
             writer.process_patches(patches)
 
 
-def write_patches(
+def write_patches_multiprocessing(
     path: Tpath,
     reader: BaseReader,
     patch_centers: Tcenters,
@@ -237,9 +241,9 @@ def write_patches(
         preprocess = ChunkProcessor(patch_centers)
 
         writer = multiprocessing.Process(
-            target=writer_process,
+            target=_writer_process,
             kwargs=dict(
-                patch_queue=patch_queue,
+                get_method=patch_queue.get,
                 cache_directory=path,
                 overwrite=overwrite,
                 has_weights=reader.has_weights,
@@ -254,10 +258,144 @@ def write_patches(
             chunk_iter = Indicator(reader)
 
         for chunk in chunk_iter:
-            pool.starmap(preprocess, zip(chunk.split(max_workers), repeat(patch_queue)))
+            pool.starmap(
+                preprocess.execute_send,
+                zip(repeat(patch_queue), chunk.split(max_workers)),
+            )
 
         patch_queue.put(EndOfQueue)
         writer.join()
+
+
+def write_patches_mpi(
+    path: Tpath,
+    reader: BaseReader,
+    patch_centers: Tcenters,
+    *,
+    overwrite: bool,
+    progress: bool,
+    max_workers: int | None = None,
+    buffersize: int = -1,
+) -> None:
+    max_workers = parallel.get_size(max_workers)
+    rank = parallel.COMM.Get_rank()
+
+    if isinstance(patch_centers, Catalog):
+        patch_centers = patch_centers.get_centers()
+    elif not isinstance(patch_centers, AngularCoordinates):
+        raise TypeError(
+            "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
+        )
+
+    preprocess = ChunkProcessor(patch_centers)
+
+    # run all processing on the same node as the root (which handles reading)
+    active_ranks = parallel.ranks_on_same_node(0, max_workers)
+    # choose any rank that will handle writing the output
+    for writer_rank in active_ranks:
+        if writer_rank != 0:
+            break
+    active_ranks.remove(writer_rank)
+
+    if rank == writer_rank:
+        _writer_process(
+            get_method=partial(parallel.COMM.recv, source=MPI.ANY_SOURCE, tag=2),
+            cache_directory=path,
+            overwrite=overwrite,
+            has_weights=reader.has_weights,
+            has_redshifts=reader.has_redshifts,
+            buffersize=buffersize,
+        )
+
+    elif rank in active_ranks:
+        with reader:
+            chunk_iter = iter(reader)
+            if progress:
+                chunk_iter = Indicator(reader)
+
+            for chunk in chunk_iter:
+                if parallel.on_root():
+                    splitted = chunk.split(len(active_ranks))
+                    split_assignments = dict(zip(active_ranks, splitted))
+
+                    for dest, split in split_assignments.items():
+                        if dest != 0:
+                            parallel.COMM.send(split, dest=dest, tag=1)
+                    split = split_assignments[0]
+
+                else:
+                    split = parallel.COMM.recv(source=0, tag=1)
+
+                patches = preprocess.execute(split)
+                parallel.COMM.send(patches, dest=writer_rank, tag=2)
+
+            if parallel.on_root():
+                parallel.COMM.send(EndOfQueue, dest=writer_rank, tag=2)
+
+    parallel.COMM.Barrier()
+
+
+def create_patches(
+    cache_directory: Tpath,
+    source: DataFrame | Tpath,
+    *,
+    ra_name: str,
+    dec_name: str,
+    weight_name: str | None = None,
+    redshift_name: str | None = None,
+    patch_centers: Tcenters | None = None,
+    patch_name: str | None = None,
+    patch_num: int | None = None,
+    degrees: bool = True,
+    chunksize: int | None = None,
+    probe_size: int = -1,
+    overwrite: bool = False,
+    progress: bool = False,
+    max_workers: int | None = None,
+    buffersize: int = -1,
+    **reader_kwargs,
+) -> None:
+    constructor = (
+        new_filereader if isinstance(source, get_args(Tpath)) else DataFrameReader
+    )
+
+    reader = None
+    if parallel.on_root():
+        actual_reader = constructor(
+            source,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            patch_name=patch_name,
+            chunksize=chunksize,
+            degrees=degrees,
+            **reader_kwargs,
+        )
+        reader = actual_reader.get_dummy()
+
+    reader = parallel.COMM.bcast(reader, root=0)
+    if parallel.on_root():
+        reader = actual_reader
+
+    mode = PatchMode.determine(patch_centers, patch_name, patch_num)
+    if mode == PatchMode.create:
+        patch_centers = None
+        if parallel.on_root():
+            patch_centers = create_patch_centers(reader, patch_num, probe_size)
+        patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+
+    args = (cache_directory, reader, patch_centers)
+    kwargs = dict(
+        overwrite=overwrite,
+        progress=progress,
+        max_workers=max_workers,
+        buffersize=buffersize,
+    )
+    if parallel.use_mpi():
+        write_patches_mpi(*args, **kwargs)
+    else:
+        write_patches_multiprocessing(*args, **kwargs)
 
 
 def patch_id_from_path(patch_path: Tpath) -> int:
@@ -339,31 +477,23 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        if parallel.on_root():
-            reader = DataFrameReader(
-                dataframe,
-                ra_name=ra_name,
-                dec_name=dec_name,
-                weight_name=weight_name,
-                redshift_name=redshift_name,
-                patch_name=patch_name,
-                chunksize=chunksize,
-                degrees=degrees,
-                **reader_kwargs,
-            )
-
-            mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-            if mode == PatchMode.create:
-                patch_centers = create_patch_centers(reader, patch_num, probe_size)
-
-            write_patches(
-                cache_directory,
-                reader,
-                patch_centers,
-                overwrite=overwrite,
-                progress=progress,
-            )
-        parallel.COMM.Barrier()
+        create_patches(
+            cache_directory,
+            source=dataframe,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            patch_centers=patch_centers,
+            patch_name=patch_name,
+            patch_num=patch_num,
+            degrees=degrees,
+            chunksize=chunksize,
+            probe_size=probe_size,
+            overwrite=overwrite,
+            progress=progress,
+            **reader_kwargs,
+        )
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
@@ -390,31 +520,23 @@ class Catalog(Mapping[int, Patch]):
         progress: bool = False,
         **reader_kwargs,
     ) -> Catalog:
-        if parallel.on_root():
-            reader = new_filereader(
-                path,
-                ra_name=ra_name,
-                dec_name=dec_name,
-                weight_name=weight_name,
-                redshift_name=redshift_name,
-                patch_name=patch_name,
-                chunksize=chunksize,
-                degrees=degrees,
-                **reader_kwargs,
-            )
-
-            mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-            if mode == PatchMode.create:
-                patch_centers = create_patch_centers(reader, patch_num, probe_size)
-
-            write_patches(
-                cache_directory,
-                reader,
-                patch_centers,
-                overwrite=overwrite,
-                progress=progress,
-            )
-        parallel.COMM.Barrier()
+        create_patches(
+            cache_directory,
+            source=path,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            patch_centers=patch_centers,
+            patch_name=patch_name,
+            patch_num=patch_num,
+            degrees=degrees,
+            chunksize=chunksize,
+            probe_size=probe_size,
+            overwrite=overwrite,
+            progress=progress,
+            **reader_kwargs,
+        )
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)

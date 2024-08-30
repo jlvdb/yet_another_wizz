@@ -90,8 +90,10 @@ class Indicator(Iterable[T]):
             min_interval = self.min_interval
             last_update = 0.0
 
+            i = 0
             start = default_timer()
-            for i, item in enumerate(self.iterable, 1):
+            for item in self.iterable:
+                i += 1
                 elapsed = default_timer() - start
 
                 if elapsed - last_update > min_interval:

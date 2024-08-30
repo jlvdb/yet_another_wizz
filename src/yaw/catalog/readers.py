@@ -5,6 +5,7 @@ import os
 from abc import abstractmethod
 from collections.abc import Iterable, Iterator, Sized
 from contextlib import AbstractContextManager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,26 @@ def long_num_format(x: float | int) -> str:
     prefix = str(x).rstrip("0").rstrip(".")
     suffix = ["", "K", "M", "B", "T"][exp]
     return prefix + suffix
+
+
+@dataclass
+class DummyReader(Sized, Iterable[None], AbstractContextManager):
+    num_chunks: int
+    has_weights: bool
+    has_redshifts: bool
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        pass
+
+    def __len__(self) -> int:
+        return self.num_chunks
+
+    def __iter__(self) -> Iterator[None]:
+        for _ in range(self.num_chunks):
+            yield None
 
 
 class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
@@ -112,6 +133,9 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
     @property
     def num_chunks(self) -> int:
         return self._num_chunks
+
+    def get_dummy(self) -> DummyReader:
+        return DummyReader(self.num_chunks, self.has_weights, self.has_redshifts)
 
     @abstractmethod
     def _load_next_chunk(self) -> DataChunk:
