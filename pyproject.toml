@@ -22,7 +22,6 @@ dependencies = [
     "pyarrow",
     "pyyaml",
     "scipy",
-    "sparse",
     "treecorr>=4.3",
     "typing-extensions",  # for Self, as long as python 3.10 is supported
 ]
