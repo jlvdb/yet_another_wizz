@@ -124,19 +124,24 @@ class PatchMode(Enum):
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
+        max_patch_id = np.iinfo(np.int16).max
         log_sink = logger.debug if parallel.on_root() else lambda *x: x
 
         if patch_centers is not None:
-            log_sink("applying patch %d centers", len(patch_centers))
-            return PatchMode.apply
+            if len(patch_centers) <= max_patch_id:
+                log_sink("applying patch %d centers", len(patch_centers))
+                return PatchMode.apply
+            raise ValueError(f"too many 'patch_centers', maximum is {max_patch_id}")
 
         if patch_name is not None:
             log_sink("dividing patches based on '%s'", patch_name)
             return PatchMode.divide
 
         elif patch_num is not None:
-            log_sink("creating %d patches", patch_num)
-            return PatchMode.create
+            if 0 <= patch_num <= max_patch_id:
+                log_sink("creating %d patches", patch_num)
+                return PatchMode.create
+            raise ValueError(f"'patch_num' must be in range [0, {max_patch_id}]")
 
         raise ValueError("no patch method specified")
 
@@ -185,9 +190,9 @@ class ChunkProcessor:
         else:
             self.patch_centers = patch_centers.to_3d()
 
-    def _compute_patch_ids(self, chunk: DataChunk) -> NDArray[np.int32]:
+    def _compute_patch_ids(self, chunk: DataChunk) -> NDArray[np.int16]:
         patches, _ = vq.vq(chunk.coords.to_3d(), self.patch_centers)
-        return patches.astype(np.int32, copy=False)
+        return patches.astype(np.int16, copy=False)
 
     def execute(self, chunk: DataChunk) -> dict[int, DataChunk]:
         if self.patch_centers is not None:

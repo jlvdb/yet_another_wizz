@@ -222,8 +222,8 @@ def verify_catalog_info(cache_directory: Tpath, num_expect: int) -> None:
         raise ValueError(f"expected {num_expect} patches but found {num_patches}")
 
 
-def load_patches_with_metadata(
-    cache_directory: Tpath, progress: bool = False
+def patches_init_and_load(
+    cache_directory: Tpath, *, progress: bool
 ) -> dict[int, Patch]:
     if parallel.on_root():
         logger.info("computing patch metadata")
@@ -300,7 +300,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = load_patches_with_metadata(cache_directory, progress)
+        new.patches = patches_init_and_load(cache_directory, progress=progress)
         return new
 
     @classmethod
@@ -343,7 +343,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = load_patches_with_metadata(cache_directory, progress)
+        new.patches = patches_init_and_load(cache_directory, progress=progress)
         return new
 
     def __repr__(self) -> str:

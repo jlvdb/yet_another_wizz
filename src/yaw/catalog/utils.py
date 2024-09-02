@@ -60,7 +60,7 @@ class DataChunk:
     def __init__(
         self,
         data: NDArray,
-        patch_ids: NDArray[np.int32] | None = None,
+        patch_ids: NDArray[np.int16] | None = None,
     ) -> None:
         self.data = data
         self.set_patch_ids(patch_ids)
@@ -91,6 +91,9 @@ class DataChunk:
         if redshifts is not None:
             data["redshifts"] = asarray(redshifts)
 
+        max_patch_id = np.iinfo(np.int16).max
+        if patch_ids.min() < 0 or patch_ids.max() > max_patch_id:
+            raise ValueError(f"'patch_ids' must be in range [0, {max_patch_id}]")
         return cls(data, patch_ids)
 
     @classmethod
@@ -179,7 +182,7 @@ class DataChunk:
             if patch_ids.shape != (len(self),):
                 raise ValueError("'patch_ids' has an invalid shape")
 
-            patch_ids = patch_ids.astype(np.int32, casting="same_kind", copy=False)
+            patch_ids = patch_ids.astype(np.int16, casting="same_kind", copy=False)
 
         self.patch_ids = patch_ids
 
