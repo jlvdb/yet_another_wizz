@@ -1,18 +1,23 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sized
+from collections.abc import Iterable, Sized
 from functools import total_ordering
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from typing import Any, TypeVar
+
+    from numpy.typing import ArrayLike, NDArray
+
+    Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
 
 __all__ = [
     "AngularCoordinates",
     "AngularDistances",
 ]
-
-Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
 
 
 def sgn(val: ArrayLike) -> ArrayLike:

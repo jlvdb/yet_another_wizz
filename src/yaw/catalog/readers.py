@@ -7,19 +7,25 @@ from collections.abc import Iterable, Iterator, Sized
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
 import pyarrow as pa
 from astropy.io import fits
-from numpy.typing import NDArray
-from pyarrow import Table, parquet
-from typing_extensions import Self
+from pyarrow import parquet
 
 from yaw.catalog.utils import DataChunk
-from yaw.catalog.utils import MockDataFrame as DataFrame
-from yaw.containers import Tpath
+
+if TYPE_CHECKING:
+    from typing import Any
+
+    from numpy.typing import NDArray
+    from pyarrow import Table
+    from typing_extensions import Self
+
+    from yaw.catalog.utils import MockDataFrame as DataFrame
+    from yaw.containers import Tpath
 
 __all__ = [
     "DataFrameReader",
@@ -312,7 +318,7 @@ class ParquetFile(Iterator):
     def get_empty_group(self) -> Table:
         full_schema = self._file.schema.to_arrow_schema()
         schema = pa.schema([full_schema.field(name) for name in self.columns])
-        return Table.from_pylist([], schema=schema)
+        return pa.Table.from_pylist([], schema=schema)
 
 
 class ParquetReader(FileReader):

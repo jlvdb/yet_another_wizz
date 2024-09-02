@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING
 
-import h5py
 import numpy as np
-from numpy.typing import NDArray
 
 from yaw.containers import (
     Binning,
@@ -13,10 +11,17 @@ from yaw.containers import (
     HdfSerializable,
     PatchwiseData,
     SampledData,
-    Tindexing,
     load_legacy_binning,
 )
 from yaw.utils import io
+
+if TYPE_CHECKING:
+    from typing import Any
+
+    from h5py import Group
+    from numpy.typing import NDArray
+
+    from yaw.containers import Tindexing
 
 __all__ = [
     "PatchedTotals",
@@ -85,7 +90,7 @@ class PatchedTotals(BinwisePatchwiseArray):
         self.totals2 = totals2.astype(np.float64)
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> PatchedTotals:
+    def from_hdf(cls, source: Group) -> PatchedTotals:
         new = cls.__new__(cls)
         new.auto = source["auto"][()]
 
@@ -100,7 +105,7 @@ class PatchedTotals(BinwisePatchwiseArray):
 
         return new
 
-    def to_hdf(self, dest: h5py.Group) -> None:
+    def to_hdf(self, dest: Group) -> None:
         io.write_version_tag(dest)
         self.binning.to_hdf(dest.create_group("binning"))
         dest.create_dataset("auto", data=self.auto)
@@ -178,7 +183,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         return cls(binning, counts, auto=auto)
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> PatchedCounts:
+    def from_hdf(cls, source: Group) -> PatchedCounts:
         auto = source["auto"][()]
 
         if io.is_legacy_dataset(source):
@@ -201,7 +206,7 @@ class PatchedCounts(BinwisePatchwiseArray):
 
         return new
 
-    def to_hdf(self, dest: h5py.Group) -> None:
+    def to_hdf(self, dest: Group) -> None:
         io.write_version_tag(dest)
 
         self.binning.to_hdf(dest.create_group("binning"))
@@ -285,7 +290,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
         self.totals = totals
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> NormalisedCounts:
+    def from_hdf(cls, source: Group) -> NormalisedCounts:
         name = "count" if io.is_legacy_dataset(source) else "counts"
         counts = PatchedCounts.from_hdf(source[name])
 
@@ -294,7 +299,7 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
 
         return cls(counts=counts, totals=totals)
 
-    def to_hdf(self, dest: h5py.Group) -> None:
+    def to_hdf(self, dest: Group) -> None:
         io.write_version_tag(dest)
 
         group = dest.create_group("counts")

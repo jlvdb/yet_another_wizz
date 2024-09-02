@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
-from typing import Any, Generator, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from yaw.containers import Tclosed, default_closed
+from yaw.containers import default_closed
 from yaw.utils import AngularCoordinates
 
-Tpath = Union[Path, str]
+if TYPE_CHECKING:
+    from pathlib import Path
+    from typing import Any, Generator
+
+    from numpy.typing import ArrayLike, DTypeLike, NDArray
+
+    from yaw.containers import Tclosed
+
+
+PATCH_NAME_TEMPLATE = "patch_{:d}"
 
 
 class InconsistentPatchesError(Exception):
@@ -205,4 +212,4 @@ class CatalogBase:
     cache_directory: Path
 
     def get_patch_path(self, patch_id: int) -> Path:
-        return self.cache_directory / f"patch_{int(patch_id)}"
+        return self.cache_directory / PATCH_NAME_TEMPLATE.format(patch_id)

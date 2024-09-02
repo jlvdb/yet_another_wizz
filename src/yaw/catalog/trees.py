@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import pickle
-from collections.abc import Iterable, Iterator, Sized
+from collections.abc import Iterable, Sized
 from itertools import repeat
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 from scipy.spatial import KDTree
 
 from yaw.catalog.utils import DataChunk, groupby
-from yaw.containers import Tclosed, default_closed, parse_binning
-from yaw.utils import AngularCoordinates, AngularDistances
+from yaw.containers import default_closed, parse_binning
+from yaw.utils import AngularDistances
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
+    from numpy.typing import NDArray
+
     from yaw.catalog.containers import Patch
+    from yaw.containers import Tclosed
+    from yaw.utils import AngularCoordinates
 
 __all__ = [
     "AngularTree",

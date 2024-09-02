@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass
 from itertools import compress
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 
-from yaw.catalog import Catalog, Patch
 from yaw.catalog.utils import InconsistentPatchesError
-from yaw.config import Configuration
 from yaw.corrfunc import CorrFunc
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.utils import AngularDistances, parallel, separation_physical_to_angle
 from yaw.utils.logging import Indicator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from numpy.typing import NDArray
+
+    from yaw.catalog import Catalog, Patch
+    from yaw.config import Configuration
 
 __all__ = [
     "PatchLinkage",

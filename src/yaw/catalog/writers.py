@@ -2,44 +2,44 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
-from collections.abc import Callable
 from contextlib import AbstractContextManager
 from enum import Enum
 from functools import partial
-from io import TextIOBase
 from itertools import repeat
 from pathlib import Path
 from shutil import rmtree
-from typing import Protocol, Union, get_args
+from typing import TYPE_CHECKING, get_args
 
 import numpy as np
 import treecorr
-from numpy.typing import NDArray
 from scipy.cluster import vq
-from typing_extensions import Self
 
-from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
-from yaw.catalog.utils import CatalogBase, DataChunk
-from yaw.catalog.utils import MockDataFrame as DataFrame
-from yaw.catalog.utils import PatchBase
+from yaw.catalog.readers import DataFrameReader, new_filereader
+from yaw.catalog.utils import CatalogBase, PatchBase
 from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 from yaw.utils.logging import Indicator
 from yaw.utils.parallel import EndOfQueue
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from io import TextIOBase
+
+    from numpy.typing import NDArray
+    from typing_extensions import Self
+
+    from yaw.catalog.containers import Tcenters
+    from yaw.catalog.readers import BaseReader
+    from yaw.catalog.utils import DataChunk
+    from yaw.catalog.utils import MockDataFrame as DataFrame
+
 __all__ = [
     "write_catalog",
 ]
 
-Tcenters = Union["HasPatchCenters", AngularCoordinates]
-
 CHUNKSIZE = 65_536
 
 logger = logging.getLogger(__name__)
-
-
-class HasPatchCenters(Protocol):
-    def get_patch_centers() -> AngularCoordinates: ...
 
 
 def write_patch_header(

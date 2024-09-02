@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 from functools import wraps
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 
 try:
     from matplotlib import pyplot as plt
-    from matplotlib.axis import Axis
 
     PLOTTING_ENABLED = True
 
 except ImportError:
-    from typing import Any as Axis  # to shut up pylance
-
     PLOTTING_ENABLED = False
 
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    if PLOTTING_ENABLED:
+        from matplotlib.axis import Axis
+    else:
+        from typing import Any as Axis  # to shut up pylance
 
 __all__ = [
     "zero_line",

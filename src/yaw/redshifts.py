@@ -1,17 +1,27 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import scipy.optimize
-from numpy.typing import NDArray
 
-from yaw.catalog import Catalog, Patch
-from yaw.config import Configuration
-from yaw.containers import Binning
-from yaw.corrfunc import CorrData, CorrFunc, Tcorr
+from yaw.corrfunc import CorrData
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from yaw.catalog import Catalog, Patch
+    from yaw.config import Configuration
+    from yaw.containers import Binning
+    from yaw.corrfunc import CorrFunc, Tcorr
+
+__all__ = [
+    "HistData",
+    "RedshiftData",
+]
 
 logger = logging.getLogger(__name__)
 

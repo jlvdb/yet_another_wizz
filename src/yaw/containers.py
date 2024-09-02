@@ -4,45 +4,47 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import Any, Generic, Literal, TypeVar, Union, get_args
+from typing import TYPE_CHECKING, Generic, Literal, TypeVar, Union, get_args
 
 import h5py
 import numpy as np
 import yaml
 from astropy import cosmology, units
-from h5py import Group
 from numpy.exceptions import AxisError
-from numpy.typing import ArrayLike, NDArray
 
 from yaw.utils import io, plot
-from yaw.utils.cosmology import Tcosmology, get_default_cosmology
-from yaw.utils.plot import Axis
+from yaw.utils.cosmology import get_default_cosmology
 
-__all__ = [
-    "Binning",
-    "SampledData",
-]
+if TYPE_CHECKING:
+    from typing import Any
+
+    from h5py import Group
+    from numpy.typing import ArrayLike, NDArray
+
+    from yaw.utils.cosmology import Tcosmology
+    from yaw.utils.plot import Axis
+
+    # meta-class types
+    Tserialise = TypeVar("Tdict", bound="Serialisable")
+    Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
+    Thdf = TypeVar("Thdf", bound="HdfSerializable")
+    Tascii = TypeVar("Tascii", bound="AsciiSerializable")
+    Tbinned = TypeVar("Tbinned", bound="BinwiseData")
+    Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
+
+    # container class types
+    Tbinning = TypeVar("Tbinning", bound="Binning")
+    Tsampled = TypeVar("Tsampled", bound="SampledData")
+
+    # concrete types
+    Tindexing = Union[int, slice]
+Tpath = Union[Path, str]  # used with get_args
 
 # generic types
 Tkey = TypeVar("Tkey")
 Tvalue = TypeVar("Tvalue")
 
-# meta-class types
-Tserialise = TypeVar("Tdict", bound="Serialisable")
-Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
-Thdf = TypeVar("Thdf", bound="HdfSerializable")
-Tascii = TypeVar("Tascii", bound="AsciiSerializable")
-Tbinned = TypeVar("Tbinned", bound="BinwiseData")
-Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
-
-# container class types
-Tbinning = TypeVar("Tbinning", bound="Binning")
-Tsampled = TypeVar("Tsampled", bound="SampledData")
-
-# concrete types
-Tpath = Union[Path, str]
-Tindexing = Union[int, slice]
-
+# literals (may be used with get_args to verify valid values)
 Tclosed = Literal["left", "right"]
 default_closed = "right"
 
@@ -53,6 +55,11 @@ Tcov_kind = Literal["full", "diag", "var"]
 default_cov_kind = "full"
 
 Tstyle = Literal["point", "line", "step"]
+
+__all__ = [
+    "Binning",
+    "SampledData",
+]
 
 
 class Serialisable(ABC):

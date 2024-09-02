@@ -2,41 +2,37 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from io import TextIOBase
 from itertools import compress
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 
 from yaw.catalog.trees import BinnedTrees
-from yaw.catalog.utils import DataChunk, InconsistentPatchesError
-from yaw.catalog.utils import MockDataFrame as DataFrame
-from yaw.catalog.writers import (
-    PATCH_NAME_TEMPLATE,
-    CatalogBase,
-    PatchBase,
-    write_catalog,
-)
-from yaw.containers import (
-    Tclosed,
-    Tpath,
-    YamlSerialisable,
-    default_closed,
-    parse_binning,
-)
+from yaw.catalog.utils import PATCH_NAME_TEMPLATE, DataChunk, InconsistentPatchesError
+from yaw.catalog.writers import CatalogBase, PatchBase, write_catalog
+from yaw.containers import YamlSerialisable, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from io import TextIOBase
+    from typing import Union
+
+    from numpy.typing import NDArray
+
+    from yaw.catalog.utils import MockDataFrame as DataFrame
+    from yaw.containers import Tclosed, Tpath
+
+    Tcenters = Union["Catalog", AngularCoordinates]
 
 __all__ = [
     "Catalog",
     "Patch",
 ]
-
-Tcenters = Union["Catalog", AngularCoordinates]
 
 PATCHFILE_NAME = "num_patches"
 

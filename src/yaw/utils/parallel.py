@@ -5,8 +5,16 @@ import multiprocessing
 import os
 import subprocess
 import sys
-from collections.abc import Iterable, Iterator
-from typing import Callable, Literal, TypeVar
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+    from typing import Callable, Literal, TypeVar
+
+    T = TypeVar("T")
+    Targ = TypeVar("Targ")
+    Tresult = TypeVar("Tresult")
+    Titer = TypeVar("Titer")
 
 __all__ = [
     "COMM",
@@ -17,11 +25,6 @@ __all__ = [
     "ranks_on_same_node",
     "use_mpi",
 ]
-
-T = TypeVar("T")
-Targ = TypeVar("Targ")
-Tresult = TypeVar("Tresult")
-Titer = TypeVar("Titer")
 
 logger = logging.getLogger(__name__)
 

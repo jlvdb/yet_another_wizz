@@ -3,23 +3,27 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from collections.abc import Iterable, Iterator
-from io import TextIOBase
-from logging import Filter, Formatter, Logger
+from collections.abc import Iterable
+from logging import Filter, Formatter
 from math import nan
 from timeit import default_timer
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from yaw._version import __version__
 
 from .parallel import get_size, on_root, use_mpi
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from io import TextIOBase
+    from logging import Logger
+
+T = TypeVar("T")
+
 __all__ = [
     "Indicator",
     "get_default_logger",
 ]
-
-T = TypeVar("T")
 
 INDICATOR_PREFIX = ""
 

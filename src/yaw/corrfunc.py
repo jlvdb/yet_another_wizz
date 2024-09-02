@@ -3,11 +3,9 @@ from __future__ import annotations
 import logging
 from functools import wraps
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING
 
-import h5py
 import numpy as np
-from numpy.typing import NDArray
 
 from yaw.containers import (
     AsciiSerializable,
@@ -17,18 +15,24 @@ from yaw.containers import (
     PatchwiseData,
     SampledData,
     Serialisable,
-    Tindexing,
-    Tpath,
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io, parallel
+
+if TYPE_CHECKING:
+    from typing import Any, TypeVar
+
+    from h5py import Group
+    from numpy.typing import NDArray
+
+    from yaw.containers import Tindexing, Tpath
+
+    Tcorr = TypeVar("Tcorr", bound="CorrData")
 
 __all__ = [
     "CorrFunc",
     "CorrData",
 ]
-
-Tcorr = TypeVar("Tcorr", bound="CorrData")
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +108,8 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return self.dd.auto
 
     @classmethod
-    def from_hdf(cls, source: h5py.Group) -> CorrFunc:
-        def _try_load(root: h5py.Group, name: str) -> NormalisedCounts | None:
+    def from_hdf(cls, source: Group) -> CorrFunc:
+        def _try_load(root: Group, name: str) -> NormalisedCounts | None:
             if name in root:
                 return NormalisedCounts.from_hdf(root[name])
 
@@ -117,7 +121,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         }
         return cls.from_dict(kwargs)
 
-    def to_hdf(self, dest: h5py.Group) -> None:
+    def to_hdf(self, dest: Group) -> None:
         io.write_version_tag(dest)
 
         names = ("data_data", "data_random", "random_data", "random_random")

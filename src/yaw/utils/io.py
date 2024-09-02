@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-from h5py import Group
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from h5py import Group
+    from numpy.typing import NDArray
 
 HDF_COMPRESSION = dict(fletcher32=True, compression="gzip", shuffle=True)
 

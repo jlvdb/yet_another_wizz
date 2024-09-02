@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Union, get_args
+from typing import TYPE_CHECKING, Union, get_args
 
 import numpy as np
 from astropy.cosmology import FLRW, Planck15, cosmology_equal
 from astropy.units import Quantity
-from numpy.typing import ArrayLike, NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, NDArray
+
+Tcosmology = Union[FLRW, "CustomCosmology"]  # used with get_args
 
 __all__ = [
     "CustomCosmology",
@@ -14,8 +18,6 @@ __all__ = [
     "get_default_cosmology",
     "separation_physical_to_angle",
 ]
-
-Tcosmology = Union[FLRW, "CustomCosmology"]
 
 
 class CustomCosmology(ABC):

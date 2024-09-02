@@ -3,19 +3,14 @@ from __future__ import annotations
 import logging
 import warnings
 from abc import abstractmethod
-from collections.abc import Iterable
-from typing import Any, Literal, TypeVar, Union, get_args
+from typing import TYPE_CHECKING, get_args
 
 import astropy.cosmology
 import numpy as np
-from numpy.typing import NDArray
 
-# isort: off
-from yaw.containers import Binning, RedshiftBinningFactory, YamlSerialisable
+from yaw.containers import Binning, RedshiftBinningFactory
 from yaw.containers import Tbin_method as Tbin_method_auto
-from yaw.containers import Tclosed, Tpath, default_bin_method, default_closed
-
-# isort: on
+from yaw.containers import YamlSerialisable, default_bin_method, default_closed
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
@@ -24,16 +19,24 @@ from yaw.utils.cosmology import (
     get_default_cosmology,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from typing import Any, Literal, TypeVar, Union
+
+    from numpy.typing import NDArray
+
+    from yaw.containers import Tclosed, Tpath
+
+    T = TypeVar("T")
+    Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
+
+    Tbin_method_all = Union[Tbin_method_auto | Literal["manual"]]
+
 __all__ = [
     "BinningConfig",
     "Configuration",
     "ScalesConfig",
 ]
-
-T = TypeVar("T")
-Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
-
-Tbin_method_all = Union[Tbin_method_auto | Literal["manual"]]
 
 logger = logging.getLogger(__name__)
 
