@@ -77,6 +77,7 @@ class Metadata(YamlSerialisable):
         coords: AngularCoordinates,
         *,
         weights: NDArray | None = None,
+        center: AngularCoordinates | None = None,
     ) -> Metadata:
         new = super().__new__(cls)
         new.num_records = len(coords)
@@ -85,7 +86,12 @@ class Metadata(YamlSerialisable):
         else:
             new.total = float(np.sum(weights))
 
-        new.center = coords.mean(weights)
+        if center is not None:
+            if len(center) != 1:
+                raise ValueError("'center' must be one single coordinate")
+            new.center = center.copy()
+        else:
+            new.center = coords.mean(weights)
         new.radius = coords.distance(new.center).max()
 
         return new
@@ -131,7 +137,9 @@ def read_patch_data(
 class Patch(PatchBase):
     __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
 
-    def __init__(self, cache_path: Tpath) -> None:
+    def __init__(
+        self, cache_path: Tpath, center: AngularCoordinates | None = None
+    ) -> None:
         self.cache_path = Path(cache_path)
         meta_data_file = self.cache_path / "meta.yml"
 
@@ -150,7 +158,9 @@ class Patch(PatchBase):
                     skip_header=False,
                 )
 
-            self.meta = Metadata.compute(data.coords, weights=data.weights)
+            self.meta = Metadata.compute(
+                data.coords, weights=data.weights, center=center
+            )
             self.meta.to_file(meta_data_file)
 
     def __repr__(self) -> str:
@@ -221,10 +231,19 @@ def load_patches(
 
     # instantiate patches, which triggers computing the patch meta-data
     path_template = str(cache_directory / PATCH_NAME_TEMPLATE)
-    patch_paths = tuple(path_template.format(patch_id) for patch_id in patch_ids)
-    patch_iter = parallel.iter_unordered(Patch, patch_paths)
+    patch_paths = map(path_template.format, patch_ids)
+
+    if patch_centers is not None:
+        if isinstance(patch_centers, Catalog):
+            patch_centers = patch_centers.get_centers()
+        patch_arg_iter = zip(patch_paths, patch_centers)
+
+    else:
+        patch_arg_iter = zip(patch_paths)
+
+    patch_iter = parallel.iter_unordered(Patch, patch_arg_iter, unpack=True)
     if progress:
-        patch_iter = Indicator(patch_iter, len(patch_paths))
+        patch_iter = Indicator(patch_iter, len(patch_ids))
 
     patches = {Patch.id_from_path(patch.cache_path): patch for patch in patch_iter}
     return parallel.COMM.bcast(patches, root=0)
@@ -339,7 +358,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     def __repr__(self) -> str:
         items = (
             f"num_patches={self.num_patches}",
-            f"total={self.get_totals()}",
+            f"total={sum(self.get_totals())}",
             f"has_weights={self.has_weights}",
             f"has_redshifts={self.has_redshifts}",
         )
@@ -353,6 +372,10 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
     def __iter__(self) -> Iterator[int]:
         yield from sorted(self.patches.keys())
+
+    @property
+    def num_patches(self) -> int:
+        return len(self)
 
     @property
     def has_weights(self) -> bool:

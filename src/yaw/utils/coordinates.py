@@ -49,6 +49,9 @@ class CustomNumpyArray(Iterable, Sized):
         for i in range(len(self)):
             yield self[i]
 
+    def copy(self: Tarray) -> Tarray:
+        return type(self)(self.data.copy())
+
     def tolist(self) -> list:
         return self.data.tolist()
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from typing import Callable, Literal, TypeVar
+    from typing import Any, Callable, Literal, TypeVar
 
     T = TypeVar("T")
     Targ = TypeVar("Targ")
@@ -123,15 +123,27 @@ class EndOfQueue:
 
 
 class ParallelJob:
+    __slots__ = ("func", "func_args", "func_kwargs", "unpack")
+
     def __init__(
-        self, func: Callable[[Targ], Tresult], func_args: tuple, func_kwargs: dict
+        self,
+        func: Callable[..., Tresult],
+        func_args: tuple,
+        func_kwargs: dict,
+        *,
+        unpack: bool = False,
     ) -> None:
         self.func = func
         self.func_args = func_args
         self.func_kwargs = func_kwargs
+        self.unpack = unpack
 
-    def __call__(self, arg: Targ) -> Tresult:
-        return self.func(arg, *self.func_args, **self.func_kwargs)
+    def __call__(self, arg: Any) -> Tresult:
+        if self.unpack:
+            func_args = (*arg, *self.func_args)
+        else:
+            func_args = (arg, *self.func_args)
+        return self.func(*func_args, **self.func_kwargs)
 
 
 def _mpi_root_task(iterable: Iterable, ranks: Iterable[int]) -> Iterator:
@@ -171,6 +183,7 @@ def _mpi_iter_unordered(
     *,
     func_args: tuple,
     func_kwargs: dict,
+    unpack: bool = False,
     ranks: Iterable[int],
 ) -> Iterator[Tresult]:
     if on_root():
@@ -178,7 +191,7 @@ def _mpi_iter_unordered(
         yield from _mpi_root_task(iterable, ranks)
 
     else:
-        wrapped_func = ParallelJob(func, func_args, func_kwargs)
+        wrapped_func = ParallelJob(func, func_args, func_kwargs, unpack=unpack)
         _mpi_worker_task(wrapped_func)
 
     COMM.Barrier()
@@ -190,9 +203,10 @@ def _multiprocessing_iter_unordered(
     *,
     func_args: tuple,
     func_kwargs: dict,
+    unpack: bool = False,
     num_processes: int | None = None,
 ) -> Iterator[Tresult]:
-    wrapped_func = ParallelJob(func, func_args, func_kwargs)
+    wrapped_func = ParallelJob(func, func_args, func_kwargs, unpack=unpack)
     with multiprocessing.Pool(num_processes) as pool:
         yield from pool.imap_unordered(wrapped_func, iterable)
 
@@ -203,6 +217,7 @@ def iter_unordered(
     *,
     func_args: tuple | None = None,
     func_kwargs: dict | None = None,
+    unpack: bool = False,
     max_workers: int | None = None,
     rank0_node_only: bool = False,
 ) -> Iterator[Tresult]:
@@ -210,6 +225,7 @@ def iter_unordered(
     iter_kwargs = dict(
         func_args=(func_args or tuple()),
         func_kwargs=(func_kwargs or dict()),
+        unpack=unpack,
     )
 
     if use_mpi():
