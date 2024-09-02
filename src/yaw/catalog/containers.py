@@ -205,13 +205,15 @@ class Patch(PatchBase):
 
 
 def read_patch_ids(cache_directory: Path) -> list[int]:
-    try:
-        return np.fromfile(cache_directory / PATCH_INFO_FILE).tolist()
-    except FileNotFoundError as err:
-        raise InconsistentPatchesError("patch info file not found") from err
+    path = cache_directory / PATCH_INFO_FILE
+    if not path.exists():
+        raise InconsistentPatchesError("patch info file not found")
+    return np.fromfile(path, dtype=np.int16).tolist()
 
 
-def load_patches(cache_directory: Path, *, progress: bool) -> dict[int, Patch]:
+def load_patches(
+    cache_directory: Path, *, patch_centers: Tcenters | None, progress: bool
+) -> dict[int, Patch]:
     patch_ids = None
     if parallel.on_root():
         patch_ids = read_patch_ids(cache_directory)
@@ -219,12 +221,12 @@ def load_patches(cache_directory: Path, *, progress: bool) -> dict[int, Patch]:
 
     # instantiate patches, which triggers computing the patch meta-data
     path_template = str(cache_directory / PATCH_NAME_TEMPLATE)
-    patch_paths = map(path_template.format, patch_ids)
+    patch_paths = tuple(path_template.format(patch_id) for patch_id in patch_ids)
     patch_iter = parallel.iter_unordered(Patch, patch_paths)
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_paths))
 
-    patches = {patch_id: patch for patch_id, patch in zip(patch_ids, patch_iter)}
+    patches = {Patch.id_from_path(patch.cache_path): patch for patch in patch_iter}
     return parallel.COMM.bcast(patches, root=0)
 
 
@@ -236,7 +238,9 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
-        self.patches = load_patches(self.cache_directory, progress=False)
+        self.patches = load_patches(
+            self.cache_directory, patch_centers=None, progress=False
+        )
 
     @classmethod
     def from_dataframe(
@@ -280,7 +284,9 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             logger.info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = load_patches(new.cache_directory, progress=True)
+        new.patches = load_patches(
+            new.cache_directory, patch_centers=patch_centers, progress=True
+        )
         return new
 
     @classmethod
@@ -325,7 +331,9 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             logger.info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = load_patches(new.cache_directory, progress=True)
+        new.patches = load_patches(
+            new.cache_directory, patch_centers=patch_centers, progress=True
+        )
         return new
 
     def __repr__(self) -> str:
@@ -348,7 +356,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
     @property
     def has_weights(self) -> bool:
-        has_weights = tuple(patch.meta.has_weights for patch in self.values())
+        has_weights = tuple(patch.has_weights for patch in self.values())
         if all(has_weights):
             return True
         elif not any(has_weights):
@@ -357,7 +365,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
     @property
     def has_redshifts(self) -> bool:
-        has_redshifts = tuple(patch.meta.has_redshifts for patch in self.values())
+        has_redshifts = tuple(patch.has_redshifts for patch in self.values())
         if all(has_redshifts):
             return True
         elif not any(has_redshifts):

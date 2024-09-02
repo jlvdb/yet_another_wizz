@@ -351,10 +351,6 @@ class ParquetReader(FileReader):
         )
 
     @property
-    def path(self) -> Path:
-        return self._file.path
-
-    @property
     def num_records(self) -> int:
         return self._file.num_records
 

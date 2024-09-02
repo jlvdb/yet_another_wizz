@@ -56,6 +56,7 @@ def groupby_binning(
 
 class DataChunk:
     __slots__ = ("data", "patch_ids")
+    itemtype = "f8"
 
     def __init__(
         self,
@@ -80,7 +81,7 @@ class DataChunk:
         columns = compress(
             DATA_ATTRIBUTES, (True, True, weights is not None, redshifts is not None)
         )
-        dtype = np.dtype([(col, "f8") for col in columns])
+        dtype = np.dtype([(col, cls.itemtype) for col in columns])
         asarray = np.asarray_chkfinite if chkfinite else np.asarray
 
         data = np.empty(len(ra), dtype=dtype)
@@ -91,9 +92,11 @@ class DataChunk:
         if redshifts is not None:
             data["redshifts"] = asarray(redshifts)
 
-        max_patch_id = np.iinfo(np.int16).max
-        if patch_ids.min() < 0 or patch_ids.max() > max_patch_id:
-            raise ValueError(f"'patch_ids' must be in range [0, {max_patch_id}]")
+        if patch_ids is not None:
+            max_patch_id = np.iinfo(np.int16).max
+            if patch_ids.min() < 0 or patch_ids.max() > max_patch_id:
+                raise ValueError(f"'patch_ids' must be in range [0, {max_patch_id}]")
+
         return cls(data, patch_ids)
 
     @classmethod
@@ -138,7 +141,8 @@ class DataChunk:
 
     @property
     def coords(self) -> AngularCoordinates:
-        view_2d = self.data.view(self.dtype)
+        view = self.data.view(self.itemtype)
+        view_2d = view.reshape((len(self.data), -1))
         return AngularCoordinates(view_2d[:, :2])
 
     @property

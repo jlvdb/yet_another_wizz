@@ -155,7 +155,7 @@ def build_trees(
     closed: str,
     leafsize: int,
 ) -> tuple[AngularTree]:
-    if binning is not None and not patch.meta.has_redshifts:
+    if binning is not None and not patch.has_redshifts:
         raise ValueError("patch has no 'redshifts' attached")
     chunk = patch.load_data()
 

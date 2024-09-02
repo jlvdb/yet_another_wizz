@@ -301,8 +301,8 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
         for patch_id in empty_patches:
             raise ValueError(f"patch with ID {patch_id} contains no data")
 
-        patch_ids = np.sort(np.array(self.writers.keys(), dtype=np.int16))
-        patch_ids.tofile(self.cache_directory / PATCH_INFO_FILE)
+        patch_ids = np.fromiter(self.writers.keys(), dtype=np.int16)
+        np.sort(patch_ids).tofile(self.cache_directory / PATCH_INFO_FILE)
 
 
 def _writer_process(
