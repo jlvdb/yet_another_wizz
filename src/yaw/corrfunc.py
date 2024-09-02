@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from functools import wraps
+from itertools import compress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -99,6 +100,16 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
                 check_compatible(counts, attr_name=kind)
             setattr(self, kind, counts)
 
+    def __repr__(self) -> str:
+        available = compress(("dr", "rd", "rr"), (self.dr, self.rd, self.rr))
+        items = (
+            f"counts=dd|{'|'.join(available)}",
+            f"auto={self.auto}",
+            f"num_bins={self.num_bins}",
+            f"num_patches={self.num_patches}",
+        )
+        return f"{type(self).__name__}({', '.join(items)})"
+
     @property
     def binning(self) -> Binning:
         return self.dd.binning
@@ -163,7 +174,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return self.dd.num_patches
 
     def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, self.__class__):
+        if not isinstance(other, type(self)):
             return NotImplemented
 
         for kind in set(self.to_dict()) | set(other.to_dict()):
@@ -173,7 +184,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return True
 
     def __add__(self, other: Any) -> CorrFunc:
-        if not isinstance(other, self.__class__):
+        if not isinstance(other, type(self)):
             return NotImplemented
 
         self.is_compatible(other, require=True)

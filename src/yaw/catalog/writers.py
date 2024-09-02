@@ -73,6 +73,15 @@ class PatchWriter(PatchBase):
         self.buffersize = CHUNKSIZE if buffersize < 0 else int(buffersize)
         self._cachesize = 0
         self._shards = []
+        self._processed = 0
+
+    def __repr__(self) -> str:
+        items = (
+            f"buffersize={self.buffersize}",
+            f"cachesize={self._cachesize}",
+            f"processed={self._processed}",
+        )
+        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
 
     def open(self) -> None:
         if self._file is None:
@@ -95,6 +104,7 @@ class PatchWriter(PatchBase):
             self.open()  # ensure file is ready for writing
 
             data = np.concatenate(self._shards)
+            self._processed += len(data)
             self._shards = []
 
             data.tofile(self._file)
@@ -231,11 +241,24 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
         self.cache_directory.mkdir()
         self.writers: dict[int, PatchWriter] = {}
 
+    def __repr__(self) -> str:
+        items = (
+            f"num_patches={self.num_patches}",
+            f"has_weights={self.has_weights}",
+            f"has_redshifts={self.has_redshifts}",
+            f"max_buffersize={self.buffersize * self.num_patches}",
+        )
+        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
+
     def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
         self.finalize()
+
+    @property
+    def num_patches(self) -> int:
+        return len(self.writers)
 
     def get_writer(self, patch_id: int) -> PatchWriter:
         try:

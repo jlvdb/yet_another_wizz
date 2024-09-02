@@ -111,6 +111,9 @@ class AngularTree(Sized):
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(num_records={self.num_records})"
+
     def __len__(self) -> int:
         return self.num_records
 
@@ -217,6 +220,9 @@ class BinnedTrees(Iterable):
 
         return new
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(num_bins={self.num_bins}) @ {self.cache_path}"
+
     @property
     def cache_path(self) -> Path:
         return self._patch.cache_path
@@ -228,6 +234,13 @@ class BinnedTrees(Iterable):
     @property
     def trees_file(self) -> Path:
         return self.cache_path / "trees.pkl"
+
+    @property
+    def num_bins(self) -> int | None:
+        try:
+            return len(self.binning)
+        except TypeError:
+            return None
 
     def is_binned(self) -> bool:
         return self.binning is not None

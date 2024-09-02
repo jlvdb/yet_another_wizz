@@ -66,7 +66,6 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     totals2 = np.empty((num_bins,))
 
     for i, (tree1, tree2) in enumerate(zip(trees1, trees2)):
-        # TODO: implement a binning class that can be iterated here
         counts = tree1.count(
             tree2,
             angle_min[i],
@@ -165,6 +164,9 @@ class PatchLinkage:
     @property
     def density(self) -> float:
         return self.num_links / self.num_total
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(num_links={self.num_links}, density={self.density:.0%})"
 
     def iter_patch_id_pairs(self, *, auto: bool) -> Iterator[tuple[int, int]]:
         patch_links = deepcopy(self.patch_links)  # this will be emptied

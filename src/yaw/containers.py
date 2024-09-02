@@ -122,6 +122,9 @@ class Indexer(Generic[Tkey, Tvalue], Iterator):
         self._callback = slice_callback
         self._iter_state = 0
 
+    def __repr__(self) -> str:
+        return f"{type(self)}[]"
+
     def __getitem__(self, item: Tkey) -> Tvalue:
         return self._callback(item)
 
@@ -243,6 +246,13 @@ class Binning(HdfSerializable):
         io.write_version_tag(dest)
         dest.create_dataset("closed", data=self.closed)
         dest.create_dataset("edges", data=self.edges, **io.HDF_COMPRESSION)
+
+    def __repr__(self) -> str:
+        if self.closed == "left":
+            lb, rb = "[)"
+        else:
+            lb, rb = "(]"
+        return f"{lb}{self.edges[0]:.3f}...{self.edges[-1]:.3f}{rb}"
 
     def __getstate__(self) -> dict:
         return dict(edges=self.edges, closed=self.closed)
@@ -432,6 +442,14 @@ class SampledData(BinwiseData):
     def num_samples(self) -> int:
         return len(self.samples)
 
+    def __repr__(self) -> str:
+        items = (
+            f"num_samples={self.num_samples}",
+            f"num_bins={self.num_bins}",
+            f"binning={self.binning}",
+        )
+        return f"{type(self).__name__}({', '.join(items)})"
+
     def __getstate__(self) -> dict:
         return dict(
             binning=self.binning,
@@ -454,7 +472,7 @@ class SampledData(BinwiseData):
             return NotImplemented
 
         self.is_compatible(other, require=True)
-        return self.__class__(
+        return type(self)(
             self.binning.copy(),
             self.data + other.data,
             self.samples + other.samples,
@@ -466,7 +484,7 @@ class SampledData(BinwiseData):
             return NotImplemented
 
         self.is_compatible(other, require=True)
-        return self.__class__(
+        return type(self)(
             self.binning.copy(),
             self.data - other.data,
             self.samples - other.samples,

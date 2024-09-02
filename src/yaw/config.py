@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import pprint
 import warnings
 from abc import abstractmethod
 from typing import TYPE_CHECKING, get_args
@@ -123,6 +124,9 @@ class BaseConfig(YamlSerialisable, Immutable):
             {key: value for key, value in kwargs.items() if value is not NotSet}
         )
         return type(self).from_dict(conf_dict)
+
+    def __repr__(self) -> str:
+        pprint.pformat(self.to_dict())
 
     @abstractmethod
     def __eq__(self) -> bool:

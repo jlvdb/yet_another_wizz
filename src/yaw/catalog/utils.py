@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from itertools import compress
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from yaw.containers import Tclosed
 
 
+DATA_ATTRIBUTES = ("ra", "dec", "weights", "redshifts")
 PATCH_NAME_TEMPLATE = "patch_{:d}"
 
 
@@ -54,7 +56,6 @@ def groupby_binning(
 
 class DataChunk:
     __slots__ = ("data", "patch_ids")
-    itemtype = "f8"
 
     def __init__(
         self,
@@ -76,13 +77,11 @@ class DataChunk:
         degrees: bool = True,
         chkfinite: bool = False,
     ):
+        columns = compress(
+            DATA_ATTRIBUTES, (True, True, weights is not None, redshifts is not None)
+        )
+        dtype = np.dtype([(col, "f8") for col in columns])
         asarray = np.asarray_chkfinite if chkfinite else np.asarray
-
-        dtype = [("ra", cls.itemtype), ("dec", cls.itemtype)]
-        if weights is not None:
-            dtype.append(("weights", cls.itemtype))
-        if redshifts is not None:
-            dtype.append(("redshifts", cls.itemtype))
 
         data = np.empty(len(ra), dtype=dtype)
         data["ra"] = np.deg2rad(asarray(ra)) if degrees else asarray(ra)
@@ -103,6 +102,15 @@ class DataChunk:
             patch_ids = None
 
         return cls(data, patch_ids)
+
+    def __repr__(self) -> str:
+        items = (
+            f"num_records={len(self)}",
+            f"has_weights={self.has_weights}",
+            f"has_redshifts={self.has_redshifts}",
+            f"has_patch_ids={self.patch_ids is not None}",
+        )
+        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
 
     def __len__(self) -> int:
         return len(self.data)
@@ -127,7 +135,7 @@ class DataChunk:
 
     @property
     def coords(self) -> AngularCoordinates:
-        view_2d = self.data.view(self.itemtype).reshape(len(self.data), -1)
+        view_2d = self.data.view(self.dtype)
         return AngularCoordinates(view_2d[:, :2])
 
     @property

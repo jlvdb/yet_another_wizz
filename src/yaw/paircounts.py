@@ -36,6 +36,14 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
     def auto(self) -> bool:
         pass
 
+    def __repr__(self) -> str:
+        items = (
+            f"auto={self.auto}",
+            f"num_bins={self.num_bins}",
+            f"num_patches={self.num_patches}",
+        )
+        return f"{type(self).__name__}({', '.join(items)})"
+
     @abstractmethod
     def __eq__(self, other: Any) -> bool:
         pass
@@ -237,7 +245,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         )
 
     def __add__(self, other: Any) -> PatchedCounts:
-        if not isinstance(other, self.__class__):
+        if not isinstance(other, type(self)):
             return NotImplemented
 
         self.is_compatible(other, require=True)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Mapping
-from dataclasses import dataclass
 from itertools import compress
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,7 +10,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from yaw.catalog.trees import BinnedTrees
-from yaw.catalog.utils import PATCH_NAME_TEMPLATE, DataChunk, InconsistentPatchesError
+from yaw.catalog.utils import (
+    DATA_ATTRIBUTES,
+    PATCH_NAME_TEMPLATE,
+    DataChunk,
+    InconsistentPatchesError,
+)
 from yaw.catalog.writers import CatalogBase, PatchBase, write_catalog
 from yaw.containers import YamlSerialisable, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
@@ -39,7 +43,6 @@ PATCHFILE_NAME = "num_patches"
 logger = logging.getLogger("yaw.catalog")
 
 
-@dataclass
 class Metadata(YamlSerialisable):
     __slots__ = (
         "num_records",
@@ -60,6 +63,15 @@ class Metadata(YamlSerialisable):
         self.total = total
         self.center = center
         self.radius = radius
+
+    def __repr__(self) -> str:
+        items = (
+            f"num_records={self.num_records}",
+            f"total={self.total}",
+            f"center={self.center}",
+            f"radius={self.radius}",
+        )
+        return f"{type(self).__name__}({', '.join(items)})"
 
     @classmethod
     def compute(
@@ -111,10 +123,7 @@ def read_patch_data(
     has_redshifts: bool,
     skip_header: bool,
 ) -> DataChunk:
-    columns = compress(
-        ("ra", "dec", "weights", "redshifts"),
-        (True, True, has_weights, has_redshifts),
-    )
+    columns = compress(DATA_ATTRIBUTES, (True, True, has_weights, has_redshifts))
     dtype = np.dtype([(col, "f8") for col in columns])
 
     rawdata = np.fromfile(file, offset=1 if skip_header else 0, dtype=np.byte)
@@ -145,6 +154,15 @@ class Patch(PatchBase):
 
             self.meta = Metadata.compute(data.coords, weights=data.weights)
             self.meta.to_file(meta_data_file)
+
+    def __repr__(self) -> str:
+        items = (
+            f"num_records={self.meta.num_records}",
+            f"total={self.meta.total}",
+            f"has_weights={self._has_weights}",
+            f"has_redshifts={self._has_redshifts}",
+        )
+        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
 
     def __getstate__(self) -> dict:
         return dict(
@@ -329,10 +347,13 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         return new
 
     def __repr__(self) -> str:
-        num_patches = len(self)
-        weights = self.has_weights
-        redshifts = self.has_redshifts
-        return f"{type(self).__name__}({num_patches=}, {weights=}, {redshifts=})"
+        items = (
+            f"num_patches={self.num_patches}",
+            f"total={self.get_totals()}",
+            f"has_weights={self.has_weights}",
+            f"has_redshifts={self.has_redshifts}",
+        )
+        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
 
     def __len__(self) -> int:
         return len(self.patches)

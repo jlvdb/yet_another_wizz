@@ -219,6 +219,15 @@ class DataFrameReader(BaseReader):
         super()._init_source(source)
         issue_io_log(self.num_records, self.num_chunks, "memory")
 
+    def __repr__(self) -> str:
+        items = (
+            f"num_records={self.num_records}",
+            f"iter_state={self._chunk_idx}/{self.num_chunks}",
+            f"has_weights={self.has_weights}",
+            f"has_redshifts={self.has_redshifts}",
+        )
+        return f"{type(self).__name__}({', '.join(items)})"
+
     def __enter__(self) -> Self:
         return self
 
@@ -261,6 +270,7 @@ class FileReader(BaseReader):
         degrees: bool = True,
         **reader_kwargs,
     ) -> None:
+        self.path = Path(path)
         super().__init__(
             path,
             ra_name=ra_name,
@@ -272,6 +282,15 @@ class FileReader(BaseReader):
             degrees=degrees,
             **reader_kwargs,
         )
+
+    def __repr__(self) -> str:
+        items = (
+            f"num_records={self.num_records}",
+            f"iter_state={self._chunk_idx}/{self.num_chunks}",
+            f"has_weights={self.has_weights}",
+            f"has_redshifts={self.has_redshifts}",
+        )
+        return f"{type(self).__name__}({', '.join(items)}) @ {self.path}"
 
     def __enter__(self) -> Self:
         return self
@@ -375,12 +394,11 @@ def swap_byteorder(array: NDArray) -> NDArray:
 
 
 class FitsReader(FileReader):
-    def _init_source(self, source: Tpath, hdu: int = 1) -> None:
-        self.path = Path(source)
-        self._file = fits.open(str(self.path))
+    def _init_source(self, path: Tpath, hdu: int = 1) -> None:
+        self._file = fits.open(str(path))
         self._hdu = self._file[hdu]
 
-        super()._init_source(source)
+        super()._init_source(path)
         issue_io_log(self.num_records, self.num_chunks, f"from FITS file: {self.path}")
 
     @property
@@ -407,11 +425,10 @@ class FitsReader(FileReader):
 
 
 class HDFReader(FileReader):
-    def _init_source(self, source: Tpath) -> None:
-        self.path = Path(source)
-        self._file = h5py.File(self.path, mode="r")
+    def _init_source(self, path: Tpath) -> None:
+        self._file = h5py.File(path, mode="r")
 
-        super()._init_source(source)
+        super()._init_source(path)
         issue_io_log(self.num_records, self.num_chunks, f"from HDF5 file: {self.path}")
 
     @property
