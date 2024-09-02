@@ -4,6 +4,8 @@ import logging
 from collections import deque
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from io import TextIOBase
+from itertools import compress
 from pathlib import Path
 from typing import Union
 
@@ -14,9 +16,9 @@ from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import DataChunk, InconsistentPatchesError
 from yaw.catalog.utils import MockDataFrame as DataFrame
 from yaw.catalog.writers import (
-    PATCH_COLUMNS_FILE,
-    PATCH_DATA_PATH,
     PATCH_NAME_TEMPLATE,
+    CatalogBase,
+    PatchBase,
     write_catalog,
 )
 from yaw.containers import (
@@ -48,8 +50,6 @@ class Metadata(YamlSerialisable):
         "total",
         "center",
         "radius",
-        "has_weights",
-        "has_redshifts",
     )
 
     def __init__(
@@ -59,15 +59,11 @@ class Metadata(YamlSerialisable):
         total: float,
         center: AngularCoordinates,
         radius: AngularDistances,
-        has_weights: bool,
-        has_redshifts: bool,
     ) -> None:
         self.num_records = num_records
         self.total = total
         self.center = center
         self.radius = radius
-        self.has_weights = has_weights
-        self.has_redshifts = has_redshifts
 
     @classmethod
     def compute(
@@ -75,7 +71,6 @@ class Metadata(YamlSerialisable):
         coords: AngularCoordinates,
         *,
         weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
     ) -> Metadata:
         new = super().__new__(cls)
         new.num_records = len(coords)
@@ -87,8 +82,6 @@ class Metadata(YamlSerialisable):
         new.center = coords.mean(weights)
         new.radius = coords.distance(new.center).max()
 
-        new.has_weights = weights is not None
-        new.has_redshifts = redshifts is not None
         return new
 
     @classmethod
@@ -103,44 +96,37 @@ class Metadata(YamlSerialisable):
             total=float(self.total),
             center=self.center.tolist()[0],  # 2-dim by default
             radius=self.radius.tolist()[0],  # 1-dim by default
-            has_weights=bool(self.has_weights),
-            has_redshifts=bool(self.has_redshifts),
         )
 
 
-def read_and_delete_column_info(cache_path: Tpath) -> tuple[bool, bool]:
-    with open(Path(cache_path) / PATCH_COLUMNS_FILE, "rb") as f:
-        info_bytes = f.read()
-        info = int.from_bytes(info_bytes, byteorder="big")
+def read_patch_header(file: TextIOBase) -> tuple[bool, bool]:
+    header_byte = file.read(1)
+    header_int = int.from_bytes(header_byte, byteorder="big")
 
-    has_weights = info & (1 << 0)
-    has_redshifts = info & (1 << 1)
+    has_weights = bool(header_int & (1 << 2))
+    has_redshifts = bool(header_int & (1 << 3))
     return has_weights, has_redshifts
 
 
 def read_patch_data(
-    cache_path: Tpath,
+    file: TextIOBase,
+    *,
     has_weights: bool,
     has_redshifts: bool,
+    skip_header: bool,
 ) -> DataChunk:
-    columns = ["ra", "dec"]
-    if has_weights:
-        columns.append("weights")
-    if has_redshifts:
-        columns.append("redshifts")
-
-    path = Path(cache_path) / PATCH_DATA_PATH
-    rawdata = np.fromfile(path)
-    num_records = len(rawdata) // len(columns)
-
+    columns = compress(
+        ("ra", "dec", "weights", "redshifts"),
+        (True, True, has_weights, has_redshifts),
+    )
     dtype = np.dtype([(col, "f8") for col in columns])
-    data = rawdata.view(dtype).reshape((num_records,))
 
-    return DataChunk(data)
+    rawdata = np.fromfile(file, offset=1 if skip_header else 0, dtype=np.byte)
+    return DataChunk(rawdata.view(dtype))
 
 
-class Patch:
-    __slots__ = ("meta", "cache_path")
+class Patch(PatchBase):
+    __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
 
     def __init__(self, cache_path: Tpath) -> None:
         self.cache_path = Path(cache_path)
@@ -148,18 +134,29 @@ class Patch:
 
         try:
             self.meta = Metadata.from_file(meta_data_file)
+            with self.data_path.open(mode="rb") as f:
+                self._has_weights, self._has_redshifts = read_patch_header(f)
 
         except FileNotFoundError:
-            has_weights, has_redshifts = read_and_delete_column_info(self.cache_path)
-            data = read_patch_data(self.cache_path, has_weights, has_redshifts)
+            with self.data_path.open(mode="rb") as f:
+                self._has_weights, self._has_redshifts = read_patch_header(f)
+                data = read_patch_data(
+                    f,
+                    has_weights=self._has_weights,
+                    has_redshifts=self._has_redshifts,
+                    skip_header=False,
+                )
 
-            self.meta = Metadata.compute(
-                data.coords, weights=data.weights, redshifts=data.redshifts
-            )
+            self.meta = Metadata.compute(data.coords, weights=data.weights)
             self.meta.to_file(meta_data_file)
 
     def __getstate__(self) -> dict:
-        return dict(cache_path=self.cache_path, meta=self.meta)
+        return dict(
+            cache_path=self.cache_path,
+            meta=self.meta,
+            _has_weights=self._has_weights,
+            _has_redshifts=self._has_redshifts,
+        )
 
     def __setstate__(self, state) -> None:
         for key, value in state.items():
@@ -171,9 +168,13 @@ class Patch:
         return int(id_str)
 
     def load_data(self) -> DataChunk:
-        return read_patch_data(
-            self.cache_path, self.meta.has_weights, self.meta.has_redshifts
-        )
+        with open(self.data_path, mode="rb") as f:
+            return read_patch_data(
+                f,
+                has_weights=self._has_weights,
+                has_redshifts=self._has_redshifts,
+                skip_header=True,
+            )
 
     @property
     def coords(self) -> AngularCoordinates:
@@ -226,8 +227,8 @@ def load_patches_with_metadata(
     return parallel.COMM.bcast(patches, root=0)
 
 
-class Catalog(Mapping[int, Patch]):
-    patches = dict[int, Patch]
+class Catalog(CatalogBase, Mapping[int, Patch]):
+    __slots__ = ("cache_directory", "patches")
 
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
@@ -243,7 +244,7 @@ class Catalog(Mapping[int, Patch]):
 
             patches = {Patch.id_from_path(cache): Patch(cache) for cache in patch_paths}
 
-        self.patches = parallel.COMM.bcast(patches, root=0)
+        self.patches: dict[int, Patch] = parallel.COMM.bcast(patches, root=0)
 
     @classmethod
     def from_dataframe(

@@ -1,4 +1,4 @@
-from .catalog import Catalog, Patch
+from .containers import Catalog, Patch
 
 __all__ = [
     "Catalog",

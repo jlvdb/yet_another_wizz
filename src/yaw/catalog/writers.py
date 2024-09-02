@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from enum import Enum
 from functools import partial
+from io import TextIOBase
 from itertools import repeat
 from pathlib import Path
 from shutil import rmtree
@@ -18,8 +19,9 @@ from scipy.cluster import vq
 from typing_extensions import Self
 
 from yaw.catalog.readers import BaseReader, DataFrameReader, new_filereader
-from yaw.catalog.utils import DataChunk
+from yaw.catalog.utils import CatalogBase, DataChunk
 from yaw.catalog.utils import MockDataFrame as DataFrame
+from yaw.catalog.utils import PatchBase
 from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 from yaw.utils.logging import Indicator
@@ -31,10 +33,6 @@ __all__ = [
 
 Tcenters = Union["HasPatchCenters", AngularCoordinates]
 
-PATCH_NAME_TEMPLATE = "patch_{:}"
-PATCH_COLUMNS_FILE = "patch.columns"
-PATCH_DATA_PATH = "data.bin"
-
 CHUNKSIZE = 65_536
 
 logger = logging.getLogger(__name__)
@@ -44,17 +42,15 @@ class HasPatchCenters(Protocol):
     def get_patch_centers() -> AngularCoordinates: ...
 
 
-def write_column_info(
-    cache_path: Tpath, has_weights: bool, has_redshifts: bool
+def write_patch_header(
+    file: TextIOBase, *, has_weights: bool, has_redshifts: bool
 ) -> None:
-    info = (has_weights << 0) | (has_redshifts << 1)
-
-    with open(Path(cache_path) / PATCH_COLUMNS_FILE, mode="wb") as f:
-        info_bytes = info.to_bytes(1, byteorder="big")
-        f.write(info_bytes)
+    info = (1 << 0) | (1 << 1) | (has_weights << 2) | (has_redshifts << 3)
+    info_bytes = info.to_bytes(1, byteorder="big")
+    file.write(info_bytes)
 
 
-class PatchWriter:
+class PatchWriter(PatchBase):
     __slots__ = ("cache_path", "buffersize", "_cachesize", "_shards", "_file")
 
     def __init__(
@@ -71,7 +67,8 @@ class PatchWriter:
         self.cache_path.mkdir(parents=True)
         self._file = None
 
-        write_column_info(cache_path, has_weights, has_redshifts)
+        with self.data_path.open(mode="wb") as f:
+            write_patch_header(f, has_weights=has_weights, has_redshifts=has_redshifts)
 
         self.buffersize = CHUNKSIZE if buffersize < 0 else int(buffersize)
         self._cachesize = 0
@@ -79,7 +76,7 @@ class PatchWriter:
 
     def open(self) -> None:
         if self._file is None:
-            self._file = open(self.cache_path / PATCH_DATA_PATH, mode="ab")
+            self._file = self.data_path.open(mode="ab")
 
     def close(self) -> None:
         self.flush()
@@ -193,7 +190,15 @@ class ChunkProcessor:
         queue.put(self.execute(chunk))
 
 
-class CatalogWriter(AbstractContextManager):
+class CatalogWriter(AbstractContextManager, CatalogBase):
+    __slots__ = (
+        "cache_directory",
+        "has_weights",
+        "has_redshifts",
+        "buffersize",
+        "writers",
+    )
+
     def __init__(
         self,
         cache_directory: Tpath,
@@ -224,7 +229,7 @@ class CatalogWriter(AbstractContextManager):
 
         self.buffersize = buffersize
         self.cache_directory.mkdir()
-        self._writers: dict[int, PatchWriter] = {}
+        self.writers: dict[int, PatchWriter] = {}
 
     def __enter__(self) -> Self:
         return self
@@ -232,21 +237,18 @@ class CatalogWriter(AbstractContextManager):
     def __exit__(self, *args, **kwargs) -> None:
         self.finalize()
 
-    def get_writer_path(self, patch_id: int) -> Path:
-        return self.cache_directory / PATCH_NAME_TEMPLATE.format(patch_id)
-
     def get_writer(self, patch_id: int) -> PatchWriter:
         try:
-            return self._writers[patch_id]
+            return self.writers[patch_id]
 
         except KeyError:
             writer = PatchWriter(
-                self.get_writer_path(patch_id),
+                self.get_patch_path(patch_id),
                 has_weights=self.has_weights,
                 has_redshifts=self.has_redshifts,
                 buffersize=self.buffersize,
             )
-            self._writers[patch_id] = writer
+            self.writers[patch_id] = writer
             return writer
 
     def process_patches(self, patches: dict[int, DataChunk]) -> None:
@@ -254,7 +256,7 @@ class CatalogWriter(AbstractContextManager):
             self.get_writer(patch_id).process_chunk(patch)
 
     def finalize(self) -> None:
-        for writer in self._writers.values():
+        for writer in self.writers.values():
             writer.close()
 
 

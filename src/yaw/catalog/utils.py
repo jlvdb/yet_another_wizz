@@ -181,3 +181,28 @@ class DataChunk:
 
 class MockDataFrame(Sequence):  # avoid explicit pandas dependency
     pass
+
+
+class PatchBase:
+    cache_path: Path
+    _has_weights: bool
+    _has_redshifts: bool
+
+    @property
+    def data_path(self) -> Path:
+        return self.cache_path / "data.bin"
+
+    @property
+    def has_weights(self) -> bool:
+        return self._has_weights
+
+    @property
+    def has_redshifts(self) -> bool:
+        return self._has_redshifts
+
+
+class CatalogBase:
+    cache_directory: Path
+
+    def get_patch_path(self, patch_id: int) -> Path:
+        return self.cache_directory / f"patch_{int(patch_id)}"
