@@ -34,14 +34,11 @@ build-backend = "setuptools.build_meta"
 write_to = "src/yaw/_version.py"
 
 [project.optional-dependencies]
-mpi = [
-    "mpi4py",
-]
 plot = [
     "matplotlib",
 ]
-cli = [
-    "yet_another_wizz_cli>=1.2.1",
+mpi = [
+    "mpi4py",
 ]
 docs = [
     "sphinx",
@@ -49,10 +46,8 @@ docs = [
     "sphinx-copybutton",
     "pydata-sphinx-theme",
     # note that yaw_cli is currently necessary to generate the joint docs
-    "yet_another_wizz[cli]",
 ]
 test = [
-    "yet_another_wizz[mpi]",
     "yet_another_wizz[plot]",
     "coverage",
     "pytest",

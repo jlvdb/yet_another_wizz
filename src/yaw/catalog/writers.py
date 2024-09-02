@@ -13,7 +13,6 @@ from typing import Protocol, Union, get_args
 
 import numpy as np
 import treecorr
-from mpi4py import MPI
 from numpy.typing import NDArray
 from scipy.cluster import vq
 from typing_extensions import Self
@@ -283,119 +282,124 @@ def _writer_process(
             writer.process_patches(patches)
 
 
-def write_patches_multiprocessing(
-    path: Tpath,
-    reader: BaseReader,
-    patch_centers: Tcenters,
-    *,
-    overwrite: bool,
-    progress: bool,
-    max_workers: int | None = None,
-    buffersize: int = -1,
-) -> None:
+if parallel.use_mpi():
+    # this function definition is only envoked if mpi4py can be imported and
+    # when running in an MPI environment
+    from mpi4py import MPI
 
-    patch_centers = get_patch_centers(patch_centers)
-    preprocess = ChunkProcessor(patch_centers)
+    def write_patches(
+        path: Tpath,
+        reader: BaseReader,
+        patch_centers: Tcenters,
+        *,
+        overwrite: bool,
+        progress: bool,
+        max_workers: int | None = None,
+        buffersize: int = -1,
+    ) -> None:
+        rank = parallel.COMM.Get_rank()
+        patch_centers = get_patch_centers(patch_centers)
+        preprocess = ChunkProcessor(patch_centers)
 
-    manager = multiprocessing.Manager()
-    max_workers = parallel.get_size(max_workers)
-    pool = multiprocessing.Pool(max_workers)
+        # run all processing on the same node as the root (which handles reading)
+        max_workers = parallel.get_size(max_workers)
+        active_ranks = parallel.ranks_on_same_node(0, max_workers)
+        # choose any rank that will handle writing the output
+        for writer_rank in active_ranks:
+            if writer_rank != 0:
+                break
+        active_ranks.remove(writer_rank)
+        active_comm = parallel.COMM.Split(
+            1 if rank in active_ranks else MPI.UNDEFINED, rank
+        )
 
-    with reader, manager, pool:
-        patch_queue = manager.Queue()
-
-        writer = multiprocessing.Process(
-            target=_writer_process,
-            kwargs=dict(
-                get_method=patch_queue.get,
+        if rank == writer_rank:
+            _writer_process(
+                get_method=partial(parallel.COMM.recv, source=MPI.ANY_SOURCE, tag=2),
                 cache_directory=path,
                 overwrite=overwrite,
                 has_weights=reader.has_weights,
                 has_redshifts=reader.has_redshifts,
                 buffersize=buffersize,
-            ),
-        )
-        writer.start()
-
-        chunk_iter = iter(reader)
-        if progress:
-            chunk_iter = Indicator(reader)
-
-        for chunk in chunk_iter:
-            pool.starmap(
-                preprocess.execute_send,
-                zip(repeat(patch_queue), chunk.split(max_workers)),
             )
 
-        patch_queue.put(EndOfQueue)
-        writer.join()
+        elif rank in active_ranks:
+            with reader:
+                chunk_iter = iter(reader)
+                if progress:
+                    chunk_iter = Indicator(reader)
 
+                for chunk in chunk_iter:
+                    if rank == 0:
+                        splitted = chunk.split(len(active_ranks))
+                        split_assignments = dict(zip(active_ranks, splitted))
 
-def write_patches_mpi(
-    path: Tpath,
-    reader: BaseReader,
-    patch_centers: Tcenters,
-    *,
-    overwrite: bool,
-    progress: bool,
-    max_workers: int | None = None,
-    buffersize: int = -1,
-) -> None:
-    rank = parallel.COMM.Get_rank()
-    patch_centers = get_patch_centers(patch_centers)
-    preprocess = ChunkProcessor(patch_centers)
+                        for dest, split in split_assignments.items():
+                            if dest != 0:
+                                parallel.COMM.send(split, dest=dest, tag=1)
+                        split = split_assignments[0]
 
-    # run all processing on the same node as the root (which handles reading)
-    max_workers = parallel.get_size(max_workers)
-    active_ranks = parallel.ranks_on_same_node(0, max_workers)
-    # choose any rank that will handle writing the output
-    for writer_rank in active_ranks:
-        if writer_rank != 0:
-            break
-    active_ranks.remove(writer_rank)
-    active_comm = parallel.COMM.Split(
-        1 if rank in active_ranks else MPI.UNDEFINED, rank
-    )
+                    else:
+                        split = parallel.COMM.recv(source=0, tag=1)
 
-    if rank == writer_rank:
-        _writer_process(
-            get_method=partial(parallel.COMM.recv, source=MPI.ANY_SOURCE, tag=2),
-            cache_directory=path,
-            overwrite=overwrite,
-            has_weights=reader.has_weights,
-            has_redshifts=reader.has_redshifts,
-            buffersize=buffersize,
-        )
+                    patches = preprocess.execute(split)
+                    parallel.COMM.send(patches, dest=writer_rank, tag=2)
 
-    elif rank in active_ranks:
-        with reader:
+                active_comm.Barrier()
+                if rank == 0:
+                    parallel.COMM.send(EndOfQueue, dest=writer_rank, tag=2)
+
+            active_comm.Free()
+
+        parallel.COMM.Barrier()
+
+else:
+
+    def write_patches(
+        path: Tpath,
+        reader: BaseReader,
+        patch_centers: Tcenters,
+        *,
+        overwrite: bool,
+        progress: bool,
+        max_workers: int | None = None,
+        buffersize: int = -1,
+    ) -> None:
+        patch_centers = get_patch_centers(patch_centers)
+        preprocess = ChunkProcessor(patch_centers)
+
+        manager = multiprocessing.Manager()
+        max_workers = parallel.get_size(max_workers)
+        pool = multiprocessing.Pool(max_workers)
+
+        with reader, manager, pool:
+            patch_queue = manager.Queue()
+
+            writer = multiprocessing.Process(
+                target=_writer_process,
+                kwargs=dict(
+                    get_method=patch_queue.get,
+                    cache_directory=path,
+                    overwrite=overwrite,
+                    has_weights=reader.has_weights,
+                    has_redshifts=reader.has_redshifts,
+                    buffersize=buffersize,
+                ),
+            )
+            writer.start()
+
             chunk_iter = iter(reader)
             if progress:
                 chunk_iter = Indicator(reader)
 
             for chunk in chunk_iter:
-                if rank == 0:
-                    splitted = chunk.split(len(active_ranks))
-                    split_assignments = dict(zip(active_ranks, splitted))
+                pool.starmap(
+                    preprocess.execute_send,
+                    zip(repeat(patch_queue), chunk.split(max_workers)),
+                )
 
-                    for dest, split in split_assignments.items():
-                        if dest != 0:
-                            parallel.COMM.send(split, dest=dest, tag=1)
-                    split = split_assignments[0]
-
-                else:
-                    split = parallel.COMM.recv(source=0, tag=1)
-
-                patches = preprocess.execute(split)
-                parallel.COMM.send(patches, dest=writer_rank, tag=2)
-
-            active_comm.Barrier()
-            if rank == 0:
-                parallel.COMM.send(EndOfQueue, dest=writer_rank, tag=2)
-
-        active_comm.Free()
-
-    parallel.COMM.Barrier()
+            patch_queue.put(EndOfQueue)
+            writer.join()
 
 
 def write_catalog(
@@ -448,14 +452,12 @@ def write_catalog(
             patch_centers = create_patch_centers(reader, patch_num, probe_size)
         patch_centers = parallel.COMM.bcast(patch_centers, root=0)
 
-    args = (cache_directory, reader, patch_centers)
-    kwargs = dict(
+    write_patches(
+        cache_directory,
+        reader,
+        patch_centers,
         overwrite=overwrite,
         progress=progress,
         max_workers=max_workers,
         buffersize=buffersize,
     )
-    if parallel.use_mpi():
-        write_patches_mpi(*args, **kwargs)
-    else:
-        write_patches_multiprocessing(*args, **kwargs)

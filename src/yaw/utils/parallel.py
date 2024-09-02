@@ -6,9 +6,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterable, Iterator
-from typing import Callable, TypeVar
-
-from mpi4py import MPI
+from typing import Callable, Literal, TypeVar
 
 __all__ = [
     "COMM",
@@ -20,13 +18,12 @@ __all__ = [
     "use_mpi",
 ]
 
+T = TypeVar("T")
 Targ = TypeVar("Targ")
 Tresult = TypeVar("Tresult")
 Titer = TypeVar("Titer")
 
 logger = logging.getLogger(__name__)
-
-COMM = MPI.COMM_WORLD
 
 
 def _get_physical_cores() -> int:
@@ -60,8 +57,32 @@ def _num_processes() -> int:
         return system_threads
 
 
-def use_mpi() -> bool:
-    return COMM.Get_size() > 1
+try:
+    from mpi4py import MPI
+
+    COMM = MPI.COMM_WORLD
+
+    def use_mpi() -> bool:
+        return COMM.Get_size() > 1
+
+except ImportError:
+
+    def pass_value(value: T, *args, **kwargs) -> T:
+        return value
+
+    def do_nothing(*args, **kwargs) -> None:
+        pass
+
+    class MockComm:
+        Barrier = do_nothing
+        Bcast = pass_value
+        bcast = pass_value
+        Get_size = _num_processes
+
+    COMM = MockComm()
+
+    def use_mpi() -> Literal[False]:
+        return False
 
 
 def get_size(max_workers: int | None = None) -> int:
@@ -157,6 +178,8 @@ def _mpi_iter_unordered(
         wrapped_func = ParallelJob(func, func_args, func_kwargs)
         _mpi_worker_task(wrapped_func)
 
+    COMM.Barrier()
+
 
 def _multiprocessing_iter_unordered(
     func: Callable[[Targ], Tresult],
@@ -205,4 +228,3 @@ def iter_unordered(
         logger.debug(f"running parallel jobs on {num_workers} workers")
 
     yield from parallel_method(func, iterable, **iter_kwargs)
-    COMM.Barrier()
