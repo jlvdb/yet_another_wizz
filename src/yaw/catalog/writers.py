@@ -38,6 +38,7 @@ __all__ = [
 ]
 
 CHUNKSIZE = 65_536
+PATCH_INFO_FILE = "patch_ids.bin"
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,14 @@ def write_patch_header(
 
 
 class PatchWriter(PatchBase):
-    __slots__ = ("cache_path", "buffersize", "_cachesize", "_shards", "_file")
+    __slots__ = (
+        "cache_path",
+        "num_processed",
+        "buffersize",
+        "_cachesize",
+        "_shards",
+        "_file",
+    )
 
     def __init__(
         self,
@@ -73,7 +81,7 @@ class PatchWriter(PatchBase):
         self.buffersize = CHUNKSIZE if buffersize < 0 else int(buffersize)
         self._cachesize = 0
         self._shards = []
-        self._processed = 0
+        self.num_processed = 0
 
     def __repr__(self) -> str:
         items = (
@@ -104,7 +112,7 @@ class PatchWriter(PatchBase):
             self.open()  # ensure file is ready for writing
 
             data = np.concatenate(self._shards)
-            self._processed += len(data)
+            self.num_processed += len(data)
             self._shards = []
 
             data.tofile(self._file)
@@ -284,8 +292,17 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
             self.get_writer(patch_id).process_chunk(patch)
 
     def finalize(self) -> None:
-        for writer in self.writers.values():
+        empty_patches = set()
+        for patch_id, writer in self.writers.items():
             writer.close()
+            if writer.num_processed == 0:
+                empty_patches.add(patch_id)
+
+        for patch_id in empty_patches:
+            raise ValueError(f"patch with ID {patch_id} contains no data")
+
+        patch_ids = np.sort(np.array(self.writers.keys(), dtype=np.int16))
+        patch_ids.tofile(self.cache_directory / PATCH_INFO_FILE)
 
 
 def _writer_process(

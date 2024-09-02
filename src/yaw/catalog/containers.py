@@ -16,7 +16,7 @@ from yaw.catalog.utils import (
     DataChunk,
     InconsistentPatchesError,
 )
-from yaw.catalog.writers import CatalogBase, PatchBase, write_catalog
+from yaw.catalog.writers import PATCH_INFO_FILE, CatalogBase, PatchBase, write_catalog
 from yaw.containers import YamlSerialisable, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
@@ -37,8 +37,6 @@ __all__ = [
     "Catalog",
     "Patch",
 ]
-
-PATCHFILE_NAME = "num_patches"
 
 logger = logging.getLogger("yaw.catalog")
 
@@ -206,38 +204,27 @@ class Patch(PatchBase):
         return BinnedTrees(self)
 
 
-def create_catalog_info(cache_directory: Tpath, num_patches: int) -> None:
-    with (cache_directory / PATCHFILE_NAME).open("w") as f:
-        f.write(str(num_patches))
+def read_patch_ids(cache_directory: Path) -> list[int]:
+    try:
+        return np.fromfile(cache_directory / PATCH_INFO_FILE).tolist()
+    except FileNotFoundError as err:
+        raise InconsistentPatchesError("patch info file not found") from err
 
 
-def verify_catalog_info(cache_directory: Tpath, num_expect: int) -> None:
-    path = Path(cache_directory) / PATCHFILE_NAME
-    if not path.exists():
-        raise InconsistentPatchesError("patch indicator file not found")
-
-    with path.open() as f:
-        num_patches = int(f.read())
-    if num_expect != num_patches:
-        raise ValueError(f"expected {num_expect} patches but found {num_patches}")
-
-
-def patches_init_and_load(
-    cache_directory: Tpath, *, progress: bool
-) -> dict[int, Patch]:
+def load_patches(cache_directory: Path, *, progress: bool) -> dict[int, Patch]:
+    patch_ids = None
     if parallel.on_root():
-        logger.info("computing patch metadata")
+        patch_ids = read_patch_ids(cache_directory)
+    patch_ids = parallel.COMM.bcast(patch_ids, root=0)
 
-    cache_directory = Path(cache_directory)
-    patch_paths = tuple(cache_directory.glob(PATCH_NAME_TEMPLATE.format("*")))
-    create_catalog_info(cache_directory, len(patch_paths))
-
-    # instantiate patches, which trigger computing the patch meta-data
+    # instantiate patches, which triggers computing the patch meta-data
+    path_template = str(cache_directory / PATCH_NAME_TEMPLATE)
+    patch_paths = map(path_template.format, patch_ids)
     patch_iter = parallel.iter_unordered(Patch, patch_paths)
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_paths))
 
-    patches = {Patch.id_from_path(patch.cache_path): patch for patch in patch_iter}
+    patches = {patch_id: patch for patch_id, patch in zip(patch_ids, patch_iter)}
     return parallel.COMM.bcast(patches, root=0)
 
 
@@ -247,18 +234,9 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     def __init__(self, cache_directory: Tpath) -> None:
         self.cache_directory = Path(cache_directory)
 
-        patches = None
-
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
-
-            template = PATCH_NAME_TEMPLATE.format("*")
-            patch_paths = tuple(self.cache_directory.glob(template))
-            verify_catalog_info(self.cache_directory, len(patch_paths))
-
-            patches = {Patch.id_from_path(cache): Patch(cache) for cache in patch_paths}
-
-        self.patches: dict[int, Patch] = parallel.COMM.bcast(patches, root=0)
+        self.patches = load_patches(self.cache_directory, progress=False)
 
     @classmethod
     def from_dataframe(
@@ -298,9 +276,11 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             **reader_kwargs,
         )
 
+        if parallel.on_root():
+            logger.info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = patches_init_and_load(cache_directory, progress=progress)
+        new.patches = load_patches(new.cache_directory, progress=True)
         return new
 
     @classmethod
@@ -341,9 +321,11 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             **reader_kwargs,
         )
 
+        if parallel.on_root():
+            logger.info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = patches_init_and_load(cache_directory, progress=progress)
+        new.patches = load_patches(new.cache_directory, progress=True)
         return new
 
     def __repr__(self) -> str:
