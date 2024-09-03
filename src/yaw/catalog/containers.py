@@ -5,21 +5,29 @@ from collections import deque
 from collections.abc import Mapping
 from itertools import compress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import numpy as np
 
+from yaw.catalog.readers import DataFrameReader, new_filereader
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import (
     DATA_ATTRIBUTES,
     PATCH_NAME_TEMPLATE,
-    DataChunk,
+    CatalogBase,
     InconsistentPatchesError,
+    PatchBase,
+    PatchData,
 )
-from yaw.catalog.writers import PATCH_INFO_FILE, CatalogBase, PatchBase, write_catalog
-from yaw.containers import YamlSerialisable, default_closed, parse_binning
+from yaw.catalog.writers import PATCH_INFO_FILE, PatchMode, create_patch_centers
+from yaw.containers import Tpath, YamlSerialisable, default_closed, parse_binning
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
+
+if parallel.use_mpi():
+    from yaw.catalog.writers.mpi4py import write_patches
+else:
+    from yaw.catalog.writers.multiprocessing import write_patches
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -29,7 +37,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.catalog.utils import MockDataFrame as DataFrame
-    from yaw.containers import Tclosed, Tpath
+    from yaw.containers import Tclosed
 
     Tcenters = Union["Catalog", AngularCoordinates]
 
@@ -126,12 +134,12 @@ def read_patch_data(
     has_weights: bool,
     has_redshifts: bool,
     skip_header: bool,
-) -> DataChunk:
+) -> PatchData:
     columns = compress(DATA_ATTRIBUTES, (True, True, has_weights, has_redshifts))
     dtype = np.dtype([(col, "f8") for col in columns])
 
     rawdata = np.fromfile(file, offset=1 if skip_header else 0, dtype=np.byte)
-    return DataChunk(rawdata.view(dtype))
+    return PatchData(rawdata.view(dtype))
 
 
 class Patch(PatchBase):
@@ -189,7 +197,7 @@ class Patch(PatchBase):
         _, id_str = Path(cache_path).name.split("_")
         return int(id_str)
 
-    def load_data(self) -> DataChunk:
+    def load_data(self) -> PatchData:
         with open(self.data_path, mode="rb") as f:
             return read_patch_data(
                 f,
@@ -212,6 +220,67 @@ class Patch(PatchBase):
 
     def get_trees(self) -> BinnedTrees:
         return BinnedTrees(self)
+
+
+def write_catalog(
+    cache_directory: Tpath,
+    source: DataFrame | Tpath,
+    *,
+    ra_name: str,
+    dec_name: str,
+    weight_name: str | None = None,
+    redshift_name: str | None = None,
+    patch_centers: Tcenters | None = None,
+    patch_name: str | None = None,
+    patch_num: int | None = None,
+    degrees: bool = True,
+    chunksize: int | None = None,
+    probe_size: int = -1,
+    overwrite: bool = False,
+    progress: bool = False,
+    max_workers: int | None = None,
+    buffersize: int = -1,
+    **reader_kwargs,
+) -> None:
+    constructor = (
+        new_filereader if isinstance(source, get_args(Tpath)) else DataFrameReader
+    )
+
+    reader = None
+    if parallel.on_root():
+        actual_reader = constructor(
+            source,
+            ra_name=ra_name,
+            dec_name=dec_name,
+            weight_name=weight_name,
+            redshift_name=redshift_name,
+            patch_name=patch_name,
+            chunksize=chunksize,
+            degrees=degrees,
+            **reader_kwargs,
+        )
+        reader = actual_reader.get_dummy()
+
+    reader = parallel.COMM.bcast(reader, root=0)
+    if parallel.on_root():
+        reader = actual_reader
+
+    mode = PatchMode.determine(patch_centers, patch_name, patch_num)
+    if mode == PatchMode.create:
+        patch_centers = None
+        if parallel.on_root():
+            patch_centers = create_patch_centers(reader, patch_num, probe_size)
+        patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+
+    write_patches(
+        cache_directory,
+        reader,
+        patch_centers,
+        overwrite=overwrite,
+        progress=progress,
+        max_workers=max_workers,
+        buffersize=buffersize,
+    )
 
 
 def read_patch_ids(cache_directory: Path) -> list[int]:

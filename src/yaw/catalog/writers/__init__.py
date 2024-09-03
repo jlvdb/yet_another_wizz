@@ -1,17 +1,17 @@
-from yaw.catalog.writers.base import (
+from .base import (
+    PATCH_INFO_FILE,
     CatalogWriter,
     PatchMode,
     PatchWriter,
     create_patch_centers,
     get_patch_centers,
-    write_catalog,
 )
 
 __all__ = [
+    "PATCH_INFO_FILE",
     "CatalogWriter",
     "PatchMode",
     "PatchWriter",
     "create_patch_centers",
     "get_patch_centers",
-    "write_catalog",
 ]

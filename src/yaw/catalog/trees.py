@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import KDTree
 
-from yaw.catalog.utils import DataChunk, groupby
+from yaw.catalog.utils import PatchData, groupby
 from yaw.containers import default_closed, parse_binning
 from yaw.utils import AngularDistances
 
@@ -167,11 +167,11 @@ def build_trees(
         bin_idx = np.digitize(chunk.redshifts, binning, right=(closed == "right"))
 
         trees = []
-        for i, bin_data in groupby(bin_idx, chunk.data):
+        for i, bin_array in groupby(bin_idx, chunk.data):
             if 0 < i < len(binning):
-                bin_chunk = DataChunk(bin_data)
+                bin_data = PatchData(bin_array)
                 tree = AngularTree(
-                    bin_chunk.coords, weights=bin_chunk.weights, leafsize=leafsize
+                    bin_data.coords, weights=bin_data.weights, leafsize=leafsize
                 )
                 trees.append(tree)
 
@@ -205,6 +205,7 @@ class BinnedTrees(Iterable):
             assert not force
             new = cls(patch)  # trees exists, load the associated binning
             assert new.binning_equal(binning)
+
         except (AssertionError, FileNotFoundError):
             new = cls.__new__(cls)
             new._patch = patch

@@ -54,7 +54,7 @@ def groupby_binning(
             yield binning[i - 1 : i + 1], bin_array
 
 
-class DataChunk:
+class PatchData:
     __slots__ = ("data", "patch_ids")
     itemtype = "f8"
 
@@ -76,7 +76,7 @@ class DataChunk:
         redshifts: NDArray | None = None,
         patch_ids: NDArray | None = None,
         degrees: bool = True,
-        chkfinite: bool = False,
+        chkfinite: bool = True,
     ):
         columns = compress(
             DATA_ATTRIBUTES, (True, True, weights is not None, redshifts is not None)
@@ -92,21 +92,6 @@ class DataChunk:
         if redshifts is not None:
             data["redshifts"] = asarray(redshifts)
 
-        if patch_ids is not None:
-            max_patch_id = np.iinfo(np.int16).max
-            if patch_ids.min() < 0 or patch_ids.max() > max_patch_id:
-                raise ValueError(f"'patch_ids' must be in range [0, {max_patch_id}]")
-
-        return cls(data, patch_ids)
-
-    @classmethod
-    def from_chunks(cls, chunks: Sequence[DataChunk]) -> DataChunk:
-        data = np.concatenate([chunk.data for chunk in chunks])
-        if any(chunk.patch_ids is not None for chunk in chunks):
-            patch_ids = np.concatenate([chunk.patch_ids for chunk in chunks])
-        else:
-            patch_ids = None
-
         return cls(data, patch_ids)
 
     def __repr__(self) -> str:
@@ -114,18 +99,33 @@ class DataChunk:
             f"num_records={len(self)}",
             f"has_weights={self.has_weights}",
             f"has_redshifts={self.has_redshifts}",
-            f"has_patch_ids={self.patch_ids is not None}",
+            f"has_patch_ids={self.has_patch_ids}",
         )
         return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
 
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, index: ArrayLike) -> DataChunk:
-        return DataChunk(
-            self.data[index],
-            self.patch_ids[index] if self.patch_ids is not None else None,
-        )
+    @staticmethod
+    def validate_patch_ids(patch_ids: ArrayLike) -> None:
+        min_id = 0
+        max_id = np.iinfo(np.int16).max
+
+        patch_ids = np.asarray(patch_ids)
+        if patch_ids.min() < min_id or patch_ids.max() > max_id:
+            raise ValueError(f"'patch_ids' must be in range [{min_id}, {max_id}]")
+
+    def set_patch_ids(self, patch_ids: NDArray | None):
+        if patch_ids is not None:
+            patch_ids = np.asarray(patch_ids)
+
+            self.validate_patch_ids(patch_ids)
+            if patch_ids.shape != (len(self),):
+                raise ValueError("'patch_ids' has an invalid shape")
+
+            patch_ids = patch_ids.astype(np.int16, casting="same_kind", copy=False)
+
+        self.patch_ids = patch_ids
 
     @property
     def dtype(self) -> DTypeLike:
@@ -140,18 +140,17 @@ class DataChunk:
         return "redshifts" in self.data.dtype.fields
 
     @property
+    def has_patch_ids(self) -> bool:
+        return self.patch_ids is not None
+
+    @property
     def coords(self) -> AngularCoordinates:
         view = self.data.view(self.itemtype)
         view_2d = view.reshape((len(self.data), -1))
-        return AngularCoordinates(view_2d[:, :2])
 
-    @property
-    def ra(self) -> NDArray:
-        return self.data["ra"]
-
-    @property
-    def dec(self) -> NDArray:
-        return self.data["dec"]
+        coords = AngularCoordinates.__new__(AngularCoordinates)
+        coords.data = view_2d[:, :2]  # skip checks in AngularCoordinates.__init__
+        return coords
 
     @property
     def weights(self) -> NDArray | None:
@@ -166,39 +165,6 @@ class DataChunk:
             return None
 
         return self.data["redshifts"]
-
-    def split(self, num_chunks: int) -> list[DataChunk]:
-        splits_data = np.array_split(self.data, num_chunks)
-
-        if self.patch_ids is not None:
-            splits_patch_ids = np.array_split(self.patch_ids, num_chunks)
-        else:
-            splits_patch_ids = [None] * num_chunks
-
-        return [
-            DataChunk(data, patch_ids)
-            for data, patch_ids in zip(splits_data, splits_patch_ids)
-        ]
-
-    def set_patch_ids(self, patch_ids: NDArray | None):
-        if patch_ids is not None:
-            patch_ids = np.asarray(patch_ids)
-            if patch_ids.shape != (len(self),):
-                raise ValueError("'patch_ids' has an invalid shape")
-
-            patch_ids = patch_ids.astype(np.int16, casting="same_kind", copy=False)
-
-        self.patch_ids = patch_ids
-
-    def split_patches(self) -> dict[int, DataChunk]:
-        if self.patch_ids is None:
-            raise ValueError("'patch_ids' not set")
-
-        chunks = {}
-        for patch_id, patch_data in groupby(self.patch_ids, self.data):
-            chunks[int(patch_id)] = DataChunk(patch_data)
-
-        return chunks
 
 
 class MockDataFrame(Sequence):  # avoid explicit pandas dependency

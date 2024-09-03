@@ -4,6 +4,9 @@ import multiprocessing
 from itertools import repeat
 from typing import TYPE_CHECKING
 
+import numpy as np
+
+from yaw.catalog.utils import PatchData
 from yaw.catalog.writers.base import CatalogWriter, ChunkProcessor, get_patch_centers
 from yaw.containers import Tpath
 from yaw.utils import parallel
@@ -15,11 +18,24 @@ if TYPE_CHECKING:
 
     from yaw.catalog.containers import Tcenters
     from yaw.catalog.readers import BaseReader
-    from yaw.catalog.utils import DataChunk
+
+
+def split_deprecated(self: PatchData, num_chunks: int) -> list[PatchData]:
+    splits_data = np.array_split(self.data, num_chunks)
+
+    if self.patch_ids is not None:
+        splits_patch_ids = np.array_split(self.patch_ids, num_chunks)
+    else:
+        splits_patch_ids = [None] * num_chunks
+
+    return [
+        PatchData(data, patch_ids)
+        for data, patch_ids in zip(splits_data, splits_patch_ids)
+    ]
 
 
 def _writer_process(
-    get_method: Callable[[], dict[int, DataChunk] | EndOfQueue],
+    get_method: Callable[[], dict[int, PatchData] | EndOfQueue],
     cache_directory: Tpath,
     *,
     overwrite: bool = True,
@@ -82,7 +98,7 @@ def write_patches(
         for chunk in chunk_iter:
             pool.starmap(
                 preprocess.execute_send,
-                zip(repeat(patch_queue), chunk.split(max_workers)),
+                zip(repeat(patch_queue), split_deprecated(chunk, max_workers)),
             )
 
         patch_queue.put(EndOfQueue)

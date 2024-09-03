@@ -3,8 +3,10 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
+import numpy as np
 from mpi4py import MPI
 
+from yaw.catalog.utils import PatchData
 from yaw.catalog.writers.base import CatalogWriter, ChunkProcessor, get_patch_centers
 from yaw.containers import Tpath
 from yaw.utils import parallel
@@ -16,11 +18,24 @@ if TYPE_CHECKING:
 
     from yaw.catalog.containers import Tcenters
     from yaw.catalog.readers import BaseReader
-    from yaw.catalog.utils import DataChunk
+
+
+def split_deprecated(self: PatchData, num_chunks: int) -> list[PatchData]:
+    splits_data = np.array_split(self.data, num_chunks)
+
+    if self.patch_ids is not None:
+        splits_patch_ids = np.array_split(self.patch_ids, num_chunks)
+    else:
+        splits_patch_ids = [None] * num_chunks
+
+    return [
+        PatchData(data, patch_ids)
+        for data, patch_ids in zip(splits_data, splits_patch_ids)
+    ]
 
 
 def _writer_process(
-    get_method: Callable[[], dict[int, DataChunk] | EndOfQueue],
+    get_method: Callable[[], dict[int, PatchData] | EndOfQueue],
     cache_directory: Tpath,
     *,
     overwrite: bool = True,
@@ -87,7 +102,7 @@ def write_patches(
 
             for chunk in chunk_iter:
                 if rank == 0:
-                    splitted = chunk.split(len(active_ranks))
+                    splitted = split_deprecated(chunk, len(active_ranks))
                     split_assignments = dict(zip(active_ranks, splitted))
 
                     for dest, split in split_assignments.items():

@@ -68,7 +68,7 @@ class AngularCoordinates(CustomNumpyArray):
 
     @classmethod
     def from_3d(cls, xyz: ArrayLike) -> AngularCoordinates:
-        x, y, z = np.transpose(xyz)
+        x, y, z = np.transpose(np.atleast_2d(xyz))
 
         r_d2 = np.sqrt(x * x + y * y)
         r_d3 = np.sqrt(x * x + y * y + z * z)

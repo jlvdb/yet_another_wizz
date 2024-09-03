@@ -6,21 +6,15 @@ from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
 from shutil import rmtree
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING
 
 import numpy as np
 import treecorr
 from scipy.cluster import vq
 
-from yaw.catalog.readers import DataFrameReader, new_filereader
-from yaw.catalog.utils import CatalogBase, PatchBase
+from yaw.catalog.utils import CatalogBase, PatchBase, PatchData, groupby
 from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
-
-if parallel.use_mpi():
-    from yaw.catalog.writers.mpi4py import write_patches
-else:
-    from yaw.catalog.writers.multiprocessing import write_patches
 
 if TYPE_CHECKING:
     from io import TextIOBase
@@ -30,12 +24,6 @@ if TYPE_CHECKING:
 
     from yaw.catalog.containers import Tcenters
     from yaw.catalog.readers import BaseReader
-    from yaw.catalog.utils import DataChunk
-    from yaw.catalog.utils import MockDataFrame as DataFrame
-
-__all__ = [
-    "write_catalog",
-]
 
 CHUNKSIZE = 65_536
 PATCH_INFO_FILE = "patch_ids.bin"
@@ -100,9 +88,9 @@ class PatchWriter(PatchBase):
         self._file.close()
         self._file = None
 
-    def process_chunk(self, chunk: DataChunk) -> None:
-        self._shards.append(chunk.data)
-        self._cachesize += len(chunk)
+    def process_chunk(self, data: PatchData) -> None:
+        self._shards.append(data.data)
+        self._cachesize += len(data)
 
         if self._cachesize >= self.buffersize:
             self.flush()
@@ -132,24 +120,21 @@ class PatchMode(Enum):
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
-        max_patch_id = np.iinfo(np.int16).max
         log_sink = logger.debug if parallel.on_root() else lambda *x: x
 
         if patch_centers is not None:
-            if len(patch_centers) <= max_patch_id:
-                log_sink("applying patch %d centers", len(patch_centers))
-                return PatchMode.apply
-            raise ValueError(f"too many 'patch_centers', maximum is {max_patch_id}")
+            PatchData.validate_patch_ids(len(patch_centers))
+            log_sink("applying patch %d centers", len(patch_centers))
+            return PatchMode.apply
 
         if patch_name is not None:
             log_sink("dividing patches based on '%s'", patch_name)
             return PatchMode.divide
 
         elif patch_num is not None:
-            if 0 <= patch_num <= max_patch_id:
-                log_sink("creating %d patches", patch_num)
-                return PatchMode.create
-            raise ValueError(f"'patch_num' must be in range [0, {max_patch_id}]")
+            PatchData.validate_patch_ids(patch_num)
+            log_sink("creating %d patches", patch_num)
+            return PatchMode.create
 
         raise ValueError("no patch method specified")
 
@@ -165,17 +150,18 @@ def create_patch_centers(
     if parallel.on_root():
         logger.info("computing patch centers from %dx sparse sampling", sparse_factor)
 
+    coords = test_sample.coords
     cat = treecorr.Catalog(
-        ra=test_sample.ra,
+        ra=coords.ra,
         ra_units="radians",
-        dec=test_sample.dec,
+        dec=coords.dec,
         dec_units="radians",
         w=test_sample.weights,
         npatch=patch_num,
         config=dict(num_threads=parallel.get_size()),
     )
-    xyz = np.atleast_2d(cat.patch_centers)
-    return AngularCoordinates.from_3d(xyz)
+
+    return AngularCoordinates.from_3d(cat.patch_centers)
 
 
 def get_patch_centers(instance: Tcenters) -> AngularCoordinates:
@@ -198,18 +184,22 @@ class ChunkProcessor:
         else:
             self.patch_centers = patch_centers.to_3d()
 
-    def _compute_patch_ids(self, chunk: DataChunk) -> NDArray[np.int16]:
-        patches, _ = vq.vq(chunk.coords.to_3d(), self.patch_centers)
+    def _compute_patch_ids(self, data: PatchData) -> NDArray[np.int16]:
+        patches, _ = vq.vq(data.coords.to_3d(), self.patch_centers)
         return patches.astype(np.int16, copy=False)
 
-    def execute(self, chunk: DataChunk) -> dict[int, DataChunk]:
+    def execute(self, data: PatchData) -> dict[int, PatchData]:
         if self.patch_centers is not None:
-            patch_ids = self._compute_patch_ids(chunk)
-            chunk.set_patch_ids(patch_ids)
+            patch_ids = self._compute_patch_ids(data)
+            data.set_patch_ids(patch_ids)
 
-        return chunk.split_patches()
+        patches = {}
+        for patch_id, patch_data in groupby(data.patch_ids, data.data):
+            patches[int(patch_id)] = PatchData(patch_data)
 
-    def execute_send(self, queue: multiprocessing.Queue, chunk: DataChunk) -> None:
+        return patches
+
+    def execute_send(self, queue: multiprocessing.Queue, chunk: PatchData) -> None:
         queue.put(self.execute(chunk))
 
 
@@ -287,7 +277,7 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
             self.writers[patch_id] = writer
             return writer
 
-    def process_patches(self, patches: dict[int, DataChunk]) -> None:
+    def process_patches(self, patches: dict[int, PatchData]) -> None:
         for patch_id, patch in patches.items():
             self.get_writer(patch_id).process_chunk(patch)
 
@@ -303,64 +293,3 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
 
         patch_ids = np.fromiter(self.writers.keys(), dtype=np.int16)
         np.sort(patch_ids).tofile(self.cache_directory / PATCH_INFO_FILE)
-
-
-def write_catalog(
-    cache_directory: Tpath,
-    source: DataFrame | Tpath,
-    *,
-    ra_name: str,
-    dec_name: str,
-    weight_name: str | None = None,
-    redshift_name: str | None = None,
-    patch_centers: Tcenters | None = None,
-    patch_name: str | None = None,
-    patch_num: int | None = None,
-    degrees: bool = True,
-    chunksize: int | None = None,
-    probe_size: int = -1,
-    overwrite: bool = False,
-    progress: bool = False,
-    max_workers: int | None = None,
-    buffersize: int = -1,
-    **reader_kwargs,
-) -> None:
-    constructor = (
-        new_filereader if isinstance(source, get_args(Tpath)) else DataFrameReader
-    )
-
-    reader = None
-    if parallel.on_root():
-        actual_reader = constructor(
-            source,
-            ra_name=ra_name,
-            dec_name=dec_name,
-            weight_name=weight_name,
-            redshift_name=redshift_name,
-            patch_name=patch_name,
-            chunksize=chunksize,
-            degrees=degrees,
-            **reader_kwargs,
-        )
-        reader = actual_reader.get_dummy()
-
-    reader = parallel.COMM.bcast(reader, root=0)
-    if parallel.on_root():
-        reader = actual_reader
-
-    mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-    if mode == PatchMode.create:
-        patch_centers = None
-        if parallel.on_root():
-            patch_centers = create_patch_centers(reader, patch_num, probe_size)
-        patch_centers = parallel.COMM.bcast(patch_centers, root=0)
-
-    write_patches(
-        cache_directory,
-        reader,
-        patch_centers,
-        overwrite=overwrite,
-        progress=progress,
-        max_workers=max_workers,
-        buffersize=buffersize,
-    )

@@ -15,7 +15,7 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import parquet
 
-from yaw.catalog.utils import DataChunk
+from yaw.catalog.utils import PatchData
 
 if TYPE_CHECKING:
     from typing import Any
@@ -76,7 +76,7 @@ class DummyReader(Sized, Iterable[None], AbstractContextManager):
             yield None
 
 
-class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
+class BaseReader(Sized, Iterator[PatchData], AbstractContextManager):
     @abstractmethod
     def __init__(
         self,
@@ -144,13 +144,13 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         return DummyReader(self.num_chunks, self.has_weights, self.has_redshifts)
 
     @abstractmethod
-    def _load_next_chunk(self) -> DataChunk:
+    def _load_next_chunk(self) -> PatchData:
         pass
 
     def __len__(self) -> int:
         return self.num_chunks
 
-    def __next__(self) -> DataChunk:
+    def __next__(self) -> PatchData:
         if self._chunk_idx >= self._num_chunks:
             raise StopIteration()
 
@@ -158,24 +158,32 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         self._chunk_idx += 1
         return chunk
 
-    def __iter__(self) -> Iterator[DataChunk]:
+    def __iter__(self) -> Iterator[PatchData]:
         self._chunk_idx = 0
         return self
 
     @abstractmethod
-    def read(self, sparse: int) -> DataChunk:
+    def read(self, sparse: int) -> PatchData:
         n_read = 0
-        chunks = []
+
+        chunks_data = []
+        chunks_patch_id = []
+
         for chunk in self:
             # keep track of where the next spare record in the new chunk is located
             chunk_offset = ((n_read // sparse + 1) * sparse - n_read) % sparse
             chunk_size = len(chunk)
 
             sparse_idx = np.arange(chunk_offset, chunk_size, sparse)
-            chunks.append(chunk[sparse_idx])
+            chunks_data.append(chunk.data[sparse_idx])
+            if chunk.patch_ids is not None:
+                chunks_patch_id.append(chunk.patch_ids)
+
             n_read += chunk_size
 
-        return DataChunk.from_chunks(chunks)
+        data = np.concatenate(chunks_data)
+        patch_ids = np.concatenate(chunks_patch_id) if chunks_patch_id else None
+        return PatchData(data, patch_ids)
 
 
 def issue_io_log(num_records: int, num_chunks: int, source: str) -> None:
@@ -238,7 +246,7 @@ class DataFrameReader(BaseReader):
     def num_records(self) -> int:
         return len(self._data)
 
-    def _load_next_chunk(self) -> DataChunk:
+    def _load_next_chunk(self) -> PatchData:
         start = self._chunk_idx * self.chunksize
         end = start + self.chunksize
         chunk = self._data[start:end]
@@ -246,14 +254,14 @@ class DataFrameReader(BaseReader):
         data = {
             attr: chunk[col].to_numpy() for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+        return PatchData.from_columns(**data, degrees=self.degrees)
 
-    def read(self, sparse: int) -> DataChunk:
+    def read(self, sparse: int) -> PatchData:
         data = {
             attr: self._data[col][::sparse].to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+        return PatchData.from_columns(**data, degrees=self.degrees)
 
 
 class FileReader(BaseReader):
@@ -354,7 +362,7 @@ class ParquetReader(FileReader):
     def num_records(self) -> int:
         return self._file.num_records
 
-    def _load_next_chunk(self) -> DataChunk:
+    def _load_next_chunk(self) -> PatchData:
         reached_end = False
         while len(self._cache) < self.chunksize:
             try:
@@ -374,14 +382,14 @@ class ParquetReader(FileReader):
             attr: table.column(col).to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+        return PatchData.from_columns(**data, degrees=self.degrees)
 
-    def __iter__(self) -> Iterator[DataChunk]:
+    def __iter__(self) -> Iterator[PatchData]:
         self._cache = self._file.get_empty_group()
         self._file.rewind()
         return super().__iter__()
 
-    def read(self, sparse: int) -> DataChunk:
+    def read(self, sparse: int) -> PatchData:
         return super().read(sparse)
 
 
@@ -401,7 +409,7 @@ class FitsReader(FileReader):
     def num_records(self) -> int:
         return len(self._hdu.data)
 
-    def _load_next_chunk(self) -> DataChunk:
+    def _load_next_chunk(self) -> PatchData:
         hdu_data = self._hdu.data
         offset = self._chunk_idx * self.chunksize
         group_slice = slice(offset, offset + self.chunksize)
@@ -410,14 +418,14 @@ class FitsReader(FileReader):
             attr: swap_byteorder(hdu_data[col][group_slice])
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+        return PatchData.from_columns(**data, degrees=self.degrees)
 
-    def read(self, sparse: int) -> DataChunk:
+    def read(self, sparse: int) -> PatchData:
         data = {
             attr: swap_byteorder(self._hdu.data[col][::sparse])
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+        return PatchData.from_columns(**data, degrees=self.degrees)
 
 
 class HDFReader(FileReader):
@@ -434,20 +442,20 @@ class HDFReader(FileReader):
             raise IndexError("columns do not have equal length")
         return num_records[0]
 
-    def _load_next_chunk(self) -> DataChunk:
+    def _load_next_chunk(self) -> PatchData:
         offset = self._chunk_idx * self.chunksize
         data = {
             attr: self._file[col][offset : offset + self.chunksize]
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+        return PatchData.from_columns(**data, degrees=self.degrees)
 
-    def read(self, sparse: int) -> DataChunk:
+    def read(self, sparse: int) -> PatchData:
         data = {
             attr: self._file[col][::sparse]
             for attr, col in zip(self.attrs, self.columns)
         }
-        return DataChunk.from_columns(**data, degrees=self.degrees, chkfinite=True)
+        return PatchData.from_columns(**data, degrees=self.degrees)
 
 
 def new_filereader(
