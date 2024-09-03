@@ -6,28 +6,19 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.containers import default_closed
 from yaw.utils import AngularCoordinates
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from typing import Any, Generator
+    from typing import Any, Generator, NewType
 
     from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-    from yaw.containers import Tclosed
+    Tpids = NewType("Tpids", NDArray[np.int16])
 
 
 DATA_ATTRIBUTES = ("ra", "dec", "weights", "redshifts")
 PATCH_NAME_TEMPLATE = "patch_{:d}"
-
-
-class InconsistentPatchesError(Exception):
-    pass
-
-
-class InconsistentTreesError(Exception):
-    pass
 
 
 def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, NDArray]]:
@@ -39,32 +30,46 @@ def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, ND
     yield from zip(uniques, np.split(values_sorted, idx_split[1:]))
 
 
-def groupby_binning(
-    key_array: NDArray,
-    value_array: NDArray,
-    *,
-    binning: NDArray,
-    closed: Tclosed = default_closed,
-) -> Generator[tuple[NDArray, NDArray]]:
-    binning = np.asarray(binning)
-    bin_idx = np.digitize(key_array, binning, right=(closed == "right"))
+class InconsistentPatchesError(Exception):
+    pass
 
-    for i, bin_array in groupby(bin_idx, value_array):
-        if 0 < i < len(binning):  # skip values outside of binning range
-            yield binning[i - 1 : i + 1], bin_array
+
+class InconsistentTreesError(Exception):
+    pass
+
+
+class PatchIDs:
+    itemtype = "i2"
+
+    @staticmethod
+    def validate(patch_ids: ArrayLike) -> None:
+        min_id = 0
+        max_id = np.iinfo(np.int16).max
+
+        patch_ids = np.asarray(patch_ids)
+        if patch_ids.ndim > 1:
+            raise ValueError("'patch_ids' must be scalar or 1-dimensional")
+
+        if patch_ids.min() < min_id or patch_ids.max() > max_id:
+            raise ValueError(f"'patch_ids' must be in range [{min_id}, {max_id}]")
+
+    @staticmethod
+    def parse(patch_ids: ArrayLike, num_expect: int = -1) -> Tpids:
+        patch_ids = np.asarray(patch_ids)
+
+        PatchIDs.validate(patch_ids)
+        if num_expect > 0 and len(patch_ids) != num_expect:
+            raise ValueError("'patch_ids' does not have expected length")
+
+        return patch_ids.astype(PatchIDs.itemtype, casting="same_kind", copy=False)
 
 
 class PatchData:
-    __slots__ = ("data", "patch_ids")
+    __slots__ = ("data",)
     itemtype = "f8"
 
-    def __init__(
-        self,
-        data: NDArray,
-        patch_ids: NDArray[np.int16] | None = None,
-    ) -> None:
+    def __init__(self, data: NDArray) -> None:
         self.data = data
-        self.set_patch_ids(patch_ids)
 
     @classmethod
     def from_columns(
@@ -74,7 +79,6 @@ class PatchData:
         *,
         weights: NDArray | None = None,
         redshifts: NDArray | None = None,
-        patch_ids: NDArray | None = None,
         degrees: bool = True,
         chkfinite: bool = True,
     ):
@@ -92,40 +96,18 @@ class PatchData:
         if redshifts is not None:
             data["redshifts"] = asarray(redshifts)
 
-        return cls(data, patch_ids)
+        return cls(data)
 
     def __repr__(self) -> str:
         items = (
             f"num_records={len(self)}",
             f"has_weights={self.has_weights}",
             f"has_redshifts={self.has_redshifts}",
-            f"has_patch_ids={self.has_patch_ids}",
         )
         return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
 
     def __len__(self) -> int:
         return len(self.data)
-
-    @staticmethod
-    def validate_patch_ids(patch_ids: ArrayLike) -> None:
-        min_id = 0
-        max_id = np.iinfo(np.int16).max
-
-        patch_ids = np.asarray(patch_ids)
-        if patch_ids.min() < min_id or patch_ids.max() > max_id:
-            raise ValueError(f"'patch_ids' must be in range [{min_id}, {max_id}]")
-
-    def set_patch_ids(self, patch_ids: NDArray | None):
-        if patch_ids is not None:
-            patch_ids = np.asarray(patch_ids)
-
-            self.validate_patch_ids(patch_ids)
-            if patch_ids.shape != (len(self),):
-                raise ValueError("'patch_ids' has an invalid shape")
-
-            patch_ids = patch_ids.astype(np.int16, casting="same_kind", copy=False)
-
-        self.patch_ids = patch_ids
 
     @property
     def dtype(self) -> DTypeLike:
@@ -138,10 +120,6 @@ class PatchData:
     @property
     def has_redshifts(self) -> bool:
         return "redshifts" in self.data.dtype.fields
-
-    @property
-    def has_patch_ids(self) -> bool:
-        return self.patch_ids is not None
 
     @property
     def coords(self) -> AngularCoordinates:

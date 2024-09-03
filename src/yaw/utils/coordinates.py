@@ -27,6 +27,8 @@ def sgn(val: ArrayLike) -> ArrayLike:
 
 
 class CustomNumpyArray(Iterable, Sized):
+    __slots__ = ("data",)
+
     data: NDArray
 
     @property

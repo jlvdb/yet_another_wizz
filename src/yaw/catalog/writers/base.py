@@ -12,18 +12,19 @@ import numpy as np
 import treecorr
 from scipy.cluster import vq
 
-from yaw.catalog.utils import CatalogBase, PatchBase, PatchData, groupby
+from yaw.catalog.readers import DataChunk
+from yaw.catalog.utils import CatalogBase, PatchBase, PatchData, PatchIDs, groupby
 from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 
 if TYPE_CHECKING:
     from io import TextIOBase
 
-    from numpy.typing import NDArray
     from typing_extensions import Self
 
     from yaw.catalog.containers import Tcenters
     from yaw.catalog.readers import BaseReader
+    from yaw.catalog.utils import Tpids
 
 CHUNKSIZE = 65_536
 PATCH_INFO_FILE = "patch_ids.bin"
@@ -123,7 +124,7 @@ class PatchMode(Enum):
         log_sink = logger.debug if parallel.on_root() else lambda *x: x
 
         if patch_centers is not None:
-            PatchData.validate_patch_ids(len(patch_centers))
+            PatchIDs.validate(len(patch_centers))
             log_sink("applying patch %d centers", len(patch_centers))
             return PatchMode.apply
 
@@ -132,7 +133,7 @@ class PatchMode(Enum):
             return PatchMode.divide
 
         elif patch_num is not None:
-            PatchData.validate_patch_ids(patch_num)
+            PatchIDs.validate(patch_num)
             log_sink("creating %d patches", patch_num)
             return PatchMode.create
 
@@ -184,17 +185,18 @@ class ChunkProcessor:
         else:
             self.patch_centers = patch_centers.to_3d()
 
-    def _compute_patch_ids(self, data: PatchData) -> NDArray[np.int16]:
-        patches, _ = vq.vq(data.coords.to_3d(), self.patch_centers)
-        return patches.astype(np.int16, copy=False)
+    def _compute_patch_ids(self, data: PatchData) -> Tpids:
+        ids, _ = vq.vq(data.coords.to_3d(), self.patch_centers)
+        return PatchIDs.parse(ids)
 
-    def execute(self, data: PatchData) -> dict[int, PatchData]:
+    def execute(self, chunk: DataChunk) -> dict[int, PatchData]:
         if self.patch_centers is not None:
-            patch_ids = self._compute_patch_ids(data)
-            data.set_patch_ids(patch_ids)
+            patch_ids = self._compute_patch_ids(chunk.data)
+        else:
+            patch_ids = chunk.patch_ids
 
         patches = {}
-        for patch_id, patch_data in groupby(data.patch_ids, data.data):
+        for patch_id, patch_data in groupby(patch_ids, chunk.data.data):
             patches[int(patch_id)] = PatchData(patch_data)
 
         return patches

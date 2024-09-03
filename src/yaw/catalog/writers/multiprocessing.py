@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw.catalog.readers import DataChunk
 from yaw.catalog.utils import PatchData
 from yaw.catalog.writers.base import CatalogWriter, ChunkProcessor, get_patch_centers
 from yaw.containers import Tpath
@@ -20,8 +21,8 @@ if TYPE_CHECKING:
     from yaw.catalog.readers import BaseReader
 
 
-def split_deprecated(self: PatchData, num_chunks: int) -> list[PatchData]:
-    splits_data = np.array_split(self.data, num_chunks)
+def split_deprecated(self: DataChunk, num_chunks: int) -> list[DataChunk]:
+    splits_data = np.array_split(self.data.data, num_chunks)
 
     if self.patch_ids is not None:
         splits_patch_ids = np.array_split(self.patch_ids, num_chunks)
@@ -29,7 +30,7 @@ def split_deprecated(self: PatchData, num_chunks: int) -> list[PatchData]:
         splits_patch_ids = [None] * num_chunks
 
     return [
-        PatchData(data, patch_ids)
+        DataChunk(PatchData(data), patch_ids)
         for data, patch_ids in zip(splits_data, splits_patch_ids)
     ]
 
