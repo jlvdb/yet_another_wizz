@@ -72,19 +72,21 @@ except ImportError:
         return False
 
 
-def _pass_value(value: T, *args, **kwargs) -> T:
-    return value
-
-
-def _do_nothing(*args, **kwargs) -> None:
-    pass
-
-
 class MockComm:
-    Barrier = _do_nothing
-    Bcast = _pass_value
-    bcast = _pass_value
-    Get_size = _num_processes
+    def Barrier(self) -> None:
+        pass
+
+    def Bcast(self, value: T, *args, **kwargs) -> T:
+        return value
+
+    def bcast(self, value: T, *args, **kwargs) -> T:
+        return value
+
+    def Get_size(self) -> int:
+        return _num_processes()
+
+    def Get_rank(self) -> int:
+        return 0
 
 
 if use_mpi():
