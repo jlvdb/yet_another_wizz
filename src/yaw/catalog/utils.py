@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from itertools import compress
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import numpy as np
 
+from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates
 
 if TYPE_CHECKING:
+    from io import TextIOBase
     from pathlib import Path
     from typing import Any, Generator, NewType
 
@@ -81,7 +83,7 @@ class PatchData:
         redshifts: NDArray | None = None,
         degrees: bool = True,
         chkfinite: bool = True,
-    ):
+    ) -> PatchData:
         columns = compress(
             DATA_ATTRIBUTES, (True, True, weights is not None, redshifts is not None)
         )
@@ -97,6 +99,48 @@ class PatchData:
             data["redshifts"] = asarray(redshifts)
 
         return cls(data)
+
+    @classmethod
+    def from_file(cls, file: Tpath | TextIOBase) -> PatchData:
+        if isinstance(file, get_args(Tpath)):
+            file = open(file, mode="rb")
+        with file:
+            has_weights, has_redshifts = cls.read_header(file)
+            columns = compress(
+                DATA_ATTRIBUTES, (True, True, has_weights, has_redshifts)
+            )
+            dtype = np.dtype([(col, cls.itemtype) for col in columns])
+
+            rawdata = np.fromfile(file, dtype=np.byte)
+        return cls(rawdata.view(dtype))
+
+    @staticmethod
+    def read_header(file: TextIOBase) -> tuple[bool, bool]:
+        header_byte = file.read(1)
+        header_int = int.from_bytes(header_byte, byteorder="big")
+
+        has_weights = bool(header_int & (1 << 2))
+        has_redshifts = bool(header_int & (1 << 3))
+        return has_weights, has_redshifts
+
+    def to_file(self, file: Tpath | TextIOBase) -> None:
+        if isinstance(file, get_args(Tpath)):
+            file = open(file, mode="wb")
+        with file:
+            self.write_header(
+                file,
+                has_weights=self.has_weights,
+                has_redshifts=self.has_redshifts,
+            )
+            self.data.tofile(file)
+
+    @staticmethod
+    def write_header(
+        file: TextIOBase, *, has_weights: bool, has_redshifts: bool
+    ) -> None:
+        info = (1 << 0) | (1 << 1) | (has_weights << 2) | (has_redshifts << 3)
+        info_bytes = info.to_bytes(1, byteorder="big")
+        file.write(info_bytes)
 
     def __repr__(self) -> str:
         items = (

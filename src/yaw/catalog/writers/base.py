@@ -18,8 +18,6 @@ from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 
 if TYPE_CHECKING:
-    from io import TextIOBase
-
     from typing_extensions import Self
 
     from yaw.catalog.containers import Tcenters
@@ -30,14 +28,6 @@ CHUNKSIZE = 65_536
 PATCH_INFO_FILE = "patch_ids.bin"
 
 logger = logging.getLogger(__name__)
-
-
-def write_patch_header(
-    file: TextIOBase, *, has_weights: bool, has_redshifts: bool
-) -> None:
-    info = (1 << 0) | (1 << 1) | (has_weights << 2) | (has_redshifts << 3)
-    info_bytes = info.to_bytes(1, byteorder="big")
-    file.write(info_bytes)
 
 
 class PatchWriter(PatchBase):
@@ -65,7 +55,9 @@ class PatchWriter(PatchBase):
         self._file = None
 
         with self.data_path.open(mode="wb") as f:
-            write_patch_header(f, has_weights=has_weights, has_redshifts=has_redshifts)
+            PatchData.write_header(
+                f, has_weights=has_weights, has_redshifts=has_redshifts
+            )
 
         self.buffersize = CHUNKSIZE if buffersize < 0 else int(buffersize)
         self._cachesize = 0

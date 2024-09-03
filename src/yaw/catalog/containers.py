@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Mapping
-from itertools import compress
 from pathlib import Path
 from typing import TYPE_CHECKING, get_args
 
@@ -12,7 +11,6 @@ import numpy as np
 from yaw.catalog.readers import DataFrameReader, new_filereader
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import (
-    DATA_ATTRIBUTES,
     PATCH_NAME_TEMPLATE,
     CatalogBase,
     InconsistentPatchesError,
@@ -31,7 +29,6 @@ else:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from io import TextIOBase
     from typing import Union
 
     from numpy.typing import NDArray
@@ -119,29 +116,6 @@ class Metadata(YamlSerialisable):
         )
 
 
-def read_patch_header(file: TextIOBase) -> tuple[bool, bool]:
-    header_byte = file.read(1)
-    header_int = int.from_bytes(header_byte, byteorder="big")
-
-    has_weights = bool(header_int & (1 << 2))
-    has_redshifts = bool(header_int & (1 << 3))
-    return has_weights, has_redshifts
-
-
-def read_patch_data(
-    file: TextIOBase,
-    *,
-    has_weights: bool,
-    has_redshifts: bool,
-    skip_header: bool,
-) -> PatchData:
-    columns = compress(DATA_ATTRIBUTES, (True, True, has_weights, has_redshifts))
-    dtype = np.dtype([(col, "f8") for col in columns])
-
-    rawdata = np.fromfile(file, offset=1 if skip_header else 0, dtype=np.byte)
-    return PatchData(rawdata.view(dtype))
-
-
 class Patch(PatchBase):
     __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
 
@@ -154,17 +128,12 @@ class Patch(PatchBase):
         try:
             self.meta = Metadata.from_file(meta_data_file)
             with self.data_path.open(mode="rb") as f:
-                self._has_weights, self._has_redshifts = read_patch_header(f)
+                self._has_weights, self._has_redshifts = PatchData.read_header(f)
 
         except FileNotFoundError:
-            with self.data_path.open(mode="rb") as f:
-                self._has_weights, self._has_redshifts = read_patch_header(f)
-                data = read_patch_data(
-                    f,
-                    has_weights=self._has_weights,
-                    has_redshifts=self._has_redshifts,
-                    skip_header=False,
-                )
+            data = PatchData.from_file(self.data_path)
+            self._has_weights = data.has_weights
+            self._has_redshifts = data.has_redshifts
 
             self.meta = Metadata.compute(
                 data.coords, weights=data.weights, center=center
@@ -198,13 +167,7 @@ class Patch(PatchBase):
         return int(id_str)
 
     def load_data(self) -> PatchData:
-        with open(self.data_path, mode="rb") as f:
-            return read_patch_data(
-                f,
-                has_weights=self._has_weights,
-                has_redshifts=self._has_redshifts,
-                skip_header=True,
-            )
+        return PatchData.from_file(self.data_path)
 
     @property
     def coords(self) -> AngularCoordinates:
