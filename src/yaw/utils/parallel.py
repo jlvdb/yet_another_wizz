@@ -63,29 +63,34 @@ def _num_processes() -> int:
 try:
     from mpi4py import MPI
 
-    COMM = MPI.COMM_WORLD
-
     def use_mpi() -> bool:
-        return COMM.Get_size() > 1
+        return MPI.COMM_WORLD.Get_size() > 1
 
 except ImportError:
 
-    def pass_value(value: T, *args, **kwargs) -> T:
-        return value
-
-    def do_nothing(*args, **kwargs) -> None:
-        pass
-
-    class MockComm:
-        Barrier = do_nothing
-        Bcast = pass_value
-        bcast = pass_value
-        Get_size = _num_processes
-
-    COMM = MockComm()
-
     def use_mpi() -> Literal[False]:
         return False
+
+
+def _pass_value(value: T, *args, **kwargs) -> T:
+    return value
+
+
+def _do_nothing(*args, **kwargs) -> None:
+    pass
+
+
+class MockComm:
+    Barrier = _do_nothing
+    Bcast = _pass_value
+    bcast = _pass_value
+    Get_size = _num_processes
+
+
+if use_mpi():
+    COMM = MPI.COMM_WORLD
+else:
+    COMM = MockComm()
 
 
 def get_size(max_workers: int | None = None) -> int:

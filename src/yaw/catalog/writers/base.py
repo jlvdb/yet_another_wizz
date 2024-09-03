@@ -138,18 +138,18 @@ def create_patch_centers(
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
     sparse_factor = np.ceil(reader.num_records / probe_size)
-    test_sample = reader.read(int(sparse_factor))
+    data_probe = reader.read(int(sparse_factor)).data
 
     if parallel.on_root():
         logger.info("computing patch centers from %dx sparse sampling", sparse_factor)
 
-    coords = test_sample.coords
+    coords = data_probe.coords
     cat = treecorr.Catalog(
         ra=coords.ra,
         ra_units="radians",
         dec=coords.dec,
         dec_units="radians",
-        w=test_sample.weights,
+        w=data_probe.weights,
         npatch=patch_num,
         config=dict(num_threads=parallel.get_size()),
     )

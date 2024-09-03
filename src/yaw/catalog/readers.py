@@ -199,7 +199,7 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
             chunk_size = len(chunk)
 
             sparse_idx = np.arange(chunk_offset, chunk_size, sparse)
-            chunks_data.append(chunk.data[sparse_idx])
+            chunks_data.append(chunk.data.data[sparse_idx])
             if chunk.patch_ids is not None:
                 chunks_patch_id.append(chunk.patch_ids)
 
@@ -207,7 +207,7 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
 
         data = np.concatenate(chunks_data)
         patch_ids = np.concatenate(chunks_patch_id) if chunks_patch_id else None
-        return PatchData(data, patch_ids)
+        return DataChunk(PatchData(data), patch_ids)
 
 
 def issue_io_log(num_records: int, num_chunks: int, source: str) -> None:

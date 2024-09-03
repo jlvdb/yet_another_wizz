@@ -307,10 +307,11 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
-        chunksize: int | None = None,
-        probe_size: int = -1,
         overwrite: bool = False,
         progress: bool = False,
+        max_workers: int | None = None,
+        chunksize: int | None = None,
+        probe_size: int = -1,
         **reader_kwargs,
     ) -> Catalog:
         write_catalog(
@@ -328,6 +329,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             probe_size=probe_size,
             overwrite=overwrite,
             progress=progress,
+            max_workers=max_workers,
             **reader_kwargs,
         )
 
@@ -354,10 +356,11 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
-        chunksize: int | None = None,
-        probe_size: int = -1,
         overwrite: bool = False,
         progress: bool = False,
+        max_workers: int | None = None,
+        chunksize: int | None = None,
+        probe_size: int = -1,
         **reader_kwargs,
     ) -> Catalog:
         write_catalog(
@@ -375,6 +378,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             probe_size=probe_size,
             overwrite=overwrite,
             progress=progress,
+            max_workers=max_workers,
             **reader_kwargs,
         )
 
