@@ -51,6 +51,8 @@ def resample_jackknife(observations: NDArray, patch_rows: bool = True) -> NDArra
 
 
 class HistData(CorrData):
+    __slots__ = ("binning", "data", "samples")
+
     @classmethod
     def from_catalog(
         cls,
@@ -115,6 +117,8 @@ class HistData(CorrData):
 
 
 class RedshiftData(CorrData):
+    __slots__ = ("binning", "data", "samples")
+
     @classmethod
     def from_corrdata(
         cls,

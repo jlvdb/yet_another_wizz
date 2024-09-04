@@ -18,6 +18,7 @@ from yaw.containers import (
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io, parallel
+from yaw.utils.parallel import Broadcastable
 
 if TYPE_CHECKING:
     from typing import Any, TypeVar
@@ -73,7 +74,9 @@ def landy_szalay(
     return ((dd - dr) + (rr - rd)) / rr
 
 
-class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
+class CorrFunc(
+    BinwiseData, PatchwiseData, Serialisable, HdfSerializable, Broadcastable
+):
     __slots__ = ("dd", "dr", "rd", "rr")
 
     def __init__(
@@ -145,14 +148,9 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
             new = super().from_file(path)
 
         else:
-            new = cls.__new__(cls)
-            for kind in cls.__slots__:
-                setattr(new, kind, None)
+            new = cls._init_null()
 
-        for kind in cls.__slots__:
-            counts = getattr(new, kind)
-            setattr(new, kind, parallel.COMM.bcast(counts, root=0))
-
+        cls._broadcast(new)
         return new
 
     def to_file(self, path: Tpath) -> None:
@@ -238,7 +236,9 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return CorrData(self.binning, corr_data, corr_samples)
 
 
-class CorrData(AsciiSerializable, SampledData):
+class CorrData(AsciiSerializable, SampledData, Broadcastable):
+    __slots__ = ("binning", "data", "samples")
+
     @property
     def _description_data(self) -> str:
         return "correlation function with symmetric 68% percentile confidence"
@@ -254,8 +254,6 @@ class CorrData(AsciiSerializable, SampledData):
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
-        new = None
-
         if parallel.on_root():
             logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
 
@@ -267,7 +265,11 @@ class CorrData(AsciiSerializable, SampledData):
 
             new = cls(binning, data, samples)
 
-        return parallel.COMM.bcast(new, root=0)
+        else:
+            new = cls._init_null()
+
+        cls._broadcast(new)
+        return new
 
     def to_files(self, path_prefix: Tpath) -> None:
         if parallel.on_root():
