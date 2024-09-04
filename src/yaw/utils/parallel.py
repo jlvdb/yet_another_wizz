@@ -120,15 +120,16 @@ def on_worker() -> bool:
     return COMM.Get_rank() != 0
 
 
-def ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> list[int]:
+def ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> set[int]:
     proc_name = MPI.Get_processor_name()
     proc_names = COMM.gather(proc_name, root=rank)
 
-    on_same_node = []
+    on_same_node = set()
     if COMM.Get_rank() == rank:
         on_same_node = [i for i, name in enumerate(proc_names) if name == proc_name]
         if max_workers is not None:
             on_same_node = on_same_node[:max_workers]
+        on_same_node = set(on_same_node)
 
     return COMM.bcast(on_same_node, root=rank)
 
@@ -247,10 +248,10 @@ def iter_unordered(
         if rank0_node_only:
             ranks = ranks_on_same_node(rank=0, max_workers=max_workers)
         else:
-            ranks = range(max_workers)
+            ranks = set(range(max_workers))
 
         num_workers = len(ranks)
-        iter_kwargs["ranks"] = set(ranks)
+        iter_kwargs["ranks"] = ranks
         parallel_method = _mpi_iter_unordered
 
     else:

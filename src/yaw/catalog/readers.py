@@ -79,6 +79,19 @@ class DataChunk(Sized):
     def __len__(self) -> int:
         return len(self.data)
 
+    def split(self, num_splits: int) -> list[DataChunk]:
+        splits_data = np.array_split(self.data.data, num_splits)
+
+        if self.patch_ids is not None:
+            splits_patch_ids = np.array_split(self.patch_ids, num_splits)
+        else:
+            splits_patch_ids = [None] * num_splits
+
+        return [
+            DataChunk(PatchData(data), patch_ids)
+            for data, patch_ids in zip(splits_data, splits_patch_ids)
+        ]
+
 
 @dataclass
 class DummyReader(Sized, Iterable[None], AbstractContextManager):

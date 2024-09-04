@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing
 from contextlib import AbstractContextManager
 from enum import Enum
 from pathlib import Path
@@ -18,6 +17,7 @@ from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
     from typing_extensions import Self
 
     from yaw.catalog.containers import Tcenters
@@ -132,6 +132,17 @@ class PatchMode(Enum):
         raise ValueError("no patch method specified")
 
 
+def get_patch_centers(instance: Tcenters) -> AngularCoordinates:
+    try:
+        return instance.get_centers()
+    except AttributeError as err:
+        if isinstance(instance, AngularCoordinates):
+            return instance
+        raise TypeError(
+            "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
+        ) from err
+
+
 def create_patch_centers(
     reader: BaseReader, patch_num: int, probe_size: int
 ) -> AngularCoordinates:
@@ -157,44 +168,26 @@ def create_patch_centers(
     return AngularCoordinates.from_3d(cat.patch_centers)
 
 
-def get_patch_centers(instance: Tcenters) -> AngularCoordinates:
-    try:
-        return instance.get_centers()
-    except AttributeError as err:
-        if isinstance(instance, AngularCoordinates):
-            return instance
-        raise TypeError(
-            "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
-        ) from err
+def assign_patch_centers(patch_centers: NDArray, data: PatchData) -> Tpids:
+    ids, _ = vq.vq(data.coords.to_3d(), patch_centers)
+    return PatchIDs.parse(ids)
 
 
-class ChunkProcessor:
-    __slots__ = ("patch_centers",)
+def split_into_patches(
+    chunk: DataChunk, patch_centers: NDArray
+) -> dict[int, PatchData]:
+    if chunk.patch_ids is not None:
+        patch_ids = chunk.patch_ids
+    elif patch_centers is not None:
+        patch_ids = assign_patch_centers(patch_centers, chunk.data)
+    else:  # pragma: no cover
+        raise RuntimeError("found no way to obtain patch centers")
 
-    def __init__(self, patch_centers: AngularCoordinates | None) -> None:
-        if patch_centers is None:
-            self.patch_centers = None
-        else:
-            self.patch_centers = patch_centers.to_3d()
+    patches = {}
+    for patch_id, patch_data in groupby(patch_ids, chunk.data.data):
+        patches[int(patch_id)] = PatchData(patch_data)
 
-    def _compute_patch_ids(self, data: PatchData) -> Tpids:
-        ids, _ = vq.vq(data.coords.to_3d(), self.patch_centers)
-        return PatchIDs.parse(ids)
-
-    def execute(self, chunk: DataChunk) -> dict[int, PatchData]:
-        if self.patch_centers is not None:
-            patch_ids = self._compute_patch_ids(chunk.data)
-        else:
-            patch_ids = chunk.patch_ids
-
-        patches = {}
-        for patch_id, patch_data in groupby(patch_ids, chunk.data.data):
-            patches[int(patch_id)] = PatchData(patch_data)
-
-        return patches
-
-    def execute_send(self, queue: multiprocessing.Queue, chunk: PatchData) -> None:
-        queue.put(self.execute(chunk))
+    return patches
 
 
 class CatalogWriter(AbstractContextManager, CatalogBase):
