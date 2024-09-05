@@ -285,10 +285,13 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     __slots__ = ("cache_directory", "patches")
 
     def __init__(self, cache_directory: Tpath) -> None:
-        self.cache_directory = Path(cache_directory)
-
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
+
+        self.cache_directory = Path(cache_directory)
+        if not self.cache_directory.exists():
+            raise OSError(f"cache directory not found: {self.cache_directory}")
+
         self.patches = load_patches(
             self.cache_directory, patch_centers=None, progress=False
         )
