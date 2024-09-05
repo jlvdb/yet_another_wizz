@@ -122,7 +122,7 @@ class Parameter:
     choices: tuple[Any] = field(default=NotSet)
 
     def to_dict(self) -> dict:  # NOTE: used by RAIL wrapper
-        return {key: value for key, value in asdict(self) if value is not NotSet}
+        return {key: val for key, val in asdict(self).items() if val is not NotSet}
 
 
 class ParamSpec(Mapping[Parameter]):
@@ -136,7 +136,7 @@ class ParamSpec(Mapping[Parameter]):
         return string
 
     def __len__(self) -> int:
-        return len(self.params)
+        return len(self._params)
 
     def __getitem__(self, name: str) -> Parameter:
         return self._params[name]
