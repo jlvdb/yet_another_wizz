@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import Any, Callable, Literal, TypeVar
 
+    from mpi4py.MPI import Comm
     from numpy.typing import NDArray
 
     T = TypeVar("T")
@@ -32,6 +33,7 @@ __all__ = [
     "on_worker",
     "ranks_on_same_node",
     "use_mpi",
+    "world_to_comm_rank",
 ]
 
 logger = logging.getLogger(__name__)
@@ -132,6 +134,13 @@ def ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> set[int
         on_same_node = set(on_same_node)
 
     return COMM.bcast(on_same_node, root=rank)
+
+
+def world_to_comm_rank(comm: Comm, world_rank: int) -> int:
+    comm_rank = None
+    if MPI.COMM_WORLD.Get_rank() == world_rank:
+        comm_rank = comm.Get_rank()
+    return comm.bcast(comm_rank, root=world_rank)
 
 
 class EndOfQueue:

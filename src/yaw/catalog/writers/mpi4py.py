@@ -1,61 +1,100 @@
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
-import numpy as np
 from mpi4py import MPI
 
 from yaw.catalog.readers import DataChunk
-from yaw.catalog.utils import PatchData
-from yaw.catalog.writers.base import CatalogWriter, ChunkProcessor, get_patch_centers
+from yaw.catalog.writers.base import (
+    CatalogWriter,
+    get_patch_centers,
+    split_into_patches,
+)
 from yaw.containers import Tpath
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 from yaw.utils.parallel import EndOfQueue
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Iterator
+
+    from mpi4py.MPI import Comm
 
     from yaw.catalog.containers import Tcenters
     from yaw.catalog.readers import BaseReader
 
 
-def split_deprecated(self: DataChunk, num_chunks: int) -> list[DataChunk]:
-    splits_data = np.array_split(self.data.data, num_chunks)
+class WorkerManager:
+    def __init__(self, max_workers: int | None, reader_rank: int = 0) -> None:
+        self.reader_rank = reader_rank
 
-    if self.patch_ids is not None:
-        splits_patch_ids = np.array_split(self.patch_ids, num_chunks)
+        max_workers = parallel.get_size(max_workers)
+        self.active_ranks = parallel.ranks_on_same_node(reader_rank, max_workers)
+
+        self.active_ranks.discard(reader_rank)
+        self.writer_rank = self.active_ranks.pop()
+        self.active_ranks.add(reader_rank)
+
+    def get_comm(self) -> Comm:
+        rank = parallel.COMM.Get_rank()
+        if rank in self.active_ranks:
+            return parallel.COMM.Split(1, rank)
+        else:
+            return parallel.COMM.Split(MPI.UNDEFINED, rank)
+
+
+def scatter_data_chunk(comm: Comm, reader_rank: int, chunk: DataChunk) -> DataChunk:
+    num_ranks = comm.Get_size()
+
+    if comm.Get_rank() == reader_rank:
+        splits = chunk.split(num_ranks)
+
+        for rank, split in enumerate(splits):
+            if rank != reader_rank:
+                comm.send(split, dest=rank, tag=2)
+
+        return splits[reader_rank]
+
     else:
-        splits_patch_ids = [None] * num_chunks
-
-    return [
-        DataChunk(PatchData(data), patch_ids)
-        for data, patch_ids in zip(splits_data, splits_patch_ids)
-    ]
+        return comm.recv(source=0, tag=2)
 
 
-def _writer_process(
-    get_method: Callable[[], dict[int, PatchData] | EndOfQueue],
+def chunk_processing_task(
+    comm: Comm,
+    worker_config: WorkerManager,
+    patch_centers: Tcenters,
+    chunk_iter: Iterator[DataChunk],
+) -> None:
+    if patch_centers is not None:
+        patch_centers = patch_centers.to_3d()
+
+    reader_rank = parallel.world_to_comm_rank(comm, worker_config.reader_rank)
+
+    for chunk in chunk_iter:
+        worker_chunk = scatter_data_chunk(comm, reader_rank, chunk)
+        patches = split_into_patches(worker_chunk, patch_centers)
+        parallel.COMM.send(patches, dest=worker_config.writer_rank, tag=1)
+
+    comm.Barrier()
+
+
+def writer_task(
     cache_directory: Tpath,
     *,
-    overwrite: bool = True,
     has_weights: bool,
     has_redshifts: bool,
+    overwrite: bool = True,
     buffersize: int = -1,
 ) -> None:
-    writer = CatalogWriter(
+    recv = parallel.COMM.recv
+    with CatalogWriter(
         cache_directory,
-        overwrite=overwrite,
         has_weights=has_weights,
         has_redshifts=has_redshifts,
+        overwrite=overwrite,
         buffersize=buffersize,
-    )
-    with writer:
-        while True:
-            patches = get_method()
-            if patches is EndOfQueue:
-                break
+    ) as writer:
+        while (patches := recv(source=MPI.ANY_SOURCE, tag=1)) is not EndOfQueue:
             writer.process_patches(patches)
 
 
@@ -69,58 +108,35 @@ def write_patches(
     max_workers: int | None = None,
     buffersize: int = -1,
 ) -> None:
-    rank = parallel.COMM.Get_rank()
-    patch_centers = get_patch_centers(patch_centers)
-    preprocess = ChunkProcessor(patch_centers)
-
-    # run all processing on the same node as the root (which handles reading)
     max_workers = parallel.get_size(max_workers)
-    active_ranks = parallel.ranks_on_same_node(0, max_workers)
-    # choose any rank that will handle writing the output
-    for writer_rank in active_ranks:
-        if writer_rank != 0:
-            break
-    active_ranks.remove(writer_rank)
-    active_comm = parallel.COMM.Split(
-        1 if rank in active_ranks else MPI.UNDEFINED, rank
-    )
+    if max_workers < 2:
+        raise ValueError("catalog creation requires at least two workers")
 
-    if rank == writer_rank:
-        _writer_process(
-            get_method=partial(parallel.COMM.recv, source=MPI.ANY_SOURCE, tag=2),
+    rank = parallel.COMM.Get_rank()
+    worker_config = WorkerManager(max_workers, 0)
+    worker_comm = worker_config.get_comm()
+
+    if rank == worker_config.writer_rank:
+        writer_task(
             cache_directory=path,
-            overwrite=overwrite,
             has_weights=reader.has_weights,
             has_redshifts=reader.has_redshifts,
+            overwrite=overwrite,
             buffersize=buffersize,
         )
 
-    elif rank in active_ranks:
+    elif rank in worker_config.active_ranks:
         with reader:
-            chunk_iter = iter(reader)
-            if progress:
-                chunk_iter = Indicator(reader)
+            chunk_iter = Indicator(reader) if progress else iter(reader)
+            chunk_processing_task(
+                worker_comm,
+                worker_config,
+                get_patch_centers(patch_centers),
+                chunk_iter,
+            )
 
-            for chunk in chunk_iter:
-                if rank == 0:
-                    splitted = split_deprecated(chunk, len(active_ranks))
-                    split_assignments = dict(zip(active_ranks, splitted))
+        worker_comm.Free()
 
-                    for dest, split in split_assignments.items():
-                        if dest != 0:
-                            parallel.COMM.send(split, dest=dest, tag=1)
-                    split = split_assignments[0]
-
-                else:
-                    split = parallel.COMM.recv(source=0, tag=1)
-
-                patches = preprocess.execute(split)
-                parallel.COMM.send(patches, dest=writer_rank, tag=2)
-
-            active_comm.Barrier()
-            if rank == 0:
-                parallel.COMM.send(EndOfQueue, dest=writer_rank, tag=2)
-
-        active_comm.Free()
-
+    if parallel.COMM.Get_rank() == worker_config.reader_rank:
+        parallel.COMM.send(EndOfQueue, dest=worker_config.writer_rank, tag=1)
     parallel.COMM.Barrier()
