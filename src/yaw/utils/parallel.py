@@ -5,18 +5,26 @@ import multiprocessing
 import os
 import subprocess
 import sys
+from abc import ABC
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import Any, Callable, Literal, TypeVar
 
+    from numpy.typing import NDArray
+
     T = TypeVar("T")
     Targ = TypeVar("Targ")
     Tresult = TypeVar("Tresult")
     Titer = TypeVar("Titer")
+    Tbroadcast = TypeVar("Tbroadcast", bound="Broadcastable")
 
 __all__ = [
+    "Broadcastable",
     "COMM",
     "get_size",
     "iter_unordered",
@@ -254,3 +262,76 @@ def iter_unordered(
         logger.debug(f"running parallel jobs on {num_workers} workers")
 
     yield from parallel_method(func, iterable, **iter_kwargs)
+
+
+def broadcast_array(array: NDArray | None) -> NDArray:
+    array_info = ()
+    if on_root():
+        array = np.ascontiguousarray(array)
+        array_info = (array.shape, array.dtype)
+    array_info = COMM.bcast(array_info, root=0)
+
+    if not on_root():
+        shape, dtype = array_info
+        array = np.empty(shape, dtype=dtype)
+
+    COMM.Bcast(array, root=0)
+    return array
+
+
+@dataclass
+class _BroadcastRecurse:
+    type: type[Broadcastable]
+
+
+class _MpiBroadcast:
+    pass
+
+
+class Broadcastable(ABC):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__slots__" not in cls.__dict__:
+            raise TypeError(
+                f"{cls.__name__}: subclass of Broadcastable must implement __slots__"
+            )
+
+    @classmethod
+    def _broadcast(cls, inst: Tbroadcast) -> None:
+        attributes = {}
+        if on_root():
+            for attr in inst.__slots__:
+                value = getattr(inst, attr)
+
+                if isinstance(value, Broadcastable):
+                    attributes[attr] = _BroadcastRecurse(type(value))
+                elif isinstance(value, np.ndarray):
+                    attributes[attr] = _MpiBroadcast
+                else:
+                    attributes[attr] = value
+
+        attributes = COMM.bcast(attributes, root=0)
+
+        for attr, value_or_info in attributes.items():
+            if isinstance(value_or_info, _BroadcastRecurse):
+                if on_root():
+                    attr_inst = getattr(inst, attr)
+                else:
+                    attr_inst = value_or_info.type._init_null()
+
+                attr_inst._broadcast(attr_inst)
+                setattr(inst, attr, attr_inst)
+
+            elif value_or_info is _MpiBroadcast:
+                array = broadcast_array(getattr(inst, attr))
+                setattr(inst, attr, array)
+
+            else:
+                setattr(inst, attr, value_or_info)
+
+    @classmethod
+    def _init_null(cls: type[Tbroadcast]) -> Tbroadcast:
+        new = cls.__new__(cls)
+        for attr in cls.__slots__:
+            setattr(new, attr, None)
+        return new

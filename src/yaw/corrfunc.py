@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from functools import wraps
-from itertools import compress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,6 +18,7 @@ from yaw.containers import (
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io, parallel
+from yaw.utils.parallel import Broadcastable
 
 if TYPE_CHECKING:
     from typing import Any, TypeVar
@@ -74,7 +74,9 @@ def landy_szalay(
     return ((dd - dr) + (rr - rd)) / rr
 
 
-class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
+class CorrFunc(
+    BinwiseData, PatchwiseData, Serialisable, HdfSerializable, Broadcastable
+):
     __slots__ = ("dd", "dr", "rd", "rr")
 
     def __init__(
@@ -94,16 +96,14 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         if dr is None and rd is None and rr is None:
             raise EstimatorError("either 'dr', 'rd' or 'rr' are required")
 
-        self.dd = dd
-        for kind, counts in zip(("dr", "rd", "rr"), (dr, rd, rr)):
+        for kind, counts in zip(self.__slots__, (dd, dr, rd, rr)):
             if counts is not None:
                 check_compatible(counts, attr_name=kind)
             setattr(self, kind, counts)
 
     def __repr__(self) -> str:
-        available = compress(("dr", "rd", "rr"), (self.dr, self.rd, self.rr))
         items = (
-            f"counts=dd|{'|'.join(available)}",
+            f"counts={'|'.join(self.to_dict().keys())}",
             f"auto={self.auto}",
             f"num_bins={self.num_bins}",
             f"num_patches={self.num_patches}",
@@ -127,8 +127,7 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         # ignore "version" since this method did not change from legacy
         names = ("data_data", "data_random", "random_data", "random_random")
         kwargs = {
-            kind: _try_load(source, name)
-            for kind, name in zip(("dd", "dr", "rd", "rr"), names)
+            kind: _try_load(source, name) for kind, name in zip(cls.__slots__, names)
         }
         return cls.from_dict(kwargs)
 
@@ -136,22 +135,23 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         io.write_version_tag(dest)
 
         names = ("data_data", "data_random", "random_data", "random_random")
-        counts = (self.dd, self.dr, self.rd, self.rr)
-        for name, count in zip(names, counts):
+        for name, count in zip(names, self.to_dict().values()):
             if count is not None:
                 group = dest.create_group(name)
                 count.to_hdf(group)
 
     @classmethod
     def from_file(cls, path: Tpath) -> CorrFunc:
-        new = None
-
         if parallel.on_root():
             logger.info("reading %s from: %s", cls.__name__, path)
 
             new = super().from_file(path)
 
-        return parallel.COMM.bcast(new, root=0)
+        else:
+            new = cls._init_null()
+
+        cls._broadcast(new)
+        return new
 
     def to_file(self, path: Tpath) -> None:
         if parallel.on_root():
@@ -162,10 +162,9 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         parallel.COMM.Barrier()
 
     def to_dict(self) -> dict[str, NormalisedCounts]:
-        attrs = ("dd", "dr", "rd", "rr")
         return {
             attr: counts
-            for attr in attrs
+            for attr in self.__slots__
             if (counts := getattr(self, attr)) is not None
         }
 
@@ -237,7 +236,9 @@ class CorrFunc(BinwiseData, PatchwiseData, Serialisable, HdfSerializable):
         return CorrData(self.binning, corr_data, corr_samples)
 
 
-class CorrData(AsciiSerializable, SampledData):
+class CorrData(AsciiSerializable, SampledData, Broadcastable):
+    __slots__ = ("binning", "data", "samples")
+
     @property
     def _description_data(self) -> str:
         return "correlation function with symmetric 68% percentile confidence"
@@ -253,8 +254,6 @@ class CorrData(AsciiSerializable, SampledData):
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
-        new = None
-
         if parallel.on_root():
             logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
 
@@ -266,7 +265,11 @@ class CorrData(AsciiSerializable, SampledData):
 
             new = cls(binning, data, samples)
 
-        return parallel.COMM.bcast(new, root=0)
+        else:
+            new = cls._init_null()
+
+        cls._broadcast(new)
+        return new
 
     def to_files(self, path_prefix: Tpath) -> None:
         if parallel.on_root():

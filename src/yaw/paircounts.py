@@ -14,6 +14,7 @@ from yaw.containers import (
     load_legacy_binning,
 )
 from yaw.utils import io
+from yaw.utils.parallel import Broadcastable
 
 if TYPE_CHECKING:
     from typing import Any
@@ -30,7 +31,9 @@ __all__ = [
 ]
 
 
-class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable):
+class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadcastable):
+    __slots__ = ()
+
     @property
     @abstractmethod
     def auto(self) -> bool:
@@ -285,7 +288,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts[:, patch_id1, patch_id2] = counts_binned
 
 
-class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable):
+class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable, Broadcastable):
     __slots__ = ("counts", "totals")
 
     def __init__(self, counts: PatchedCounts, totals: PatchedTotals) -> None:
