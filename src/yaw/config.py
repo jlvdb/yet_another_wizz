@@ -401,7 +401,7 @@ class BinningConfig(BaseConfig, Immutable):
             Parameter(
                 name="method",
                 help="",
-                type=int,
+                type=str,
                 choices=unpack_type(Tbin_method_all),
                 default=default_bin_method,
             ),
@@ -415,7 +415,7 @@ class BinningConfig(BaseConfig, Immutable):
             Parameter(
                 name="closed",
                 help="",
-                type=int,
+                type=str,
                 choices=unpack_type(Tclosed),
                 default=default_closed,
             ),
