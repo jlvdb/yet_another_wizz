@@ -99,9 +99,9 @@ def write_patches(
     ):
         patch_queue = manager.Queue()
 
-        chunk_processing_task = ChunkProcessingTask(
-            patch_queue, get_patch_centers(patch_centers)
-        )
+        if patch_centers is not None:
+            patch_centers = get_patch_centers(patch_centers)
+        chunk_processing_task = ChunkProcessingTask(patch_queue, patch_centers)
 
         with WriterProcess(
             patch_queue,

@@ -341,7 +341,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new.patches = load_patches(
-            new.cache_directory, patch_centers=patch_centers, progress=True
+            new.cache_directory, patch_centers=patch_centers, progress=progress
         )
         return new
 
@@ -390,7 +390,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new.patches = load_patches(
-            new.cache_directory, patch_centers=patch_centers, progress=True
+            new.cache_directory, patch_centers=patch_centers, progress=progress
         )
         return new
 

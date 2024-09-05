@@ -567,6 +567,18 @@ class Configuration(BaseConfig, Immutable):
         )
 
     @classmethod
+    def get_paramspec(cls) -> ParamSpec:
+        params = [
+            Parameter(
+                name="cosmology",
+                help="",
+                type=str,
+                default=default_cosmology,
+            ),
+        ]
+        return ParamSpec(params)
+
+    @classmethod
     def create(
         cls,
         *,

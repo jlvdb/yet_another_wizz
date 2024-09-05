@@ -62,7 +62,7 @@ def scatter_data_chunk(comm: Comm, reader_rank: int, chunk: DataChunk) -> DataCh
 def chunk_processing_task(
     comm: Comm,
     worker_config: WorkerManager,
-    patch_centers: Tcenters,
+    patch_centers: Tcenters | None,
     chunk_iter: Iterator[DataChunk],
 ) -> None:
     if patch_centers is not None:
@@ -126,12 +126,15 @@ def write_patches(
         )
 
     elif rank in worker_config.active_ranks:
+        if patch_centers is not None:
+            patch_centers = get_patch_centers(patch_centers)
+
         with reader:
             chunk_iter = Indicator(reader) if progress else iter(reader)
             chunk_processing_task(
                 worker_comm,
                 worker_config,
-                get_patch_centers(patch_centers),
+                patch_centers,
                 chunk_iter,
             )
 

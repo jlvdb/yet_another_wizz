@@ -174,7 +174,7 @@ def assign_patch_centers(patch_centers: NDArray, data: PatchData) -> Tpids:
 
 
 def split_into_patches(
-    chunk: DataChunk, patch_centers: NDArray
+    chunk: DataChunk, patch_centers: NDArray | None
 ) -> dict[int, PatchData]:
     if chunk.patch_ids is not None:
         patch_ids = chunk.patch_ids
