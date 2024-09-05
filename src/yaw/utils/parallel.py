@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import Any, Callable, Literal, TypeVar
 
+    from mpi4py.MPI import Comm
     from numpy.typing import NDArray
 
     T = TypeVar("T")
@@ -32,6 +33,7 @@ __all__ = [
     "on_worker",
     "ranks_on_same_node",
     "use_mpi",
+    "world_to_comm_rank",
 ]
 
 logger = logging.getLogger(__name__)
@@ -120,17 +122,25 @@ def on_worker() -> bool:
     return COMM.Get_rank() != 0
 
 
-def ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> list[int]:
+def ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> set[int]:
     proc_name = MPI.Get_processor_name()
     proc_names = COMM.gather(proc_name, root=rank)
 
-    on_same_node = []
+    on_same_node = set()
     if COMM.Get_rank() == rank:
         on_same_node = [i for i, name in enumerate(proc_names) if name == proc_name]
         if max_workers is not None:
             on_same_node = on_same_node[:max_workers]
+        on_same_node = set(on_same_node)
 
     return COMM.bcast(on_same_node, root=rank)
+
+
+def world_to_comm_rank(comm: Comm, world_rank: int) -> int:
+    comm_rank = None
+    if MPI.COMM_WORLD.Get_rank() == world_rank:
+        comm_rank = comm.Get_rank()
+    return comm.bcast(comm_rank, root=world_rank)
 
 
 class EndOfQueue:
@@ -247,10 +257,10 @@ def iter_unordered(
         if rank0_node_only:
             ranks = ranks_on_same_node(rank=0, max_workers=max_workers)
         else:
-            ranks = range(max_workers)
+            ranks = set(range(max_workers))
 
         num_workers = len(ranks)
-        iter_kwargs["ranks"] = set(ranks)
+        iter_kwargs["ranks"] = ranks
         parallel_method = _mpi_iter_unordered
 
     else:
