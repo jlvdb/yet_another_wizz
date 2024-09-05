@@ -5,7 +5,7 @@ import pprint
 import warnings
 from abc import abstractmethod
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Literal, Union, get_args
 
 import astropy.cosmology
@@ -120,6 +120,9 @@ class Parameter:
     is_sequence: bool = field(default=False)
     default: Any = field(default=NotSet)
     choices: tuple[Any] = field(default=NotSet)
+
+    def to_dict(self) -> dict:  # NOTE: used by RAIL wrapper
+        return {key: value for key, value in asdict(self) if value is not NotSet}
 
 
 class ParamSpec(Mapping[Parameter]):
