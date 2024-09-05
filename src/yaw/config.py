@@ -125,7 +125,7 @@ class Parameter:
         return {key: val for key, val in asdict(self).items() if val is not NotSet}
 
 
-class ParamSpec(Mapping[Parameter]):
+class ParamSpec(Mapping[str, Parameter]):
     def __init__(self, params: Iterable[Parameter]) -> None:
         self._params = {p.name: p for p in params}
 
@@ -141,7 +141,7 @@ class ParamSpec(Mapping[Parameter]):
     def __getitem__(self, name: str) -> Parameter:
         return self._params[name]
 
-    def __iter__(self) -> Iterator[Parameter]:
+    def __iter__(self) -> Iterator[str]:
         yield from iter(self._params)
 
     def __contains__(self, item) -> bool:
