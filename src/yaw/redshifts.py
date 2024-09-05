@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import scipy.optimize
 
+from yaw.config import Configuration
 from yaw.corrfunc import CorrData
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.catalog import Catalog, Patch
-    from yaw.config import Configuration
+    from yaw.config import BinningConfig
     from yaw.containers import Binning
     from yaw.corrfunc import CorrFunc, Tcorr
 
@@ -34,7 +35,9 @@ def _redshift_histogram(patch: Patch, binning: Binning) -> NDArray:
     else:
         mask = redshifts < binning.edges[-1]
 
-    counts = np.histogram(redshifts[mask], binning.edges, weights=patch.weights[mask])
+    weights = patch.weights[mask] if patch.has_weights else None
+
+    counts, _ = np.histogram(redshifts[mask], binning.edges, weights=weights)
     return counts.astype(np.float64)
 
 
@@ -57,27 +60,30 @@ class HistData(CorrData):
     def from_catalog(
         cls,
         catalog: Catalog,
-        config: Configuration,
+        config: Configuration | BinningConfig,
         progress: bool = False,
     ) -> HistData:
         if parallel.on_root():
             logger.info("computing redshift histogram")
 
+        if isinstance(config, Configuration):
+            config = config.binning
+
         patch_count_iter = parallel.iter_unordered(
             _redshift_histogram,
             catalog.values(),
-            func_kwargs=dict(binning=config.binning.binning),
+            func_kwargs=dict(binning=config.binning),
         )
         if progress:
             patch_count_iter = Indicator(patch_count_iter, len(catalog))
 
-        counts = np.empty((len(catalog), config.binning.num_bins))
+        counts = np.empty((len(catalog), config.num_bins))
         for i, patch_count in enumerate(patch_count_iter):
             counts[i] = patch_count
         parallel.COMM.Bcast(counts, root=0)
 
         return cls(
-            config.binning.binning.copy(),
+            config.binning.copy(),
             counts.sum(axis=0),
             resample_jackknife(counts),
         )
