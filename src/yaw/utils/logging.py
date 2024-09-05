@@ -33,6 +33,22 @@ def set_indicator_prefix(prefix: str) -> None:
     INDICATOR_PREFIX = str(prefix)
 
 
+def long_num_format(x: float | int) -> str:
+    """
+    Format a floating point number as string with a numerical suffix.
+
+    E.g.: 1234.0 is converted to ``1.24K``.
+    """
+    x = float(f"{x:.3g}")
+    exp = 0
+    while abs(x) >= 1000:
+        exp += 1
+        x /= 1000.0
+    prefix = str(x).rstrip("0").rstrip(".")
+    suffix = ["", "K", "M", "B", "T"][exp]
+    return prefix + suffix
+
+
 def format_time(elapsed: float) -> str:
     minutes, seconds = divmod(elapsed, 60)
     return f"{minutes:.0f}m{seconds:05.2f}s"
@@ -198,6 +214,7 @@ def get_default_logger(
     pretty: bool = False,
     capture_warnings: bool = True,
     file: TextIOBase = sys.stdout,
+    show_welcome: bool = True,
 ) -> Logger:
     level = getattr(logging, level.upper())
 
@@ -216,6 +233,6 @@ def get_default_logger(
     logging.captureWarnings(capture_warnings)
     logger = logging.getLogger("yaw")
 
-    if on_root():
+    if show_welcome and on_root():
         logger_init_messages(logger, pretty=pretty, file=file)
     return logger
