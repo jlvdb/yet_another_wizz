@@ -121,7 +121,7 @@ class Parameter:
     default: Any = field(default=NotSet)
     choices: tuple[Any] = field(default=NotSet)
 
-    def to_dict(self) -> dict:  # NOTE: used by RAIL wrapper
+    def to_dict(self) -> dict[str, Any]:  # NOTE: used by RAIL wrapper
         return {key: val for key, val in asdict(self).items() if val is not NotSet}
 
 
@@ -182,7 +182,7 @@ class BaseConfig(YamlSerialisable):
 
     @classmethod
     @abstractmethod
-    def get_paramspec(self) -> ParamSpec:
+    def get_paramspec(cls) -> ParamSpec:
         pass
 
 
@@ -251,7 +251,7 @@ class ScalesConfig(BaseConfig, Immutable):
         )
 
     @classmethod
-    def get_paramspec(self) -> ParamSpec:
+    def get_paramspec(cls) -> ParamSpec:
         params = [
             Parameter(
                 name="rmin",
@@ -380,7 +380,7 @@ class BinningConfig(BaseConfig, Immutable):
         return self.method == other.method and self.binning == other.binning
 
     @classmethod
-    def get_paramspec(self) -> ParamSpec:
+    def get_paramspec(cls) -> ParamSpec:
         params = [
             Parameter(
                 name="zmin",
