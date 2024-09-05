@@ -16,6 +16,7 @@ from astropy.io import fits
 from pyarrow import parquet
 
 from yaw.catalog.utils import PatchData, PatchIDs
+from yaw.utils.logging import long_num_format
 
 if TYPE_CHECKING:
     from typing import Any
@@ -39,22 +40,6 @@ __all__ = [
 CHUNKSIZE = 16_777_216
 
 logger = logging.getLogger(__name__)
-
-
-def long_num_format(x: float | int) -> str:
-    """
-    Format a floating point number as string with a numerical suffix.
-
-    E.g.: 1234.0 is converted to ``1.24K``.
-    """
-    x = float(f"{x:.3g}")
-    exp = 0
-    while abs(x) >= 1000:
-        exp += 1
-        x /= 1000.0
-    prefix = str(x).rstrip("0").rstrip(".")
-    suffix = ["", "K", "M", "B", "T"][exp]
-    return prefix + suffix
 
 
 class DataChunk(Sized):
