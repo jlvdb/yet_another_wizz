@@ -457,6 +457,10 @@ class SampledData(BinwiseData):
             samples=self.samples,
         )
 
+    def __setstate__(self, state) -> None:
+        for key, value in state.items():
+            setattr(self, key, value)
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
             return NotImplemented

@@ -121,11 +121,11 @@ class Parameter:
     default: Any = field(default=NotSet)
     choices: tuple[Any] = field(default=NotSet)
 
-    def to_dict(self) -> dict:  # NOTE: used by RAIL wrapper
-        return {key: value for key, value in asdict(self) if value is not NotSet}
+    def to_dict(self) -> dict[str, Any]:  # NOTE: used by RAIL wrapper
+        return {key: val for key, val in asdict(self).items() if val is not NotSet}
 
 
-class ParamSpec(Mapping[Parameter]):
+class ParamSpec(Mapping[str, Parameter]):
     def __init__(self, params: Iterable[Parameter]) -> None:
         self._params = {p.name: p for p in params}
 
@@ -136,12 +136,12 @@ class ParamSpec(Mapping[Parameter]):
         return string
 
     def __len__(self) -> int:
-        return len(self.params)
+        return len(self._params)
 
     def __getitem__(self, name: str) -> Parameter:
         return self._params[name]
 
-    def __iter__(self) -> Iterator[Parameter]:
+    def __iter__(self) -> Iterator[str]:
         yield from iter(self._params)
 
     def __contains__(self, item) -> bool:
@@ -182,7 +182,7 @@ class BaseConfig(YamlSerialisable):
 
     @classmethod
     @abstractmethod
-    def get_paramspec(self) -> ParamSpec:
+    def get_paramspec(cls) -> ParamSpec:
         pass
 
 
@@ -251,7 +251,7 @@ class ScalesConfig(BaseConfig, Immutable):
         )
 
     @classmethod
-    def get_paramspec(self) -> ParamSpec:
+    def get_paramspec(cls) -> ParamSpec:
         params = [
             Parameter(
                 name="rmin",
@@ -380,7 +380,7 @@ class BinningConfig(BaseConfig, Immutable):
         return self.method == other.method and self.binning == other.binning
 
     @classmethod
-    def get_paramspec(self) -> ParamSpec:
+    def get_paramspec(cls) -> ParamSpec:
         params = [
             Parameter(
                 name="zmin",
@@ -401,7 +401,7 @@ class BinningConfig(BaseConfig, Immutable):
             Parameter(
                 name="method",
                 help="",
-                type=int,
+                type=str,
                 choices=unpack_type(Tbin_method_all),
                 default=default_bin_method,
             ),
@@ -415,7 +415,7 @@ class BinningConfig(BaseConfig, Immutable):
             Parameter(
                 name="closed",
                 help="",
-                type=int,
+                type=str,
                 choices=unpack_type(Tclosed),
                 default=default_closed,
             ),
@@ -565,6 +565,18 @@ class Configuration(BaseConfig, Immutable):
             and self.scales == other.scales
             and cosmology_is_equal(self.cosmology, other.cosmology)
         )
+
+    @classmethod
+    def get_paramspec(cls) -> ParamSpec:
+        params = [
+            Parameter(
+                name="cosmology",
+                help="",
+                type=str,
+                default=default_cosmology,
+            ),
+        ]
+        return ParamSpec(params)
 
     @classmethod
     def create(
