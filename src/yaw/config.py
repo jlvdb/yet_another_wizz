@@ -4,14 +4,16 @@ import logging
 import pprint
 import warnings
 from abc import abstractmethod
-from typing import TYPE_CHECKING, get_args
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Literal, Union, get_args
 
 import astropy.cosmology
 import numpy as np
 
 from yaw.containers import Binning, RedshiftBinningFactory
 from yaw.containers import Tbin_method as Tbin_method_auto
-from yaw.containers import YamlSerialisable, default_bin_method, default_closed
+from yaw.containers import Tclosed, YamlSerialisable, default_bin_method, default_closed
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
@@ -21,17 +23,17 @@ from yaw.utils.cosmology import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-    from typing import Any, Literal, TypeVar, Union
+    from collections.abc import Iterable, Iterator
+    from typing import Any, TypeVar
 
     from numpy.typing import NDArray
 
-    from yaw.containers import Tclosed, Tpath
+    from yaw.containers import Tpath
 
     T = TypeVar("T")
     Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
 
-    Tbin_method_all = Union[Tbin_method_auto | Literal["manual"]]
+Tbin_method_all = Union[Tbin_method_auto | Literal["manual"]]
 
 __all__ = [
     "BinningConfig",
@@ -99,12 +101,55 @@ class Immutable:
         raise AttributeError(f"attribute '{name}' is immutable")
 
 
-class BaseConfig(YamlSerialisable, Immutable):
+def unpack_type(type_or_literal) -> tuple:
+    args = []
+    for item in get_args(type_or_literal):
+        items = get_args(item)
+        if len(items) > 0:
+            args.extend(items)
+        else:
+            args.append(item)
+    return tuple(args)
+
+
+@dataclass
+class Parameter:
+    name: str
+    help: str
+    type: type
+    is_sequence: bool = field(default=False)
+    default: Any = field(default=NotSet)
+    choices: tuple[Any] = field(default=NotSet)
+
+
+class ParamSpec(Mapping[Parameter]):
+    def __init__(self, params: Iterable[Parameter]) -> None:
+        self._params = {p.name: p for p in params}
+
+    def __str__(self) -> str:
+        string = f"{type(self).__name__}:"
+        for value in self.values():
+            string += f"\n  {value}"
+        return string
+
+    def __len__(self) -> int:
+        return len(self.params)
+
+    def __getitem__(self, name: str) -> Parameter:
+        return self._params[name]
+
+    def __iter__(self) -> Iterator[Parameter]:
+        yield from iter(self._params)
+
+    def __contains__(self, item) -> bool:
+        return item in self._params
+
+
+class BaseConfig(YamlSerialisable):
     @classmethod
     def from_dict(
         cls: type[Tbase_config],
         the_dict: dict[str, Any],
-        **kwargs: dict[str, Any],  # passing additional constructor data
     ) -> Tbase_config:
         return cls.create(**the_dict)
 
@@ -126,10 +171,15 @@ class BaseConfig(YamlSerialisable, Immutable):
         return type(self).from_dict(conf_dict)
 
     def __repr__(self) -> str:
-        pprint.pformat(self.to_dict())
+        return pprint.pformat(self.to_dict())
 
     @abstractmethod
     def __eq__(self) -> bool:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_paramspec(self) -> ParamSpec:
         pass
 
 
@@ -144,7 +194,7 @@ default_rweight = None
 default_resolution = None
 
 
-class ScalesConfig(BaseConfig):
+class ScalesConfig(BaseConfig, Immutable):
     rmin: list[float] | float
     rmax: list[float] | float
     rweight: float | None
@@ -182,6 +232,10 @@ class ScalesConfig(BaseConfig):
         except TypeError:
             return 1
 
+    def to_dict(self) -> dict[str, Any]:
+        attrs = ("rmin", "rmax", "rweight", "resolution")
+        return {attr: getattr(self, attr) for attr in attrs}
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
             return False
@@ -193,9 +247,35 @@ class ScalesConfig(BaseConfig):
             and self.rbin_num == other.rbin_num
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        attrs = ("rmin", "rmax", "rweight", "resolution")
-        return {attr: getattr(self, attr) for attr in attrs}
+    @classmethod
+    def get_paramspec(self) -> ParamSpec:
+        params = [
+            Parameter(
+                name="rmin",
+                help="",
+                type=float,
+                is_sequence=True,
+            ),
+            Parameter(
+                name="rmax",
+                help="",
+                type=float,
+                is_sequence=True,
+            ),
+            Parameter(
+                name="rweight",
+                help="",
+                type=float,
+                default=default_rweight,
+            ),
+            Parameter(
+                name="resolution",
+                help="",
+                type=int,
+                default=default_resolution,
+            ),
+        ]
+        return ParamSpec(params)
 
     @classmethod
     def create(
@@ -220,8 +300,9 @@ class ScalesConfig(BaseConfig):
 default_num_bins = 30
 
 
-class BinningConfig(BaseConfig):
+class BinningConfig(BaseConfig, Immutable):
     binning: Binning
+    """test"""
     method: Tbin_method_all
 
     def __init__(
@@ -296,6 +377,49 @@ class BinningConfig(BaseConfig):
         return self.method == other.method and self.binning == other.binning
 
     @classmethod
+    def get_paramspec(self) -> ParamSpec:
+        params = [
+            Parameter(
+                name="zmin",
+                help="",
+                type=float,
+            ),
+            Parameter(
+                name="zmax",
+                help="",
+                type=float,
+            ),
+            Parameter(
+                name="num_bins",
+                help="",
+                type=int,
+                default=default_num_bins,
+            ),
+            Parameter(
+                name="method",
+                help="",
+                type=int,
+                choices=unpack_type(Tbin_method_all),
+                default=default_bin_method,
+            ),
+            Parameter(
+                name="edges",
+                help="",
+                type=float,
+                is_sequence=True,
+                default=None,
+            ),
+            Parameter(
+                name="closed",
+                help="",
+                type=int,
+                choices=unpack_type(Tclosed),
+                default=default_closed,
+            ),
+        ]
+        return ParamSpec(params)
+
+    @classmethod
     def create(
         cls,
         *,
@@ -358,7 +482,7 @@ class BinningConfig(BaseConfig):
 default_cosmology = get_default_cosmology().name
 
 
-class Configuration(BaseConfig):
+class Configuration(BaseConfig, Immutable):
     scales: ScalesConfig
     binning: BinningConfig
     cosmology: Tcosmology | str
