@@ -254,7 +254,11 @@ def read_patch_ids(cache_directory: Path) -> list[int]:
 
 
 def load_patches(
-    cache_directory: Path, *, patch_centers: Tcenters | None, progress: bool
+    cache_directory: Path,
+    *,
+    patch_centers: Tcenters | None,
+    progress: bool,
+    max_workers: int | None = None,
 ) -> dict[int, Patch]:
     patch_ids = None
     if parallel.on_root():
@@ -273,7 +277,9 @@ def load_patches(
     else:
         patch_arg_iter = zip(patch_paths)
 
-    patch_iter = parallel.iter_unordered(Patch, patch_arg_iter, unpack=True)
+    patch_iter = parallel.iter_unordered(
+        Patch, patch_arg_iter, unpack=True, max_workers=max_workers
+    )
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_ids))
 
@@ -284,7 +290,9 @@ def load_patches(
 class Catalog(CatalogBase, Mapping[int, Patch]):
     __slots__ = ("cache_directory", "patches")
 
-    def __init__(self, cache_directory: Tpath) -> None:
+    def __init__(
+        self, cache_directory: Tpath, *, max_workers: int | None = None
+    ) -> None:
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
 
@@ -293,7 +301,10 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             raise OSError(f"cache directory not found: {self.cache_directory}")
 
         self.patches = load_patches(
-            self.cache_directory, patch_centers=None, progress=False
+            self.cache_directory,
+            patch_centers=None,
+            progress=False,
+            max_workers=max_workers,
         )
 
     @classmethod
@@ -341,7 +352,10 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new.patches = load_patches(
-            new.cache_directory, patch_centers=patch_centers, progress=progress
+            new.cache_directory,
+            patch_centers=patch_centers,
+            progress=progress,
+            max_workers=max_workers,
         )
         return new
 
@@ -390,7 +404,10 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new.patches = load_patches(
-            new.cache_directory, patch_centers=patch_centers, progress=progress
+            new.cache_directory,
+            patch_centers=patch_centers,
+            progress=progress,
+            max_workers=max_workers,
         )
         return new
 
