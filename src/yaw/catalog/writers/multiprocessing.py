@@ -10,6 +10,7 @@ from yaw.catalog.writers.base import (
     CatalogWriter,
     get_patch_centers,
     split_into_patches,
+    write_patches_unthreaded,
 )
 from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
@@ -91,6 +92,15 @@ def write_patches(
     buffersize: int = -1,
 ) -> None:
     max_workers = parallel.get_size(max_workers)
+    if max_workers == 1:
+        return write_patches_unthreaded(
+            path,
+            reader,
+            patch_centers,
+            overwrite=overwrite,
+            progress=progress,
+            buffersize=buffersize,
+        )
 
     with (
         reader,

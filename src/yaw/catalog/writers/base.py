@@ -15,6 +15,7 @@ from yaw.catalog.readers import DataChunk
 from yaw.catalog.utils import CatalogBase, PatchBase, PatchData, PatchIDs, groupby
 from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
+from yaw.utils.logging import Indicator
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -280,3 +281,29 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
 
         patch_ids = np.fromiter(self.writers.keys(), dtype=np.int16)
         np.sort(patch_ids).tofile(self.cache_directory / PATCH_INFO_FILE)
+
+
+def write_patches_unthreaded(
+    path: Tpath,
+    reader: BaseReader,
+    patch_centers: Tcenters,
+    *,
+    overwrite: bool,
+    progress: bool,
+    buffersize: int = -1,
+) -> None:
+    with reader:
+        if patch_centers is not None:
+            patch_centers = get_patch_centers(patch_centers).to_3d()
+
+        with CatalogWriter(
+            cache_directory=path,
+            has_weights=reader.has_weights,
+            has_redshifts=reader.has_redshifts,
+            overwrite=overwrite,
+            buffersize=buffersize,
+        ) as writer:
+            chunk_iter = Indicator(reader) if progress else iter(reader)
+            for chunk in chunk_iter:
+                patches = split_into_patches(chunk, patch_centers)
+                writer.process_patches(patches)
