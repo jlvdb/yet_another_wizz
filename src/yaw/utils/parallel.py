@@ -232,8 +232,13 @@ def _multiprocessing_iter_unordered(
     num_processes: int | None = None,
 ) -> Iterator[Tresult]:
     wrapped_func = ParallelJob(func, func_args, func_kwargs, unpack=unpack)
-    with multiprocessing.Pool(num_processes) as pool:
-        yield from pool.imap_unordered(wrapped_func, iterable)
+
+    if num_processes == 1:
+        yield from map(wrapped_func, iterable)
+
+    else:
+        with multiprocessing.Pool(num_processes) as pool:
+            yield from pool.imap_unordered(wrapped_func, iterable)
 
 
 def iter_unordered(
