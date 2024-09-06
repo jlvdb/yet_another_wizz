@@ -68,6 +68,7 @@ class HistData(CorrData):
             logger.info("computing redshift histogram")
 
         if isinstance(config, Configuration):
+            max_workers = max_workers or config.max_workers
             config = config.binning
 
         patch_count_iter = parallel.iter_unordered(
