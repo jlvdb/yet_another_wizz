@@ -456,6 +456,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         leafsize: int = 16,
         force: bool = False,
         progress: bool = False,
+        max_workers: int | None = None,
     ) -> None:
         binning = parse_binning(binning, optional=True)
 
@@ -470,6 +471,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             self.values(),
             func_args=(binning,),
             func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+            max_workers=max_workers,
         )
         if progress:
             patch_tree_iter = Indicator(patch_tree_iter, len(self))

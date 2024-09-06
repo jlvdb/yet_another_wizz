@@ -211,6 +211,7 @@ class PatchLinkage:
         catalog: Catalog,
         *catalogs: Catalog,
         progress: bool = False,
+        max_workers: int | None = None,
     ) -> list[NormalisedCounts]:
         auto = len(catalogs) == 0
         num_patches = len(catalog)
@@ -230,6 +231,7 @@ class PatchLinkage:
             process_patch_pair,
             patch_pairs,
             func_args=(self.config,),
+            max_workers=max_workers,
         )
         if progress:
             count_iter = Indicator(count_iter, len(patch_pairs))
@@ -253,11 +255,14 @@ class PatchLinkage:
         self,
         *catalogs: Catalog | None,
         progress: bool = False,
+        max_workers: int | None = None,
     ) -> list[NormalisedCounts | None]:
         if any(catalog is None for catalog in catalogs):
             return [None for _ in range(self.config.scales.num_scales)]
         else:
-            return self.count_pairs(*catalogs, progress=progress)
+            return self.count_pairs(
+                *catalogs, progress=progress, max_workers=max_workers
+            )
 
 
 def autocorrelate(
@@ -267,15 +272,17 @@ def autocorrelate(
     *,
     count_rr: bool = True,
     progress: bool = False,
+    max_workers: int | None = None,
 ) -> list[CorrFunc]:
     if parallel.on_root():
         logger.info("building trees for 2 catalogs")
+    kwargs = dict(progress=progress, max_workers=max_workers)
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
 
-    data.build_trees(edges, closed=closed, progress=progress)
-    random.build_trees(edges, closed=closed, progress=progress)
+    data.build_trees(edges, closed=closed, **kwargs)
+    random.build_trees(edges, closed=closed, **kwargs)
 
     if parallel.on_root():
         logger.info(
@@ -289,9 +296,9 @@ def autocorrelate(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_pairs(data, progress=progress)
-    DR = links.count_pairs(data, random, progress=progress)
-    RR = links.count_pairs_optional(random if count_rr else None, progress=progress)
+    DD = links.count_pairs(data, **kwargs)
+    DR = links.count_pairs(data, random, **kwargs)
+    RR = links.count_pairs_optional(random if count_rr else None, **kwargs)
 
     return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
 
@@ -304,6 +311,7 @@ def crosscorrelate(
     ref_rand: Catalog | None = None,
     unk_rand: Catalog | None = None,
     progress: bool = False,
+    max_workers: int | None = None,
 ) -> list[CorrFunc]:
     count_dr = unk_rand is not None
     count_rd = ref_rand is not None
@@ -312,19 +320,20 @@ def crosscorrelate(
 
     if parallel.on_root():
         logger.info("building trees for %d catalogs", 2 + count_dr + count_rd)
+    kwargs = dict(progress=progress, max_workers=max_workers)
 
     edges = config.binning.binning.edges
     closed = config.binning.binning.closed
     randoms = []
 
-    reference.build_trees(edges, closed=closed, progress=progress)
+    reference.build_trees(edges, closed=closed, **kwargs)
     if count_rd:
-        ref_rand.build_trees(edges, closed=closed, progress=progress)
+        ref_rand.build_trees(edges, closed=closed, **kwargs)
         randoms.append(ref_rand)
 
-    unknown.build_trees(None, progress=progress)
+    unknown.build_trees(None, **kwargs)
     if count_dr:
-        unk_rand.build_trees(None, progress=progress)
+        unk_rand.build_trees(None, **kwargs)
         randoms.append(unk_rand)
 
     if parallel.on_root():
@@ -342,9 +351,9 @@ def crosscorrelate(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_pairs(reference, unknown, progress=progress)
-    DR = links.count_pairs_optional(reference, unk_rand, progress=progress)
-    RD = links.count_pairs_optional(ref_rand, unknown, progress=progress)
-    RR = links.count_pairs_optional(ref_rand, unk_rand, progress=progress)
+    DD = links.count_pairs(reference, unknown, **kwargs)
+    DR = links.count_pairs_optional(reference, unk_rand, **kwargs)
+    RD = links.count_pairs_optional(ref_rand, unknown, **kwargs)
+    RR = links.count_pairs_optional(ref_rand, unk_rand, **kwargs)
 
     return [CorrFunc(dd, dr, rd, rr) for dd, dr, rd, rr in zip(DD, DR, RD, RR)]

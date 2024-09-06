@@ -489,12 +489,14 @@ class Configuration(BaseConfig, Immutable):
     scales: ScalesConfig
     binning: BinningConfig
     cosmology: Tcosmology | str
+    max_workers: int | None
 
     def __init__(
         self,
         scales: ScalesConfig,
         binning: BinningConfig,
         cosmology: Tcosmology | str | None = None,
+        max_workers: int | None = None,
     ) -> None:
         if not isinstance(scales, ScalesConfig):
             raise TypeError(f"'scales' must be of type '{type(ScalesConfig)}'")
@@ -505,12 +507,16 @@ class Configuration(BaseConfig, Immutable):
         object.__setattr__(self, "binning", binning)
 
         object.__setattr__(self, "cosmology", parse_cosmology(cosmology))
+        object.__setattr__(
+            self, "max_workers", int(max_workers) if max_workers else None
+        )
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> Configuration:
         the_dict = the_dict.copy()
 
         cosmology = parse_cosmology(the_dict.pop("cosmology", default_cosmology))
+        max_workers = the_dict.pop("max_workers", None)
 
         try:  # scales
             scales_dict = the_dict.pop("scales")
@@ -528,13 +534,16 @@ class Configuration(BaseConfig, Immutable):
             key = next(iter(the_dict))
             raise ConfigError(f"encountered unknown configuration entry '{key}'")
 
-        return cls(scales=scales, binning=binning, cosmology=cosmology)
+        return cls(
+            scales=scales, binning=binning, cosmology=cosmology, max_workers=max_workers
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return dict(
             scales=self.scales.to_dict(),
             binning=self.binning.to_dict(),
             cosmology=cosmology_to_yaml(self.cosmology),
+            max_workers=self.max_workers,
         )
 
     @classmethod
@@ -582,7 +591,6 @@ class Configuration(BaseConfig, Immutable):
     def create(
         cls,
         *,
-        cosmology: Tcosmology | str | None = default_cosmology,
         # ScalesConfig
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
@@ -595,11 +603,14 @@ class Configuration(BaseConfig, Immutable):
         method: Tbin_method_all = default_bin_method,
         edges: Iterable[float] | None = None,
         closed: Tclosed = default_closed,
+        # uncategorized
+        cosmology: Tcosmology | str | None = default_cosmology,
+        max_workers: int | None = None,
     ) -> Configuration:
-        cosmology = parse_cosmology(cosmology)
         scales = ScalesConfig.create(
             rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
         )
+
         binning = BinningConfig.create(
             zmin=zmin,
             zmax=zmax,
@@ -609,12 +620,16 @@ class Configuration(BaseConfig, Immutable):
             closed=closed,
             cosmology=cosmology,
         )
-        return cls(scales=scales, binning=binning, cosmology=cosmology)
+
+        cosmology = parse_cosmology(cosmology)
+
+        return cls(
+            scales=scales, binning=binning, cosmology=cosmology, max_workers=max_workers
+        )
 
     def modify(
         self,
         *,
-        cosmology: Tcosmology | str | None | NotSet = NotSet,
         # ScalesConfig
         rmin: Iterable[float] | float | NotSet = NotSet,
         rmax: Iterable[float] | float | NotSet = NotSet,
@@ -627,13 +642,14 @@ class Configuration(BaseConfig, Immutable):
         method: Tbin_method_all | NotSet = NotSet,
         edges: Iterable[float] | None = NotSet,
         closed: Tclosed | NotSet = NotSet,
+        # uncategorized
+        cosmology: Tcosmology | str | None | NotSet = NotSet,
+        max_workers: int | None | NotSet = NotSet,
     ) -> Configuration:
-        cosmology = (
-            self.cosmology if cosmology is NotSet else parse_cosmology(cosmology)
-        )
         scales = self.scales.modify(
             rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
         )
+
         binning = self.binning.modify(
             zmin=zmin,
             zmax=zmax,
@@ -643,4 +659,12 @@ class Configuration(BaseConfig, Immutable):
             closed=closed,
             cosmology=cosmology,
         )
-        return type(self)(scales=scales, binning=binning, cosmology=cosmology)
+
+        cosmology = (
+            self.cosmology if cosmology is NotSet else parse_cosmology(cosmology)
+        )
+        max_workers = self.max_workers if max_workers is NotSet else max_workers
+
+        return type(self)(
+            scales=scales, binning=binning, cosmology=cosmology, max_workers=max_workers
+        )

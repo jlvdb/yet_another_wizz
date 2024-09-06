@@ -62,6 +62,7 @@ class HistData(CorrData):
         catalog: Catalog,
         config: Configuration | BinningConfig,
         progress: bool = False,
+        max_workers: int | None = None,
     ) -> HistData:
         if parallel.on_root():
             logger.info("computing redshift histogram")
@@ -73,6 +74,7 @@ class HistData(CorrData):
             _redshift_histogram,
             catalog.values(),
             func_kwargs=dict(binning=config.binning),
+            max_workers=max_workers,
         )
         if progress:
             patch_count_iter = Indicator(patch_count_iter, len(catalog))
