@@ -66,6 +66,9 @@ dev = [
     "ipykernel",
 ]
 
+[project.scripts]
+yaw = "yaw.cli.commandline:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
