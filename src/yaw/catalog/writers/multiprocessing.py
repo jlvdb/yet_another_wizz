@@ -9,6 +9,7 @@ from yaw.catalog.utils import PatchData
 from yaw.catalog.writers.base import (
     CatalogWriter,
     get_patch_centers,
+    logger,
     split_into_patches,
     write_patches_unthreaded,
 )
@@ -92,7 +93,9 @@ def write_patches(
     buffersize: int = -1,
 ) -> None:
     max_workers = parallel.get_size(max_workers)
+
     if max_workers == 1:
+        logger.debug("running preprocessing sequentially")
         return write_patches_unthreaded(
             path,
             reader,
@@ -101,6 +104,9 @@ def write_patches(
             progress=progress,
             buffersize=buffersize,
         )
+
+    else:
+        logger.debug("running preprocessing on %d workers", max_workers)
 
     with (
         reader,

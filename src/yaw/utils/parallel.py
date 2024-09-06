@@ -274,7 +274,10 @@ def iter_unordered(
         parallel_method = _multiprocessing_iter_unordered
 
     if on_root():
-        logger.debug(f"running parallel jobs on {num_workers} workers")
+        if max_workers > 1:
+            logger.debug("running parallel jobs on %d workers", num_workers)
+        else:
+            logger.debug("running jobs sequentially")
 
     yield from parallel_method(func, iterable, **iter_kwargs)
 

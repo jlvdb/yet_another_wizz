@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 CHUNKSIZE = 65_536
 PATCH_INFO_FILE = "patch_ids.bin"
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.removesuffix(".base"))
 
 
 class PatchWriter(PatchBase):
@@ -177,10 +177,11 @@ def assign_patch_centers(patch_centers: NDArray, data: PatchData) -> Tpids:
 def split_into_patches(
     chunk: DataChunk, patch_centers: NDArray | None
 ) -> dict[int, PatchData]:
-    if chunk.patch_ids is not None:
-        patch_ids = chunk.patch_ids
-    elif patch_centers is not None:
+    # statement order matters
+    if patch_centers is not None:
         patch_ids = assign_patch_centers(patch_centers, chunk.data)
+    elif chunk.patch_ids is not None:
+        patch_ids = chunk.patch_ids
     else:  # pragma: no cover
         raise RuntimeError("found no way to obtain patch centers")
 

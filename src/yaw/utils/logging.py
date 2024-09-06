@@ -205,7 +205,7 @@ def logger_init_messages(
         environment = "MPI"
     else:
         environment = "multiprocessing"
-    logger.info(f"running in {environment} environment with {get_size()} workers")
+    logger.info("running in %s environment with %d workers", environment, get_size())
 
 
 def get_default_logger(
