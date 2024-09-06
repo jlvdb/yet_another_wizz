@@ -8,6 +8,7 @@ from yaw.catalog.readers import DataChunk
 from yaw.catalog.writers.base import (
     CatalogWriter,
     get_patch_centers,
+    logger,
     split_into_patches,
 )
 from yaw.containers import Tpath
@@ -111,6 +112,8 @@ def write_patches(
     max_workers = parallel.get_size(max_workers)
     if max_workers < 2:
         raise ValueError("catalog creation requires at least two workers")
+    if parallel.on_root():
+        logger.debug("running preprocessing on %d workers", max_workers)
 
     rank = parallel.COMM.Get_rank()
     worker_config = WorkerManager(max_workers, 0)
