@@ -35,9 +35,6 @@ class CustomNumpyArray(Iterable, Sized):
     def __array_interface__(self) -> dict:
         return self.data.__array_interface__
 
-    def __array__(self, dtype=None, copy=None):
-        return self.data.__array__()
-
     def __repr__(self) -> str:
         return f"{type(self).__name__}[{len(self)}]"
 
@@ -61,7 +58,7 @@ class CustomNumpyArray(Iterable, Sized):
 class AngularCoordinates(CustomNumpyArray):
     def __init__(self, data: ArrayLike) -> None:
         self.data = np.atleast_2d(data).astype(np.float64, copy=False)
-        if not self.data.shape[1] == 2:
+        if self.data.shape[1] != 2:
             raise ValueError("invalid coordinate dimensions, expected 2")
 
     @classmethod
