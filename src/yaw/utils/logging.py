@@ -37,7 +37,7 @@ def long_num_format(x: float | int) -> str:
     """
     Format a floating point number as string with a numerical suffix.
 
-    E.g.: 1234.0 is converted to ``1.24K``.
+    E.g.: 1234.0 is converted to ``1.23K``.
     """
     x = float(f"{x:.3g}")
     exp = 0
@@ -216,7 +216,7 @@ def get_default_logger(
     file: TextIOBase = sys.stdout,
     show_welcome: bool = True,
 ) -> Logger:
-    level = getattr(logging, level.upper())
+    level_code = getattr(logging, level.upper())
 
     if pretty:
         formatter = CustomFormatter()
@@ -226,10 +226,10 @@ def get_default_logger(
 
     handler = logging.StreamHandler(file)
     handler.setFormatter(formatter)
-    handler.setLevel(level)
+    handler.setLevel(level_code)
     handler.addFilter(OnlyYAWFilter())
 
-    logging.basicConfig(level=level, handlers=[handler])
+    logging.basicConfig(level=level_code, handlers=[handler])
     logging.captureWarnings(capture_warnings)
     logger = logging.getLogger("yaw")
 
