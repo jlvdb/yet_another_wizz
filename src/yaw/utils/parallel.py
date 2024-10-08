@@ -6,7 +6,6 @@ import os
 import subprocess
 import sys
 from abc import ABC
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -282,7 +281,23 @@ def iter_unordered(
     yield from parallel_method(func, iterable, **iter_kwargs)
 
 
-def broadcast_array(array: NDArray | None) -> NDArray:
+class Broadcastable(ABC):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__slots__" not in cls.__dict__:
+            raise TypeError(
+                f"{cls.__name__}: subclass of Broadcastable must implement __slots__"
+            )
+
+
+def new_uninitialised(cls: type[Tbroadcast]) -> Tbroadcast:
+    inst = cls.__new__(cls)
+    for attr in cls.__slots__:
+        setattr(inst, attr, None)
+    return inst
+
+
+def bcast_array(array: NDArray | None) -> NDArray:
     array_info = ()
     if on_root():
         array = np.ascontiguousarray(array)
@@ -297,59 +312,24 @@ def broadcast_array(array: NDArray | None) -> NDArray:
     return array
 
 
-@dataclass
-class _BroadcastRecurse:
-    type: type[Broadcastable]
+def bcast_value(attr: Any | None) -> Any:
+    if isinstance(attr, Broadcastable):
+        return bcast_instance(attr)
+    elif isinstance(attr, np.ndarray):
+        return bcast_array(attr)
+    return COMM.bcast(attr, root=0)
 
 
-class _MpiBroadcast:
-    pass
+def bcast_instance(inst: Tbroadcast | None) -> Tbroadcast:
+    if use_mpi():
+        return inst
 
+    cls = COMM.bcast(type(inst), root=0)
+    if on_worker():
+        inst = new_uninitialised(cls)
 
-class Broadcastable(ABC):
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        if "__slots__" not in cls.__dict__:
-            raise TypeError(
-                f"{cls.__name__}: subclass of Broadcastable must implement __slots__"
-            )
-
-    @classmethod
-    def _broadcast(cls, inst: Tbroadcast) -> None:
-        attributes = {}
-        if on_root():
-            for attr in inst.__slots__:
-                value = getattr(inst, attr)
-
-                if isinstance(value, Broadcastable):
-                    attributes[attr] = _BroadcastRecurse(type(value))
-                elif isinstance(value, np.ndarray):
-                    attributes[attr] = _MpiBroadcast
-                else:
-                    attributes[attr] = value
-
-        attributes = COMM.bcast(attributes, root=0)
-
-        for attr, value_or_info in attributes.items():
-            if isinstance(value_or_info, _BroadcastRecurse):
-                if on_root():
-                    attr_inst = getattr(inst, attr)
-                else:
-                    attr_inst = value_or_info.type._init_null()
-
-                attr_inst._broadcast(attr_inst)
-                setattr(inst, attr, attr_inst)
-
-            elif value_or_info is _MpiBroadcast:
-                array = broadcast_array(getattr(inst, attr))
-                setattr(inst, attr, array)
-
-            else:
-                setattr(inst, attr, value_or_info)
-
-    @classmethod
-    def _init_null(cls: type[Tbroadcast]) -> Tbroadcast:
-        new = cls.__new__(cls)
-        for attr in cls.__slots__:
-            setattr(new, attr, None)
-        return new
+    for name in inst.__slots__:
+        value = getattr(inst, name)
+        value = bcast_value(value)
+        setattr(inst, name, value)
+    return inst

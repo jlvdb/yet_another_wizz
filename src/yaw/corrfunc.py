@@ -18,7 +18,7 @@ from yaw.containers import (
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io, parallel
-from yaw.utils.parallel import Broadcastable
+from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
     from typing import Any, TypeVar
@@ -142,16 +142,14 @@ class CorrFunc(
 
     @classmethod
     def from_file(cls, path: Tpath) -> CorrFunc:
+        new = None
+
         if parallel.on_root():
             logger.info("reading %s from: %s", cls.__name__, path)
 
             new = super().from_file(path)
 
-        else:
-            new = cls._init_null()
-
-        cls._broadcast(new)
-        return new
+        return bcast_instance(new)
 
     def to_file(self, path: Tpath) -> None:
         if parallel.on_root():
@@ -254,6 +252,8 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
+        new = None
+
         if parallel.on_root():
             logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
 
@@ -265,11 +265,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
             new = cls(binning, data, samples)
 
-        else:
-            new = cls._init_null()
-
-        cls._broadcast(new)
-        return new
+        return bcast_instance(new)
 
     def to_files(self, path_prefix: Tpath) -> None:
         if parallel.on_root():
