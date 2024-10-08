@@ -304,24 +304,16 @@ def bcast_array(array: NDArray | None) -> NDArray:
         array_info = (array.shape, array.dtype)
     array_info = COMM.bcast(array_info, root=0)
 
-    if not on_root():
+    if on_worker():
         shape, dtype = array_info
         array = np.empty(shape, dtype=dtype)
-
     COMM.Bcast(array, root=0)
+
     return array
 
 
-def bcast_value(attr: Any | None) -> Any:
-    if isinstance(attr, Broadcastable):
-        return bcast_instance(attr)
-    elif isinstance(attr, np.ndarray):
-        return bcast_array(attr)
-    return COMM.bcast(attr, root=0)
-
-
 def bcast_instance(inst: Tbroadcast | None) -> Tbroadcast:
-    if use_mpi():
+    if not use_mpi():
         return inst
 
     cls = COMM.bcast(type(inst), root=0)
@@ -330,6 +322,16 @@ def bcast_instance(inst: Tbroadcast | None) -> Tbroadcast:
 
     for name in inst.__slots__:
         value = getattr(inst, name)
-        value = bcast_value(value)
+
+        if isinstance(value, Broadcastable):
+            bcast_method = bcast_instance
+        elif isinstance(value, np.ndarray):
+            bcast_method = bcast_array
+        else:
+            bcast_method = COMM.bcast
+        bcast_method = COMM.bcast(bcast_method, root=0)
+
+        value = bcast_method(value)
         setattr(inst, name, value)
+
     return inst
