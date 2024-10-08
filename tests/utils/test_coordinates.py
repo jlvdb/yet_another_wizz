@@ -102,15 +102,15 @@ class TestAngularCoordinates:
         coords = AngularCoordinates(coords_ra_dec_fixed_ra)
         assert_array_equal(expect, coords.dec)
 
-    def test_from_coords(self, coords_ra_dec_fixed_ra, coords_ra_dec_fixed_dec):
-        expect = np.concatenate(
-            [coords_ra_dec_fixed_ra, coords_ra_dec_fixed_dec], axis=0
-        )
-        coords = [
-            AngularCoordinates(coords_ra_dec_fixed_ra),
-            AngularCoordinates(coords_ra_dec_fixed_dec),
-        ]
-        assert_array_equal(expect, AngularCoordinates.from_coords(coords).data)
+    def test_eq(self, coords_ra_dec_fixed_dec):
+        coords = AngularCoordinates(coords_ra_dec_fixed_dec)
+        assert np.all(coords == coords)
+        assert coords != 1
+
+    def test_from_coords(self, coords_ra_dec_fixed_ra):
+        expect = AngularCoordinates(coords_ra_dec_fixed_ra)
+        coords = AngularCoordinates.from_coords(iter(expect))
+        assert np.all(expect == coords)
 
     def test_from_3d_fixed_ra(self, coords_ra_dec_fixed_ra, coords_xyz_fixed_ra):
         # NOTE: RAs will not be recovered at coordinate singularity
@@ -134,11 +134,6 @@ class TestAngularCoordinates:
         coords = AngularCoordinates(coords_ra_dec_fixed_dec)
         assert_array_almost_equal(coords.to_3d(), coords_xyz_fixed_dec)
 
-    def test_eq(self, coords_ra_dec_fixed_dec):
-        coords = AngularCoordinates(coords_ra_dec_fixed_dec)
-        assert np.all(coords == coords)
-        assert coords != 1
-
     def test_mean(self, coords_ra_dec_fixed_dec):
         expect = AngularCoordinates([0.0, 0.0])
         coords = AngularCoordinates(coords_ra_dec_fixed_dec)
@@ -157,13 +152,6 @@ class TestAngularCoordinates:
 
         with raises(TypeError):
             ref_point.distance(1.0)
-
-    def test_iter(self, coords_ra_dec_fixed_dec):
-        for array, coord in zip(
-            coords_ra_dec_fixed_dec, AngularCoordinates(coords_ra_dec_fixed_dec)
-        ):
-            expect = AngularCoordinates(array)
-            assert np.all(expect == coord.data)
 
     def test_copy(self, coords_ra_dec_fixed_dec):
         coords = AngularCoordinates(coords_ra_dec_fixed_dec)
@@ -198,9 +186,9 @@ class TestAngularDistances:
         assert_array_almost_equal(expect, dists.data)
 
     def test_from_dists(self):
-        expect = np.linspace(0.0, 2.0, 10)
-        dists = [AngularDistances(expect[:5]), AngularDistances(expect[5:])]
-        assert_array_equal(expect, AngularDistances.from_dists(dists).data)
+        expect = AngularDistances(np.linspace(0.0, 2.0, 10))
+        dists = AngularDistances.from_dists(iter(expect))
+        assert np.all(expect == dists)
 
     def test_from_3d(self, chord_dists, angular_dists):
         dists = AngularDistances.from_3d(chord_dists)
