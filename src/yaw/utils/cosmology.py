@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Union, get_args
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 from astropy.cosmology import FLRW, Planck15, cosmology_equal
@@ -31,16 +31,16 @@ class CustomCosmology(ABC):
 
 
 def cosmology_is_equal(cosmo1: Tcosmology, cosmo2: Tcosmology) -> bool:
-    if not isinstance(cosmo1, get_args(Tcosmology)):
+    if not isinstance(cosmo1, (FLRW, CustomCosmology)):
         raise TypeError("'cosmo1' is not a valid cosmology type")
-    if not isinstance(cosmo2, get_args(Tcosmology)):
+    if not isinstance(cosmo2, (FLRW, CustomCosmology)):
         raise TypeError("'cosmo2' is not a valid cosmology type")
 
     is_custom_1 = isinstance(cosmo1, CustomCosmology)
     is_custom_2 = isinstance(cosmo2, CustomCosmology)
 
     if is_custom_1 and is_custom_2:
-        return cosmo1 == cosmo2
+        return True
 
     elif not is_custom_1 and not is_custom_2:
         return cosmology_equal(cosmo1, cosmo2)
