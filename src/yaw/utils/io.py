@@ -17,10 +17,12 @@ PRECISION = 10
 
 def format_float_fixed_width(value: float, width: int) -> str:
     """Format a floating point number as string with fixed width."""
-    string = f"{value: .{width}f}"[:width]
+    string = f"{value: .{width}f}"
     if "nan" in string or "inf" in string:
-        string = f"{string.strip():>{width}s}"
-    return string
+        string = f"{string.rstrip():>{width}s}"
+
+    num_digits = len(string.split(".")[0])
+    return string[: max(width, num_digits)]
 
 
 def create_columns(columns: list[str], closed: str) -> list[str]:
@@ -107,7 +109,7 @@ def load_samples(path: Path) -> NDArray:
 
 def write_covariance(path: Path, description: str, *, covariance: NDArray) -> None:
     with path.open("w") as f:
-        f.write(f"{description}\n")
+        f.write(f"# {description}\n")
 
         for row in covariance:
             for value in row:
@@ -126,7 +128,9 @@ def write_version_tag(dest: Group) -> None:
 
 def load_version_tag(source: Group) -> str:
     try:
-        return source["version"][()]
+        tag = source["version"][()]
+        return tag.decode("utf-8")
+
     except KeyError:
         return "2.x.x"
 
