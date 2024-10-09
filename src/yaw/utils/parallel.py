@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from abc import ABC
+from functools import partial
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -104,35 +105,37 @@ else:
     COMM = MockComm()
 
 
-def get_size(max_workers: int | None = None) -> int:
+def get_size(max_workers: int | None = None, comm: Comm = COMM) -> int:
     if use_mpi():
-        size = COMM.Get_size()
+        size = comm.Get_size()
     else:
         size = _num_processes()
     max_workers = max_workers or size
     return min(max_workers, size)
 
 
-def on_root() -> bool:
-    return COMM.Get_rank() == 0
+def on_root(comm: Comm = COMM) -> bool:
+    return comm.Get_rank() == 0
 
 
-def on_worker() -> bool:
-    return COMM.Get_rank() != 0
+def on_worker(comm: Comm = COMM) -> bool:
+    return comm.Get_rank() != 0
 
 
-def ranks_on_same_node(rank: int = 0, max_workers: int | None = None) -> set[int]:
+def ranks_on_same_node(
+    rank: int = 0, max_workers: int | None = None, comm: Comm = COMM
+) -> set[int]:
     proc_name = MPI.Get_processor_name()
-    proc_names = COMM.gather(proc_name, root=rank)
+    proc_names = comm.gather(proc_name, root=rank)
 
     on_same_node = set()
-    if COMM.Get_rank() == rank:
+    if comm.Get_rank() == rank:
         on_same_node = [i for i, name in enumerate(proc_names) if name == proc_name]
         if max_workers is not None:
             on_same_node = on_same_node[:max_workers]
         on_same_node = set(on_same_node)
 
-    return COMM.bcast(on_same_node, root=rank)
+    return comm.bcast(on_same_node, root=rank)
 
 
 def world_to_comm_rank(comm: Comm, world_rank: int) -> int:
@@ -170,35 +173,37 @@ class ParallelJob:
         return self.func(*func_args, **self.func_kwargs)
 
 
-def _mpi_root_task(iterable: Iterable, ranks: Iterable[int]) -> Iterator:
+def _mpi_root_task(
+    iterable: Iterable, ranks: Iterable[int], comm: Comm = COMM
+) -> Iterator:
     # first pass of assigning tasks to workers dynamically
     active_workers = 0
     for rank in range(1, get_size()):
         try:
             assert rank in ranks
-            COMM.send(next(iterable), dest=rank, tag=1)
+            comm.send(next(iterable), dest=rank, tag=1)
             active_workers += 1
         except (AssertionError, StopIteration):
             # shut down any unused workers
-            COMM.send(EndOfQueue, dest=rank, tag=1)
+            comm.send(EndOfQueue, dest=rank, tag=1)
 
     # yield results from workers and send new tasks until all have been processed
     while active_workers > 0:
-        rank, result = COMM.recv(source=MPI.ANY_SOURCE, tag=2)
+        rank, result = comm.recv(source=MPI.ANY_SOURCE, tag=2)
         yield result
 
         try:
-            COMM.send(next(iterable), dest=rank, tag=1)
+            comm.send(next(iterable), dest=rank, tag=1)
         except StopIteration:
-            COMM.send(EndOfQueue, dest=rank, tag=1)
+            comm.send(EndOfQueue, dest=rank, tag=1)
             active_workers -= 1
 
 
-def _mpi_worker_task(func: ParallelJob) -> None:
-    rank = COMM.Get_rank()
-    while (arg := COMM.recv(source=0, tag=1)) is not EndOfQueue:
+def _mpi_worker_task(func: ParallelJob, comm: Comm = COMM) -> None:
+    rank = comm.Get_rank()
+    while (arg := comm.recv(source=0, tag=1)) is not EndOfQueue:
         result = func(arg)
-        COMM.send((rank, result), dest=0, tag=2)
+        comm.send((rank, result), dest=0, tag=2)
 
 
 def _mpi_iter_unordered(
@@ -209,16 +214,17 @@ def _mpi_iter_unordered(
     func_kwargs: dict,
     unpack: bool = False,
     ranks: Iterable[int],
+    comm: Comm = COMM,
 ) -> Iterator[Tresult]:
     if on_root():
         iterable = iter(iterable)
-        yield from _mpi_root_task(iterable, ranks)
+        yield from _mpi_root_task(iterable, ranks, comm=comm)
 
     else:
         wrapped_func = ParallelJob(func, func_args, func_kwargs, unpack=unpack)
-        _mpi_worker_task(wrapped_func)
+        _mpi_worker_task(wrapped_func, comm=comm)
 
-    COMM.Barrier()
+    comm.Barrier()
 
 
 def _multiprocessing_iter_unordered(
@@ -249,6 +255,7 @@ def iter_unordered(
     unpack: bool = False,
     max_workers: int | None = None,
     rank0_node_only: bool = False,
+    comm: Comm = COMM,
 ) -> Iterator[Tresult]:
     max_workers = get_size(max_workers)
     iter_kwargs = dict(
@@ -259,12 +266,13 @@ def iter_unordered(
 
     if use_mpi():
         if rank0_node_only:
-            ranks = ranks_on_same_node(rank=0, max_workers=max_workers)
+            ranks = ranks_on_same_node(rank=0, max_workers=max_workers, comm=comm)
         else:
             ranks = set(range(max_workers))
 
         num_workers = len(ranks)
         iter_kwargs["ranks"] = ranks
+        iter_kwargs["comm"] = comm
         parallel_method = _mpi_iter_unordered
 
     else:
@@ -297,41 +305,43 @@ def new_uninitialised(cls: type[Tbroadcast]) -> Tbroadcast:
     return inst
 
 
-def bcast_array(array: NDArray | None) -> NDArray:
+def bcast_array(array: NDArray, comm: Comm = COMM) -> NDArray:
     array_info = ()
     if on_root():
         array = np.ascontiguousarray(array)
         array_info = (array.shape, array.dtype)
-    array_info = COMM.bcast(array_info, root=0)
+    array_info = comm.bcast(array_info, root=0)
 
     if on_worker():
         shape, dtype = array_info
         array = np.empty(shape, dtype=dtype)
-    COMM.Bcast(array, root=0)
+    comm.Bcast(array, root=0)
 
     return array
 
 
-def bcast_instance(inst: Tbroadcast | None) -> Tbroadcast:
+def get_bcast_method(inst: T, comm: Comm = COMM) -> Callable[[T], T]:
+    if isinstance(inst, Broadcastable):
+        bcast_method = partial(bcast_instance, comm=comm)
+    elif isinstance(inst, np.ndarray):
+        bcast_method = partial(bcast_array, comm=comm)
+    else:
+        bcast_method = comm.bcast
+
+    return comm.bcast(bcast_method, root=0)
+
+
+def bcast_instance(inst: Tbroadcast, *, comm: Comm = COMM) -> Tbroadcast:
     if not use_mpi():
         return inst
 
-    cls = COMM.bcast(type(inst), root=0)
+    cls = comm.bcast(type(inst), root=0)
     if on_worker():
         inst = new_uninitialised(cls)
 
     for name in inst.__slots__:
         value = getattr(inst, name)
-
-        if isinstance(value, Broadcastable):
-            bcast_method = bcast_instance
-        elif isinstance(value, np.ndarray):
-            bcast_method = bcast_array
-        else:
-            bcast_method = COMM.bcast
-        bcast_method = COMM.bcast(bcast_method, root=0)
-
-        value = bcast_method(value)
-        setattr(inst, name, value)
+        bcast = get_bcast_method(value, comm=comm)
+        setattr(inst, name, bcast(value))
 
     return inst
