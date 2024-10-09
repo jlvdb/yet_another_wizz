@@ -84,6 +84,7 @@ testpaths = [
 addopts = [
     "--cov=yaw",
     "--cov-report=xml",
+    "--cov-report=term",
 ]
 
 [tool.isort]
