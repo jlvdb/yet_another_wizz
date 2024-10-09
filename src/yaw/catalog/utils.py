@@ -57,7 +57,7 @@ class PatchIDs:
 
     @staticmethod
     def parse(patch_ids: ArrayLike, num_expect: int = -1) -> Tpids:
-        patch_ids = np.asarray(patch_ids)
+        patch_ids = np.atleast_1d(patch_ids)
 
         PatchIDs.validate(patch_ids)
         if num_expect > 0 and len(patch_ids) != num_expect:
@@ -148,7 +148,7 @@ class PatchData:
             f"has_weights={self.has_weights}",
             f"has_redshifts={self.has_redshifts}",
         )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
+        return f"{type(self).__name__}({', '.join(items)})"
 
     def __len__(self) -> int:
         return len(self.data)

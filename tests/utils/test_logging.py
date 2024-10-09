@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import sys
 from logging import DEBUG, getLogger
 
@@ -56,7 +54,7 @@ def test_Indicator(capsys):
     assert captured.out.endswith("\n")
 
 
-def send_logs(log_msg: str) -> None:
+def send_logs(log_msg):
     logger_yaw = getLogger("yaw.test")
     logger_filtered = getLogger("any.module")
     logger_filtered.debug(log_msg)

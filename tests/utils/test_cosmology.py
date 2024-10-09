@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import numpy as np
 from astropy.cosmology import FLRW, Planck15
 from pytest import approx, raises

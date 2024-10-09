@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from yaw.utils import parallel
 
 
@@ -7,7 +5,7 @@ class Dummy:
     pass
 
 
-def dummy_task(*args, **kwargs) -> tuple[tuple, dict]:
+def dummy_task(*args, **kwargs):
     return args, kwargs
 
 

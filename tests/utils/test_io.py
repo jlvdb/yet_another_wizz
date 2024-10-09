@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from math import inf, nan
 
 import h5py
