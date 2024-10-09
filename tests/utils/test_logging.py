@@ -1,5 +1,5 @@
 import sys
-from logging import DEBUG, getLogger
+from logging import DEBUG, LogRecord, getLogger
 
 from pytest import mark
 
@@ -54,6 +54,15 @@ def test_Indicator(capsys):
     assert captured.out.endswith("\n")
 
 
+@mark.parametrize(
+    "name,filtered",
+    [("yaw", True), ("yaw.utils", True), ("mod", False), ("mod.yaw", False)],
+)
+def test_OnlyYAWFilter(name, filtered):
+    record = LogRecord(name, DEBUG, "file.py", 1, "log msg", None, None)
+    assert logging.OnlyYAWFilter().filter(record) is filtered
+
+
 def send_logs(log_msg):
     logger_yaw = getLogger("yaw.test")
     logger_filtered = getLogger("any.module")
@@ -61,7 +70,8 @@ def send_logs(log_msg):
     logger_yaw.debug(log_msg)
 
 
-def test_get_default_logger(caplog):
+@mark.parametrize("pretty", [False, True])
+def test_get_default_logger(caplog, pretty):
     caplog.set_level(DEBUG, logger="yaw")
     n_logs = 0
     log_msg = "test msg"
@@ -69,9 +79,9 @@ def test_get_default_logger(caplog):
     logger_filtered = getLogger("any.module")
     logger_yaw = getLogger("yaw.test")
 
-    logger = logging.get_default_logger("debug")
+    logger = logging.get_default_logger("debug", pretty=pretty)
     logger.level == DEBUG
-    n_logs += 2  # call above emits two log messages
+    n_logs += 2 - int(pretty)
     assert len(caplog.records) == n_logs
 
     logger_filtered.debug(log_msg)

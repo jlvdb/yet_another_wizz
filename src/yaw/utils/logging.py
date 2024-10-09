@@ -181,7 +181,7 @@ class OnlyYAWFilter(Filter):
     def filter(self, record):
         record.exc_info = None
         record.exc_text = None
-        return "yaw" in record.name
+        return record.name.startswith("yaw")
 
 
 def emit_yaw_message(file: TextIOBase, msg: str, prefix: str = "YAW | ") -> None:
