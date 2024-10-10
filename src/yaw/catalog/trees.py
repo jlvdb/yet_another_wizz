@@ -117,6 +117,10 @@ class AngularTree(Sized):
     def __len__(self) -> int:
         return self.num_records
 
+    @property
+    def data(self) -> NDArray:
+        return self.tree.data
+
     def count(
         self,
         other: AngularTree,
@@ -239,7 +243,7 @@ class BinnedTrees(Iterable):
     @property
     def num_bins(self) -> int | None:
         try:
-            return len(self.binning)
+            return len(self.binning) - 1
         except TypeError:
             return None
 

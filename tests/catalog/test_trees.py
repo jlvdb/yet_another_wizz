@@ -5,6 +5,9 @@ from numpy.testing import assert_almost_equal, assert_array_equal
 from pytest import fixture, mark, raises
 
 from yaw.catalog import trees
+from yaw.catalog.containers import Patch
+from yaw.catalog.utils import PatchData
+from yaw.catalog.writers import PatchWriter
 from yaw.utils.coordinates import AngularCoordinates
 
 
@@ -251,10 +254,69 @@ class TestAngularTree:
             tree.count(tree, [1.0], [np.pi + DELTA])
 
 
-@mark.skip()
-def test_build_trees():
-    pass
+@fixture(name="test_patch_no_z")
+def fixture_test_patch_no_z(test_points, tmp_path):
+    data = PatchData.from_columns(test_points.ra, test_points.dec)
+
+    path = tmp_path / "patch_no_z"
+    writer = PatchWriter(path, has_weights=False, has_redshifts=False)
+    writer.process_chunk(data)
+    writer.close()
+
+    return Patch(path)
+
+
+@fixture(name="test_patch")
+def fixture_test_patch(test_points, tmp_path):
+    data = PatchData.from_columns(
+        test_points.ra,
+        test_points.dec,
+        redshifts=np.arange(len(test_points)) % 2 + 0.5,
+    )
+
+    path = tmp_path / "patch"
+    writer = PatchWriter(path, has_weights=False, has_redshifts=True)
+    writer.process_chunk(data)
+    writer.close()
+
+    return Patch(path)
 
 
 class TestBinnedTrees:
-    pass
+    def test_init_unbinned(self, test_patch_no_z):
+        tree = trees.BinnedTrees.build(test_patch_no_z)
+        repr(tree)
+
+        assert tree.binning is None
+        assert tree.binning_equal(None)
+        assert not tree.is_binned()
+        assert tree.num_bins is None
+
+        iterator = iter(tree)
+        assert_array_equal(next(iterator).data, tree.trees.data)
+        assert_array_equal(next(iterator).data, tree.trees.data)
+
+    def test_reload(self, test_patch):
+        trees.BinnedTrees.build(test_patch)
+        trees.BinnedTrees.build(test_patch)
+        trees.BinnedTrees(test_patch)
+
+    def test_init_binned(self, test_patch, test_patch_no_z):
+        binning = [0.0, 1.0, 2.0]
+        with raises(ValueError, match=".*no 'redshifts'.*"):
+            trees.BinnedTrees.build(test_patch_no_z, binning)
+
+        tree = trees.BinnedTrees.build(test_patch, binning)
+        repr(tree)
+
+        assert_array_equal(tree.binning, binning)
+        assert tree.binning_equal(binning)
+        assert not tree.binning_equal(binning[1:])
+        assert tree.is_binned()
+        assert tree.num_bins is len(binning) - 1
+
+        iterator = iter(tree)
+        assert_array_equal(next(iterator).data, tree.trees[0].data)
+        assert_array_equal(next(iterator).data, tree.trees[1].data)
+        with raises(StopIteration):
+            next(iterator)
