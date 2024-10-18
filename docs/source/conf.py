@@ -6,19 +6,19 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-import os
+from pathlib import Path
 
-try:
-    try:  # user has installed the package
-        import yaw
-    except ImportError:  # try local package location
-        import sys
+PKG_ROOT = Path("../../").resolve()
 
-        sys.path.insert(0, os.path.abspath("../../src"))
-        import yaw
-except ImportError as e:
-    if "core._math" in e.args[0]:
-        raise RuntimeError("yet_another_wizz must be compiled") from e
+try:  # user has installed the package
+    import yaw
+except ImportError:  # try local package location
+    import sys
+
+    sys.path.insert(0, str(PKG_ROOT / "src"))
+
+    import yaw
+
 
 project = "yet_another_wizz"
 copyright = "2023, Jan Luca van den Busch"
@@ -56,7 +56,6 @@ copybutton_line_continuation_character = "\\"
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-pypi = "https://pypi.org/project/yet_another_wizz"
 html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
@@ -73,9 +72,9 @@ html_theme_options = {
         "image_light": "_static/logo-light.svg",
         "image_dark": "_static/logo-dark.svg",
     },
-    "pygment_light_style": "xcode",
-    "pygment_dark_style": "github-dark",
-    "announcement": f"<p>Now available on <a href='{pypi}/'>PyPI</a>!</p>",
+    "pygments_light_style": "xcode",
+    "pygments_dark_style": "github-dark",
+    "announcement": f"<p>Version 3.0 released!</p>",
 }
 html_sidebars = {
     "**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
@@ -86,83 +85,66 @@ html_context = {
 
 # -- Build custom files ------------------------------------------------------
 
-# generate a changelog file with dropdown sections
-ver_strs = []
-ver_texts = []
-ver_text = []
-with open("../../CHANGELOG.rst") as f:
-    for line in f.readlines():
-        if line.startswith("Version"):
-            if len(ver_strs) > 0:
-                ver_texts.append(ver_text)
-            ver_strs.append(line.strip().split()[1])
-            ver_text = []
-        elif len(ver_strs) > 0 and not line.startswith("---"):
-            ver_text.append(line)
-    else:
-        ver_texts.append(ver_text)
-with open("changes.rst", "w") as f:
-    f.write("Change log\n==========\n\n")
-    for i, (ver_str, ver_text) in enumerate(zip(ver_strs, ver_texts)):
-        f.write(f".. dropdown:: Version {ver_str}\n")
-        f.write("    :class-title: h5\n")
-        if i == 0:
-            f.write("    :open:\n")
-        for line in ver_text:
-            f.write(f"    {line}")
+def write_changes(path):
+    version_key = "Version"
+    version_info = dict()
 
-path = "user_guide/README.rst"
-if not os.path.exists(path):
-    print(f"generating '{path}'")
-    with open(f"../../{os.path.basename(path)}") as r:
-        with open(path, "w") as f:
-            header = True
-            for line in r.readlines():
-                if header:
-                    if line.startswith("*"):
-                        header = False
-                        f.write(line)
-                else:
-                    f.write(line)
+    with (PKG_ROOT / "CHANGELOG.rst").open() as f:
+        version = None
 
-path = "user_guide/cmd/default_setup.yaml"
-if not os.path.exists(path):
-    print(f"generating '{path}'")
-    from yaw_cli.pipeline.default_setup import gen_default
+        lines = f.readlines()
+        for start, line in enumerate(lines):
+            if line.startswith(version_key):
+                break
+
+        for line in lines[start:]:
+            if line.startswith("---"):
+                continue
+
+            elif line.startswith(version_key):
+                _, version = line.strip().split()
+                version_info[version] = []
+
+            else:
+                version_info[version].append(line)
 
     with open(path, "w") as f:
-        f.write(gen_default(78))
+        f.write("Change log\n==========\n\n")
 
-for sub in (
-    "",
-    "init",
-    "cross",
-    "auto",
-    "ztrue",
-    "cache",
-    "merge",
-    "zcc",
-    "plot",
-    "run",
-):
-    path = f"user_guide/cmd/yaw_help_{sub}.txt"
-    if not os.path.exists(path):
-        print(f"generating '{path}'")
-        os.system(f"yaw_cli {sub} --help > {path}")
+        for i, (verion, info_lines) in enumerate(version_info.items()):
+            f.write(f".. dropdown:: Version {verion}\n")
+            f.write("    :class-title: h5\n")
+            if i == 0:
+                f.write("    :open:\n")
 
-path = "api/default.py"
-if not os.path.exists(path):
+            for line in info_lines:
+                f.write(f"    {line}")
+
+
+def write_readme(path):
+    path = Path(path).resolve()
+    path.parent.mkdir(exist_ok=True)
+
     print(f"generating '{path}'")
-with open("../../src/yaw/config/default.py") as f:
-    outlines = []
-    header_over = False
-    start = False
-    for line in f.readlines():
-        if line.startswith("# docs"):
-            header_over = True
-            continue
-        if header_over:
-            outlines.append(line)
-text = "".join(outlines)
-with open(path, "w") as f:
-    f.write(text.lstrip("\n"))
+    with (
+        (PKG_ROOT / "README.rst").open() as source,
+        path.open("w") as f,
+    ):
+        lines = source.readlines()
+
+        for i, line in enumerate(lines):
+            if "end header" in line:
+                start = i + 1
+                break
+        else:
+            raise ValueError("missing 'end header' comment")
+
+        f.write("..\n")
+        f.write("    This is a copy of /README.rst with its header stripped.\n")
+        f.write("\n")
+
+        f.writelines(lines[start:])
+
+
+write_readme("user_guide/README.rst")
+write_changes("changes.rst")

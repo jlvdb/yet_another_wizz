@@ -1,5 +1,8 @@
 .. _patches:
 
+.. Warning::
+    Outdated information.
+
 Spatial patches
 ^^^^^^^^^^^^^^^
 
