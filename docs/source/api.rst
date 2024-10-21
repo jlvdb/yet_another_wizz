@@ -5,6 +5,8 @@ API Documentation
 
 .. automodule:: yaw
 
+.. Warning::
+    Flowchart is outdated with missing UniformRandoms implementataion.
 
 .. image:: /_static/flowchart.svg
     :width: 800
