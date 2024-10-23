@@ -35,7 +35,7 @@ def auto_binning(bin_props):
 class TestBinningConfig:
     def test_init(self, bin_edges, manual_binning):
         npt.assert_array_equal(bin_edges, manual_binning.zbins)
-        assert manual_binning.method == "manual"
+        assert manual_binning.method == "custom"
         with raises(ValueError):
             BinningConfig(zbins=bin_edges[::-1])
         with raises(ConfigError):
@@ -68,7 +68,7 @@ class TestBinningConfig:
         assert manual_binning.zmin == bin_props["zmin"]
         assert manual_binning.zmax == bin_props["zmax"]
         assert manual_binning.zbin_num == bin_props["zbin_num"]
-        assert manual_binning.method == "manual"
+        assert manual_binning.method == "custom"
         assert manual_binning.is_manual
 
         assert auto_binning.zmin == bin_props["zmin"]

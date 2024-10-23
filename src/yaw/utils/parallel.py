@@ -40,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 
 def _get_physical_cores() -> int:
+    """Attempt to get the number of physical as opposed to logical CPU cores of
+    the system."""
     try:
         if os.name == "posix":
             output = subprocess.check_output("lscpu")
@@ -60,6 +62,8 @@ def _get_physical_cores() -> int:
 
 
 def _num_processes() -> int:
+    """Get the number of processes to use from the ``YAW_NUM_THREADS``
+    environment variable, otherwise use the number of physical cores."""
     system_threads = _get_physical_cores()
 
     try:
@@ -74,15 +78,20 @@ try:
     from mpi4py import MPI
 
     def use_mpi() -> bool:
+        """Whether the current code is run in an MPI environment."""
         return MPI.COMM_WORLD.Get_size() > 1
 
 except ImportError:
 
     def use_mpi() -> Literal[False]:
+        """Whether the current code is run in an MPI environment."""
         return False
 
 
 class MockComm:
+    """Implements the most basic functionality of an MPI communicator if MPI is
+    not installed."""
+
     def Barrier(self) -> None:
         pass
 
@@ -106,6 +115,8 @@ else:
 
 
 def get_size(max_workers: int | None = None, comm: Comm = COMM) -> int:
+    """Get the smaller value of ``max_workers`` or the size of the
+    communicator."""
     if use_mpi():
         size = comm.Get_size()
     else:
@@ -115,16 +126,20 @@ def get_size(max_workers: int | None = None, comm: Comm = COMM) -> int:
 
 
 def on_root(comm: Comm = COMM) -> bool:
+    """Whether currently on the root worker with rank 0."""
     return comm.Get_rank() == 0
 
 
 def on_worker(comm: Comm = COMM) -> bool:
+    """Whether currently on a non-root worker."""
     return comm.Get_rank() != 0
 
 
 def ranks_on_same_node(
     rank: int = 0, max_workers: int | None = None, comm: Comm = COMM
 ) -> set[int]:
+    """Get the set of MPI ranks that are associated with the same CPU as the
+    root rank."""
     proc_name = MPI.Get_processor_name()
     proc_names = comm.gather(proc_name, root=rank)
 
@@ -139,6 +154,7 @@ def ranks_on_same_node(
 
 
 def world_to_comm_rank(comm: Comm, world_rank: int) -> int:
+    """Get the rank of the current rank in the world rank."""
     comm_rank = None
     if MPI.COMM_WORLD.Get_rank() == world_rank:
         comm_rank = comm.Get_rank()
@@ -150,6 +166,11 @@ class EndOfQueue:
 
 
 class ParallelJob:
+    """
+    Wrapper for a function that binds arguments and keyword arguments, similar
+    to ``functools.partial``. If ``unpack=True``, the positional arguments are
+    unpacked when calling the function, otherwise they are passed as a tuple.
+    """
     __slots__ = ("func", "func_args", "func_kwargs", "unpack")
 
     def __init__(
@@ -176,6 +197,8 @@ class ParallelJob:
 def _mpi_root_task(
     iterable: Iterable, ranks: Iterable[int], comm: Comm = COMM
 ) -> Iterator:
+    """On the root rank, send the job arguments to the remaining ranks and
+    collect the results in an iterator."""
     # first pass of assigning tasks to workers dynamically
     active_workers = 0
     for rank in range(1, get_size()):
@@ -200,6 +223,8 @@ def _mpi_root_task(
 
 
 def _mpi_worker_task(func: ParallelJob, comm: Comm = COMM) -> None:
+    """On the worker rank, receive function arguments and return the function
+    call results to the root rank."""
     rank = comm.Get_rank()
     while (arg := comm.recv(source=0, tag=1)) is not EndOfQueue:
         result = func(arg)
@@ -216,6 +241,15 @@ def _mpi_iter_unordered(
     ranks: Iterable[int],
     comm: Comm = COMM,
 ) -> Iterator[Tresult]:
+    """
+    Asynchronous iterator that maps arguments to a worker function using MPI
+    parallelism.
+    
+    Takes a job function, an iterable of job arguments and optionally a list
+    of positional and keyword arguments to bind to the job function.
+    Additionally, specify if the function expects the the positional arguments
+    as a single tuple or unpacked.
+    """
     if on_root():
         iterable = iter(iterable)
         yield from _mpi_root_task(iterable, ranks, comm=comm)
@@ -236,6 +270,15 @@ def _multiprocessing_iter_unordered(
     unpack: bool = False,
     num_processes: int | None = None,
 ) -> Iterator[Tresult]:
+    """
+    Asynchronous iterator that maps arguments to a worker function using
+    multiprocessing parallelism.
+
+    Takes a job function, an iterable of job arguments and optionally a list
+    of positional and keyword arguments to bind to the job function.
+    Additionally, specify if the function expects the the positional arguments
+    as a single tuple or unpacked.
+    """
     wrapped_func = ParallelJob(func, func_args, func_kwargs, unpack=unpack)
 
     if num_processes == 1:
@@ -257,6 +300,16 @@ def iter_unordered(
     rank0_node_only: bool = False,
     comm: Comm = COMM,
 ) -> Iterator[Tresult]:
+    """
+    Asynchronous iterator that maps arguments to a worker function, choosing
+    the parallelism mechanism (MPI/multiprocessing) automatically.
+
+    Takes a job function, an iterable of job arguments and optionally a list
+    of positional and keyword arguments to bind to the job function. Specify if
+    the function expects the the positional arguments as a single tuple or
+    unpacked. Additionally limit the number of workers to use (also applies to
+    MPI) or run only on the same node as the root worker (MPI only).
+    """
     max_workers = get_size(max_workers)
     iter_kwargs = dict(
         func_args=(func_args or tuple()),
@@ -290,6 +343,19 @@ def iter_unordered(
 
 
 class Broadcastable(ABC):
+    """
+    Implements a protocol that allows efficient MPI broadcasting of numpy
+    arrays.
+
+    Subclasses must implement ``__slots__``, which specify the attribte that
+    must be shared with other ranks. This allows to broadcast the attributes
+    individually and recursively and use MPI broadcasting of numpy arrays where
+    possible and pickling otherwise.
+
+    This solves an issue when trying to broadcast ``CorrFunc`` instances with
+    many patches, which fails when using pickling.
+    """
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if "__slots__" not in cls.__dict__:
@@ -299,6 +365,8 @@ class Broadcastable(ABC):
 
 
 def new_uninitialised(cls: type[Tbroadcast]) -> Tbroadcast:
+    """Create an empty instance of the class with all attributes initialised to
+    ``None``."""
     inst = cls.__new__(cls)
     for attr in cls.__slots__:
         setattr(inst, attr, None)
@@ -306,6 +374,8 @@ def new_uninitialised(cls: type[Tbroadcast]) -> Tbroadcast:
 
 
 def bcast_array(array: NDArray, comm: Comm = COMM) -> NDArray:
+    """Broadcast a numpy array to all non-root ranks. Input array may have any
+    value on non-root ranks."""
     array_info = ()
     if on_root():
         array = np.ascontiguousarray(array)
@@ -321,6 +391,8 @@ def bcast_array(array: NDArray, comm: Comm = COMM) -> NDArray:
 
 
 def get_bcast_method(inst: T, comm: Comm = COMM) -> Callable[[T], T]:
+    """Determine if the object must be broadcastes by recursion, using MPI
+    broadcasting mechanisms, or using pickling."""
     if isinstance(inst, Broadcastable):
         bcast_method = partial(bcast_instance, comm=comm)
     elif isinstance(inst, np.ndarray):
@@ -332,6 +404,8 @@ def get_bcast_method(inst: T, comm: Comm = COMM) -> Callable[[T], T]:
 
 
 def bcast_instance(inst: Tbroadcast, *, comm: Comm = COMM) -> Tbroadcast:
+    """Broadcast an instance of a subclass of ``Broadcastable`` to all non-root
+    ranks. Instance may have any value on non-root ranks."""
     if not use_mpi():
         return inst
 

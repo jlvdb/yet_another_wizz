@@ -6,6 +6,7 @@ correlation redshifts, also known as clustering redshifts.
 from yaw._version import __version__, __version_tuple__
 from yaw.catalog import Catalog, Patch
 from yaw.config import Configuration
+from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc
 from yaw.measurements import autocorrelate, crosscorrelate
 from yaw.redshifts import HistData, RedshiftData
@@ -16,6 +17,7 @@ __all__ = [
     "__version_tuple__",
     "AngularCoordinates",
     "AngularDistances",
+    "Binning",
     "Catalog",
     "Configuration",
     "CorrData",

@@ -5,13 +5,15 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+PLOTTING_ENABLED = False
+"""Plotting is enabled if matplotlib can be imported."""
 try:
     from matplotlib import pyplot as plt
 
     PLOTTING_ENABLED = True
 
 except ImportError:
-    PLOTTING_ENABLED = False
+    pass
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -42,6 +44,7 @@ def check_plotting_enabled(func):
 
 @check_plotting_enabled
 def zero_line(*, ax: Axis | None = None) -> Axis:
+    """Plot a thing line at ``y=0``."""
     ax = ax or plt.gca()
 
     lw = 0.7
@@ -61,6 +64,7 @@ def point_uncertainty(
     ax: Axis | None = None,
     **plot_kwargs: dict,
 ) -> Axis:
+    """Plots values as points with error bars against bin centers."""
     ax = ax or plt.gca()
 
     ebar_kwargs = dict(fmt=".", ls="none")
@@ -79,6 +83,8 @@ def line_uncertainty(
     ax: Axis | None = None,
     **plot_kwargs: dict,
 ) -> Axis:
+    """Plots values against bin centers as line and draws the y-uncertainty as
+    shaded area."""
     ax = ax or plt.gca()
 
     line = ax.plot(x, y, **plot_kwargs)
@@ -97,6 +103,8 @@ def step_uncertainty(
     ax: Axis | None = None,
     **plot_kwargs: dict,
 ) -> Axis:
+    """Creates a step plot and draws the y-uncertainty as a shaded area.
+    Requires bin edges instead of centers."""
     ax = ax or plt.gca()
 
     stair_kwargs = dict(lw=plt.rcParams["lines.linewidth"])
@@ -122,6 +130,7 @@ def correlation_matrix(
     cmap: str = "RdBu_r",
     ax: Axis | None = None,
 ) -> Axis:
+    """Plots a correlation matrix with optional tick labels for matrix axes."""
     ax = ax or plt.gca()
     vlims = dict(vmin=-1.0, vmax=1.0)
 

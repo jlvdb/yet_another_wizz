@@ -28,6 +28,8 @@ API Documentation
     :toctree: api
 
     Configuration
+    config.ScalesConfig
+    config.BinningConfig
     autocorrelate
     crosscorrelate
 
@@ -37,6 +39,9 @@ API Documentation
 .. autosummary::
     :toctree: api
 
+    paircounts.PatchedCounts
+    paircounts.PatchedTotals
+    paircounts.NormalisedCounts
     CorrFunc
     CorrData
     RedshiftData
@@ -50,3 +55,4 @@ API Documentation
 
     AngularCoordinates
     AngularDistances
+    Binning

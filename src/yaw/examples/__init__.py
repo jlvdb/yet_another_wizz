@@ -24,30 +24,27 @@ _path = Path(__file__).parent
 
 w_sp = CorrFunc.from_file(_path / "cross_1.hdf")
 """Example data from a crosscorrelation measurement
-(:obj:`~yaw.correlation.CorrFunc` instance)."""
+(:obj:`~yaw.CorrFunc` instance)."""
 
 w_ss = CorrFunc.from_file(_path / "auto_reference.hdf")
 """Example data from a reference sample autocorrelation measurement
-(:obj:`~yaw.correlation.CorrFunc` instance)."""
+(:obj:`~yaw.CorrFunc` instance)."""
 
 w_pp = CorrFunc.from_file(_path / "auto_unknown_1.hdf")
 """Example data from a unknown sample autocorrelation measurement
-(:obj:`~yaw.correlation.CorrFunc` instance)."""
+(:obj:`~yaw.CorrFunc` instance)."""
 
 
 normalised_counts = w_sp.dd
 """Example data for patch-wise, normalised pair counts
-(:obj:`~yaw.correlation.paircounts.NormalisedCounts` instance,
-from :obj:`w_sp.dd`)"""
+(:obj:`~yaw.paircounts.NormalisedCounts` instance, from :obj:`w_sp.dd`)"""
 
 patched_count = normalised_counts.counts
 """Example data for patch-wise pair counts
-(:obj:`~yaw.correlation.paircounts.PatchedCount` instance,
-from :obj:`w_sp.dd.count`)"""
+(:obj:`~yaw.paircounts.PatchedCount` instance, from :obj:`w_sp.dd.count`)"""
 
 patched_total = normalised_counts.totals
 """Example data for patch-wise total number of objects
-(:obj:`~yaw.correlation.paircounts.PatchedTotal` instance,
-from :obj:`w_sp.dd.total`)"""
+(:obj:`~yaw.paircounts.PatchedTotal` instance, from :obj:`w_sp.dd.total`)"""
 
 del _path

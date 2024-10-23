@@ -26,9 +26,12 @@ __all__ = [
 ]
 
 INDICATOR_PREFIX = ""
+"""Globabl variable that inserts a prefix when showing the ``Indicator``
+progress bar."""
 
 
 def set_indicator_prefix(prefix: str) -> None:
+    """Set the global ``INDICATOR_PREFIX`` to a specific value."""
     global INDICATOR_PREFIX
     INDICATOR_PREFIX = str(prefix)
 
@@ -50,11 +53,13 @@ def long_num_format(x: float | int) -> str:
 
 
 def format_time(elapsed: float) -> str:
+    """Format time in seconds as minutes and seconds: ``[MM]MmSS.SSs``"""
     minutes, seconds = divmod(elapsed, 60)
     return f"{minutes:.0f}m{seconds:05.2f}s"
 
 
 class ProgressPrinter:
+    """Helper that manages the progress bar layout."""
     __slots__ = ("template", "stream")
 
     def __init__(self, num_items: int | None, stream: TextIOBase) -> None:
@@ -82,6 +87,14 @@ class ProgressPrinter:
 
 
 class Indicator(Iterable[T]):
+    """
+    Iterates an iterable and displays a simple progress bar.
+
+    Takes an iterable and, optionally, the number of times in the iterable
+    (which allows displaying the total progress). The argument ``min_interval``
+    controlls, how often the progress bar is updated, text is written by default
+    to `stderr`.
+    """
     __slots__ = ("iterable", "num_items", "min_interval", "printer")
 
     def __init__(
@@ -129,6 +142,8 @@ class Indicator(Iterable[T]):
 
 
 def term_supports_color() -> bool:
+    """Attempt to determine if the current terminal environment supports
+    text colors."""
     plat = sys.platform
     supported = plat != "Pocket PC" and (plat != "win32" or "ANSICON" in os.environ)
     isatty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
@@ -161,6 +176,9 @@ else:
 
 
 class CustomFormatter(Formatter):
+    """Formatter for logging, using colors when possible. The default format is
+    ``[level code] | ``, where level code is a three letter abbreviation for the
+    log level."""
     level = "%(levelname).3s"
     msg = "%(message)s"
     FORMATS = {
@@ -178,6 +196,8 @@ class CustomFormatter(Formatter):
 
 
 class OnlyYAWFilter(Filter):
+    """Filter all log message that are not emmited by any of the internal
+    ``yaw`` loggers."""
     def filter(self, record):
         record.exc_info = None
         record.exc_text = None
@@ -185,6 +205,7 @@ class OnlyYAWFilter(Filter):
 
 
 def emit_yaw_message(file: TextIOBase, msg: str, prefix: str = "YAW | ") -> None:
+    """Print a message in a format that matches the ``CustomFormatter``."""
     file.write(f"{Colors.blu}{prefix}{msg}{Colors.rst}\n")
     file.flush()
 
@@ -195,6 +216,10 @@ def logger_init_messages(
     pretty: bool,
     file: TextIOBase,
 ) -> None:
+    """
+    Log (or print if ``pretty=True``) a welcome message that shows the current
+    code version and the parallelism environment (MPI or multiprocessing).
+    """
     welcome_msg = f"yet_another_wizz v{__version__}"
     if pretty:
         emit_yaw_message(file, welcome_msg)
@@ -216,6 +241,10 @@ def get_default_logger(
     file: TextIOBase = sys.stdout,
     show_welcome: bool = True,
 ) -> Logger:
+    """
+    Create a new root level logger for yet_another_wizz specific log messages
+    and display a welcome message. By default, records are written to `stdout`.
+    """
     level_code = getattr(logging, level.upper())
 
     if pretty:

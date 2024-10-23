@@ -45,6 +45,7 @@ templates_path = ["_templates"]
 exclude_patterns = []
 
 autodoc_inherit_docstrings = True
+autodoc_typehints = "signature"
 autosummary_generate = True
 autoclass_content = "class"
 autodoc_default_options = {

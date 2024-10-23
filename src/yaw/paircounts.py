@@ -32,11 +32,15 @@ __all__ = [
 
 
 class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadcastable):
+    """Meta-class for correlation function pair counts, recorded in bins of
+    redshift and for pairs of patches."""
     __slots__ = ()
 
     @property
     @abstractmethod
     def auto(self) -> bool:
+        """Whether the pair counts originate from an autocorrelation
+        measurement."""
         pass
 
     def __repr__(self) -> str:
@@ -52,15 +56,58 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadca
         pass
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        """
+        Checks if two containers have the same redshift binning and number of
+        spatial patches.
+
+        Args:
+            other:
+                Another instance of this class to compare to, returns ``False``
+                if instance types do not match.
+
+        Keyword Args:
+            require:
+                Whether to raise exceptions if any of the checks fail.
+
+        Returns:
+            Whether the number of patches is identical ``require=False``.
+
+        Raises:
+            TypeError:
+                If ``require=True`` and type of ``other`` does match this class.
+            ValueError:
+                If ``require=True`` and binning and the number of patches is not
+                identical.
+        """
         binnings_compatible = BinwiseData.is_compatible(self, other, require=require)
         patches_compatible = PatchwiseData.is_compatible(self, other, require=require)
         return binnings_compatible and patches_compatible
 
     @abstractmethod
     def get_array(self) -> NDArray:
+        """
+        Represent the internal data as numpy array with shape
+        (:obj:`num_bins`, :obj:`num_patches`, :obj:`num_patches`).
+
+        I.e. the first array element contains the data associated with the first
+        redshift bin and pairing the first patch with itself.
+
+        Returns:
+            Internal data represented as numpy array.
+        """
         pass
 
     def sample_patch_sum(self) -> SampledData:
+        """
+        Compute the sum over all patches and leave-one-out jackknife samples.
+
+        I.e. marginalise over the patch axes and return a 1-dim array with
+        length :obj:`num_bins`.
+
+        Returns:
+            Sum over patches and jackknife samples thereof packed in an
+            instance of :obj:`~yaw.containers.SampledData`.
+        """
         bin_patch_array = self.get_array()
 
         # sum over all (total of num_paches**2) pairs of patches per bin
@@ -82,7 +129,46 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadca
 
 
 class PatchedTotals(BinwisePatchwiseArray):
+    """
+    Stores the sum of weights in spatial patches from catalogs in a correlation
+    measurement.
+
+    The sum of weights are stored separately for the first and second catalog,
+    each per patch and per redshift bin. The product of these numbers is used
+    to normalised correlation pair counts between patches. This normalisation
+    factor in bins or redshifts, including jackknife samples thereof, can be
+    obtained by calling :meth:`sample_patch_sum`, which sums over all possible
+    pairs of patches from the first and second catalog.
+
+    Implements comparison with the ``==`` operator.
+
+    Args:
+        binning:
+            Redshift bins used when counting pairs between patches.
+        totals1:
+            Sum of weights in patches of catalog 1, array with shape
+            (:obj:`num_bins`, :obj:`num_patches`).
+        totals2:
+            Sum of weights in patches of catalog 2, array with shape
+            (:obj:`num_bins`, :obj:`num_patches`).
+
+    Keyword Args:
+        auto:
+            Whether the pair counts originate from an autocorrelation
+            measurement.
+    """
     __slots__ = ("binning", "auto", "totals1", "totals2")
+
+    binning: Binning
+    """Accessor for the redshift :obj:`~yaw.Binning` attribute."""
+    totals1: NDArray
+    """Sum of weights in patches of catalog 1, array with shape
+    (:obj:`num_bins`, :obj:`num_patches`)."""
+    totals2: NDArray
+    """Sum of weights in patches of catalog 2, array with shape
+    (:obj:`num_bins`, :obj:`num_patches`)."""
+    auto: bool
+    """Whether the pair counts originate from an autocorrelation measurement."""
 
     def __init__(
         self, binning: Binning, totals1: NDArray, totals2: NDArray, *, auto: bool
@@ -155,9 +241,18 @@ class PatchedTotals(BinwisePatchwiseArray):
         )
 
     def get_array(self) -> NDArray:
-        # construct full array of patch total products, i.e. an array that
-        # holds the product of totals of patch i from source 1 and patch j from
-        # source 2 in the b-th bin when indexed at [b, i, j]
+        """
+        Represent the internal data as numpy array with shape
+        (:obj:`num_bins`, :obj:`num_patches`, :obj:`num_patches`).
+
+        Construct array of product of sum of weights for patch pairs, i.e. an
+        array that holds the product of the sum from patch :math:`i` from
+        catalog 1 and patch :math:`j` from catalog 2 in the :math:`b`-th
+        redshift bin at index ``[b, i, j]``.
+
+        Returns:
+            Internal data represented as numpy array.
+        """
         array = np.einsum("bi,bj->bij", self.totals1, self.totals2)
 
         if self.auto:
@@ -170,7 +265,41 @@ class PatchedTotals(BinwisePatchwiseArray):
 
 
 class PatchedCounts(BinwisePatchwiseArray):
-    __slots__ = ("binning", "auto", "counts")
+    """
+    Stores the pair counts in spatial patches from catalogs in a correlation
+    measurement.
+
+    The pair counts are stored per redshift bin and combination of patches. The
+    total counts per redshift bin, including jackknife samples thereof, can
+    be obtained by calling :meth:`sample_patch_sum`, which sums over all
+    possible pairs of patches from the first and second catalog.
+
+    Implements comparison with the ``==`` operator, addition of counts with the
+    ``+``/``+=`` operator and scalar multiplication of the counts with the ``*``
+    operator.
+
+    Args:
+        binning:
+            Redshift bins used when counting pairs between patches.
+        counts:
+            Array of with pair counts in bins of redshift between combinations
+            of patch pairs from both catalos, numpy array with shape
+            (:obj:`num_bins`, :obj:`num_patches`, :obj:`num_patches`).
+    
+    Keyword Args:
+        auto:
+            Whether this instance is intended for an autocorrelation
+            measurement.
+    """
+    __slots__ = ("binning", "counts", "auto")
+
+    binning: Binning
+    """Accessor for the redshift :obj:`~yaw.Binning` attribute."""
+    counts: NDArray
+    """Pair counts between patches of catalog 1 and 2 per redshift bin, array
+    with shape (:obj:`num_bins`, :obj:`num_patches`, :obj:`num_patches`)."""
+    auto: bool
+    """Whether the pair counts originate from an autocorrelation measurement."""
 
     def __init__(self, binning: Binning, counts: NDArray, *, auto: bool) -> None:
         self.binning = binning
@@ -189,6 +318,24 @@ class PatchedCounts(BinwisePatchwiseArray):
 
     @classmethod
     def zeros(cls, binning: Binning, num_patches: int, *, auto: bool) -> PatchedCounts:
+        """
+        Create a new instance with all pair counts initialised to zero.
+
+        Args:
+            binning:
+                Redshift bins used when counting pairs between patches.
+            num_patches:
+                The number of patches in the input catalogs used for the
+                correlation measurement.
+        
+        Keyword Args:
+            auto:
+                Whether this instance is intended for an autocorrelation
+                measurement.
+
+        Returns:
+            Initialised :obj:`PatchedCounts` instance.
+        """
         num_bins = len(binning)
         counts = np.zeros((num_bins, num_patches, num_patches))
         return cls(binning, counts, auto=auto)
@@ -285,11 +432,51 @@ class PatchedCounts(BinwisePatchwiseArray):
     def set_patch_pair(
         self, patch_id1: int, patch_id2: int, counts_binned: NDArray
     ) -> None:
+        """
+        Set the correlation pair counts between two patches in each redshift
+        bin.
+
+        Args:
+            patch_id1:
+                ID/index of the patch from catalog 1.
+            patch_id2:
+                ID/index of the patch from catalog 2.
+            counts_binned:
+                Array with pair counts per redshift bin with length
+                :obj:`num_patches`.
+        """
         self.counts[:, patch_id1, patch_id2] = counts_binned
 
 
-class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable, Broadcastable):
+class NormalisedCounts(BinwisePatchwiseArray):
+    """
+    Stores the normalised pair counts in spatial patches from catalogs in a
+    correlation measurement.
+
+    This class stores the raw pair counts (:obj:`counts`) and the product of the
+    sum of weights (:obj:`totals`) per redshift bin and combination of patch
+    pairs. The total of the normalised counts per redshift bin, including
+    jackknife samples thereof, can be obtained by calling
+    :meth:`sample_patch_sum`. The method computes the sum of pair counts over
+    all possible pairs of patches and normalises them by dividing them by the
+    product of the sum of weights from catalog 1 and 2.
+
+    Implements comparison with the ``==`` operator, addition of counts with the
+    ``+``/``+=`` operator and scalar multiplication of the counts with the ``*``
+    operator.
+
+    Args:
+        counts:
+            Container of correlation pair counts.
+        totals:
+            Container of sum of weights in patches of catalogs 1 and 2.
+    """
     __slots__ = ("counts", "totals")
+
+    counts: PatchedCounts
+    """Container of correlation pair counts."""
+    totals: PatchedTotals
+    """Container of sum of weights in patches of catalogs 1 and 2."""
 
     def __init__(self, counts: PatchedCounts, totals: PatchedTotals) -> None:
         if counts.num_patches != totals.num_patches:
@@ -371,6 +558,24 @@ class NormalisedCounts(BinwiseData, PatchwiseData, HdfSerializable, Broadcastabl
         counts = self.counts.patches[item]
         totals = self.totals.patches[item]
         return type(self)(counts, totals)
+
+    def get_array(self) -> NDArray:
+        """
+        Represent normalised pair counts as numpy array with shape
+        (:obj:`num_bins`, :obj:`num_patches`, :obj:`num_patches`).
+
+        I.e. the first array element contains the data associated with the first
+        redshift bin and pairing the first patch with itself.
+        
+        .. Note::
+            The normalisation is computed from all patches and not per patch.
+
+        Returns:
+            Internal data represented as numpy array.
+        """
+        counts = self.counts.get_array()
+        totals = self.totals.sample_patch_sum()
+        return counts / totals.data
 
     def sample_patch_sum(self) -> SampledData:
         counts = self.counts.sample_patch_sum()

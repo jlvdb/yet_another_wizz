@@ -21,16 +21,42 @@ __all__ = [
 
 
 class CustomCosmology(ABC):
+    """Meta-class that defines interface for custom cosmologies that are
+    compatible with yet_another_wizz code."""
     @abstractmethod
     def comoving_distance(self, z: ArrayLike) -> ArrayLike:
+        """
+        Compute the comoving distance.
+
+        Args:
+            z:
+                A single or an array of redshifts.
+        
+        Returns:
+            Float or numpy array with comoving distance for given input
+            redshifts.
+        """
         pass
 
     @abstractmethod
     def angular_diameter_distance(self, z: ArrayLike) -> ArrayLike:
+        """
+        Compute the angular diameter distance.
+
+        Args:
+            z:
+                A single or an array of redshifts.
+        
+        Returns:
+            Float or numpy array with angular diameter distance for given input
+            redshifts.
+        """
         pass
 
 
 def cosmology_is_equal(cosmo1: Tcosmology, cosmo2: Tcosmology) -> bool:
+    """Compare if two ``astropy`` cosmologies are equal. Always ``True`` for
+    instances of ``CustomCosmology``."""
     if not isinstance(cosmo1, (FLRW, CustomCosmology)):
         raise TypeError("'cosmo1' is not a valid cosmology type")
     if not isinstance(cosmo2, (FLRW, CustomCosmology)):
@@ -58,6 +84,27 @@ def separation_physical_to_angle(
     *,
     cosmology: Tcosmology | None = None,
 ) -> NDArray:
+    """
+    Convert physical transverse angular diameter distance to angle at the given
+    redshifts.
+    
+    Args:
+        separation_kpc:
+            Single or array of transverse angular diameter distances in kpc.
+        redshift:
+            Single or array of redshifts.
+
+    Keyword Args:
+        cosmology:
+            Astropy or ``CustomCosmology`` for distance conversion. Defaults to
+            default cosmology.
+
+    Returns:
+        An outer product of angular separations for pairs of separation and
+        redshift. Along the first axis are fixed values of separation, along the
+        second axis fixed values of redshift. The result has therefore a shape
+        (``len(separation_kpc)``, ``len(redshift)``).
+    """
     cosmology = cosmology or get_default_cosmology()
 
     rad_per_mpc = 1.0 / cosmology.angular_diameter_distance(redshift)

@@ -29,7 +29,7 @@ else:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Union
+    from typing import Any, Union
 
     from numpy.typing import NDArray
 
@@ -107,7 +107,7 @@ class Metadata(YamlSerialisable):
         radius = AngularDistances(kwarg_dict.pop("radius"))
         return cls(center=center, radius=radius, **kwarg_dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return dict(
             num_records=int(self.num_records),
             total=float(self.total),
