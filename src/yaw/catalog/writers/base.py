@@ -118,7 +118,7 @@ class PatchMode(Enum):
 
         if patch_centers is not None:
             PatchIDs.validate(len(patch_centers))
-            log_sink("applying patch %d centers", len(patch_centers))
+            log_sink("applying %d patches", len(patch_centers))
             return PatchMode.apply
 
         if patch_name is not None:

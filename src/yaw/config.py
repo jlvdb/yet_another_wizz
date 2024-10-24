@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     T = TypeVar("T")
     Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
 
-Tbin_method_all = Union[Tbin_method_auto | Literal["manual"]]
+Tbin_method_all = Union[Tbin_method_auto | Literal["custom"]]
 
 __all__ = [
     "BinningConfig",
@@ -53,6 +53,7 @@ class _NotSet_meta(type):
 
 
 class NotSet(metaclass=_NotSet_meta):
+    """Placeholder for configuration values that are not set."""
     pass
 
 
@@ -61,6 +62,19 @@ class ConfigError(Exception):
 
 
 def cosmology_to_yaml(cosmology: Tcosmology) -> str:
+    """
+    Attempt to serialise a cosmology instance to YAML.
+
+    .. Warning::
+        This currently works only for named astropy cosmologies.
+
+    Args:
+        cosmology:
+            A cosmology class instance, either a custom or astropy cosmology.
+
+    Returns:
+        A YAML string.
+    """
     if isinstance(cosmology, CustomCosmology):
         raise ConfigError("cannot serialise custom cosmologies to YAML")
 
@@ -74,6 +88,7 @@ def cosmology_to_yaml(cosmology: Tcosmology) -> str:
 
 
 def yaml_to_cosmology(cosmo_name: str) -> Tcosmology:
+    """Restore a cosmology class instance from a YAML string."""
     if cosmo_name not in astropy.cosmology.available:
         raise ConfigError(
             "unknown cosmology, for available options see 'astropy.cosmology.available'"
@@ -83,6 +98,24 @@ def yaml_to_cosmology(cosmo_name: str) -> Tcosmology:
 
 
 def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
+    """
+    Parse and verify that the provided cosmology is supported by
+    yet_another_wizz.
+
+    Parses any YAML string or replaces None with the default cosmology.
+
+    Args:
+        cosmology:
+            A cosmology class instance, either a custom or astropy cosmology, or
+            ``None`` or a cosmology serialised to YAML.
+
+    Returns:
+        A cosmology class instance, either a custom or astropy cosmology.
+
+    Raises:
+        ConfigError:
+            If the cosmology cannot be parsed.
+    """
     if cosmology is None:
         return get_default_cosmology()
 
@@ -97,11 +130,13 @@ def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
 
 
 class Immutable:
+    """Meta-class for configuration classes that prevent mutating attributes."""
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError(f"attribute '{name}' is immutable")
 
 
 def unpack_type(type_or_literal) -> tuple:
+    """Take a type and try to extract any literal values into at tuple."""
     args = []
     for item in get_args(type_or_literal):
         items = get_args(item)
@@ -114,6 +149,8 @@ def unpack_type(type_or_literal) -> tuple:
 
 @dataclass
 class Parameter:
+    """Defines the meta data for a configuration parameter, including a
+    describing help message."""
     name: str
     help: str
     type: type
@@ -126,6 +163,7 @@ class Parameter:
 
 
 class ParamSpec(Mapping[str, Parameter]):
+    """Dict-like collection of configuration parameters."""
     def __init__(self, params: Iterable[Parameter]) -> None:
         self._params = {p.name: p for p in params}
 
@@ -149,6 +187,13 @@ class ParamSpec(Mapping[str, Parameter]):
 
 
 class BaseConfig(YamlSerialisable):
+    """
+    Meta-class for all configuration classes.
+    
+    Implements basic interface that allows serialisation to YAML and methods to
+    create or modify and existing configuration class instance without mutating
+    the original.
+    """
     @classmethod
     def from_dict(
         cls: type[Tbase_config],
@@ -163,10 +208,13 @@ class BaseConfig(YamlSerialisable):
     @classmethod
     @abstractmethod
     def create(cls: type[Tbase_config], **kwargs: Any) -> Tbase_config:
+        """Create a new instance with the given parameter values."""
         pass
 
     @abstractmethod
     def modify(self: Tbase_config, **kwargs: Any | NotSet) -> Tbase_config:
+        """Create a new instance by modifing the original instance with the
+        given parameter values."""
         conf_dict = self.to_dict()
         conf_dict.update(
             {key: value for key, value in kwargs.items() if value is not NotSet}
@@ -183,10 +231,20 @@ class BaseConfig(YamlSerialisable):
     @classmethod
     @abstractmethod
     def get_paramspec(cls) -> ParamSpec:
+        """
+        Generate a listing of parameters that may be used by external tool
+        to auto-generate an interface to this configuration class.
+        
+        Returns:
+            A :obj:`ParamSpec` instance, that is a key-value mapping from
+            parameter name to the parameter meta data for this configuration
+            class.
+        """
         pass
 
 
 def parse_optional(value: Any | None, type: type[T]) -> T | None:
+    """Instantiate a type with a given value if the value is not ``None``."""
     if value is None:
         return None
 
@@ -198,10 +256,39 @@ default_resolution = None
 
 
 class ScalesConfig(BaseConfig, Immutable):
+    """
+    Configuration for correlation function measurement scales.
+
+    Correlations are measured by counting all pairs between a minimum and
+    maximum physical scale given in kpc. The code can be configured with either
+    a single scale range or multiple (overlapping) scale ranges.
+    
+    Additionally, pair counts can be weighted by the separation distance using a
+    power law :math:`w(r) \\propto r^\\alpha`. For performance reasons, the pair
+    counts are not weighted indivudially but in fine logarithmic bins of angular
+    separation, i.e. :math:`w(r) \\sim w(r_i)`, where :math:`r_i` is the
+    logarithmic center of the :math:`i`-th bin.
+
+    .. Note::
+        The preferred way to create a new configuration instance is using the
+        :meth:`create()` constructor.
+
+        All configuration objects are immutable. To modify an existing
+        configuration, create a new instance with updated values by using the
+        :meth:`modify()` method.
+    """
     rmin: list[float] | float
+    """Single or multiple lower scale limits in kpc (angular diameter
+    distance)."""
     rmax: list[float] | float
+    """Single or multiple upper scale limits in kpc (angular diameter
+    distance)."""
     rweight: float | None
+    """Optional power-law exponent :math:`\\alpha` used to weight pairs by their
+    separation."""
     resolution: int | None
+    """Optional number of radial logarithmic bin used to approximate the
+    weighting by separation."""
 
     def __init__(
         self,
@@ -230,6 +317,7 @@ class ScalesConfig(BaseConfig, Immutable):
 
     @property
     def num_scales(self) -> int:
+        """Number of correlation scales."""
         try:
             return len(self.rmin)
         except TypeError:
@@ -255,25 +343,25 @@ class ScalesConfig(BaseConfig, Immutable):
         params = [
             Parameter(
                 name="rmin",
-                help="",
+                help="Single or multiple lower scale limits in kpc (angular diameter distance).",
                 type=float,
                 is_sequence=True,
             ),
             Parameter(
                 name="rmax",
-                help="",
+                help="Single or multiple upper scale limits in kpc (angular diameter distance).",
                 type=float,
                 is_sequence=True,
             ),
             Parameter(
                 name="rweight",
-                help="",
+                help="Optional power-law exponent :math:`\\alpha` used to weight pairs by their separation.",
                 type=float,
                 default=default_rweight,
             ),
             Parameter(
                 name="resolution",
-                help="",
+                help="Optional number of radial logarithmic bin used to approximate the weighting by separation.",
                 type=int,
                 default=default_resolution,
             ),
@@ -283,20 +371,65 @@ class ScalesConfig(BaseConfig, Immutable):
     @classmethod
     def create(
         cls,
+        *,
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
         rweight: float | None = default_rweight,
         resolution: int | None = default_resolution,
     ) -> ScalesConfig:
+        """
+        Create a new instance with the given parameters.
+
+        Keyword Args:
+            rmin:
+                Single or multiple lower scale limits in kpc (angular diameter
+                distance).
+            rmax:
+                Single or multiple upper scale limits in kpc (angular diameter
+                distance).
+            rweight:
+                Optional power-law exponent :math:`\\alpha` used to weight pairs
+                by their separation.
+            resolution:
+                Optional number of radial logarithmic bin used to approximate
+                the weighting by separation.
+
+        Returns:
+            New configuration instance.
+        """
         return cls(rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution)
 
     def modify(
         self,
+        *,
         rmin: Iterable[float] | float = NotSet,
         rmax: Iterable[float] | float = NotSet,
         rweight: float | None = NotSet,
         resolution: int | None = NotSet,
     ) -> ScalesConfig:
+        """
+        Create a new configuration instance with updated parameter values.
+
+        Parameter values are only updated if they are provided as inputs to this
+        function, otherwise they are retained from the original instance.
+
+        Keyword Args:
+            rmin:
+                Single or multiple lower scale limits in kpc (angular diameter
+                distance).
+            rmax:
+                Single or multiple upper scale limits in kpc (angular diameter
+                distance).
+            rweight:
+                Optional power-law exponent :math:`\\alpha` used to weight pairs
+                by their separation.
+            resolution:
+                Optional number of radial logarithmic bin used to approximate
+                the weighting by separation.
+
+        Returns:
+            New instance with updated parameter values.
+        """
         return super().modify(rmin, rmax, rweight, resolution)
 
 
@@ -304,9 +437,34 @@ default_num_bins = 30
 
 
 class BinningConfig(BaseConfig, Immutable):
+    """
+    Configuration of the redshift binning for correlation function measurements.
+
+    Correlations are measured in bins of redshift, which determines the
+    redshift-resolution of the clustering redshift estimate. This configuration
+    class offers three automatic methods to generate these bins between a
+    minimum and maximum redshift:
+
+    - ``linear`` (default): bin edges spaced linearly in redshift :math:`z`,
+    - ``comoving``: bin edges spaced linearly in comoving distance
+      :math:`\\chi(z)`, and
+    - ``logspace``: bin edges spaced linearly in :math:`1+\\ln(z)`.
+
+    Alternatively, custom bin edges may be provided.
+
+    .. Note::
+        The preferred way to create a new configuration instance is using the
+        :meth:`create()` constructor.
+
+        All configuration objects are immutable. To modify an existing
+        configuration, create a new instance with updated values by using the
+        :meth:`modify()` method. The bin edges are recomputed when necessary.
+    """
     binning: Binning
-    """test"""
+    """Container for the redshift bins."""
     method: Tbin_method_all
+    """Method used to generate the bin edges, must be either of ``linear``,
+    ``comoving``, ``logspace``, or ``custom``."""
 
     def __init__(
         self,
@@ -318,39 +476,63 @@ class BinningConfig(BaseConfig, Immutable):
         object.__setattr__(self, "binning", binning)
 
         method = parse_optional(method, str)
-        if method not in get_args(Tbin_method_auto) and method != "manual":
+        if method not in get_args(Tbin_method_auto) and method != "custom":
             raise ValueError(f"invalid binning method '{method}'")
         object.__setattr__(self, "method", method)
 
     @property
     def edges(self) -> NDArray:
+        """Array of redshift bin edges."""
         return self.binning.edges
 
     @property
     def zmin(self) -> float:
+        """Lowest redshift bin edge."""
         return float(self.binning.edges[0])
 
     @property
     def zmax(self) -> float:
+        """Highest redshift bin edge."""
         return float(self.binning.edges[-1])
 
     @property
     def num_bins(self) -> int:
+        """Number of redshift bins."""
         return len(self.binning)
 
     @property
     def closed(self) -> Tbin_method_all:
+        """String indicating if the bin edges are closed on the ``left`` or the
+        ``right`` side."""
         return self.binning.closed
 
     @property
-    def is_manual(self) -> bool:
-        return self.method == "manual"
+    def is_custom(self) -> bool:
+        """Whether the bin edges are provided by the user."""
+        return self.method == "custom"
 
     @classmethod
     def from_dict(
         cls, the_dict: dict[str, Any], cosmology: Tcosmology | None = None
     ) -> BinningConfig:
-        if the_dict["method"] == "manual":
+        """
+        Restore the class instance from a python dictionary.
+
+        Args:
+            the_dict:
+                Dictionary containing all required data attributes to restore
+                the instance, see also :meth:`to_dict()`.
+            cosmology:
+                Optional, cosmological model to use for distance computations.
+
+        Returns:
+            Restored class instance.
+
+        .. Warning::
+            This cosmology object is not stored with this instance, but should
+            be managed by the top level :obj:`~yaw.Configuration` class.
+        """
+        if the_dict["method"] == "custom":
             edges = the_dict.pop("edges")
             closed = the_dict.pop("closed")
             binning = Binning(edges, closed=closed)
@@ -359,7 +541,7 @@ class BinningConfig(BaseConfig, Immutable):
         return cls.create(**the_dict, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
-        if self.is_manual:
+        if self.is_custom:
             the_dict = dict(method=self.method, edges=self.binning.edges)
 
         else:
@@ -384,37 +566,37 @@ class BinningConfig(BaseConfig, Immutable):
         params = [
             Parameter(
                 name="zmin",
-                help="",
+                help="Lowest redshift bin edge to generate.",
                 type=float,
             ),
             Parameter(
                 name="zmax",
-                help="",
+                help="Highest redshift bin edge to generate.",
                 type=float,
             ),
             Parameter(
                 name="num_bins",
-                help="",
+                help="Number of redshift bins to generate.",
                 type=int,
                 default=default_num_bins,
             ),
             Parameter(
                 name="method",
-                help="",
+                help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
                 type=str,
                 choices=unpack_type(Tbin_method_all),
                 default=default_bin_method,
             ),
             Parameter(
                 name="edges",
-                help="",
+                help="Use these custom bin edges instead of generating them.",
                 type=float,
                 is_sequence=True,
                 default=None,
             ),
             Parameter(
                 name="closed",
-                help="",
+                help="String indicating if the bin edges are closed on the ``left`` or the ``right`` side.",
                 type=str,
                 choices=unpack_type(Tclosed),
                 default=default_closed,
@@ -434,13 +616,46 @@ class BinningConfig(BaseConfig, Immutable):
         closed: Tclosed = default_closed,
         cosmology: Tcosmology | str | None = None,
     ) -> BinningConfig:
+        """
+        Create a new instance with the given parameters.
+
+        Keyword Args:
+            zmin:
+                Lowest redshift bin edge to generate.
+            zmax:
+                Highest redshift bin edge to generate.
+            num_bins:
+                Number of redshift bins to generate.
+            method:
+                Method used to generate the bin edges, must be either of
+                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+            edges:
+                Use these custom bin edges instead of generating them.
+            closed:
+                String indicating if the bin edges are closed on the ``left`` or
+                the ``right`` side.
+            cosmology:
+                Optional, cosmological model to use for distance computations.
+
+        Returns:
+            New configuration instance.
+
+        .. Note::
+            All function parameters are optional, but either ``zmin`` and
+            ``zmax`` (generate bin edges), or ``edges`` (custom bin edges) must
+            be provided.
+
+        .. Warning::
+            This cosmology object is not stored with this instance, but should
+            be managed by the top level :obj:`~yaw.Configuration` class.
+        """
         auto_args_set = (zmin is not None, zmax is not None)
-        manual_args_set = (edges is not None,)
-        if not all(manual_args_set) and not all(auto_args_set):
+        custom_args_set = (edges is not None,)
+        if not all(custom_args_set) and not all(auto_args_set):
             raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
 
         elif all(auto_args_set):  # generate bin edges
-            if all(manual_args_set):
+            if all(custom_args_set):
                 warnings.warn(
                     "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
                 )
@@ -448,7 +663,7 @@ class BinningConfig(BaseConfig, Immutable):
             binning = bin_func(zmin, zmax, num_bins, closed=closed)
 
         else:  # use provided bin edges
-            method = "manual"
+            method = "custom"
             binning = Binning(edges, closed=closed)
 
         return cls(binning, method=method)
@@ -464,9 +679,40 @@ class BinningConfig(BaseConfig, Immutable):
         closed: Tclosed | NotSet = NotSet,
         cosmology: Tcosmology | str | None | NotSet = NotSet,
     ) -> BinningConfig:
+        """
+        Create a new configuration instance with updated parameter values.
+
+        Parameter values are only updated if they are provided as inputs to this
+        function, otherwise they are retained from the original instance.
+
+        Keyword Args:
+            zmin:
+                Lowest redshift bin edge to generate.
+            zmax:
+                Highest redshift bin edge to generate.
+            num_bins:
+                Number of redshift bins to generate.
+            method:
+                Method used to generate the bin edges, must be either of
+                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+            edges:
+                Use these custom bin edges instead of generating them.
+            closed:
+                String indicating if the bin edges are closed on the ``left`` or
+                the ``right`` side.
+            cosmology:
+                Optional, cosmological model to use for distance computations.
+
+        Returns:
+            New instance with updated redshift bins.
+
+        .. Warning::
+            This cosmology object is not stored with this instance, but should
+            be managed by the top level :obj:`~yaw.Configuration` class.
+        """
         if edges is NotSet:
-            if method == "manual":
-                raise ConfigError("'method' is 'manual' but no bin edges provided")
+            if method == "custom":
+                raise ConfigError("'method' is 'custom' but no bin edges provided")
             the_dict = dict()
             the_dict["zmin"] = self.zmin if zmin is NotSet else zmin
             the_dict["zmax"] = self.zmax if zmax is NotSet else zmax
@@ -477,7 +723,7 @@ class BinningConfig(BaseConfig, Immutable):
         else:
             the_dict = dict(edges=edges)
             the_dict["closed"] = self.closed if closed is NotSet else closed
-            the_dict["method"] = "manual"
+            the_dict["method"] = "custom"
 
         return type(self).from_dict(the_dict, cosmology=cosmology)
 
@@ -486,10 +732,29 @@ default_cosmology = get_default_cosmology().name
 
 
 class Configuration(BaseConfig, Immutable):
+    """
+    Configuration for correlation function measurements.
+
+    This is the top-level configuration class for `yet_another_wizz`, defining
+    correlation scales, redshift binning, and the cosmological model used for
+    distance calculations.
+
+    .. Note::
+        The preferred way to create a new configuration instance is using the
+        :meth:`create()` constructor.
+
+        All configuration objects are immutable. To modify an existing
+        configuration, create a new instance with updated values by using the
+        :meth:`modify()` method. The bin edges are recomputed when necessary.
+    """
     scales: ScalesConfig
+    """Organises the configuration of correlation scales."""
     binning: BinningConfig
+    """Organises the configuration of redshift bins."""
     cosmology: Tcosmology | str
+    """Optional cosmological model to use for distance computations."""
     max_workers: int | None
+    """Limit the number of workers for parallel operations (all by default)."""
 
     def __init__(
         self,
@@ -580,7 +845,7 @@ class Configuration(BaseConfig, Immutable):
         params = [
             Parameter(
                 name="cosmology",
-                help="",
+                help="Optional cosmological model to use for distance computations.",
                 type=str,
                 default=default_cosmology,
             ),
@@ -607,6 +872,50 @@ class Configuration(BaseConfig, Immutable):
         cosmology: Tcosmology | str | None = default_cosmology,
         max_workers: int | None = None,
     ) -> Configuration:
+        """
+        Create a new instance with the given parameters.
+
+        Keyword Args:
+            rmin:
+                Single or multiple lower scale limits in kpc (angular diameter
+                distance).
+            rmax:
+                Single or multiple upper scale limits in kpc (angular diameter
+                distance).
+            rweight:
+                Optional power-law exponent :math:`\\alpha` used to weight pairs
+                by their separation.
+            resolution:
+                Optional number of radial logarithmic bin used to approximate
+                the weighting by separation.
+            zmin:
+                Lowest redshift bin edge to generate.
+            zmax:
+                Highest redshift bin edge to generate.
+            num_bins:
+                Number of redshift bins to generate.
+            method:
+                Method used to generate the bin edges, must be either of
+                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+            edges:
+                Use these custom bin edges instead of generating them.
+            closed:
+                String indicating if the bin edges are closed on the ``left`` or
+                the ``right`` side.
+            cosmology:
+                Optional cosmological model to use for distance computations.
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+
+        Returns:
+            New configuration instance.
+
+        .. Note::
+            Although the function parameters are optional, either ``zmin`` and
+            ``zmax`` (generate bin edges), or ``edges`` (custom bin edges) must
+            be provided.
+        """
         scales = ScalesConfig.create(
             rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
         )
@@ -646,6 +955,48 @@ class Configuration(BaseConfig, Immutable):
         cosmology: Tcosmology | str | None | NotSet = NotSet,
         max_workers: int | None | NotSet = NotSet,
     ) -> Configuration:
+        """
+        Create a new configuration instance with updated parameter values.
+
+        Parameter values are only updated if they are provided as inputs to this
+        function and retained from the original instance otherwise.
+
+        Keyword Args:
+            rmin:
+                Single or multiple lower scale limits in kpc (angular diameter
+                distance).
+            rmax:
+                Single or multiple upper scale limits in kpc (angular diameter
+                distance).
+            rweight:
+                Optional power-law exponent :math:`\\alpha` used to weight pairs
+                by their separation.
+            resolution:
+                Optional number of radial logarithmic bin used to approximate
+                the weighting by separation.
+            zmin:
+                Lowest redshift bin edge to generate.
+            zmax:
+                Highest redshift bin edge to generate.
+            num_bins:
+                Number of redshift bins to generate.
+            method:
+                Method used to generate the bin edges, must be either of
+                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+            edges:
+                Use these custom bin edges instead of generating them.
+            closed:
+                String indicating if the bin edges are closed on the ``left`` or
+                the ``right`` side.
+            cosmology:
+                Optional cosmological model to use for distance computations.
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+
+        Returns:
+            New instance with updated parameter values.
+        """
         scales = self.scales.modify(
             rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
         )

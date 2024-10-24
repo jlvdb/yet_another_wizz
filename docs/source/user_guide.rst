@@ -3,12 +3,8 @@
 User guide
 ==========
 
-This guide provides an overview about the project. It explains the installation,
-features and main concepts, and gives an introduction to using the command line
-interface  ``yaw_cli``
-(`separate installation required <https://github.com/jlvdb/yet_another_wizz_cli>`_)
-and the underlying ``yaw`` :ref:`python package<api>` with examples.
-
+.. Note::
+    Add introduction
 
 .. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
     :open:
@@ -18,11 +14,11 @@ and the underlying ``yaw`` :ref:`python package<api>` with examples.
 
     .. toctree::
         :maxdepth: 2
+        :caption: User guide
         :includehidden:
 
         user_guide/getting_started
         user_guide/features
         user_guide/examples
         user_guide/cmd
-        user_guide/api
         user_guide/concepts

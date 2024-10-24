@@ -1,3 +1,6 @@
+.. Warning::
+    Outdated information.
+
 Features
 --------
 

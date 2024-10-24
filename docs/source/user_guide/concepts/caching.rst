@@ -1,5 +1,8 @@
 .. _caching:
 
+.. Warning::
+    Outdated information.
+
 Caching
 ^^^^^^^
 

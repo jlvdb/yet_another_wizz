@@ -57,7 +57,7 @@ class PatchIDs:
 
     @staticmethod
     def parse(patch_ids: ArrayLike, num_expect: int = -1) -> Tpids:
-        patch_ids = np.asarray(patch_ids)
+        patch_ids = np.atleast_1d(patch_ids)
 
         PatchIDs.validate(patch_ids)
         if num_expect > 0 and len(patch_ids) != num_expect:
@@ -148,7 +148,7 @@ class PatchData:
             f"has_weights={self.has_weights}",
             f"has_redshifts={self.has_redshifts}",
         )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
+        return f"{type(self).__name__}({', '.join(items)})"
 
     def __len__(self) -> int:
         return len(self.data)
@@ -195,24 +195,36 @@ class MockDataFrame(Sequence):  # avoid explicit pandas dependency
 
 class PatchBase:
     cache_path: Path
+    """Directory where (meta) data is cached."""
     _has_weights: bool
     _has_redshifts: bool
 
     @property
     def data_path(self) -> Path:
+        """Path to binary file with patch data."""
         return self.cache_path / "data.bin"
 
     @property
     def has_weights(self) -> bool:
+        """Whether the patch data contain weights."""
         return self._has_weights
 
     @property
     def has_redshifts(self) -> bool:
+        """Whether the patch data contain redshifts."""
         return self._has_redshifts
 
 
 class CatalogBase:
     cache_directory: Path
+    """Directory in which the data is cached in spatial patches."""
 
     def get_patch_path(self, patch_id: int) -> Path:
+        """
+        Get the patch to a specific patch cache directory, given the patch
+        ID/index.
+
+        Returns:
+            Path as a :obj:`pathlib.Path`.
+        """
         return self.cache_directory / PATCH_NAME_TEMPLATE.format(patch_id)

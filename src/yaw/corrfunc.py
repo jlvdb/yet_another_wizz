@@ -18,7 +18,7 @@ from yaw.containers import (
 )
 from yaw.paircounts import NormalisedCounts
 from yaw.utils import io, parallel
-from yaw.utils.parallel import Broadcastable
+from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
     from typing import Any, TypeVar
@@ -43,6 +43,7 @@ class EstimatorError(Exception):
 
 
 def named(key):
+    """Attatch a ``.name`` attribute to a function."""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -58,6 +59,7 @@ def named(key):
 def davis_peebles(
     *, dd: NDArray, dr: NDArray | None = None, rd: NDArray | None = None
 ) -> NDArray:
+    """Davis-Peebles estimator with either RD or DR pair counts optional."""
     if dr is None and rd is None:
         raise EstimatorError("either 'dr' or 'rd' are required")
 
@@ -69,6 +71,7 @@ def davis_peebles(
 def landy_szalay(
     *, dd: NDArray, dr: NDArray, rd: NDArray | None = None, rr: NDArray
 ) -> NDArray:
+    """Landy-Szalay estimator with optional RD pair counts."""
     if rd is None:
         rd = dr
     return ((dd - dr) + (rr - rd)) / rr
@@ -77,7 +80,54 @@ def landy_szalay(
 class CorrFunc(
     BinwiseData, PatchwiseData, Serialisable, HdfSerializable, Broadcastable
 ):
+    """
+    Container for correlation function amplitude pair counts.
+
+    The container is typically created by :func:`~yaw.crosscorrelate` or
+    :func:`~yaw.autocorrelate` and stores pair counts in bins of redshift and
+    per spatial patch of the input :obj:`~yaw.Catalog` s. The data-data,
+    data-random, etc. pair counts are stored in separate attributes.
+
+    .. Note::
+        While the pair counts ``dr``, ``rd``, or ``rr`` are all optional, at
+        least one of these pair counts must pre provided.
+
+    Additionally implements comparison with the ``==`` operator, addition with
+    ``+`` and scaling of the pair counts by a scalar with ``*``.
+
+    Args:
+        dd:
+            The data-data pair counts as
+            :obj:`~yaw.paircounts.NormalisedCounts`.
+
+    Keyword Args:
+        dr:
+            The optional data-random pair counts as
+            :obj:`~yaw.paircounts.NormalisedCounts`.
+        rd:
+            The optional random-random pair counts as
+            :obj:`~yaw.paircounts.NormalisedCounts`.
+        rr:
+            The optional random-random pair counts as
+            :obj:`~yaw.paircounts.NormalisedCounts`.
+
+    Raises:
+        ValueError:
+            If any of the pair counts are not compatible (by binning or number
+            of patches).
+        EstimatorError:
+            If none of the optional pair counts are provided.
+    """
     __slots__ = ("dd", "dr", "rd", "rr")
+
+    dd: NormalisedCounts
+    """The data-data pair counts."""
+    dr: NormalisedCounts | None
+    """The optional data-random pair counts."""
+    rd: NormalisedCounts | None
+    """The optional random-data pair counts."""
+    rr: NormalisedCounts | None
+    """The optional random-random pair counts."""
 
     def __init__(
         self,
@@ -116,6 +166,7 @@ class CorrFunc(
 
     @property
     def auto(self) -> bool:
+        """Whether the pair counts describe an autocorrelation function."""
         return self.dd.auto
 
     @classmethod
@@ -142,16 +193,14 @@ class CorrFunc(
 
     @classmethod
     def from_file(cls, path: Tpath) -> CorrFunc:
+        new = None
+
         if parallel.on_root():
             logger.info("reading %s from: %s", cls.__name__, path)
 
             new = super().from_file(path)
 
-        else:
-            new = cls._init_null()
-
-        cls._broadcast(new)
-        return new
+        return bcast_instance(new)
 
     def to_file(self, path: Tpath) -> None:
         if parallel.on_root():
@@ -161,7 +210,7 @@ class CorrFunc(
 
         parallel.COMM.Barrier()
 
-    def to_dict(self) -> dict[str, NormalisedCounts]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             attr: counts
             for attr in self.__slots__
@@ -173,6 +222,7 @@ class CorrFunc(
         return self.dd.num_patches
 
     def __eq__(self, other: Any) -> bool:
+        """Element-wise comparison on all data attributes, recusive."""
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -183,6 +233,7 @@ class CorrFunc(
         return True
 
     def __add__(self, other: Any) -> CorrFunc:
+        """Element-wise addition on all data attributes, recusive."""
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -194,6 +245,7 @@ class CorrFunc(
         return type(self).from_dict(kwargs)
 
     def __mul__(self, other: Any) -> CorrFunc:
+        """Element-wise array-scalar multiplication, recusive."""
         if not np.isscalar(other) or isinstance(other, (bool, np.bool_)):
             return NotImplemented
 
@@ -217,6 +269,19 @@ class CorrFunc(
         return self.dd.is_compatible(other.dd, require=require)
 
     def sample(self) -> CorrData:
+        """
+        Compute an estimate of the correlation function in bins of redshift.
+
+        Sums the pair counts over all spatial patches and uses the Landy-Szalay
+        estimator if random-random pair counts exist, otherwise the Davis-
+        Peebles estimator to compute the correlation function. Computes the
+        uncertainty of the correlation function by computing jackknife samples
+        from the spatial patches.
+
+        Returns:
+            The correlation function estimate with jackknife samples wrapped in
+            a :obj:`~yaw.CorrData` instance.
+        """
         estimator = landy_szalay if self.rr is not None else davis_peebles
 
         if parallel.on_root():
@@ -237,23 +302,54 @@ class CorrFunc(
 
 
 class CorrData(AsciiSerializable, SampledData, Broadcastable):
+    """
+    Container for a correlation functino measured in bins of redshift.
+
+    Implements convenience methods to estimate the standard error, covariance
+    and correlation matrix, and plotting methods. Additionally implements
+    ``len()``, comparison with the ``==`` operator and addition with
+    ``+``/``-``.
+
+    Args:
+        binning:
+            The redshift :~yaw.Binning` applied to the data.
+        data:
+            Array containing the values in each of the redshift bin.
+        samples:
+            2-dim array containing `M` jackknife samples of the data, expected
+            to have shape (:obj:`num_samples`, :obj:`num_bins`).
+    """
     __slots__ = ("binning", "data", "samples")
 
     @property
     def _description_data(self) -> str:
+        """Descriptive comment for header of .dat file."""
         return "correlation function with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
+        """Descriptive comment for header of .smp file."""
         return f"{self.num_samples} correlation function jackknife samples"
 
     @property
     def _description_covariance(self) -> str:
+        """Descriptive comment for header of .cov file."""
         n = self.num_bins
         return f"correlation function covariance matrix ({n}x{n})"
 
     @classmethod
     def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
+        """
+        Restore the class instance from a set of ASCII files.
+
+        Args:
+            path_prefix:
+                A path (:obj:`str` or :obj:`pathlib.Path`) prefix used as
+                ``[path_prefix].{dat,smp,cov}``, pointing to the ASCII files
+                to restore from, see also :meth:`to_files()`.
+        """
+        new = None
+
         if parallel.on_root():
             logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
 
@@ -265,13 +361,28 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
             new = cls(binning, data, samples)
 
-        else:
-            new = cls._init_null()
-
-        cls._broadcast(new)
-        return new
+        return bcast_instance(new)
 
     def to_files(self, path_prefix: Tpath) -> None:
+        """
+        Serialise the class instance into a set of ASCII files.
+
+        This method creates three files, which are all readable with
+        ``numpy.loadtxt``:
+
+        - ``[path_prefix].dat``: File with header and four columns, the left
+          and right redshift bin edges, data, and errors.
+        - ``[path_prefix].smp``: File containing the jackknife samples. The
+          first two columns are the left and right redshift bin edges, the
+          remaining columns each represent one jackknife sample.
+        - ``[path_prefix].cov``: File storing the covariance matrix.
+
+        Args:
+            path_prefix:
+                A path (:obj:`str` or :obj:`pathlib.Path`) prefix
+                ``[path_prefix].{dat,smp,cov}`` pointing to the ASCII files
+                to serialise into, see also :meth:`from_files()`.
+        """
         if parallel.on_root():
             logger.info(
                 "writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix

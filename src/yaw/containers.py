@@ -63,59 +63,175 @@ __all__ = [
 
 
 class Serialisable(ABC):
+    """Meta-class that implemetns a interface for serialisation from/to
+    dictionaries."""
+
     @classmethod
     def from_dict(cls: type[Tserialise], the_dict: dict[str, Any]) -> Tserialise:
+        """
+        Restore the class instance from a python dictionary.
+
+        Args:
+            the_dict:
+                Dictionary containing all required data attributes to restore
+                the instance, see also :meth:`to_dict()`.
+
+        Returns:
+            Restored class instance.
+        """
         return cls(**the_dict)
 
     @abstractmethod
     def to_dict(self) -> dict[str, Any]:
+        """
+        Serialise the class instances into a dictionary.
+
+        Returns:
+            A dictionary containnig the minimal set of data attributes to
+            restore the instance with :meth:`from_dict()`.
+        """
         return self.__getstate__()
 
 
 class YamlSerialisable(Serialisable):
+    """Meta-class that implemetns a interface for serialisation from/to
+    YAML files."""
+
     @classmethod
     def from_file(cls: type[Tyaml], path: Tpath) -> Tyaml:
+        """
+        Restore the class instance from a YAML file.
+
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to YAML file to restore
+                from, see also :meth:`to_file()`.
+
+        Returns:
+            Restored class instance.
+        """
         with Path(path).open() as f:
             kwarg_dict = yaml.safe_load(f)
         return cls.from_dict(kwarg_dict)
 
     def to_file(self, path: Tpath) -> None:
+        """
+        Serialise the class instances into a YAML file.
+
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to YAML file to
+                serialise into, see also :meth:`from_file()`.
+        """
         with Path(path).open(mode="w") as f:
             yaml.safe_dump(self.to_dict(), f)
 
 
 class HdfSerializable(ABC):
+    """Meta-class that implemetns a interface for serialisation from/to
+    HDF5 files."""
+
     @classmethod
     @abstractmethod
     def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
+        """
+        Restore the class instance from a specific HDF5-file group.
+
+        Args:
+            source:
+                HDF5-file group to restore from, see also :meth:`to_hdf()`.
+
+        Returns:
+            Restored class instance.
+        """
         pass
 
     @abstractmethod
     def to_hdf(self, dest: h5py.Group) -> None:
+        """
+        Serialise the class instances into a specific HDF5-file group.
+
+        Args:
+            dest:
+                HDF5-file group to serialise into, see also :meth:`from_hdf()`.
+        """
         pass
 
     @classmethod
     def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
+        """
+        Restore the class instance from a HDF5 file.
+
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to HDF5 file to restore
+                from, see also :meth:`to_file()`.
+
+        Returns:
+            Restored class instance.
+        """
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
     def to_file(self, path: Tpath) -> None:
+        """
+        Serialise the class instances into a HDF5 file.
+
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to HDF5 file to
+                serialise into, see also :meth:`from_file()`.
+        """
         with h5py.File(str(path), mode="w") as f:
             self.to_hdf(f)
 
 
 class AsciiSerializable(ABC):
+    """Meta-class that implemetns a interface for serialisation from/to
+    a set of ASCII text files."""
+
     @classmethod
     @abstractmethod
     def from_files(cls: type[Tascii], path_prefix: Tpath) -> Tascii:
+        """
+        Restore the class instance from a set of ASCII files.
+
+        The number of files, their file-path extension and formatting are
+        defined by the subclass.
+
+        Args:
+            path_prefix:
+                A path (:obj:`str` or :obj:`pathlib.Path`) prefix
+                ``path_prefix.{fileA,fileB,...}`` pointing to the ASCII files
+                to restore from, see also :meth:`to_files()`.
+        """
         pass
 
     @abstractmethod
     def to_files(self, path_prefix: Tpath) -> None:
+        """
+        Serialise the class instance into a set of ASCII files.
+
+        The number of files, their file-path extension and formatting are
+        defined by the subclass.
+
+        Args:
+            path_prefix:
+                A path (:obj:`str` or :obj:`pathlib.Path`) prefix
+                ``path_prefix.{fileA,fileB,...}`` pointing to the ASCII files
+                to serialise into, see also :meth:`from_files()`.
+        """
         pass
 
 
 class Indexer(Generic[Tkey, Tvalue], Iterator):
+    """
+    Indexing helper that implements indexing, slicing, and iteration over items
+    for a class that does not natively support this.
+
+    Takes a single argument, a function that takes a slice or list of indices as
+    input and creates a new instance of the class with the subset of its data.
+    """
     __slots__ = ("_callback", "_iter_state")
 
     def __init__(self, slice_callback: Callable[[Tkey], Tvalue]) -> None:
@@ -143,20 +259,52 @@ class Indexer(Generic[Tkey, Tvalue], Iterator):
 
 
 class PatchwiseData(ABC):
+    """Meta-class for data container with spatial patches."""
+
     @property
     @abstractmethod
     def num_patches(self) -> int:
+        """The number of spatial patches."""
         pass
 
     @abstractmethod
     def _make_patch_slice(self: Tpatched, item: Tindexing) -> Tpatched:
+        """Factory method called by :meth:`patches` to create a new instance
+        from a subset of patches."""
         pass
 
     @property
     def patches(self: Tpatched) -> Indexer[Tindexing, Tpatched]:
+        """
+        Indexing helper to create a new instance from a subset of patches.
+
+        The indexer supports indexing, slicing, and iteration over individual
+        patches.
+        """
         return Indexer(self._make_patch_slice)
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        """
+        Checks if two containers have the same number of patches.
+
+        Args:
+            other:
+                Another instance of this class to compare to, returns ``False``
+                if instance types do not match.
+
+        Keyword Args:
+            require:
+                Whether to raise exceptions if any of the checks fail.
+
+        Returns:
+            Whether the number of patches is identical ``require=False``.
+
+        Raises:
+            TypeError:
+                If ``require=True`` and type of ``other`` does match this class.
+            ValueError:
+                If ``require=True`` and the number of patches is not identical.
+        """
         if not isinstance(other, type(self)):
             if not require:
                 return False
@@ -171,24 +319,66 @@ class PatchwiseData(ABC):
 
 
 class BinwiseData(ABC):
+    """Meta-class for data container with redshift bins."""
+
     @property
     @abstractmethod
     def binning(self) -> Binning:
+        """Accessor for the redshift :obj:`~yaw.Binning` attribute."""
         pass
 
     @property
     def num_bins(self) -> int:
+        """The number of redshift bins."""
         return len(self.binning)
 
     @abstractmethod
     def _make_bin_slice(self: Tbinned, item: Tindexing) -> Tbinned:
+        """Factory method called by :meth:`bins` to create a new instance
+        from a subset of bins."""
         pass
 
     @property
     def bins(self: Tbinned) -> Indexer[Tindexing, Tbinned]:
+        """
+        Indexing helper to create a new instance from a subset of patches.
+
+        The indexer supports indexing, slicing, and iteration over individual
+        patches.
+
+        .. Warning::
+            Indixing a non-contiguous subset of bins will result in expanding
+            the previous bin to encompass all omitted bins, e.g. selecting
+            the first and third bin of ``(0, 1], (1, 2], (2, 3]`` will result
+            in a binning with edges ``(0, 2], (2, 3]``.
+            
+            Slicing is unaffected since it always results in a contiguous subset
+            of bins.
+        """
         return Indexer(self._make_bin_slice)
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        """
+        Checks if two containers have compatible binning.
+
+        Args:
+            other:
+                Another instance of this class to compare to, returns ``False``
+                if instance types do not match.
+
+        Keyword Args:
+            require:
+                Whether to raise exceptions if any of the checks fail.
+
+        Returns:
+            Whether the binnings have identical edges if ``require=False``.
+
+        Raises:
+            TypeError:
+                If ``require=True`` and type of ``other`` does match this class.
+            ValueError:
+                If ``require=True`` the binning is not identical.
+        """
         if not isinstance(other, type(self)):
             if not require:
                 return False
@@ -203,6 +393,12 @@ class BinwiseData(ABC):
 
 
 def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray | None:
+    """
+    Parse an array containing bin edges, including the right-most one.
+
+    Input array must be 1-dim with len > 2 and bin edges must increase
+    monotonically. Input may also be None, if ``optional=True``.
+    """
     if optional and binning is None:
         return None
 
@@ -217,6 +413,7 @@ def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray
 
 
 def load_legacy_binning(source: Group) -> Binning:
+    """Special function to load a binning stored in HDF5 files from yaw<3.0."""
     dataset = source["binning"]
     left, right = dataset[:].T
     edges = np.append(left, right[-1])
@@ -226,7 +423,30 @@ def load_legacy_binning(source: Group) -> Binning:
 
 
 class Binning(HdfSerializable):
+    """
+    Container for a redshift binning.
+
+    Provides convenience methods to access attributes like edges, centers, and
+    bin widths. Additionally implements ``len()``, comparison with ``==``,
+    addition with ``+``/``-``, iteration over redshift bins, and pickling.
+
+    Args:
+        edges:
+            Sequence of bin edges that are non-overlapping, monotonically
+            increasing, and can be broadcasted to a numpy array.
+
+    Keyword Args:
+        closed:
+            Indicating which side of the bin edges is a closed interval, must be
+            ``left`` or ``right`` (default).
+    """
     __slots__ = ("edges", "closed")
+
+    edges: NDArray
+    """Array containing the edges of all bins, including the rightmost edge."""
+    closed: Tclosed
+    """Indicating which side of the bin edges is a closed interval, either
+    ``left`` or ``right``."""
 
     def __init__(self, edges: ArrayLike, closed: Tclosed = default_closed) -> None:
         if closed not in get_args(Tclosed):
@@ -282,37 +502,47 @@ class Binning(HdfSerializable):
 
     @property
     def mids(self) -> NDArray:
+        """Array containing the centers of the bins."""
         return (self.edges[:-1] + self.edges[1:]) / 2.0
 
     @property
     def left(self) -> NDArray:
+        """Array containing the left edges of the bins."""
         return self.edges[:-1]
 
     @property
     def right(self) -> NDArray:
+        """Array containing the right edges of the bins."""
         return self.edges[1:]
 
     @property
     def dz(self) -> NDArray:
+        """Array containing the width of the bins."""
         return np.diff(self.edges)
 
     def copy(self: Tbinning) -> Tbinning:
+        """Create a copy of this instance."""
         return Binning(self.edges.copy(), closed=str(self.closed))
 
 
 class RedshiftBinningFactory:
+    """Simple factory class to create redshift binnings. Takes an optional
+    cosmology as input for distance conversions."""
     def __init__(self, cosmology: Tcosmology | None = None) -> None:
         self.cosmology = cosmology or get_default_cosmology()
 
     def linear(
         self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
     ) -> Binning:
+        """Creates a linear redshift binning between a min and max redshift."""
         edges = np.linspace(min, max, num_bins + 1)
         return Binning(edges, closed=closed)
 
     def comoving(
         self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
     ) -> Binning:
+        """Creates a binning linear in comoving distance between a min and max
+        redshift."""
         comov_min, comov_cmax = self.cosmology.comoving_distance([min, max])
         comov_edges = np.linspace(comov_min, comov_cmax, num_bins + 1)
         if not isinstance(comov_edges, units.Quantity):
@@ -324,6 +554,7 @@ class RedshiftBinningFactory:
     def logspace(
         self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
     ) -> Binning:
+        """Creates a binning linear in 1+ln(z) between a min and max redshift."""
         log_min, log_max = np.log([1.0 + min, 1.0 + max])
         edges = np.logspace(log_min, log_max, num_bins + 1, base=np.e) - 1.0
         return Binning(edges, closed=closed)
@@ -331,6 +562,7 @@ class RedshiftBinningFactory:
     def get_method(
         self, method: Tbin_method = default_bin_method
     ) -> Callable[..., Binning]:
+        """Use a string identifier to select the desired factory method."""
         if method not in get_args(Tbin_method):
             raise ValueError(f"invalid binning method '{method}'")
 
@@ -349,15 +581,17 @@ def cov_from_samples(
     axis (default) or along the first axis if ``rowvar=True``.
 
     Args:
-        samples (:obj`:NDArray`, :obj:`Sequence[NDArray]`):
-            One or many sets of data samples. The number of samples must be
-            identical.
-        rowvar (:obj:`bool`, optional):
+        samples:
+            One or many sets of data samples as numpy arrays. The number of
+            samples must be identical when multiple samples are provided.
+
+    Keyword Args:
+        rowvar:
             Whether the each row represents an observable. Determines the
             concatenation for multiple input sample sets.
-        kind (:obj:`str`, optional):
-            Determines the kind of covariance computed, see
-            :obj:`~yaw.config.options.Options.kind`.
+        kind:
+            Determines the kind of covariance computed, can be either of
+            ``full`` (default), ``diag``, or ``var`` (main diagonal only).
     """
     if kind not in get_args(Tcov_kind):
         raise ValueError(f"invalid covariance kind '{kind}'")
@@ -398,7 +632,33 @@ def cov_from_samples(
 
 
 class SampledData(BinwiseData):
+    """
+    Container for data measured in bins of redshift with jackknife samples.
+
+    Implements convenience method to estimate the standard error, covariance
+    and correlation matrix, and plotting methods. Additionally implements
+    ``len()``, comparison with the ``==`` operator and addition with
+    ``+``/``-``.    
+
+    Args:
+        binning:
+            The redshift :obj:`~yaw.Binning` applied to the data.
+        data:
+            Array containing the values in each of the `N` redshift bin.
+        samples:
+            2-dim array containing `M` jackknife samples of the data, expected
+            to have shape `(M, N)`.
+            
+    """
     __slots__ = ("binning", "data", "samples")
+
+    binning: Binning
+    """Accessor for the redshift :obj:`~yaw.Binning` attribute."""
+    data: NDArray
+    """Array containing the values in each of the `N` redshift bin."""
+    samples: NDArray
+    """2-dim array containing `M` jackknife samples of the data, expected to
+    have shape `(M, N)`."""
 
     def __init__(
         self,
@@ -420,14 +680,19 @@ class SampledData(BinwiseData):
 
     @property
     def error(self) -> NDArray:
+        """Standard error estimated from the jackknife samples."""
         return np.sqrt(np.diag(self.covariance))
 
     @property
     def covariance(self) -> NDArray:
+        """Gaussian covariance matrix estimated from the jackknife samples with
+        shape `(N, N)`."""
         return cov_from_samples(self.samples)
 
     @property
     def correlation(self) -> NDArray:
+        """Correlation matrix computed from the Gaussian covariance matrix with
+        shape `(N, N)`."""
         covar = self.covariance
 
         with warnings.catch_warnings():
@@ -440,6 +705,7 @@ class SampledData(BinwiseData):
 
     @property
     def num_samples(self) -> int:
+        """The number of jackknife samples."""
         return len(self.samples)
 
     def __repr__(self) -> str:
@@ -472,6 +738,7 @@ class SampledData(BinwiseData):
         )
 
     def __add__(self, other: Any) -> Tsampled:
+        """Add data and samples of other to self."""
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -484,6 +751,7 @@ class SampledData(BinwiseData):
         )
 
     def __sub__(self, other: Any) -> Tsampled:
+        """Subtract data and samples of other from self."""
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -511,6 +779,30 @@ class SampledData(BinwiseData):
         return new
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        """
+        Checks if two containers have compatible binning and number of
+        jackknife samples.
+
+        Args:
+            other:
+                Another instance of this class to compare to, returns ``False``
+                if instance types do not match.
+
+        Keyword Args:
+            require:
+                Whether to raise exceptions if any of the checks fail.
+
+        Returns:
+            Whether the containers have identical binning and number of
+            jackknife samples if ``require=False``.
+
+        Raises:
+            TypeError:
+                If ``require=True`` and type of ``other`` does match this class.
+            ValueError:
+                If ``require=True`` the binning or number of samples is not
+                identical.
+        """
         if not super().is_compatible(other, require=require):
             return False
 
@@ -521,7 +813,7 @@ class SampledData(BinwiseData):
 
         return True
 
-    _default_style = "point"
+    _default_plot_style = "point"
 
     def plot(
         self,
@@ -535,7 +827,34 @@ class SampledData(BinwiseData):
         indicate_zero: bool = False,
         scale_dz: bool = False,
     ) -> Axis:
-        style = style or self._default_style
+        """
+        Plot the data with its uncertainty against the redshift bin centers.
+
+        Keyword Args:
+            color:
+                Matplotlib color to use for the line or error bars.
+            label:
+                Matplotlib-compatible label for plot.
+            style:
+                Plotting style, must be either of
+                  - ``point``: point with error bar,
+                  - ``line``: line with tranparent shade marking the errors, or
+                  - ``step``: same as ``line``, but using a step-plot to
+                    emulate a histgram-style visualisation.
+            ax:
+                Matplotlib axis to plot onto.
+            xoffset:
+                Offset to apply to the redshift bin centers.
+            plot_kwargs:
+                Keyword arguments passed on to the primary matplotlib plotting
+                function (``plot``, ``errorbar``, ``stairs``).
+            indicate_zero:
+                Whether to draw a thin black line at ``y=0``.
+            scale_dz:
+                Whether to scale the data and uncertainty by the inverse of the
+                redshift bin width.
+        """
+        style = style or self._default_plot_style
         plot_kwargs = plot_kwargs or {}
         plot_kwargs.update(dict(color=color, label=label))
 
@@ -565,6 +884,19 @@ class SampledData(BinwiseData):
     def plot_corr(
         self, *, redshift: bool = False, cmap: str = "RdBu_r", ax: Axis | None = None
     ) -> Axis:
+        """
+        Plot the correlation matrix of the data.
+
+        Keyword Args:
+            redshift:
+                Whether to plot the correlation on a axes scales by redshift
+                instead of bin indices.
+            cmap:
+                Name or other matplotlib-compatible color map for the matrix
+                elements.
+            ax:
+                Matplotlib axis to plot onto.
+        """
         return plot.correlation_matrix(
             self.correlation,
             ticks=self.binning.mids if redshift else None,

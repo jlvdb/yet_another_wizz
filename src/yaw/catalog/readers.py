@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from abc import abstractmethod
 from collections.abc import Iterable, Iterator, Sized
 from contextlib import AbstractContextManager
@@ -499,9 +498,7 @@ def new_filereader(
     degrees: bool = True,
     **reader_kwargs,
 ) -> FileReader:
-    _, ext = os.path.splitext(str(path))
-    ext = ext.lower()
-
+    ext = Path(path).suffix.lower()
     if ext in (".fits", ".cat"):
         reader_cls = FitsReader
     elif ext in (".hdf5", ".hdf", ".h5"):

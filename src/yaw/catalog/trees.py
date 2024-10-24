@@ -40,7 +40,7 @@ def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
     if np.any(ang_min >= ang_max):
         raise ValueError("'ang_min' < 'ang_max' not satisfied")
     ang_range = np.column_stack((ang_min, ang_max))
-    if np.any(ang_range < 0.0) and np.any(ang_range > np.pi):
+    if np.any(ang_range < 0.0) or np.any(ang_range > np.pi):
         raise ValueError("'ang_min' and 'ang_max' not in range [0.0, pi]")
 
     return ang_range
@@ -52,9 +52,9 @@ def get_ang_bins(
     log_range = np.log10(ang_range)
 
     if weight_scale is not None:
-        log_bins = np.linspace(log_range.min(), log_range.max(), weight_res)
+        log_bins = np.linspace(log_range.min(), log_range.max(), weight_res + 1)
         # ensure that all ang_min/max scales are included in the bins
-        log_bins = np.concatenate(log_bins, log_range.flatten())
+        log_bins = np.concatenate([log_bins, log_range.flatten()])
 
     else:
         log_bins = log_range.flatten()
@@ -117,6 +117,10 @@ class AngularTree(Sized):
     def __len__(self) -> int:
         return self.num_records
 
+    @property
+    def data(self) -> NDArray:
+        return self.tree.data
+
     def count(
         self,
         other: AngularTree,
@@ -138,7 +142,7 @@ class AngularTree(Sized):
                 cumulative=cumulative,
             ).astype(np.float64)
         except IndexError:
-            counts = np.zeros_like(ang_bins)
+            counts = np.zeros_like(ang_bins)  # empty tree and weights array
         counts = dispatch_counts(counts, cumulative)
 
         if weight_scale is not None:
@@ -239,7 +243,7 @@ class BinnedTrees(Iterable):
     @property
     def num_bins(self) -> int | None:
         try:
-            return len(self.binning)
+            return len(self.binning) - 1
         except TypeError:
             return None
 
