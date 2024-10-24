@@ -18,8 +18,8 @@ API Documentation
 .. autosummary::
     :toctree: api
 
-    Catalog
     Patch
+    Catalog
 
 
 .. rubric:: Correlation measurements
@@ -39,9 +39,6 @@ API Documentation
 .. autosummary::
     :toctree: api
 
-    paircounts.PatchedCounts
-    paircounts.PatchedTotals
-    paircounts.NormalisedCounts
     CorrFunc
     CorrData
     RedshiftData

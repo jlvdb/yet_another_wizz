@@ -47,12 +47,40 @@ logger = logging.getLogger("yaw.catalog")
 
 
 class Metadata(YamlSerialisable):
+    """
+    Container for patch meta data.
+
+    Bundles the number of records stored in the patch, the sum of weights, and
+    distribution of objects on sky through the center point and containing
+    radius.
+
+    Args:
+        num_records:
+            Number of data points in the patch.
+        total:
+            Sum of point weights or same as :obj:`num_records`.
+        center:
+            Center point (mean) of all data points,
+            :obj:`~yaw.AngularCoordinates` in radian.
+        radius:
+            Radius around center point containing all data points,
+            :obj:`~yaw.AngularDistances` in radian.
+    """
     __slots__ = (
         "num_records",
         "total",
         "center",
         "radius",
     )
+
+    num_records: int
+    """Number of data points in the patch."""
+    total: float
+    """Sum of point weights."""
+    center: AngularCoordinates
+    """Center point (mean) of all data points."""
+    radius: AngularDistances
+    """Radius around center point containing all data points."""
 
     def __init__(
         self,
@@ -84,6 +112,27 @@ class Metadata(YamlSerialisable):
         weights: NDArray | None = None,
         center: AngularCoordinates | None = None,
     ) -> Metadata:
+        """
+        Compute the meta data from the patch data.
+
+        If no weights are provided, the sum of weights will equal the number of
+        data points. Weights are also used when computing the center point.
+
+        Args:
+            coords:
+                Coordinates of patch data points, given as
+                :obj:`~yaw.AngularCoordinates`.
+ 
+        Keyword Args:
+            weights:
+                Optional, weights of data points.
+            center:
+                Optional, use this specific center point, e.g. when using an
+                externally computed patch center.
+
+        Returns:
+            Final instance of meta data.
+        """
         new = super().__new__(cls)
         new.num_records = len(coords)
         if weights is None:
@@ -117,7 +166,32 @@ class Metadata(YamlSerialisable):
 
 
 class Patch(PatchBase):
+    """
+    A single spatial patch of catalog data.
+
+    Data has point coordinates and optionally weights and redshifts. This data
+    is cached on disk in a binary file (``data.bin``) that is read when
+    accessing any of the classes data attributes. Additionaly meta data, such as
+    the patch center and radius, that describe the spatial distribution of the
+    contained data points, are availble and stored as YAML file (``meta.yml``)
+
+    The cached data is organised in a single directory as follows::
+
+        [cache_path]/
+          ├╴ data.bin
+          ├╴ meta.yml
+          ├╴ binning   (optional, see catalog.trees.BinnedTrees)
+          └╴ trees.pkl (optional, see catalog.trees.BinnedTrees)
+
+    Supports efficient pickeling as long as the cached data is not deleted or
+    moved.
+    """
     __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
+
+    meta: Metadata
+    """Patch meta data; number of records stored in the patch, the sum of
+    weights, and distribution of objects on sky through the center point and
+    containing radius."""
 
     def __init__(
         self, cache_path: Tpath, center: AngularCoordinates | None = None
@@ -163,25 +237,58 @@ class Patch(PatchBase):
 
     @staticmethod
     def id_from_path(cache_path: Tpath) -> int:
+        """
+        Extract the integer patch ID from the cache path.
+        
+        .. Warning::
+            This will fail if the patch has not been created through a
+            :obj:`~yaw.Catalog` instance, which manages the patch creation.
+        """
         _, id_str = Path(cache_path).name.split("_")
         return int(id_str)
 
     def load_data(self) -> PatchData:
+        """
+        Load the cached object data with coordinates and optional weights and
+        redshifts.
+
+        Returns:
+            A special :obj:`PatchData` container that has the same
+            :obj:`coords`, :obj:`weights`, and :obj:`redshifts` attributes as
+            :obj:`Patch`.
+        """
         return PatchData.from_file(self.data_path)
 
     @property
     def coords(self) -> AngularCoordinates:
+        """Coordinates in right ascension and declination, in radian."""
         return self.load_data().coords
 
     @property
     def weights(self) -> NDArray | None:
+        """Weights or ``None`` if there are no weights."""
         return self.load_data().weights
 
     @property
     def redshifts(self) -> NDArray | None:
+        """Redshifts or ``None`` if there are no redshifts."""
         return self.load_data().redshifts
 
     def get_trees(self) -> BinnedTrees:
+        """
+        Try loading the binary search trees.
+        
+        Loads the tree(s) from the ``trees.pkl`` pickle file, other raises an
+        error.
+
+        Returns:
+            :obj:`~yaw.catalog.trees.BinnedTrees` container with a single or
+            multiple (when catalog is binned in redshift) binary search trees. 
+
+        Raises:
+            FileNotFoundError:
+                If the trees have not been build previously.
+        """
         return BinnedTrees(self)
 
 
@@ -235,6 +342,7 @@ def write_catalog(
             patch_centers = create_patch_centers(reader, patch_num, probe_size)
         patch_centers = parallel.COMM.bcast(patch_centers, root=0)
 
+    # split the data into patches and create the cached Patch instances.
     write_patches(
         cache_directory,
         reader,
@@ -288,7 +396,49 @@ def load_patches(
 
 
 class Catalog(CatalogBase, Mapping[int, Patch]):
-    __slots__ = ("cache_directory", "patches")
+    """
+    A container for catalog data.
+
+    Catalogs are the core data structure for managing point data catalogs.
+    Besides right ascension and declination coordinates, catalogs may have
+    additional per-object weights and redshifts.
+
+    Catalogs divided into spatial :obj:`~yaw.Patch` es, which each cache a
+    portion of the data on disk to minimise the memory footprint when dealing
+    with large data-sets, allowing to process the data in a patch-wise manner,
+    only loading data from disk when they are needed. Additionally, the patches
+    are used to estimate uncertainties using jackknife resampling.
+
+    .. Note::
+        The number of patches should be sufficently large to support the
+        redshift binning used for correlation measurements. The number of
+        patches is also a trade-off between runtime and memory footprint during
+        correlation measurements.
+
+    The cached data is organised in a single directory, with one sub-directory
+    for each spatial :obj:`~yaw.Patch`::
+
+        [cache_directory]/
+          ├╴ patch_ids.bin  # list of patch IDs for this catalog
+          ├╴ patch_0/
+          │    └╴ ...  # patch data
+          ├╴ patch_1/
+          │  ...
+          └╴ patch_N/
+
+    Args:
+        cache_directory:
+            The cache directory to use for this catalog, must exist and contain
+            a valid catalog cache.
+
+    Keyword Args:
+        max_workers:
+            Limit the  number of parallel workers for this operation (all by
+            default).
+    """
+    __slots__ = ("cache_directory", "_patches")
+
+    _patches: dict[int, Patch]
 
     def __init__(
         self, cache_directory: Tpath, *, max_workers: int | None = None
@@ -300,7 +450,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         if not self.cache_directory.exists():
             raise OSError(f"cache directory not found: {self.cache_directory}")
 
-        self.patches = load_patches(
+        self._patches = load_patches(
             self.cache_directory,
             patch_centers=None,
             progress=False,
@@ -328,6 +478,72 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         probe_size: int = -1,
         **reader_kwargs,
     ) -> Catalog:
+        """
+        Create a new catalog instance from a :obj:`pandas.DataFrame`.
+
+        Assign objects from the input data frame to spatial patches,
+        write the patches to a cache on disk, and compute the patch meta data.
+
+        .. Note::
+            One of the optional patch creation arguments (``patch_centers``,
+            ``patch_name``, or ``patch_num``) must be provided.
+
+        Args:
+            cache_directory:
+                The cache directory to use for this catalog. Created
+                automatically or overwritten if requested.
+            dataframe:
+                The input data frame. May also be an object that supports
+                mapping from string (column name) to data (numpy array-like).
+
+        Keyword Args:
+            ra_name:
+                Column name in the data frame for right ascension.
+            dec_name:
+                Column name in the data frame for declination.
+            weight_name:
+                Optional column name in the data frame for weights.
+            redshift_name:
+                Optional column name in the data frame for redshifts.
+            patch_centers:
+                A list of patch centers to use when creating the patches. Can be
+                either :obj:`~yaw.AngularCoordinates` or an other
+                :obj:`~yaw.Catalog` as reference.
+            patch_name:
+                Optional column name in the data frame for a column with integer
+                patch indices. Indices must be contiguous and starting from 0.
+                Ignored if ``patch_centers`` is given.
+            patch_num:
+                Automatically compute patch centers from a sparse sample of the
+                input data using `treecorr`. Requires an additional scan of the
+                input file to read a sparse sampling of the object coordinates.
+                Ignored if ``patch_centers`` or ``patch_name`` is given.
+            degrees:
+                Whether the input coordinates are given in degreees (default).
+            overwrite:
+                Whether to overwrite an existing catalog at the given cache
+                location. If the directory is not a valid catalog, a
+                ``FileExistsError`` is raised.
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+            chunksize:
+                The maximum number of records to load into memory at once when
+                processing the input file in chunks.
+            probe_size:
+                The approximate number of records to read when generating
+                patch centers (``patch_num``).
+
+        Returns:
+            A new catalog instance.
+
+        Raises:
+            FileExistsError:
+                If the cache directory exists or is not a valid catalog when
+                providing ``overwrite=True``.
+        """
         write_catalog(
             cache_directory,
             source=dataframe,
@@ -351,7 +567,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             logger.info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = load_patches(
+        new._patches = load_patches(
             new.cache_directory,
             patch_centers=patch_centers,
             progress=progress,
@@ -380,6 +596,75 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         probe_size: int = -1,
         **reader_kwargs,
     ) -> Catalog:
+        """
+        Create a new catalog instance from a data file.
+
+        Processes the input file in chunks, assign objects to spatial patches,
+        write the patches to a cache on disk, and compute the patch meta data.
+        Supported file formats are `FITS`, `Parquet`, and `HDF5`.
+
+        .. Note::
+            One of the optional patch creation arguments (``patch_centers``,
+            ``patch_name``, or ``patch_num``) must be provided.
+
+        Args:
+            cache_directory:
+                The cache directory to use for this catalog. Created
+                automatically or overwritten if requested.
+            path:
+                The path to the input data file.
+
+        Keyword Args:
+            ra_name:
+                Column or path name in the file for right ascension.
+            dec_name:
+                Column or path name in the file for declination.
+            weight_name:
+                Optional column or path name in the file for weights.
+            redshift_name:
+                Optional column or path name in the file for redshifts.
+            patch_centers:
+                A list of patch centers to use when creating the patches. Can be
+                either :obj:`~yaw.AngularCoordinates` or an other
+                :obj:`~yaw.Catalog` as reference.
+            patch_name:
+                Optional column or path name for a column with integer patch
+                indices. Indices must be contiguous and starting from 0.
+                Ignored if ``patch_centers`` is given.
+            patch_num:
+                Automatically compute patch centers from a sparse sample of the
+                input data using `treecorr`. Requires an additional scan of the
+                input file to read a sparse sampling of the object coordinates.
+                Ignored if ``patch_centers`` or ``patch_name`` is given.
+            degrees:
+                Whether the input coordinates are given in degreees (default).
+            overwrite:
+                Whether to overwrite an existing catalog at the given cache
+                location. If the directory is not a valid catalog, a
+                ``FileExistsError`` is raised.
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+            chunksize:
+                The maximum number of records to load into memory at once when
+                processing the input file in chunks.
+            probe_size:
+                The approximate number of records to read when generating
+                patch centers (``patch_num``).
+
+        Returns:
+            A new catalog instance.
+
+        Raises:
+            FileExistsError:
+                If the cache directory exists or is not a valid catalog when
+                providing ``overwrite=True``.
+
+        Additional reader keyword arguments are passed on to the file reader
+        class constuctor.
+        """
         write_catalog(
             cache_directory,
             source=path,
@@ -403,7 +688,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             logger.info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
-        new.patches = load_patches(
+        new._patches = load_patches(
             new.cache_directory,
             patch_centers=patch_centers,
             progress=progress,
@@ -421,20 +706,22 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
 
     def __len__(self) -> int:
-        return len(self.patches)
+        return len(self._patches)
 
     def __getitem__(self, patch_id: int) -> Patch:
-        return self.patches[patch_id]
+        return self._patches[patch_id]
 
     def __iter__(self) -> Iterator[int]:
-        yield from sorted(self.patches.keys())
+        yield from sorted(self._patches.keys())
 
     @property
     def num_patches(self) -> int:
+        """The number of patches of this catalog."""
         return len(self)
 
     @property
     def has_weights(self) -> bool:
+        """Whether weights are available."""
         has_weights = tuple(patch.has_weights for patch in self.values())
         if all(has_weights):
             return True
@@ -444,6 +731,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
     @property
     def has_redshifts(self) -> bool:
+        """Whether redshifts are available."""
         has_redshifts = tuple(patch.has_redshifts for patch in self.values())
         if all(has_redshifts):
             return True
@@ -452,17 +740,21 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         raise InconsistentPatchesError("'redshifts' not consistent")
 
     def get_num_records(self) -> tuple[int]:
+        """Get the number of records in each patches."""
         return tuple(patch.meta.num_records for patch in self.values())
 
     def get_totals(self) -> tuple[float]:
+        """Get the sum of weights of the patches."""
         return tuple(patch.meta.total for patch in self.values())
 
     def get_centers(self) -> AngularCoordinates:
+        """Get the center coordinates of the patches."""
         return AngularCoordinates.from_coords(
             patch.meta.center for patch in self.values()
         )
 
     def get_radii(self) -> AngularDistances:
+        """Get the radii of the patches."""
         return AngularDistances.from_dists(patch.meta.radius for patch in self.values())
 
     def build_trees(
@@ -475,6 +767,31 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         progress: bool = False,
         max_workers: int | None = None,
     ) -> None:
+        """
+        Build binary search trees on for each patch.
+
+        The trees are cached in the patches' cache directory and can be
+        retrieved from individual patches through :obj:`~yaw.Patch.get_trees()`.
+
+        Args:
+            binning:
+                Optional array with redshift bin edges to apply to the data
+                before building trees.
+
+        Keyword Args:
+            closed:
+                Whether the bin edges are closed on the ``left`` or ``right``
+                side.
+            leafsize:
+                Leafsize when building trees.
+            force:
+                Whether to overwrite any existing, cached trees.
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default). Takes precedence over the value in the configuration.
+        """
         binning = parse_binning(binning, optional=True)
 
         if parallel.on_root():
@@ -494,3 +811,9 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             patch_tree_iter = Indicator(patch_tree_iter, len(self))
 
         deque(patch_tree_iter, maxlen=0)
+
+
+Catalog.get.__doc__ = "Return the :obj:`~yaw.Patch` for ID if exists, else default."
+Catalog.keys.__doc__ = "A set-like object providing a view of all patch IDs."
+Catalog.values.__doc__ = "A set-like object providing a view of all :obj:`~yaw.Patch` es."
+Catalog.items.__doc__ = "A set-like object providing a view of `(key, value)` pairs."

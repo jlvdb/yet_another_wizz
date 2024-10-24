@@ -387,7 +387,7 @@ def autocorrelate(
             Show a progress on the terminal (disabled by default).
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default).
+            default). Takes precedence over the value in the configuration.
 
     Returns:
         List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
@@ -472,7 +472,7 @@ def crosscorrelate(
             Show a progress on the terminal (disabled by default).
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default).
+            default). Takes precedence over the value in the configuration.
 
     Returns:
         List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
