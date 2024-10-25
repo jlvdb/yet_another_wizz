@@ -1,5 +1,14 @@
 .. title:: Documentation of yet_another_wizz
 
+.. important::
+    Fix required:
+
+    - Add back uniform randoms
+    - Update flowchart
+    - Add missing example
+    - Add changelog for v3
+
+
 .. grid::
     :gutter: 2 3 4 4
     :margin: 0 auto auto auto

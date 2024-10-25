@@ -78,9 +78,10 @@ when installing the sparate command-line client `yet_another_wizz_cli`. This
 tool deprecated as of version 3.0 and maybe be integrated directly into
 `yet_another_wizz` in a future release.
 
-**When using this code in published work, please cite**
-*van den Busch et al. (2020), A&A 642, A200*
-(`arXiv:2007.01846 <https://arxiv.org/abs/2007.01846>`_)
+.. note::
+    When using this code in published work, please cite
+    *van den Busch et al. (2020), A&A 642, A200*
+    (`arXiv:2007.01846 <https://arxiv.org/abs/2007.01846>`_)
 
 For bug reports or requesting new features, please use the github issue page:
 https://github.com/jlvdb/yet_another_wizz/issues

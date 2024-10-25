@@ -4,7 +4,8 @@ Catalog data
 .. currentmodule:: yaw
 
 
-The `yet_another_wizz` package has a single type of inputs
+The following class manages input data catalogs with coordinates and optional
+redshifts and weights:
 
 .. autosummary::
     :toctree: autogen
@@ -12,7 +13,8 @@ The `yet_another_wizz` package has a single type of inputs
     Catalog
 
 
-The `yet_another_wizz` package has a single type of inputs.
+Upon creating a new catalog, the input data is split into patches and cached
+on disk. These patches are managed by the following classes:
 
 .. autosummary::
     :toctree: autogen
