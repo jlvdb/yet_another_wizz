@@ -4,7 +4,7 @@ correlation redshifts, also known as clustering redshifts.
 """
 
 from yaw._version import __version__, __version_tuple__
-from yaw.catalog import Catalog, Patch
+from yaw.catalog import Catalog
 from yaw.config import Configuration
 from yaw.containers import Binning
 from yaw.corrfunc import CorrData, CorrFunc
@@ -23,7 +23,6 @@ __all__ = [
     "CorrData",
     "CorrFunc",
     "HistData",
-    "Patch",
     "RedshiftData",
     "autocorrelate",
     "crosscorrelate",

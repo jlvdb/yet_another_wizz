@@ -24,76 +24,65 @@
     end header
 
 *yet_another_wizz* is a python package to efficiently compute cross-correlation
-redshifts, also know as clustering redshifts and is hosted on github:
+redshifts, also know as clustering redshifts. The method allows to estimate the
+unknown redshift distribution of a galaxy sample by measuring the amplitude of
+the angular correlation of the galaxy positions with those of a reference
+sample with known redshifts.
+
+This implementation is based on the idea (introduced by
+Schmidt et al. 2013, see `arXiv:1303.0292 <https://arxiv.org/abs/1303.0292>`_)
+to measure the amplitude of the angular correlation functions by counting galaxy
+pairs in a single, wide angular bin.
+
+The code base, documentation and, python package are distributed at:
 
 - code: https://github.com/jlvdb/yet_another_wizz.git
 - docs: https://yet-another-wizz.readthedocs.io/
 - PyPI: https://pypi.org/project/yet_another_wizz/
-- Docker: https://hub.docker.com/r/jlvdb/yet_another_wizz/
-
-The method allows to estimate the unknown redshift distribution of a galaxy
-sample by correlating the on-sky positions with a reference sample with known
-redshifts. This implementation is based on the single bin correlation
-measurement of the correlation amplitude, introduced by Schmidt et al. (2013,
-`arXiv:1303.0292 <https://arxiv.org/abs/1303.0292>`_).
 
 .. Note::
-    When using this code in published work, please cite
-    *van den Busch et al. (2020), A&A 642, A200*
-    (`arXiv:2007.01846 <https://arxiv.org/abs/2007.01846>`_)
+    In the latest version, the code has been redesigned for large data sets and
+    now supports paralellism with MPI.
 
 
 Installation
 ------------
 
-The yet_another_wizz package can be installed directly with pip::
+The `yet_another_wizz` package, which ships the python library ``yaw``, can be
+installed directly with `pip`::
 
     pip install yet_another_wizz
 
-This will install the python library ``yaw``.
+To enable MPI support, the MPI runtime-environment must be installed and
+configured. The easiest way to install `yet_another_wizz` with MPI enabled is
+using the provided setup for `conda`::
 
-Commandline tool
-~~~~~~~~~~~~~~~~
+    conda install -f environment.yml
 
-There also exists a separate command line tool called
-`yet_another_wizz_cli <https://github.com/jlvdb/yet_another_wizz_cli>`_
-(``yaw_cli``) that is available at PyPI and github. To install it alongside the
-python library, type::
+This will creates a new environment called ``yaw`` and install the code together
+with the ``openmpi`` implementation of MPI.
 
-    pip install yet_another_wizz[cli]
-
-LSST-DESC RAIL plugin
-~~~~~~~~~~~~~~~~~~~~~
-
-Currently there is also a
-`plugin interface <https://github.com/jlvdb/yet_another_wizz_rail>`_  for the
-Redshift Assessment Infrastructure Layers
-(`RAIL <https://github.com/LSSTDESC/rail>`_) pipeline under development. To
-install it alongside the python library, including ``rail`` itself, type::
-
-    pip install yet_another_wizz[rail]
+There is also a `plugin interface <https://github.com/LSSTDESC/rail_yaw>`_ 
+for the Redshift Assessment Infrastructure Layers
+(`RAIL <https://github.com/LSSTDESC/rail>`_) pipeline.
 
 
 Usage
 -----
 
-There are two main ways to use yet_another_wizz,
+For more information about how to use the python code, please refer to the usage
+examples in the official documentation.
 
-- the python library ``yaw`` itself and
-- the (separate) ``yaw_cli`` commmand line tool.
-- the (separate) ``yaw_rail`` RAIL plugin (coming soon).
+Previous versions of `yet_another_wizz` could also be run as a command line tool
+when installing the sparate command-line client `yet_another_wizz_cli`. This
+tool deprecated as of version 3.0 and maybe be integrated directly into
+`yet_another_wizz` in a future release.
 
-Most users will probably get started with the command line tool, which should
-cover all necessary tasks for a standard clustering redshift calibration. For
-custom solutions, use the python library. A basic example as well as the API
-reference can be found in the official documentation.
-
-
-Reporting bugs and requesting features
---------------------------------------
+**When using this code in published work, please cite**
+*van den Busch et al. (2020), A&A 642, A200*
+(`arXiv:2007.01846 <https://arxiv.org/abs/2007.01846>`_)
 
 For bug reports or requesting new features, please use the github issue page:
-
 https://github.com/jlvdb/yet_another_wizz/issues
 
 

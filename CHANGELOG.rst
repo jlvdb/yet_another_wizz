@@ -1,6 +1,15 @@
 Change log
 ==========
 
+Version 3.0.0
+-------------
+
+Complete rewrite.
+
+.. Warning::
+    Missing content
+
+
 Version 2.5.8
 -------------
 

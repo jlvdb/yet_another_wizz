@@ -22,7 +22,7 @@
             :class-title: h5
 
             .. toctree::
-                :maxdepth: 3
+                :maxdepth: 2
 
                 user_guide
                 api
@@ -46,7 +46,7 @@
 
         :octicon:`rocket;3em`
 
-        Usage examples
+        Usage example
 
     .. grid-item-card:: The thorough
         :columns: 6

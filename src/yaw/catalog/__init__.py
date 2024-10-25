@@ -1,6 +1,7 @@
-from .containers import Catalog, Patch
+from .containers import Catalog, Metadata, Patch
 
 __all__ = [
     "Catalog",
+    "Metadata",
     "Patch",
 ]

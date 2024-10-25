@@ -13,43 +13,12 @@ API Documentation
     :alt: API flowchart
 
 
-.. rubric:: Catalog data containers
+.. toctree::
+    :maxdepth: 1
 
-.. autosummary::
-    :toctree: api
-
-    Patch
-    Catalog
-
-
-.. rubric:: Correlation measurements
-
-.. autosummary::
-    :toctree: api
-
-    Configuration
-    config.ScalesConfig
-    config.BinningConfig
-    autocorrelate
-    crosscorrelate
-
-
-.. rubric:: Data containers
-
-.. autosummary::
-    :toctree: api
-
-    CorrFunc
-    CorrData
-    RedshiftData
-    HistData
-
-
-.. rubric:: Utilities
-
-.. autosummary::
-    :toctree: api
-
-    AngularCoordinates
-    AngularDistances
-    Binning
+    api/catalog
+    api/config
+    api/measurements
+    api/corrfunc
+    api/containers
+    api/utils

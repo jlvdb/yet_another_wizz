@@ -3,8 +3,16 @@
 User guide
 ==========
 
+This user guide provides installation instructions, an overview of the features,
+some core concepts of the code, as well as usage examples.
+
 .. Note::
-    Add introduction
+    The ``yaw_cli`` commandline tool (installed through the
+    ``yet_another_wizz_cli`` package) is deprecated starting with version 3.0.
+
+    It may be reimplemented in a future release of `yet_another_wizz` with a
+    limited feature set.
+
 
 .. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
     :open:
@@ -14,11 +22,9 @@ User guide
 
     .. toctree::
         :maxdepth: 2
-        :caption: User guide
         :includehidden:
 
         user_guide/getting_started
         user_guide/features
-        user_guide/examples
-        user_guide/cmd
         user_guide/concepts
+        user_guide/examples
