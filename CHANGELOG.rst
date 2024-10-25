@@ -6,7 +6,7 @@ Version 3.0.0
 
 Complete rewrite.
 
-.. Warning::
+.. attention::
     Missing content
 
 

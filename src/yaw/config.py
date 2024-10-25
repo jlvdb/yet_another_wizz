@@ -65,7 +65,7 @@ def cosmology_to_yaml(cosmology: Tcosmology) -> str:
     """
     Attempt to serialise a cosmology instance to YAML.
 
-    .. Warning::
+    .. caution::
         This currently works only for named astropy cosmologies.
 
     Args:
@@ -269,7 +269,7 @@ class ScalesConfig(BaseConfig, Immutable):
     separation, i.e. :math:`w(r) \\sim w(r_i)`, where :math:`r_i` is the
     logarithmic center of the :math:`i`-th bin.
 
-    .. Note::
+    .. note::
         The preferred way to create a new configuration instance is using the
         :meth:`create()` constructor.
 
@@ -452,7 +452,7 @@ class BinningConfig(BaseConfig, Immutable):
 
     Alternatively, custom bin edges may be provided.
 
-    .. Note::
+    .. note::
         The preferred way to create a new configuration instance is using the
         :meth:`create()` constructor.
 
@@ -528,7 +528,7 @@ class BinningConfig(BaseConfig, Immutable):
         Returns:
             Restored class instance.
 
-        .. Warning::
+        .. caution::
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
@@ -640,12 +640,12 @@ class BinningConfig(BaseConfig, Immutable):
         Returns:
             New configuration instance.
 
-        .. Note::
+        .. note::
             All function parameters are optional, but either ``zmin`` and
             ``zmax`` (generate bin edges), or ``edges`` (custom bin edges) must
             be provided.
 
-        .. Warning::
+        .. caution::
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
@@ -706,7 +706,7 @@ class BinningConfig(BaseConfig, Immutable):
         Returns:
             New instance with updated redshift bins.
 
-        .. Warning::
+        .. caution::
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
@@ -739,7 +739,7 @@ class Configuration(BaseConfig, Immutable):
     correlation scales, redshift binning, and the cosmological model used for
     distance calculations.
 
-    .. Note::
+    .. note::
         The preferred way to create a new configuration instance is using the
         :meth:`create()` constructor.
 
@@ -911,7 +911,7 @@ class Configuration(BaseConfig, Immutable):
         Returns:
             New configuration instance.
 
-        .. Note::
+        .. note::
             Although the function parameters are optional, either ``zmin`` and
             ``zmax`` (generate bin edges), or ``edges`` (custom bin edges) must
             be provided.

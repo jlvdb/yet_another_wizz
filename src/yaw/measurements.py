@@ -447,7 +447,7 @@ def crosscorrelate(
     redshifts attached. If any of the input catalogs have weights, they will be
     used to weight the pair counts accordingly.
 
-    .. Note::
+    .. note::
         While both, the reference and the unknown sample randoms, are optional,
         at least one random sample is required for the correlation measurement.
         If both random samples are provided, random-random pairs are counted,

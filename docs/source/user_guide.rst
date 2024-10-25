@@ -6,7 +6,7 @@ User guide
 This user guide provides installation instructions, an overview of the features,
 some core concepts of the code, as well as usage examples.
 
-.. Note::
+.. attention::
     The ``yaw_cli`` commandline tool (installed through the
     ``yet_another_wizz_cli`` package) is deprecated starting with version 3.0.
 

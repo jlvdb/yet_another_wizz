@@ -88,7 +88,7 @@ class CorrFunc(
     per spatial patch of the input :obj:`~yaw.Catalog` s. The data-data,
     data-random, etc. pair counts are stored in separate attributes.
 
-    .. Note::
+    .. note::
         While the pair counts ``dr``, ``rd``, or ``rr`` are all optional, at
         least one of these pair counts must pre provided.
 

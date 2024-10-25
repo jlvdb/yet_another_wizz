@@ -348,7 +348,7 @@ class RedshiftData(CorrData):
         optained by fitting to another data container to achieve a relative
         normalisation.
         
-        .. Note::
+        .. warning::
             Both approaches are inaccuarte due to noise fluctions (in particular
             negative correlation amplitudes).
 

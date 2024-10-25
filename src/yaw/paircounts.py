@@ -567,7 +567,7 @@ class NormalisedCounts(BinwisePatchwiseArray):
         I.e. the first array element contains the data associated with the first
         redshift bin and pairing the first patch with itself.
         
-        .. Note::
+        .. note::
             The normalisation is computed from all patches and not per patch.
 
         Returns:

@@ -240,7 +240,7 @@ class Patch(PatchBase):
         """
         Extract the integer patch ID from the cache path.
         
-        .. Warning::
+        .. caution::
             This will fail if the patch has not been created through a
             :obj:`~yaw.Catalog` instance, which manages the patch creation.
         """
@@ -409,7 +409,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     only loading data from disk when they are needed. Additionally, the patches
     are used to estimate uncertainties using jackknife resampling.
 
-    .. Note::
+    .. note::
         The number of patches should be sufficently large to support the
         redshift binning used for correlation measurements. The number of
         patches is also a trade-off between runtime and memory footprint during
@@ -484,7 +484,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         Assign objects from the input data frame to spatial patches,
         write the patches to a cache on disk, and compute the patch meta data.
 
-        .. Note::
+        .. note::
             One of the optional patch creation arguments (``patch_centers``,
             ``patch_name``, or ``patch_num``) must be provided.
 
@@ -603,7 +603,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         write the patches to a cache on disk, and compute the patch meta data.
         Supported file formats are `FITS`, `Parquet`, and `HDF5`.
 
-        .. Note::
+        .. note::
             One of the optional patch creation arguments (``patch_centers``,
             ``patch_name``, or ``patch_num``) must be provided.
 

@@ -40,7 +40,7 @@ The code base, documentation and, python package are distributed at:
 - docs: https://yet-another-wizz.readthedocs.io/
 - PyPI: https://pypi.org/project/yet_another_wizz/
 
-.. Note::
+.. note::
     In the latest version, the code has been redesigned for large data sets and
     now supports paralellism with MPI.
 

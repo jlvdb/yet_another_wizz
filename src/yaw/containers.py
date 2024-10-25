@@ -346,7 +346,7 @@ class BinwiseData(ABC):
         The indexer supports indexing, slicing, and iteration over individual
         patches.
 
-        .. Warning::
+        .. caution::
             Indixing a non-contiguous subset of bins will result in expanding
             the previous bin to encompass all omitted bins, e.g. selecting
             the first and third bin of ``(0, 1], (1, 2], (2, 3]`` will result
