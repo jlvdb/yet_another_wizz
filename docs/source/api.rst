@@ -1,6 +1,6 @@
 .. _api:
 
-YAW Reference
+API Reference
 =============
 
 This API reference manual details the primary functions and object in the

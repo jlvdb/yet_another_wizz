@@ -75,7 +75,7 @@ examples in the official documentation.
 
 Previous versions of `yet_another_wizz` could also be run as a command line tool
 when installing the sparate command-line client `yet_another_wizz_cli`. This
-tool deprecated as of version 3.0 and maybe be integrated directly into
+tool is deprecated as of version 3.0 but maybe be integrated directly into
 `yet_another_wizz` in a future release.
 
 .. note::
