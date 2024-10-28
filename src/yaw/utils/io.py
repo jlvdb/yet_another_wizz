@@ -160,5 +160,5 @@ def load_version_tag(source: Group) -> str:
 
 def is_legacy_dataset(source: Group) -> bool:
     """Determine, if the current file has been created by an old version of 
-    yet_another_wizz (version < 3.0)."""
+    `yet_another_wizz` (version < 3.0)."""
     return "version" not in source

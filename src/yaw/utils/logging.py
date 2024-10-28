@@ -242,7 +242,7 @@ def get_default_logger(
     show_welcome: bool = True,
 ) -> Logger:
     """
-    Create a new root level logger for yet_another_wizz specific log messages
+    Create a new root level logger for `yet_another_wizz` specific log messages
     and display a welcome message. By default, records are written to `stdout`.
     """
     level_code = getattr(logging, level.upper())

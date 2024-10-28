@@ -22,7 +22,7 @@ __all__ = [
 
 class CustomCosmology(ABC):
     """Meta-class that defines interface for custom cosmologies that are
-    compatible with yet_another_wizz code."""
+    compatible with `yet_another_wizz` code."""
     @abstractmethod
     def comoving_distance(self, z: ArrayLike) -> ArrayLike:
         """

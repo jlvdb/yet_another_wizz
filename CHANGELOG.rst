@@ -44,7 +44,7 @@ Version 2.5.5
 Version 2.5.4
 -------------
 
-A new release for PyPI to fix the linked yet_another_wizz logo.
+A new release for PyPI to fix the linked `yet_another_wizz` logo.
 
 
 Version 2.5.3
@@ -181,7 +181,7 @@ Version 2.3
 Version 2.2.2
 -------------
 
-Full reimplementation of yet_another_wizz.
+Full reimplementation of `yet_another_wizz`.
 
 .. rubric:: Bug fixes
 

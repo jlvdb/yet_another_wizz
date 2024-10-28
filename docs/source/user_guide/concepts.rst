@@ -3,7 +3,7 @@
 Concepts
 ========
 
-The two most important design concepts of *yet_another_wizz* are
+The two most important design concepts of `yet_another_wizz` are
 :ref:`caching<caching>` and spatial :ref:`patches<patches>`. Caching the input
 catalog data is important to improve the code performance and memory management,
 patches are important to compute uncertainties and covariances.

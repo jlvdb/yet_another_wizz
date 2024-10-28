@@ -27,10 +27,16 @@ the code is **optimised to handle large data sets**, minimising memory bottle-ne
 when ingesting the data catalogs and leveraging MPI (Message Passing Interface)
 to **scale computations on high performance computing systems**.
 
-- Out-of-memory computation for all operations.
 - Additional performance improvements over version 2.0.
+- Out-of-memory computation for all input-catalog-related operations.
 - Input catalogs are read in batches and :ref:`cached<caching>` in smaller
   patches.
-- Patches are read as required when measuring correlation functions.
+- Patches are read back as required when measuring correlation functions.
 - Correlation function measurements can be scaled with MPI and scattered across
   multiple compute nodes.
+- Any I/O releated methods of the public YAW interface are designed to read on
+  the root process and scatter the data across the connected workers.
+
+.. Note::
+    The code always uses the world communicator for its operations. This may be
+    configurable further in a future version.

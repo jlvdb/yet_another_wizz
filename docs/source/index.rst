@@ -19,7 +19,7 @@
         :class-body: lead
         :img-top: /_static/title.svg
 
-        *yet_another_wizz* is an open source python package to efficiently
+        `yet_another_wizz` is an open source python package to efficiently
         compute cross-correlation redshifts, also known as clustering redshifts.
 
     .. grid-item::

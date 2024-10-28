@@ -23,7 +23,7 @@
 ..
     end header
 
-*yet_another_wizz* is a python package to efficiently compute cross-correlation
+`yet_another_wizz` is a python package to efficiently compute cross-correlation
 redshifts, also know as clustering redshifts. The method allows to estimate the
 unknown redshift distribution of a galaxy sample by measuring the amplitude of
 the angular correlation of the galaxy positions with those of a reference
