@@ -16,6 +16,7 @@ class Closed(StrEnum):
     .. Note::
         Methods omitted here, all string methods should be inherited.
     """
+
     right = auto()
     left = auto()
 
@@ -35,6 +36,7 @@ class BinMethodAuto(StrEnum):
     .. Note::
         Methods omitted here, all string methods should be inherited.
     """
+
     linear = auto()
     comoving = auto()
     logspace = auto()
@@ -57,6 +59,7 @@ class BinMethod(StrEnum):
     .. Note::
         Methods omitted here, all string methods should be inherited.
     """
+
     linear = auto()
     comoving = auto()
     logspace = auto()
@@ -78,6 +81,7 @@ class CovKind(StrEnum):
     .. Note::
         Methods omitted here, all string methods should be inherited.
     """
+
     full = auto()
     diag = auto()
     var = auto()
@@ -98,6 +102,7 @@ class PlotStyle(StrEnum):
     .. Note::
         Methods omitted here, all string methods should be inherited.
     """
+
     point = auto()
     line = auto()
     step = auto()

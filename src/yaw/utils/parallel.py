@@ -170,6 +170,7 @@ class ParallelJob:
     to ``functools.partial``. If ``unpack=True``, the positional arguments are
     unpacked when calling the function, otherwise they are passed as a tuple.
     """
+
     __slots__ = ("func", "func_args", "func_kwargs", "unpack")
 
     def __init__(
@@ -243,7 +244,7 @@ def _mpi_iter_unordered(
     """
     Asynchronous iterator that maps arguments to a worker function using MPI
     parallelism.
-    
+
     Takes a job function, an iterable of job arguments and optionally a list
     of positional and keyword arguments to bind to the job function.
     Additionally, specify if the function expects the the positional arguments

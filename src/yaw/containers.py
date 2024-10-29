@@ -55,7 +55,9 @@ class Serialisable(ABC):
     dictionaries."""
 
     @classmethod
-    def from_dict(cls: type[TypeSerialisable], the_dict: dict[str, Any]) -> TypeSerialisable:
+    def from_dict(
+        cls: type[TypeSerialisable], the_dict: dict[str, Any]
+    ) -> TypeSerialisable:
         """
         Restore the class instance from a python dictionary.
 
@@ -86,7 +88,9 @@ class YamlSerialisable(Serialisable):
     YAML files."""
 
     @classmethod
-    def from_file(cls: type[TypeYamlSerialisable], path: Path | str) -> TypeYamlSerialisable:
+    def from_file(
+        cls: type[TypeYamlSerialisable], path: Path | str
+    ) -> TypeYamlSerialisable:
         """
         Restore the class instance from a YAML file.
 
@@ -121,7 +125,9 @@ class HdfSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_hdf(cls: type[TypeHdfSerializable], source: h5py.Group) -> TypeHdfSerializable:
+    def from_hdf(
+        cls: type[TypeHdfSerializable], source: h5py.Group
+    ) -> TypeHdfSerializable:
         """
         Restore the class instance from a specific HDF5-file group.
 
@@ -146,7 +152,9 @@ class HdfSerializable(ABC):
         pass
 
     @classmethod
-    def from_file(cls: type[TypeHdfSerializable], path: Path | str) -> TypeHdfSerializable:
+    def from_file(
+        cls: type[TypeHdfSerializable], path: Path | str
+    ) -> TypeHdfSerializable:
         """
         Restore the class instance from a HDF5 file.
 
@@ -180,7 +188,9 @@ class AsciiSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_files(cls: type[TypeAsciiSerializable], path_prefix: Path | str) -> TypeAsciiSerializable:
+    def from_files(
+        cls: type[TypeAsciiSerializable], path_prefix: Path | str
+    ) -> TypeAsciiSerializable:
         """
         Restore the class instance from a set of ASCII files.
 
@@ -220,6 +230,7 @@ class Indexer(Generic[TypeKey, TypeValue], Iterator):
     Takes a single argument, a function that takes a slice or list of indices as
     input and creates a new instance of the class with the subset of its data.
     """
+
     __slots__ = ("_callback", "_iter_state")
 
     def __init__(self, slice_callback: Callable[[TypeKey], TypeValue]) -> None:
@@ -256,7 +267,9 @@ class PatchwiseData(ABC):
         pass
 
     @abstractmethod
-    def _make_patch_slice(self: TypePatchwiseData, item: TypeSliceIndex) -> TypePatchwiseData:
+    def _make_patch_slice(
+        self: TypePatchwiseData, item: TypeSliceIndex
+    ) -> TypePatchwiseData:
         """Factory method called by :meth:`patches` to create a new instance
         from a subset of patches."""
         pass
@@ -339,7 +352,7 @@ class BinwiseData(ABC):
             the previous bin to encompass all omitted bins, e.g. selecting
             the first and third bin of ``(0, 1], (1, 2], (2, 3]`` will result
             in a binning with edges ``(0, 2], (2, 3]``.
-            
+
             Slicing is unaffected since it always results in a contiguous subset
             of bins.
         """
@@ -428,6 +441,7 @@ class Binning(HdfSerializable):
             Indicating which side of the bin edges is a closed interval, must be
             ``left`` or ``right`` (default).
     """
+
     __slots__ = ("edges", "closed")
 
     edges: NDArray
@@ -513,18 +527,29 @@ class Binning(HdfSerializable):
 class RedshiftBinningFactory:
     """Simple factory class to create redshift binnings. Takes an optional
     cosmology as input for distance conversions."""
+
     def __init__(self, cosmology: TypeCosmology | None = None) -> None:
         self.cosmology = cosmology or get_default_cosmology()
 
     def linear(
-        self, min: float, max: float, num_bins: int, *, closed: Closed | str = Closed.right
+        self,
+        min: float,
+        max: float,
+        num_bins: int,
+        *,
+        closed: Closed | str = Closed.right,
     ) -> Binning:
         """Creates a linear redshift binning between a min and max redshift."""
         edges = np.linspace(min, max, num_bins + 1)
         return Binning(edges, closed=closed)
 
     def comoving(
-        self, min: float, max: float, num_bins: int, *, closed: Closed | str = Closed.right
+        self,
+        min: float,
+        max: float,
+        num_bins: int,
+        *,
+        closed: Closed | str = Closed.right,
     ) -> Binning:
         """Creates a binning linear in comoving distance between a min and max
         redshift."""
@@ -537,7 +562,12 @@ class RedshiftBinningFactory:
         return Binning(edges.value, closed=closed)
 
     def logspace(
-        self, min: float, max: float, num_bins: int, *, closed: Closed | str = Closed.right
+        self,
+        min: float,
+        max: float,
+        num_bins: int,
+        *,
+        closed: Closed | str = Closed.right,
     ) -> Binning:
         """Creates a binning linear in 1+ln(z) between a min and max redshift."""
         log_min, log_max = np.log([1.0 + min, 1.0 + max])
@@ -619,7 +649,7 @@ class SampledData(BinwiseData):
     Implements convenience method to estimate the standard error, covariance
     and correlation matrix, and plotting methods. Additionally implements
     ``len()``, comparison with the ``==`` operator and addition with
-    ``+``/``-``.    
+    ``+``/``-``.
 
     Args:
         binning:
@@ -629,8 +659,9 @@ class SampledData(BinwiseData):
         samples:
             2-dim array containing `M` jackknife samples of the data, expected
             to have shape `(M, N)`.
-            
+
     """
+
     __slots__ = ("binning", "data", "samples")
 
     binning: Binning

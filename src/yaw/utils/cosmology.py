@@ -23,6 +23,7 @@ __all__ = [
 class CustomCosmology(ABC):
     """Meta-class that defines interface for custom cosmologies that are
     compatible with `yet_another_wizz` code."""
+
     @abstractmethod
     def comoving_distance(self, z: ArrayLike) -> ArrayLike:
         """
@@ -31,7 +32,7 @@ class CustomCosmology(ABC):
         Args:
             z:
                 A single or an array of redshifts.
-        
+
         Returns:
             Float or numpy array with comoving distance for given input
             redshifts.
@@ -46,7 +47,7 @@ class CustomCosmology(ABC):
         Args:
             z:
                 A single or an array of redshifts.
-        
+
         Returns:
             Float or numpy array with angular diameter distance for given input
             redshifts.
@@ -87,7 +88,7 @@ def separation_physical_to_angle(
     """
     Convert physical transverse angular diameter distance to angle at the given
     redshifts.
-    
+
     Args:
         separation_kpc:
             Single or array of transverse angular diameter distances in kpc.

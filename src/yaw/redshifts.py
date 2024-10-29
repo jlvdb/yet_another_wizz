@@ -81,6 +81,7 @@ class HistData(CorrData):
             2-dim array containing jackknife samples of the histogram counts,
             expected to have shape (:obj:`num_samples`, :obj:`num_bins`).
     """
+
     __slots__ = ("binning", "data", "samples")
 
     @classmethod
@@ -158,7 +159,7 @@ class HistData(CorrData):
         """
         Normalises the redshift histogram to a probability density.
 
-        Any function arguments are discarded.        
+        Any function arguments are discarded.
 
         Returns:
             A new instance with a normalisation factor applied to the counts and
@@ -198,6 +199,7 @@ class RedshiftData(CorrData):
             2-dim array containing `M` jackknife samples of the data, expected
             to have shape (:obj:`num_samples`, :obj:`num_bins`).
     """
+
     __slots__ = ("binning", "data", "samples")
 
     @classmethod
@@ -225,7 +227,7 @@ class RedshiftData(CorrData):
         Keyword Args:
             ref_data:
                 Optional autocorrelation function amplitude of the reference
-                sample (:math:`w_{ss}`), must be a :obj:`~yaw.CorrData` 
+                sample (:math:`w_{ss}`), must be a :obj:`~yaw.CorrData`
                 nstance.
             unk_data:
                 Optional autocorrelation function amplitude of the unknown
@@ -297,7 +299,7 @@ class RedshiftData(CorrData):
             cross_corr:
                 The cross-correlation function pair counts (:math:`w_{sp}`),
                 must be a :obj:`~yaw.CorrFunc` instance.
-                
+
         Keyword Args:
             ref_corr:
                 Optional autocorrelation function pair counts of the reference
@@ -348,7 +350,7 @@ class RedshiftData(CorrData):
         redshift range of the binning. Alternatively, the normalisation may be
         optained by fitting to another data container to achieve a relative
         normalisation.
-        
+
         .. warning::
             Both approaches are inaccuarte due to noise fluctions (in particular
             negative correlation amplitudes).

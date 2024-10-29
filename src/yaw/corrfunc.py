@@ -45,6 +45,7 @@ class EstimatorError(Exception):
 
 def named(key):
     """Attatch a ``.name`` attribute to a function."""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -119,6 +120,7 @@ class CorrFunc(
         EstimatorError:
             If none of the optional pair counts are provided.
     """
+
     __slots__ = ("dd", "dr", "rd", "rr")
 
     dd: NormalisedCounts
@@ -320,6 +322,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
             2-dim array containing `M` jackknife samples of the data, expected
             to have shape (:obj:`num_samples`, :obj:`num_bins`).
     """
+
     __slots__ = ("binning", "data", "samples")
 
     @property

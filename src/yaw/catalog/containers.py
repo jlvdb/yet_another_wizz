@@ -66,6 +66,7 @@ class Metadata(YamlSerialisable):
             Radius around center point containing all data points,
             :obj:`~yaw.AngularDistances` in radian.
     """
+
     __slots__ = (
         "num_records",
         "total",
@@ -122,7 +123,7 @@ class Metadata(YamlSerialisable):
             coords:
                 Coordinates of patch data points, given as
                 :obj:`~yaw.AngularCoordinates`.
- 
+
         Keyword Args:
             weights:
                 Optional, weights of data points.
@@ -186,6 +187,7 @@ class Patch(PatchBase):
     Supports efficient pickeling as long as the cached data is not deleted or
     moved.
     """
+
     __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
 
     meta: Metadata
@@ -239,7 +241,7 @@ class Patch(PatchBase):
     def id_from_path(cache_path: Path | str) -> int:
         """
         Extract the integer patch ID from the cache path.
-        
+
         .. caution::
             This will fail if the patch has not been created through a
             :obj:`~yaw.Catalog` instance, which manages the patch creation.
@@ -277,13 +279,13 @@ class Patch(PatchBase):
     def get_trees(self) -> BinnedTrees:
         """
         Try loading the binary search trees.
-        
+
         Loads the tree(s) from the ``trees.pkl`` pickle file, other raises an
         error.
 
         Returns:
             :obj:`~yaw.catalog.trees.BinnedTrees` container with a single or
-            multiple (when catalog is binned in redshift) binary search trees. 
+            multiple (when catalog is binned in redshift) binary search trees.
 
         Raises:
             FileNotFoundError:
@@ -312,9 +314,7 @@ def write_catalog(
     buffersize: int = -1,
     **reader_kwargs,
 ) -> None:
-    constructor = (
-        new_filereader if isinstance(source, (Path, str)) else DataFrameReader
-    )
+    constructor = new_filereader if isinstance(source, (Path, str)) else DataFrameReader
 
     reader = None
     if parallel.on_root():
@@ -436,6 +436,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             Limit the  number of parallel workers for this operation (all by
             default).
     """
+
     __slots__ = ("cache_directory", "_patches")
 
     _patches: dict[int, Patch]
@@ -816,5 +817,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
 Catalog.get.__doc__ = "Return the :obj:`~yaw.Patch` for ID if exists, else default."
 Catalog.keys.__doc__ = "A set-like object providing a view of all patch IDs."
-Catalog.values.__doc__ = "A set-like object providing a view of all :obj:`~yaw.Patch` es."
+Catalog.values.__doc__ = (
+    "A set-like object providing a view of all :obj:`~yaw.Patch` es."
+)
 Catalog.items.__doc__ = "A set-like object providing a view of `(key, value)` pairs."

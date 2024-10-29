@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, get_args
 import astropy.cosmology
 import numpy as np
 
-from yaw.containers import Binning, RedshiftBinningFactory
-from yaw.containers import YamlSerialisable
+from yaw.containers import Binning, RedshiftBinningFactory, YamlSerialisable
+from yaw.options import BinMethod, Closed, get_options
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
@@ -20,8 +20,6 @@ from yaw.utils.cosmology import (
     cosmology_is_equal,
     get_default_cosmology,
 )
-
-from yaw.options import BinMethod, Closed, get_options
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -52,6 +50,7 @@ class _NotSet_meta(type):
 
 class NotSet(metaclass=_NotSet_meta):
     """Placeholder for configuration values that are not set."""
+
     pass
 
 
@@ -129,6 +128,7 @@ def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
 
 class Immutable:
     """Meta-class for configuration classes that prevent mutating attributes."""
+
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError(f"attribute '{name}' is immutable")
 
@@ -137,6 +137,7 @@ class Immutable:
 class Parameter:
     """Defines the meta data for a configuration parameter, including a
     describing help message."""
+
     name: str
     help: str
     type: type
@@ -150,6 +151,7 @@ class Parameter:
 
 class ParamSpec(Mapping[str, Parameter]):
     """Dict-like collection of configuration parameters."""
+
     def __init__(self, params: Iterable[Parameter]) -> None:
         self._params = {p.name: p for p in params}
 
@@ -175,11 +177,12 @@ class ParamSpec(Mapping[str, Parameter]):
 class BaseConfig(YamlSerialisable):
     """
     Meta-class for all configuration classes.
-    
+
     Implements basic interface that allows serialisation to YAML and methods to
     create or modify and existing configuration class instance without mutating
     the original.
     """
+
     @classmethod
     def from_dict(
         cls: type[TypeBaseConfig],
@@ -220,7 +223,7 @@ class BaseConfig(YamlSerialisable):
         """
         Generate a listing of parameters that may be used by external tool
         to auto-generate an interface to this configuration class.
-        
+
         Returns:
             A :obj:`ParamSpec` instance, that is a key-value mapping from
             parameter name to the parameter meta data for this configuration
@@ -244,7 +247,7 @@ class ScalesConfig(BaseConfig, Immutable):
     Correlations are measured by counting all pairs between a minimum and
     maximum physical scale given in kpc. The code can be configured with either
     a single scale range or multiple (overlapping) scale ranges.
-    
+
     Additionally, pair counts can be weighted by the separation distance using a
     power law :math:`w(r) \\propto r^\\alpha`. For performance reasons, the pair
     counts are not weighted indivudially but in fine logarithmic bins of angular
@@ -259,6 +262,7 @@ class ScalesConfig(BaseConfig, Immutable):
         configuration, create a new instance with updated values by using the
         :meth:`modify()` method.
     """
+
     rmin: list[float] | float
     """Single or multiple lower scale limits in kpc (angular diameter
     distance)."""
@@ -439,6 +443,7 @@ class BinningConfig(BaseConfig, Immutable):
         configuration, create a new instance with updated values by using the
         :meth:`modify()` method. The bin edges are recomputed when necessary.
     """
+
     binning: Binning
     """Container for the redshift bins."""
     method: BinMethod
@@ -628,7 +633,7 @@ class BinningConfig(BaseConfig, Immutable):
         custom_args_set = (edges is not None,)
         if not all(custom_args_set) and not all(auto_args_set):
             raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
-        
+
         closed = Closed(closed)
 
         if all(auto_args_set):  # generate bin edges
@@ -726,6 +731,7 @@ class Configuration(BaseConfig, Immutable):
         configuration, create a new instance with updated values by using the
         :meth:`modify()` method. The bin edges are recomputed when necessary.
     """
+
     scales: ScalesConfig
     """Organises the configuration of correlation scales."""
     binning: BinningConfig

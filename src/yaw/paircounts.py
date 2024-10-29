@@ -34,6 +34,7 @@ __all__ = [
 class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadcastable):
     """Meta-class for correlation function pair counts, recorded in bins of
     redshift and for pairs of patches."""
+
     __slots__ = ()
 
     @property
@@ -157,6 +158,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             Whether the pair counts originate from an autocorrelation
             measurement.
     """
+
     __slots__ = ("binning", "auto", "totals1", "totals2")
 
     binning: Binning
@@ -285,12 +287,13 @@ class PatchedCounts(BinwisePatchwiseArray):
             Array of with pair counts in bins of redshift between combinations
             of patch pairs from both catalos, numpy array with shape
             (:obj:`num_bins`, :obj:`num_patches`, :obj:`num_patches`).
-    
+
     Keyword Args:
         auto:
             Whether this instance is intended for an autocorrelation
             measurement.
     """
+
     __slots__ = ("binning", "counts", "auto")
 
     binning: Binning
@@ -327,7 +330,7 @@ class PatchedCounts(BinwisePatchwiseArray):
             num_patches:
                 The number of patches in the input catalogs used for the
                 correlation measurement.
-        
+
         Keyword Args:
             auto:
                 Whether this instance is intended for an autocorrelation
@@ -471,6 +474,7 @@ class NormalisedCounts(BinwisePatchwiseArray):
         totals:
             Container of sum of weights in patches of catalogs 1 and 2.
     """
+
     __slots__ = ("counts", "totals")
 
     counts: PatchedCounts
@@ -566,7 +570,7 @@ class NormalisedCounts(BinwisePatchwiseArray):
 
         I.e. the first array element contains the data associated with the first
         redshift bin and pairing the first patch with itself.
-        
+
         .. note::
             The normalisation is computed from all patches and not per patch.
 

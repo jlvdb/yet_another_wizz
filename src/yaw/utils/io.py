@@ -30,7 +30,7 @@ def format_float_fixed_width(value: float, width: int) -> str:
 def create_columns(columns: list[str], closed: str) -> list[str]:
     """
     Create a list of columns for the output file.
-    
+
     The first two columns are always ``z_low`` and ``z_high`` (left and right
     bin edges) and an indication, which of the two intervals are closed.
     """
@@ -54,6 +54,7 @@ def write_header(f, description, columns) -> None:
 def load_header(path: Path) -> tuple[str, list[str], str]:
     """Restore the file description, column names and whether the left or right
     edge of the binning is closed."""
+
     def unwrap_line(line):
         return line.lstrip("#").strip()
 
@@ -159,6 +160,6 @@ def load_version_tag(source: Group) -> str:
 
 
 def is_legacy_dataset(source: Group) -> bool:
-    """Determine, if the current file has been created by an old version of 
+    """Determine, if the current file has been created by an old version of
     `yet_another_wizz` (version < 3.0)."""
     return "version" not in source
