@@ -6,14 +6,13 @@ import warnings
 from abc import abstractmethod
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, Literal, Union, get_args
+from typing import TYPE_CHECKING, get_args
 
 import astropy.cosmology
 import numpy as np
 
 from yaw.containers import Binning, RedshiftBinningFactory
-from yaw.containers import Tbin_method as Tbin_method_auto
-from yaw.containers import YamlSerialisable, default_bin_method
+from yaw.containers import YamlSerialisable
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
@@ -22,7 +21,7 @@ from yaw.utils.cosmology import (
     get_default_cosmology,
 )
 
-from yaw.options import Closed, get_options
+from yaw.options import BinMethod, Closed, get_options
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -34,8 +33,6 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
     Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
-
-Tbin_method_all = Union[Tbin_method_auto | Literal["custom"]]
 
 __all__ = [
     "BinningConfig",
@@ -452,23 +449,19 @@ class BinningConfig(BaseConfig, Immutable):
     """
     binning: Binning
     """Container for the redshift bins."""
-    method: Tbin_method_all
+    method: BinMethod
     """Method used to generate the bin edges, must be either of ``linear``,
     ``comoving``, ``logspace``, or ``custom``."""
 
     def __init__(
         self,
         binning: Binning,
-        method: Tbin_method_all = default_bin_method,
+        method: BinMethod | str = BinMethod.linear,
     ) -> None:
         if not isinstance(binning, Binning):
             raise TypeError(f"'binning' must be of type '{type(binning)}'")
         object.__setattr__(self, "binning", binning)
-
-        method = parse_optional(method, str)
-        if method not in get_args(Tbin_method_auto) and method != "custom":
-            raise ValueError(f"invalid binning method '{method}'")
-        object.__setattr__(self, "method", method)
+        object.__setattr__(self, "method", BinMethod(method))
 
     @property
     def edges(self) -> NDArray:
@@ -491,7 +484,7 @@ class BinningConfig(BaseConfig, Immutable):
         return len(self.binning)
 
     @property
-    def closed(self) -> Tbin_method_all:
+    def closed(self) -> Closed:
         """String indicating if the bin edges are closed on the ``left`` or the
         ``right`` side."""
         return self.binning.closed
@@ -575,7 +568,7 @@ class BinningConfig(BaseConfig, Immutable):
                 help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
                 type=str,
                 choices=get_options(Closed),
-                default=default_bin_method,
+                default=BinMethod.linear,
             ),
             Parameter(
                 name="edges",
@@ -601,7 +594,7 @@ class BinningConfig(BaseConfig, Immutable):
         zmin: float | None = None,
         zmax: float | None = None,
         num_bins: int = default_num_bins,
-        method: Tbin_method_all = default_bin_method,
+        method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
         cosmology: Tcosmology | str | None = None,
@@ -643,18 +636,21 @@ class BinningConfig(BaseConfig, Immutable):
         custom_args_set = (edges is not None,)
         if not all(custom_args_set) and not all(auto_args_set):
             raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
+        
+        closed = Closed(closed)
 
-        elif all(auto_args_set):  # generate bin edges
+        if all(auto_args_set):  # generate bin edges
             if all(custom_args_set):
                 warnings.warn(
                     "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
                 )
+            method = BinMethod(method)
             bin_func = RedshiftBinningFactory(cosmology).get_method(method)
-            binning = bin_func(zmin, zmax, num_bins, closed=Closed(closed))
+            binning = bin_func(zmin, zmax, num_bins, closed=closed)
 
         else:  # use provided bin edges
-            method = "custom"
-            binning = Binning(edges, closed=Closed(closed))
+            method = BinMethod.custom
+            binning = Binning(edges, closed=closed)
 
         return cls(binning, method=method)
 
@@ -664,7 +660,7 @@ class BinningConfig(BaseConfig, Immutable):
         zmin: float | NotSet = NotSet,
         zmax: float | NotSet = NotSet,
         num_bins: int | NotSet = default_num_bins,
-        method: Tbin_method_all | NotSet = NotSet,
+        method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | NotSet = NotSet,
         closed: Closed | str | NotSet = NotSet,
         cosmology: Tcosmology | str | None | NotSet = NotSet,
@@ -707,13 +703,15 @@ class BinningConfig(BaseConfig, Immutable):
             the_dict["zmin"] = self.zmin if zmin is NotSet else zmin
             the_dict["zmax"] = self.zmax if zmax is NotSet else zmax
             the_dict["num_bins"] = self.num_bins if num_bins is NotSet else num_bins
-            the_dict["method"] = self.method if method is NotSet else method
+            the_dict["method"] = self.method if method is NotSet else BinMethod(method)
 
         else:
             the_dict = dict(edges=edges)
-            the_dict["method"] = "custom"
+            the_dict["method"] = BinMethod.custom
 
+        the_dict["method"] = str(the_dict["method"])
         the_dict["closed"] = str(self.closed if closed is NotSet else Closed(closed))
+
         return type(self).from_dict(the_dict, cosmology=cosmology)
 
 
@@ -854,7 +852,7 @@ class Configuration(BaseConfig, Immutable):
         zmin: float | None = None,
         zmax: float | None = None,
         num_bins: int = default_num_bins,
-        method: Tbin_method_all = default_bin_method,
+        method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
         # uncategorized
@@ -937,7 +935,7 @@ class Configuration(BaseConfig, Immutable):
         zmin: float | NotSet = NotSet,
         zmax: float | NotSet = NotSet,
         num_bins: int | NotSet = NotSet,
-        method: Tbin_method_all | NotSet = NotSet,
+        method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | None = NotSet,
         closed: Closed | str | NotSet = NotSet,
         # uncategorized

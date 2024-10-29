@@ -12,7 +12,7 @@ import yaml
 from astropy import cosmology, units
 from numpy.exceptions import AxisError
 
-from yaw.options import Closed
+from yaw.options import BinMethodAuto, Closed
 from yaw.utils import io, plot
 from yaw.utils.cosmology import get_default_cosmology
 
@@ -46,9 +46,6 @@ Tkey = TypeVar("Tkey")
 Tvalue = TypeVar("Tvalue")
 
 # literals (may be used with get_args to verify valid values)
-Tbin_method = Literal["linear", "comoving", "logspace"]
-default_bin_method = "linear"
-
 Tcov_kind = Literal["full", "diag", "var"]
 default_cov_kind = "full"
 
@@ -555,13 +552,10 @@ class RedshiftBinningFactory:
         return Binning(edges, closed=closed)
 
     def get_method(
-        self, method: Tbin_method = default_bin_method
+        self, method: BinMethodAuto | str = BinMethodAuto.linear
     ) -> Callable[..., Binning]:
         """Use a string identifier to select the desired factory method."""
-        if method not in get_args(Tbin_method):
-            raise ValueError(f"invalid binning method '{method}'")
-
-        return getattr(self, method)
+        return getattr(self, BinMethodAuto(method))
 
 
 def cov_from_samples(
