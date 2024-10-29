@@ -26,3 +26,4 @@ Python API
     api/corrfunc
     api/containers
     api/utils
+    api/options
