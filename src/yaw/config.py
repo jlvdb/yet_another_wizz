@@ -13,7 +13,7 @@ import numpy as np
 
 from yaw.containers import Binning, RedshiftBinningFactory
 from yaw.containers import Tbin_method as Tbin_method_auto
-from yaw.containers import Tclosed, YamlSerialisable, default_bin_method, default_closed
+from yaw.containers import YamlSerialisable, default_bin_method
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
@@ -21,6 +21,8 @@ from yaw.utils.cosmology import (
     cosmology_is_equal,
     get_default_cosmology,
 )
+
+from yaw.options import Closed, get_options
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -133,18 +135,6 @@ class Immutable:
     """Meta-class for configuration classes that prevent mutating attributes."""
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError(f"attribute '{name}' is immutable")
-
-
-def unpack_type(type_or_literal) -> tuple:
-    """Take a type and try to extract any literal values into at tuple."""
-    args = []
-    for item in get_args(type_or_literal):
-        items = get_args(item)
-        if len(items) > 0:
-            args.extend(items)
-        else:
-            args.append(item)
-    return tuple(args)
 
 
 @dataclass
@@ -584,7 +574,7 @@ class BinningConfig(BaseConfig, Immutable):
                 name="method",
                 help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
                 type=str,
-                choices=unpack_type(Tbin_method_all),
+                choices=get_options(Closed),
                 default=default_bin_method,
             ),
             Parameter(
@@ -598,8 +588,8 @@ class BinningConfig(BaseConfig, Immutable):
                 name="closed",
                 help="String indicating if the bin edges are closed on the ``left`` or the ``right`` side.",
                 type=str,
-                choices=unpack_type(Tclosed),
-                default=default_closed,
+                choices=get_options(Closed),
+                default=str(Closed.right),
             ),
         ]
         return ParamSpec(params)
@@ -613,7 +603,7 @@ class BinningConfig(BaseConfig, Immutable):
         num_bins: int = default_num_bins,
         method: Tbin_method_all = default_bin_method,
         edges: Iterable[float] | None = None,
-        closed: Tclosed = default_closed,
+        closed: Closed | str = Closed.right,
         cosmology: Tcosmology | str | None = None,
     ) -> BinningConfig:
         """
@@ -660,11 +650,11 @@ class BinningConfig(BaseConfig, Immutable):
                     "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
                 )
             bin_func = RedshiftBinningFactory(cosmology).get_method(method)
-            binning = bin_func(zmin, zmax, num_bins, closed=closed)
+            binning = bin_func(zmin, zmax, num_bins, closed=Closed(closed))
 
         else:  # use provided bin edges
             method = "custom"
-            binning = Binning(edges, closed=closed)
+            binning = Binning(edges, closed=Closed(closed))
 
         return cls(binning, method=method)
 
@@ -676,7 +666,7 @@ class BinningConfig(BaseConfig, Immutable):
         num_bins: int | NotSet = default_num_bins,
         method: Tbin_method_all | NotSet = NotSet,
         edges: Iterable[float] | NotSet = NotSet,
-        closed: Tclosed | NotSet = NotSet,
+        closed: Closed | str | NotSet = NotSet,
         cosmology: Tcosmology | str | None | NotSet = NotSet,
     ) -> BinningConfig:
         """
@@ -718,13 +708,12 @@ class BinningConfig(BaseConfig, Immutable):
             the_dict["zmax"] = self.zmax if zmax is NotSet else zmax
             the_dict["num_bins"] = self.num_bins if num_bins is NotSet else num_bins
             the_dict["method"] = self.method if method is NotSet else method
-            the_dict["closed"] = self.closed if closed is NotSet else closed
 
         else:
             the_dict = dict(edges=edges)
-            the_dict["closed"] = self.closed if closed is NotSet else closed
             the_dict["method"] = "custom"
 
+        the_dict["closed"] = str(self.closed if closed is NotSet else Closed(closed))
         return type(self).from_dict(the_dict, cosmology=cosmology)
 
 
@@ -867,7 +856,7 @@ class Configuration(BaseConfig, Immutable):
         num_bins: int = default_num_bins,
         method: Tbin_method_all = default_bin_method,
         edges: Iterable[float] | None = None,
-        closed: Tclosed = default_closed,
+        closed: Closed | str = Closed.right,
         # uncategorized
         cosmology: Tcosmology | str | None = default_cosmology,
         max_workers: int | None = None,
@@ -950,7 +939,7 @@ class Configuration(BaseConfig, Immutable):
         num_bins: int | NotSet = NotSet,
         method: Tbin_method_all | NotSet = NotSet,
         edges: Iterable[float] | None = NotSet,
-        closed: Tclosed | NotSet = NotSet,
+        closed: Closed | str | NotSet = NotSet,
         # uncategorized
         cosmology: Tcosmology | str | None | NotSet = NotSet,
         max_workers: int | None | NotSet = NotSet,

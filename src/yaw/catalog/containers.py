@@ -18,7 +18,8 @@ from yaw.catalog.utils import (
     PatchData,
 )
 from yaw.catalog.writers import PATCH_INFO_FILE, PatchMode, create_patch_centers
-from yaw.containers import Tpath, YamlSerialisable, default_closed, parse_binning
+from yaw.containers import Tpath, YamlSerialisable, parse_binning
+from yaw.options import Closed
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
 
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.catalog.utils import MockDataFrame as DataFrame
-    from yaw.containers import Tclosed
 
     Tcenters = Union["Catalog", AngularCoordinates]
 
@@ -761,7 +761,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         self,
         binning: NDArray | None = None,
         *,
-        closed: Tclosed = default_closed,
+        closed: Closed | str = Closed.right,
         leafsize: int = 16,
         force: bool = False,
         progress: bool = False,
@@ -793,6 +793,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 default). Takes precedence over the value in the configuration.
         """
         binning = parse_binning(binning, optional=True)
+        closed = Closed(closed)  # parse early for error checks
 
         if parallel.on_root():
             logger.debug(
@@ -804,7 +805,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             BinnedTrees.build,
             self.values(),
             func_args=(binning,),
-            func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+            func_kwargs=dict(closed=str(closed), leafsize=leafsize, force=force),
             max_workers=max_workers,
         )
         if progress:

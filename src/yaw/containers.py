@@ -12,6 +12,7 @@ import yaml
 from astropy import cosmology, units
 from numpy.exceptions import AxisError
 
+from yaw.options import Closed
 from yaw.utils import io, plot
 from yaw.utils.cosmology import get_default_cosmology
 
@@ -45,9 +46,6 @@ Tkey = TypeVar("Tkey")
 Tvalue = TypeVar("Tvalue")
 
 # literals (may be used with get_args to verify valid values)
-Tclosed = Literal["left", "right"]
-default_closed = "right"
-
 Tbin_method = Literal["linear", "comoving", "logspace"]
 default_bin_method = "linear"
 
@@ -444,16 +442,13 @@ class Binning(HdfSerializable):
 
     edges: NDArray
     """Array containing the edges of all bins, including the rightmost edge."""
-    closed: Tclosed
+    closed: Closed
     """Indicating which side of the bin edges is a closed interval, either
     ``left`` or ``right``."""
 
-    def __init__(self, edges: ArrayLike, closed: Tclosed = default_closed) -> None:
-        if closed not in get_args(Tclosed):
-            raise ValueError("invalid value for 'closed'")
-
+    def __init__(self, edges: ArrayLike, closed: Closed | str = Closed.right) -> None:
         self.edges = parse_binning(edges)
-        self.closed = closed
+        self.closed = Closed(closed)
 
     @classmethod
     def from_hdf(cls: type[Tbinning], source: Group) -> Tbinning:
@@ -532,14 +527,14 @@ class RedshiftBinningFactory:
         self.cosmology = cosmology or get_default_cosmology()
 
     def linear(
-        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+        self, min: float, max: float, num_bins: int, *, closed: Closed | str = Closed.right
     ) -> Binning:
         """Creates a linear redshift binning between a min and max redshift."""
         edges = np.linspace(min, max, num_bins + 1)
         return Binning(edges, closed=closed)
 
     def comoving(
-        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+        self, min: float, max: float, num_bins: int, *, closed: Closed | str = Closed.right
     ) -> Binning:
         """Creates a binning linear in comoving distance between a min and max
         redshift."""
@@ -552,7 +547,7 @@ class RedshiftBinningFactory:
         return Binning(edges.value, closed=closed)
 
     def logspace(
-        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+        self, min: float, max: float, num_bins: int, *, closed: Closed | str = Closed.right
     ) -> Binning:
         """Creates a binning linear in 1+ln(z) between a min and max redshift."""
         log_min, log_max = np.log([1.0 + min, 1.0 + max])
