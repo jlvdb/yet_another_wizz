@@ -8,6 +8,7 @@ import scipy.optimize
 
 from yaw.config import Configuration
 from yaw.corrfunc import CorrData
+from yaw.options import PlotStyle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
@@ -151,7 +152,7 @@ class HistData(CorrData):
         n = "normalised " if self.density else " "
         return f"n(z) {n}histogram covariance matrix ({self.num_bins}x{self.num_bins})"
 
-    _default_plot_style = "step"
+    _default_plot_style = PlotStyle.step
 
     def normalised(self, *args, **kwargs) -> HistData:
         """
@@ -336,7 +337,7 @@ class RedshiftData(CorrData):
         """Descriptive comment for header of .cov file."""
         return f"n(z) estimate covariance matrix ({self.num_bins}x{self.num_bins})"
 
-    _default_plot_style = "point"
+    _default_plot_style = PlotStyle.point
 
     def normalised(self, target: Tcorr | None = None) -> RedshiftData:
         """

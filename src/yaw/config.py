@@ -238,10 +238,6 @@ def parse_optional(value: Any | None, type: type[T]) -> T | None:
     return type(value)
 
 
-default_rweight = None
-default_resolution = None
-
-
 class ScalesConfig(BaseConfig, Immutable):
     """
     Configuration for correlation function measurement scales.
@@ -282,8 +278,8 @@ class ScalesConfig(BaseConfig, Immutable):
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
         *,
-        rweight: float | None = default_rweight,
-        resolution: int | None = default_resolution,
+        rweight: float | None = None,
+        resolution: int | None = None,
     ) -> None:
         rmin: NDArray = np.atleast_1d(rmin)
         rmax: NDArray = np.atleast_1d(rmax)
@@ -344,13 +340,13 @@ class ScalesConfig(BaseConfig, Immutable):
                 name="rweight",
                 help="Optional power-law exponent :math:`\\alpha` used to weight pairs by their separation.",
                 type=float,
-                default=default_rweight,
+                default=None,
             ),
             Parameter(
                 name="resolution",
                 help="Optional number of radial logarithmic bin used to approximate the weighting by separation.",
                 type=int,
-                default=default_resolution,
+                default=None,
             ),
         ]
         return ParamSpec(params)
@@ -361,8 +357,8 @@ class ScalesConfig(BaseConfig, Immutable):
         *,
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
-        rweight: float | None = default_rweight,
-        resolution: int | None = default_resolution,
+        rweight: float | None = None,
+        resolution: int | None = None,
     ) -> ScalesConfig:
         """
         Create a new instance with the given parameters.
@@ -418,9 +414,6 @@ class ScalesConfig(BaseConfig, Immutable):
             New instance with updated parameter values.
         """
         return super().modify(rmin, rmax, rweight, resolution)
-
-
-default_num_bins = 30
 
 
 class BinningConfig(BaseConfig, Immutable):
@@ -561,7 +554,7 @@ class BinningConfig(BaseConfig, Immutable):
                 name="num_bins",
                 help="Number of redshift bins to generate.",
                 type=int,
-                default=default_num_bins,
+                default=30,
             ),
             Parameter(
                 name="method",
@@ -593,7 +586,7 @@ class BinningConfig(BaseConfig, Immutable):
         *,
         zmin: float | None = None,
         zmax: float | None = None,
-        num_bins: int = default_num_bins,
+        num_bins: int = 30,
         method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
@@ -659,7 +652,7 @@ class BinningConfig(BaseConfig, Immutable):
         *,
         zmin: float | NotSet = NotSet,
         zmax: float | NotSet = NotSet,
-        num_bins: int | NotSet = default_num_bins,
+        num_bins: int | NotSet = NotSet,
         method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | NotSet = NotSet,
         closed: Closed | str | NotSet = NotSet,
@@ -846,12 +839,12 @@ class Configuration(BaseConfig, Immutable):
         # ScalesConfig
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
-        rweight: float | None = default_rweight,
-        resolution: int | None = default_resolution,
+        rweight: float | None = None,
+        resolution: int | None = None,
         # BinningConfig
         zmin: float | None = None,
         zmax: float | None = None,
-        num_bins: int = default_num_bins,
+        num_bins: int = 30,
         method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,

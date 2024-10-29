@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Literal, TypeVar, Union, get_args
+from typing import TYPE_CHECKING, Generic, TypeVar, Union, get_args
 
 import h5py
 import numpy as np
@@ -12,7 +12,7 @@ import yaml
 from astropy import cosmology, units
 from numpy.exceptions import AxisError
 
-from yaw.options import BinMethodAuto, Closed
+from yaw.options import BinMethodAuto, Closed, CovKind, PlotStyle
 from yaw.utils import io, plot
 from yaw.utils.cosmology import get_default_cosmology
 
@@ -44,12 +44,6 @@ Tpath = Union[Path, str]  # used with get_args
 # generic types
 Tkey = TypeVar("Tkey")
 Tvalue = TypeVar("Tvalue")
-
-# literals (may be used with get_args to verify valid values)
-Tcov_kind = Literal["full", "diag", "var"]
-default_cov_kind = "full"
-
-Tstyle = Literal["point", "line", "step"]
 
 __all__ = [
     "Binning",
@@ -561,7 +555,7 @@ class RedshiftBinningFactory:
 def cov_from_samples(
     samples: NDArray | Sequence[NDArray],
     rowvar: bool = False,
-    kind: Tcov_kind = default_cov_kind,
+    kind: CovKind | str = CovKind.full,
 ) -> NDArray:
     """Compute a joint covariance from a sequence of data samples.
 
@@ -582,8 +576,7 @@ def cov_from_samples(
             Determines the kind of covariance computed, can be either of
             ``full`` (default), ``diag``, or ``var`` (main diagonal only).
     """
-    if kind not in get_args(Tcov_kind):
-        raise ValueError(f"invalid covariance kind '{kind}'")
+    kind = CovKind(kind)
 
     ax_samples = 1 if rowvar else 0
     ax_observ = 0 if rowvar else 1
@@ -802,14 +795,14 @@ class SampledData(BinwiseData):
 
         return True
 
-    _default_plot_style = "point"
+    _default_plot_style = PlotStyle.point
 
     def plot(
         self,
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
-        style: Tstyle | None = None,
+        style: PlotStyle | str | None = None,
         ax: Axis | None = None,
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
@@ -843,7 +836,7 @@ class SampledData(BinwiseData):
                 Whether to scale the data and uncertainty by the inverse of the
                 redshift bin width.
         """
-        style = style or self._default_plot_style
+        style = PlotStyle(style or self._default_plot_style)
         plot_kwargs = plot_kwargs or {}
         plot_kwargs.update(dict(color=color, label=label))
 
