@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from yaw.catalog import Catalog, Patch
     from yaw.config import BinningConfig
     from yaw.containers import Binning
-    from yaw.corrfunc import CorrFunc, Tcorr
+    from yaw.corrfunc import CorrFunc, TypeCorrData
 
 __all__ = [
     "HistData",
@@ -339,7 +339,7 @@ class RedshiftData(CorrData):
 
     _default_plot_style = PlotStyle.point
 
-    def normalised(self, target: Tcorr | None = None) -> RedshiftData:
+    def normalised(self, target: TypeCorrData | None = None) -> RedshiftData:
         """
         Attempts to normalise the redshift estimate to a probability density.
 

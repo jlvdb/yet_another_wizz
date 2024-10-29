@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import NDArray
 
-    from yaw.containers import Tindexing
+    from yaw.containers import TypeSliceIndex
 
 __all__ = [
     "PatchedTotals",
@@ -225,7 +225,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def _make_bin_slice(self, item: Tindexing) -> PatchedTotals:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedTotals:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
@@ -233,7 +233,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             binning, self.totals1[item], self.totals2[item], auto=self.auto
         )
 
-    def _make_patch_slice(self, item: Tindexing) -> PatchedTotals:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedTotals:
         if isinstance(item, int):
             item = [item]
         return type(self)(
@@ -413,14 +413,14 @@ class PatchedCounts(BinwisePatchwiseArray):
 
         return type(self)(self.binning, self.counts * other, auto=self.auto)
 
-    def _make_bin_slice(self, item: Tindexing) -> PatchedCounts:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedCounts:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
 
         return type(self)(binning, self.counts[item], auto=self.auto)
 
-    def _make_patch_slice(self, item: Tindexing) -> PatchedCounts:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedCounts:
         if isinstance(item, int):
             item = [item]
 
@@ -549,12 +549,12 @@ class NormalisedCounts(BinwisePatchwiseArray):
     def __mul__(self, other: Any) -> NormalisedCounts:
         return type(self)(self.count * other, self.total)
 
-    def _make_bin_slice(self, item: Tindexing) -> NormalisedCounts:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
         counts = self.counts.bins[item]
         totals = self.totals.bins[item]
         return type(self)(counts, totals)
 
-    def _make_patch_slice(self, item: Tindexing) -> NormalisedCounts:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
         counts = self.counts.patches[item]
         totals = self.totals.patches[item]
         return type(self)(counts, totals)

@@ -18,6 +18,7 @@ from yaw.catalog.utils import PatchData, PatchIDs
 from yaw.utils.logging import long_num_format
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from typing import Any
 
     from numpy.typing import NDArray
@@ -25,8 +26,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.catalog.utils import MockDataFrame as DataFrame
-    from yaw.catalog.utils import Tpids
-    from yaw.containers import Tpath
+    from yaw.catalog.utils import TypePatchIDs
 
 __all__ = [
     "DataFrameReader",
@@ -45,7 +45,7 @@ class DataChunk(Sized):
     def __init__(
         self,
         data: PatchData,
-        patch_ids: Tpids | None,
+        patch_ids: TypePatchIDs | None,
     ) -> None:
         self.data = data
 
@@ -290,7 +290,7 @@ class DataFrameReader(BaseReader):
 class FileReader(BaseReader):
     def __init__(
         self,
-        path: Tpath,
+        path: Path | str,
         *,
         ra_name: str,
         dec_name: str,
@@ -333,7 +333,7 @@ class FileReader(BaseReader):
 class ParquetFile(Iterator):
     __slots__ = ("path", "_file", "columns", "_group_idx")
 
-    def __init__(self, path: Tpath, columns: Iterable[str]) -> None:
+    def __init__(self, path: Path | str, columns: Iterable[str]) -> None:
         self.columns = tuple(columns)
         self.path = Path(path)
         self._file = parquet.ParquetFile(self.path)
@@ -372,7 +372,7 @@ class ParquetFile(Iterator):
 
 
 class ParquetReader(FileReader):
-    def _init_source(self, path: Tpath) -> None:
+    def _init_source(self, path: Path | str) -> None:
         self._file = ParquetFile(path, self.columns)
         self._cache = self._file.get_empty_group()
 
@@ -422,7 +422,7 @@ def swap_byteorder(array: NDArray) -> NDArray:
 
 
 class FitsReader(FileReader):
-    def _init_source(self, path: Tpath, hdu: int = 1) -> None:
+    def _init_source(self, path: Path | str, hdu: int = 1) -> None:
         self._file = fits.open(str(path))
         self._hdu = self._file[hdu]
 
@@ -455,7 +455,7 @@ class FitsReader(FileReader):
 
 
 class HDFReader(FileReader):
-    def _init_source(self, path: Tpath) -> None:
+    def _init_source(self, path: Path | str) -> None:
         self._file = h5py.File(path, mode="r")
 
         super()._init_source(path)
@@ -487,7 +487,7 @@ class HDFReader(FileReader):
 
 
 def new_filereader(
-    path: Tpath,
+    path: Path | str,
     *,
     ra_name: str,
     dec_name: str,

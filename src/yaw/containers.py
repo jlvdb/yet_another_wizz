@@ -22,28 +22,27 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import ArrayLike, NDArray
 
-    from yaw.utils.cosmology import Tcosmology
+    from yaw.utils.cosmology import TypeCosmology
     from yaw.utils.plot import Axis
 
     # meta-class types
-    Tserialise = TypeVar("Tdict", bound="Serialisable")
-    Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
-    Thdf = TypeVar("Thdf", bound="HdfSerializable")
-    Tascii = TypeVar("Tascii", bound="AsciiSerializable")
-    Tbinned = TypeVar("Tbinned", bound="BinwiseData")
-    Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
+    TypeSerialisable = TypeVar("TypeSerialisable", bound="Serialisable")
+    TypeYamlSerialisable = TypeVar("TypeYamlSerialisable", bound="YamlSerialisable")
+    TypeHdfSerializable = TypeVar("TypeHdfSerializable", bound="HdfSerializable")
+    TypeAsciiSerializable = TypeVar("TypeAsciiSerializable", bound="AsciiSerializable")
+    TypeBinwiseData = TypeVar("TypeBinwiseData", bound="BinwiseData")
+    TypePatchwiseData = TypeVar("TypePatchwiseData", bound="PatchwiseData")
 
     # container class types
-    Tbinning = TypeVar("Tbinning", bound="Binning")
-    Tsampled = TypeVar("Tsampled", bound="SampledData")
+    TypeBinning = TypeVar("TypeBinning", bound="Binning")
+    TypeSampledData = TypeVar("TypeSampledData", bound="SampledData")
 
     # concrete types
-    Tindexing = Union[int, slice]
-Tpath = Union[Path, str]  # used with get_args
+    TypeSliceIndex = Union[int, slice]
 
 # generic types
-Tkey = TypeVar("Tkey")
-Tvalue = TypeVar("Tvalue")
+TypeKey = TypeVar("TypeKey")
+TypeValue = TypeVar("TypeValue")
 
 __all__ = [
     "Binning",
@@ -56,7 +55,7 @@ class Serialisable(ABC):
     dictionaries."""
 
     @classmethod
-    def from_dict(cls: type[Tserialise], the_dict: dict[str, Any]) -> Tserialise:
+    def from_dict(cls: type[TypeSerialisable], the_dict: dict[str, Any]) -> TypeSerialisable:
         """
         Restore the class instance from a python dictionary.
 
@@ -87,7 +86,7 @@ class YamlSerialisable(Serialisable):
     YAML files."""
 
     @classmethod
-    def from_file(cls: type[Tyaml], path: Tpath) -> Tyaml:
+    def from_file(cls: type[TypeYamlSerialisable], path: Path | str) -> TypeYamlSerialisable:
         """
         Restore the class instance from a YAML file.
 
@@ -103,7 +102,7 @@ class YamlSerialisable(Serialisable):
             kwarg_dict = yaml.safe_load(f)
         return cls.from_dict(kwarg_dict)
 
-    def to_file(self, path: Tpath) -> None:
+    def to_file(self, path: Path | str) -> None:
         """
         Serialise the class instances into a YAML file.
 
@@ -122,7 +121,7 @@ class HdfSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
+    def from_hdf(cls: type[TypeHdfSerializable], source: h5py.Group) -> TypeHdfSerializable:
         """
         Restore the class instance from a specific HDF5-file group.
 
@@ -147,7 +146,7 @@ class HdfSerializable(ABC):
         pass
 
     @classmethod
-    def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
+    def from_file(cls: type[TypeHdfSerializable], path: Path | str) -> TypeHdfSerializable:
         """
         Restore the class instance from a HDF5 file.
 
@@ -162,7 +161,7 @@ class HdfSerializable(ABC):
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
-    def to_file(self, path: Tpath) -> None:
+    def to_file(self, path: Path | str) -> None:
         """
         Serialise the class instances into a HDF5 file.
 
@@ -181,7 +180,7 @@ class AsciiSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_files(cls: type[Tascii], path_prefix: Tpath) -> Tascii:
+    def from_files(cls: type[TypeAsciiSerializable], path_prefix: Path | str) -> TypeAsciiSerializable:
         """
         Restore the class instance from a set of ASCII files.
 
@@ -197,7 +196,7 @@ class AsciiSerializable(ABC):
         pass
 
     @abstractmethod
-    def to_files(self, path_prefix: Tpath) -> None:
+    def to_files(self, path_prefix: Path | str) -> None:
         """
         Serialise the class instance into a set of ASCII files.
 
@@ -213,7 +212,7 @@ class AsciiSerializable(ABC):
         pass
 
 
-class Indexer(Generic[Tkey, Tvalue], Iterator):
+class Indexer(Generic[TypeKey, TypeValue], Iterator):
     """
     Indexing helper that implements indexing, slicing, and iteration over items
     for a class that does not natively support this.
@@ -223,17 +222,17 @@ class Indexer(Generic[Tkey, Tvalue], Iterator):
     """
     __slots__ = ("_callback", "_iter_state")
 
-    def __init__(self, slice_callback: Callable[[Tkey], Tvalue]) -> None:
+    def __init__(self, slice_callback: Callable[[TypeKey], TypeValue]) -> None:
         self._callback = slice_callback
         self._iter_state = 0
 
     def __repr__(self) -> str:
         return f"{type(self)}[]"
 
-    def __getitem__(self, item: Tkey) -> Tvalue:
+    def __getitem__(self, item: TypeKey) -> TypeValue:
         return self._callback(item)
 
-    def __next__(self) -> Tvalue:
+    def __next__(self) -> TypeValue:
         try:
             item = self._callback(self._iter_state)
         except IndexError as err:
@@ -242,7 +241,7 @@ class Indexer(Generic[Tkey, Tvalue], Iterator):
         self._iter_state += 1
         return item
 
-    def __iter__(self) -> Iterator[Tvalue]:
+    def __iter__(self) -> Iterator[TypeValue]:
         self._iter_state = 0
         return self
 
@@ -257,13 +256,13 @@ class PatchwiseData(ABC):
         pass
 
     @abstractmethod
-    def _make_patch_slice(self: Tpatched, item: Tindexing) -> Tpatched:
+    def _make_patch_slice(self: TypePatchwiseData, item: TypeSliceIndex) -> TypePatchwiseData:
         """Factory method called by :meth:`patches` to create a new instance
         from a subset of patches."""
         pass
 
     @property
-    def patches(self: Tpatched) -> Indexer[Tindexing, Tpatched]:
+    def patches(self: TypePatchwiseData) -> Indexer[TypeSliceIndex, TypePatchwiseData]:
         """
         Indexing helper to create a new instance from a subset of patches.
 
@@ -322,13 +321,13 @@ class BinwiseData(ABC):
         return len(self.binning)
 
     @abstractmethod
-    def _make_bin_slice(self: Tbinned, item: Tindexing) -> Tbinned:
+    def _make_bin_slice(self: TypeBinwiseData, item: TypeSliceIndex) -> TypeBinwiseData:
         """Factory method called by :meth:`bins` to create a new instance
         from a subset of bins."""
         pass
 
     @property
-    def bins(self: Tbinned) -> Indexer[Tindexing, Tbinned]:
+    def bins(self: TypeBinwiseData) -> Indexer[TypeSliceIndex, TypeBinwiseData]:
         """
         Indexing helper to create a new instance from a subset of patches.
 
@@ -442,7 +441,7 @@ class Binning(HdfSerializable):
         self.closed = Closed(closed)
 
     @classmethod
-    def from_hdf(cls: type[Tbinning], source: Group) -> Tbinning:
+    def from_hdf(cls: type[TypeBinning], source: Group) -> TypeBinning:
         # ignore "version" since there is no equivalent in legacy
         edges = source["edges"][:]
         closed = source["closed"][()].decode("utf-8")
@@ -470,7 +469,7 @@ class Binning(HdfSerializable):
     def __len__(self) -> int:
         return len(self.edges) - 1
 
-    def __getitem__(self, item: Tindexing) -> Binning:
+    def __getitem__(self, item: TypeSliceIndex) -> Binning:
         left = np.atleast_1d(self.left[item])
         right = np.atleast_1d(self.right[item])
         edges = np.append(left, right[-1])
@@ -506,7 +505,7 @@ class Binning(HdfSerializable):
         """Array containing the width of the bins."""
         return np.diff(self.edges)
 
-    def copy(self: Tbinning) -> Tbinning:
+    def copy(self: TypeBinning) -> TypeBinning:
         """Create a copy of this instance."""
         return Binning(self.edges.copy(), closed=str(self.closed))
 
@@ -514,7 +513,7 @@ class Binning(HdfSerializable):
 class RedshiftBinningFactory:
     """Simple factory class to create redshift binnings. Takes an optional
     cosmology as input for distance conversions."""
-    def __init__(self, cosmology: Tcosmology | None = None) -> None:
+    def __init__(self, cosmology: TypeCosmology | None = None) -> None:
         self.cosmology = cosmology or get_default_cosmology()
 
     def linear(
@@ -719,7 +718,7 @@ class SampledData(BinwiseData):
             and np.array_equal(self.samples, other.samples, equal_nan=True)
         )
 
-    def __add__(self, other: Any) -> Tsampled:
+    def __add__(self, other: Any) -> TypeSampledData:
         """Add data and samples of other to self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -732,7 +731,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def __sub__(self, other: Any) -> Tsampled:
+    def __sub__(self, other: Any) -> TypeSampledData:
         """Subtract data and samples of other from self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -745,7 +744,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def _make_bin_slice(self: Tsampled, item: Tindexing) -> Tsampled:
+    def _make_bin_slice(self: TypeSampledData, item: TypeSliceIndex) -> TypeSampledData:
         if not isinstance(item, (int, np.integer, slice)):
             raise TypeError("item selector must be a slice or integer type")
 

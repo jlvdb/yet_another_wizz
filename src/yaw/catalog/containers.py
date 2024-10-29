@@ -4,7 +4,7 @@ import logging
 from collections import deque
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -18,7 +18,7 @@ from yaw.catalog.utils import (
     PatchData,
 )
 from yaw.catalog.writers import PATCH_INFO_FILE, PatchMode, create_patch_centers
-from yaw.containers import Tpath, YamlSerialisable, parse_binning
+from yaw.containers import YamlSerialisable, parse_binning
 from yaw.options import Closed
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
     from yaw.catalog.utils import MockDataFrame as DataFrame
 
-    Tcenters = Union["Catalog", AngularCoordinates]
+    TypePatchCenters = Union["Catalog", AngularCoordinates]
 
 __all__ = [
     "Catalog",
@@ -194,7 +194,7 @@ class Patch(PatchBase):
     containing radius."""
 
     def __init__(
-        self, cache_path: Tpath, center: AngularCoordinates | None = None
+        self, cache_path: Path | str, center: AngularCoordinates | None = None
     ) -> None:
         self.cache_path = Path(cache_path)
         meta_data_file = self.cache_path / "meta.yml"
@@ -236,7 +236,7 @@ class Patch(PatchBase):
             setattr(self, key, value)
 
     @staticmethod
-    def id_from_path(cache_path: Tpath) -> int:
+    def id_from_path(cache_path: Path | str) -> int:
         """
         Extract the integer patch ID from the cache path.
         
@@ -293,14 +293,14 @@ class Patch(PatchBase):
 
 
 def write_catalog(
-    cache_directory: Tpath,
-    source: DataFrame | Tpath,
+    cache_directory: Path | str,
+    source: DataFrame | Path | str,
     *,
     ra_name: str,
     dec_name: str,
     weight_name: str | None = None,
     redshift_name: str | None = None,
-    patch_centers: Tcenters | None = None,
+    patch_centers: TypePatchCenters | None = None,
     patch_name: str | None = None,
     patch_num: int | None = None,
     degrees: bool = True,
@@ -313,7 +313,7 @@ def write_catalog(
     **reader_kwargs,
 ) -> None:
     constructor = (
-        new_filereader if isinstance(source, get_args(Tpath)) else DataFrameReader
+        new_filereader if isinstance(source, (Path, str)) else DataFrameReader
     )
 
     reader = None
@@ -364,7 +364,7 @@ def read_patch_ids(cache_directory: Path) -> list[int]:
 def load_patches(
     cache_directory: Path,
     *,
-    patch_centers: Tcenters | None,
+    patch_centers: TypePatchCenters | None,
     progress: bool,
     max_workers: int | None = None,
 ) -> dict[int, Patch]:
@@ -441,7 +441,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     _patches: dict[int, Patch]
 
     def __init__(
-        self, cache_directory: Tpath, *, max_workers: int | None = None
+        self, cache_directory: Path | str, *, max_workers: int | None = None
     ) -> None:
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
@@ -460,14 +460,14 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     @classmethod
     def from_dataframe(
         cls,
-        cache_directory: Tpath,
+        cache_directory: Path | str,
         dataframe: DataFrame,
         *,
         ra_name: str,
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: Tcenters | None = None,
+        patch_centers: TypePatchCenters | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
@@ -578,14 +578,14 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     @classmethod
     def from_file(
         cls,
-        cache_directory: Tpath,
-        path: Tpath,
+        cache_directory: Path | str,
+        path: Path | str,
         *,
         ra_name: str,
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: Tcenters | None = None,
+        patch_centers: TypePatchCenters | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,

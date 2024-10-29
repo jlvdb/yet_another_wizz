@@ -13,17 +13,17 @@ from yaw.catalog.writers.base import (
     split_into_patches,
     write_patches_unthreaded,
 )
-from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 from yaw.utils.logging import Indicator
 from yaw.utils.parallel import EndOfQueue
 
 if TYPE_CHECKING:
     from multiprocessing import Queue
+    from pathlib import Path
 
     from typing_extensions import Self
 
-    from yaw.catalog.containers import Tcenters
+    from yaw.catalog.containers import TypePatchCenters
     from yaw.catalog.readers import BaseReader, DataChunk
 
 
@@ -48,7 +48,7 @@ class ChunkProcessingTask:
 @dataclass
 class WriterProcess(AbstractContextManager):
     patch_queue: Queue[dict[int, PatchData] | EndOfQueue]
-    cache_directory: Tpath
+    cache_directory: Path | str
     has_weights: bool = field(kw_only=True)
     has_redshifts: bool = field(kw_only=True)
     overwrite: bool = field(default=True, kw_only=True)
@@ -83,9 +83,9 @@ class WriterProcess(AbstractContextManager):
 
 
 def write_patches(
-    path: Tpath,
+    path: Path | str,
     reader: BaseReader,
-    patch_centers: Tcenters,
+    patch_centers: TypePatchCenters,
     *,
     overwrite: bool,
     progress: bool,

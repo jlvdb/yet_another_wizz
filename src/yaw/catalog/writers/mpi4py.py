@@ -11,17 +11,17 @@ from yaw.catalog.writers.base import (
     logger,
     split_into_patches,
 )
-from yaw.containers import Tpath
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 from yaw.utils.parallel import EndOfQueue
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     from mpi4py.MPI import Comm
 
-    from yaw.catalog.containers import Tcenters
+    from yaw.catalog.containers import TypePatchCenters
     from yaw.catalog.readers import BaseReader
 
 
@@ -63,7 +63,7 @@ def scatter_data_chunk(comm: Comm, reader_rank: int, chunk: DataChunk) -> DataCh
 def chunk_processing_task(
     comm: Comm,
     worker_config: WorkerManager,
-    patch_centers: Tcenters | None,
+    patch_centers: TypePatchCenters | None,
     chunk_iter: Iterator[DataChunk],
 ) -> None:
     if patch_centers is not None:
@@ -80,7 +80,7 @@ def chunk_processing_task(
 
 
 def writer_task(
-    cache_directory: Tpath,
+    cache_directory: Path | str,
     *,
     has_weights: bool,
     has_redshifts: bool,
@@ -100,9 +100,9 @@ def writer_task(
 
 
 def write_patches(
-    path: Tpath,
+    path: Path | str,
     reader: BaseReader,
-    patch_centers: Tcenters,
+    patch_centers: TypePatchCenters,
     *,
     overwrite: bool,
     progress: bool,

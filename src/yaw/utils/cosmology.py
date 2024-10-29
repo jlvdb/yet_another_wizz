@@ -10,7 +10,7 @@ from astropy.units import Quantity
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
-Tcosmology = Union[FLRW, "CustomCosmology"]  # used with get_args
+TypeCosmology = Union[FLRW, "CustomCosmology"]  # used with get_args
 
 __all__ = [
     "CustomCosmology",
@@ -54,7 +54,7 @@ class CustomCosmology(ABC):
         pass
 
 
-def cosmology_is_equal(cosmo1: Tcosmology, cosmo2: Tcosmology) -> bool:
+def cosmology_is_equal(cosmo1: TypeCosmology, cosmo2: TypeCosmology) -> bool:
     """Compare if two ``astropy`` cosmologies are equal. Always ``True`` for
     instances of ``CustomCosmology``."""
     if not isinstance(cosmo1, (FLRW, CustomCosmology)):
@@ -82,7 +82,7 @@ def separation_physical_to_angle(
     separation_kpc: ArrayLike,
     redshift: ArrayLike,
     *,
-    cosmology: Tcosmology | None = None,
+    cosmology: TypeCosmology | None = None,
 ) -> NDArray:
     """
     Convert physical transverse angular diameter distance to angle at the given

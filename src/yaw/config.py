@@ -16,7 +16,7 @@ from yaw.containers import YamlSerialisable
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
-    Tcosmology,
+    TypeCosmology,
     cosmology_is_equal,
     get_default_cosmology,
 )
@@ -25,14 +25,13 @@ from yaw.options import BinMethod, Closed, get_options
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
+    from pathlib import Path
     from typing import Any, TypeVar
 
     from numpy.typing import NDArray
 
-    from yaw.containers import Tpath
-
     T = TypeVar("T")
-    Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
+    TypeBaseConfig = TypeVar("TypeBaseConfig", bound="BaseConfig")
 
 __all__ = [
     "BinningConfig",
@@ -60,7 +59,7 @@ class ConfigError(Exception):
     pass
 
 
-def cosmology_to_yaml(cosmology: Tcosmology) -> str:
+def cosmology_to_yaml(cosmology: TypeCosmology) -> str:
     """
     Attempt to serialise a cosmology instance to YAML.
 
@@ -86,7 +85,7 @@ def cosmology_to_yaml(cosmology: Tcosmology) -> str:
     return cosmology.name
 
 
-def yaml_to_cosmology(cosmo_name: str) -> Tcosmology:
+def yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
     """Restore a cosmology class instance from a YAML string."""
     if cosmo_name not in astropy.cosmology.available:
         raise ConfigError(
@@ -96,7 +95,7 @@ def yaml_to_cosmology(cosmo_name: str) -> Tcosmology:
     return getattr(astropy.cosmology, cosmo_name)
 
 
-def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
+def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
     """
     Parse and verify that the provided cosmology is supported by
     yet_another_wizz.
@@ -121,8 +120,8 @@ def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
     elif isinstance(cosmology, str):
         return yaml_to_cosmology(cosmology)
 
-    elif not isinstance(cosmology, get_args(Tcosmology)):
-        which = ", ".join(str(c) for c in get_args(Tcosmology))
+    elif not isinstance(cosmology, get_args(TypeCosmology)):
+        which = ", ".join(str(c) for c in get_args(TypeCosmology))
         raise ConfigError(f"'cosmology' must be instance of: {which}")
 
     return cosmology
@@ -183,9 +182,9 @@ class BaseConfig(YamlSerialisable):
     """
     @classmethod
     def from_dict(
-        cls: type[Tbase_config],
+        cls: type[TypeBaseConfig],
         the_dict: dict[str, Any],
-    ) -> Tbase_config:
+    ) -> TypeBaseConfig:
         return cls.create(**the_dict)
 
     @abstractmethod
@@ -194,12 +193,12 @@ class BaseConfig(YamlSerialisable):
 
     @classmethod
     @abstractmethod
-    def create(cls: type[Tbase_config], **kwargs: Any) -> Tbase_config:
+    def create(cls: type[TypeBaseConfig], **kwargs: Any) -> TypeBaseConfig:
         """Create a new instance with the given parameter values."""
         pass
 
     @abstractmethod
-    def modify(self: Tbase_config, **kwargs: Any | NotSet) -> Tbase_config:
+    def modify(self: TypeBaseConfig, **kwargs: Any | NotSet) -> TypeBaseConfig:
         """Create a new instance by modifing the original instance with the
         given parameter values."""
         conf_dict = self.to_dict()
@@ -489,7 +488,7 @@ class BinningConfig(BaseConfig, Immutable):
 
     @classmethod
     def from_dict(
-        cls, the_dict: dict[str, Any], cosmology: Tcosmology | None = None
+        cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
     ) -> BinningConfig:
         """
         Restore the class instance from a python dictionary.
@@ -590,7 +589,7 @@ class BinningConfig(BaseConfig, Immutable):
         method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
-        cosmology: Tcosmology | str | None = None,
+        cosmology: TypeCosmology | str | None = None,
     ) -> BinningConfig:
         """
         Create a new instance with the given parameters.
@@ -656,7 +655,7 @@ class BinningConfig(BaseConfig, Immutable):
         method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | NotSet = NotSet,
         closed: Closed | str | NotSet = NotSet,
-        cosmology: Tcosmology | str | None | NotSet = NotSet,
+        cosmology: TypeCosmology | str | None | NotSet = NotSet,
     ) -> BinningConfig:
         """
         Create a new configuration instance with updated parameter values.
@@ -731,7 +730,7 @@ class Configuration(BaseConfig, Immutable):
     """Organises the configuration of correlation scales."""
     binning: BinningConfig
     """Organises the configuration of redshift bins."""
-    cosmology: Tcosmology | str
+    cosmology: TypeCosmology | str
     """Optional cosmological model to use for distance computations."""
     max_workers: int | None
     """Limit the number of workers for parallel operations (all by default)."""
@@ -740,7 +739,7 @@ class Configuration(BaseConfig, Immutable):
         self,
         scales: ScalesConfig,
         binning: BinningConfig,
-        cosmology: Tcosmology | str | None = None,
+        cosmology: TypeCosmology | str | None = None,
         max_workers: int | None = None,
     ) -> None:
         if not isinstance(scales, ScalesConfig):
@@ -792,7 +791,7 @@ class Configuration(BaseConfig, Immutable):
         )
 
     @classmethod
-    def from_file(cls, path: Tpath) -> Configuration:
+    def from_file(cls, path: Path | str) -> Configuration:
         new = None
 
         if parallel.on_root():
@@ -802,7 +801,7 @@ class Configuration(BaseConfig, Immutable):
 
         return parallel.COMM.bcast(new, root=0)
 
-    def to_file(self, path: Tpath) -> None:
+    def to_file(self, path: Path | str) -> None:
         if parallel.on_root():
             logger.info("writing configuration file: %s", path)
 
@@ -849,7 +848,7 @@ class Configuration(BaseConfig, Immutable):
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
         # uncategorized
-        cosmology: Tcosmology | str | None = default_cosmology,
+        cosmology: TypeCosmology | str | None = default_cosmology,
         max_workers: int | None = None,
     ) -> Configuration:
         """
@@ -932,7 +931,7 @@ class Configuration(BaseConfig, Immutable):
         edges: Iterable[float] | None = NotSet,
         closed: Closed | str | NotSet = NotSet,
         # uncategorized
-        cosmology: Tcosmology | str | None | NotSet = NotSet,
+        cosmology: TypeCosmology | str | None | NotSet = NotSet,
         max_workers: int | None | NotSet = NotSet,
     ) -> Configuration:
         """

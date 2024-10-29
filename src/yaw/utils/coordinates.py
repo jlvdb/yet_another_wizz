@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import ArrayLike, NDArray
 
-    Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
+    TypeArray = TypeVar("TypeArray", bound="CustomNumpyArray")
 
 __all__ = [
     "AngularCoordinates",
@@ -44,14 +44,14 @@ class CustomNumpyArray(Iterable, Sized):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self: Tarray, idx: ArrayLike) -> Tarray:
+    def __getitem__(self: TypeArray, idx: ArrayLike) -> TypeArray:
         return type(self)(self.data[idx])
 
-    def __iter__(self: Tarray) -> Iterator[Tarray]:
+    def __iter__(self: TypeArray) -> Iterator[TypeArray]:
         for i in range(len(self)):
             yield self[i]
 
-    def copy(self: Tarray) -> Tarray:
+    def copy(self: TypeArray) -> TypeArray:
         """Create a copy of this instance."""
         return type(self)(self.data.copy())
 

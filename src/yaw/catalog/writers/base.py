@@ -13,7 +13,6 @@ from scipy.cluster import vq
 
 from yaw.catalog.readers import DataChunk
 from yaw.catalog.utils import CatalogBase, PatchBase, PatchData, PatchIDs, groupby
-from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 from yaw.utils.logging import Indicator
 
@@ -21,9 +20,9 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
-    from yaw.catalog.containers import Tcenters
+    from yaw.catalog.containers import TypePatchCenters
     from yaw.catalog.readers import BaseReader
-    from yaw.catalog.utils import Tpids
+    from yaw.catalog.utils import TypePatchIDs
 
 CHUNKSIZE = 65_536
 PATCH_INFO_FILE = "patch_ids.bin"
@@ -43,7 +42,7 @@ class PatchWriter(PatchBase):
 
     def __init__(
         self,
-        cache_path: Tpath,
+        cache_path: Path | str,
         *,
         has_weights: bool,
         has_redshifts: bool,
@@ -110,7 +109,7 @@ class PatchMode(Enum):
     @classmethod
     def determine(
         cls,
-        patch_centers: Tcenters | None,
+        patch_centers: TypePatchCenters | None,
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
@@ -133,7 +132,7 @@ class PatchMode(Enum):
         raise ValueError("no patch method specified")
 
 
-def get_patch_centers(instance: Tcenters) -> AngularCoordinates:
+def get_patch_centers(instance: TypePatchCenters) -> AngularCoordinates:
     try:
         return instance.get_centers()
     except AttributeError as err:
@@ -169,7 +168,7 @@ def create_patch_centers(
     return AngularCoordinates.from_3d(cat.patch_centers)
 
 
-def assign_patch_centers(patch_centers: NDArray, data: PatchData) -> Tpids:
+def assign_patch_centers(patch_centers: NDArray, data: PatchData) -> TypePatchIDs:
     ids, _ = vq.vq(data.coords.to_3d(), patch_centers)
     return PatchIDs.parse(ids)
 
@@ -203,7 +202,7 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
 
     def __init__(
         self,
-        cache_directory: Tpath,
+        cache_directory: Path | str,
         *,
         overwrite: bool = True,
         has_weights: bool,
@@ -285,9 +284,9 @@ class CatalogWriter(AbstractContextManager, CatalogBase):
 
 
 def write_patches_unthreaded(
-    path: Tpath,
+    path: Path | str,
     reader: BaseReader,
-    patch_centers: Tcenters,
+    patch_centers: TypePatchCenters,
     *,
     overwrite: bool,
     progress: bool,
