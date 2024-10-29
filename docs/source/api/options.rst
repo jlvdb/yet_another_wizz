@@ -10,6 +10,7 @@ values and are parsed automatically.
 
 .. autosummary::
     :toctree: autogen
+    :template: enum.rst
 
     Closed
     BinMethodAuto

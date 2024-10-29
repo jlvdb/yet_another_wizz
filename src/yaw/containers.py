@@ -820,7 +820,7 @@ class SampledData(BinwiseData):
             style:
                 Plotting style, must be either of
                   - ``point``: point with error bar,
-                  - ``line``: line with tranparent shade marking the errors, or
+                  - ``line``: line with transparent shade marking the errors, or
                   - ``step``: same as ``line``, but using a step-plot to
                     emulate a histgram-style visualisation.
             ax:
