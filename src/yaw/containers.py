@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, TypeVar, Union, get_args
+from typing import TYPE_CHECKING, Generic, TypeVar, Union
 
 import h5py
 import numpy as np

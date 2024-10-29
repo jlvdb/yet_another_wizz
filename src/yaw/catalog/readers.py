@@ -18,7 +18,6 @@ from yaw.catalog.utils import PatchData, PatchIDs
 from yaw.utils.logging import long_num_format
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from typing import Any
 
     from numpy.typing import NDArray

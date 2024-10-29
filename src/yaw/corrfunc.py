@@ -21,7 +21,6 @@ from yaw.utils import io, parallel
 from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from typing import Any, TypeVar
 
     from h5py import Group

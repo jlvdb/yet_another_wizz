@@ -11,7 +11,6 @@ from yaw.utils import AngularCoordinates
 
 if TYPE_CHECKING:
     from io import TextIOBase
-    from pathlib import Path
     from typing import Any, Generator, NewType
 
     from numpy.typing import ArrayLike, DTypeLike, NDArray
