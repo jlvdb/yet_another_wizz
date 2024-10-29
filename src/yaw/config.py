@@ -522,17 +522,17 @@ class BinningConfig(BaseConfig, Immutable):
 
     def to_dict(self) -> dict[str, Any]:
         if self.is_custom:
-            the_dict = dict(method=self.method, edges=self.binning.edges)
+            the_dict = dict(edges=self.binning.edges)
 
         else:
             the_dict = dict(
                 zmin=self.zmin,
                 zmax=self.zmax,
                 num_bins=self.num_bins,
-                method=self.method,
             )
 
-        the_dict["closed"] = self.closed
+        the_dict["method"] = str(self.method)
+        the_dict["closed"] = str(self.closed)
         return the_dict
 
     def __eq__(self, other) -> bool:

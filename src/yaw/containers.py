@@ -463,7 +463,7 @@ class Binning(HdfSerializable):
 
     def to_hdf(self, dest: Group) -> None:
         io.write_version_tag(dest)
-        dest.create_dataset("closed", data=self.closed)
+        dest.create_dataset("closed", data=str(self.closed))
         dest.create_dataset("edges", data=self.edges, **io.HDF_COMPRESSION)
 
     def __repr__(self) -> str:

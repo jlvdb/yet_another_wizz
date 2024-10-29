@@ -400,7 +400,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 zright=self.binning.right,
                 data=self.data,
                 error=self.error,
-                closed=self.binning.closed,
+                closed=str(self.binning.closed),
             )
 
             io.write_samples(
@@ -409,7 +409,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 zleft=self.binning.left,
                 zright=self.binning.right,
                 samples=self.samples,
-                closed=self.binning.closed,
+                closed=str(self.binning.closed),
             )
 
             # write covariance for convenience only, it is not required to restore
