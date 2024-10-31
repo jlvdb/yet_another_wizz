@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.catalog.containers import TypePatchCenters
-    from yaw.catalog.readers import BaseReader, DataChunk
+    from yaw.catalog.generator import ChunkGenerator, DataChunk
 
 
 class ChunkProcessingTask:
@@ -84,7 +84,7 @@ class WriterProcess(AbstractContextManager):
 
 def write_patches(
     path: Path | str,
-    reader: BaseReader,
+    generator: ChunkGenerator,
     patch_centers: TypePatchCenters,
     *,
     overwrite: bool,
@@ -98,7 +98,7 @@ def write_patches(
         logger.debug("running preprocessing sequentially")
         return write_patches_unthreaded(
             path,
-            reader,
+            generator,
             patch_centers,
             overwrite=overwrite,
             progress=progress,
@@ -109,7 +109,7 @@ def write_patches(
         logger.debug("running preprocessing on %d workers", max_workers)
 
     with (
-        reader,
+        generator,
         multiprocessing.Manager() as manager,
         multiprocessing.Pool(max_workers) as pool,
     ):
@@ -122,12 +122,12 @@ def write_patches(
         with WriterProcess(
             patch_queue,
             cache_directory=path,
-            has_weights=reader.has_weights,
-            has_redshifts=reader.has_redshifts,
+            has_weights=generator.has_weights,
+            has_redshifts=generator.has_redshifts,
             overwrite=overwrite,
             buffersize=buffersize,
         ):
-            chunk_iter = Indicator(reader) if progress else iter(reader)
+            chunk_iter = Indicator(generator) if progress else iter(generator)
             for chunk in chunk_iter:
                 pool.map(chunk_processing_task, chunk.split(max_workers))
 

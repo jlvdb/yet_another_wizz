@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from mpi4py.MPI import Comm
 
     from yaw.catalog.containers import TypePatchCenters
-    from yaw.catalog.readers import BaseReader
+    from yaw.catalog.generator import ChunkGenerator
 
 
 class WorkerManager:
@@ -101,7 +101,7 @@ def writer_task(
 
 def write_patches(
     path: Path | str,
-    reader: BaseReader,
+    generator: ChunkGenerator,
     patch_centers: TypePatchCenters,
     *,
     overwrite: bool,
@@ -122,8 +122,8 @@ def write_patches(
     if rank == worker_config.writer_rank:
         writer_task(
             cache_directory=path,
-            has_weights=reader.has_weights,
-            has_redshifts=reader.has_redshifts,
+            has_weights=generator.has_weights,
+            has_redshifts=generator.has_redshifts,
             overwrite=overwrite,
             buffersize=buffersize,
         )
@@ -132,8 +132,8 @@ def write_patches(
         if patch_centers is not None:
             patch_centers = get_patch_centers(patch_centers)
 
-        with reader:
-            chunk_iter = Indicator(reader) if progress else iter(reader)
+        with generator:
+            chunk_iter = Indicator(generator) if progress else iter(generator)
             chunk_processing_task(
                 worker_comm,
                 worker_config,
