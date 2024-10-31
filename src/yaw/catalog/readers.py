@@ -14,7 +14,8 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import parquet
 
-from yaw.catalog.utils import PatchData, PatchIDs
+from yaw.catalog.utils import PatchData
+from yaw.catalog.generator import ChunkGenerator, DataChunk
 from yaw.utils.logging import long_num_format
 
 if TYPE_CHECKING:
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.catalog.utils import MockDataFrame as DataFrame
-    from yaw.catalog.utils import TypePatchIDs
 
 __all__ = [
     "DataFrameReader",
@@ -38,42 +38,6 @@ __all__ = [
 CHUNKSIZE = 16_777_216
 
 logger = logging.getLogger(__name__)
-
-
-class DataChunk(Sized):
-    def __init__(
-        self,
-        data: PatchData,
-        patch_ids: TypePatchIDs | None,
-    ) -> None:
-        self.data = data
-
-        if patch_ids is not None:
-            patch_ids = PatchIDs.parse(patch_ids, num_expect=len(data))
-        self.patch_ids = patch_ids
-
-    @classmethod
-    def from_dict(cls, the_dict: dict) -> DataChunk:
-        return cls(
-            patch_ids=the_dict.pop("patch_ids", None),
-            data=PatchData.from_columns(**the_dict),
-        )
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-    def split(self, num_splits: int) -> list[DataChunk]:
-        splits_data = np.array_split(self.data.data, num_splits)
-
-        if self.patch_ids is not None:
-            splits_patch_ids = np.array_split(self.patch_ids, num_splits)
-        else:
-            splits_patch_ids = [None] * num_splits
-
-        return [
-            DataChunk(PatchData(data), patch_ids)
-            for data, patch_ids in zip(splits_data, splits_patch_ids)
-        ]
 
 
 @dataclass
@@ -96,7 +60,7 @@ class DummyReader(Sized, Iterable[None], AbstractContextManager):
             yield None
 
 
-class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
+class BaseReader(Sized, ChunkGenerator):
     @abstractmethod
     def __init__(
         self,
@@ -144,12 +108,12 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         return f"{name} @ {self._chunk_idx} / {self.num_chunks} chunks"
 
     @property
-    def has_redshifts(self) -> bool:
-        return "redshifts" in self.attrs
-
-    @property
     def has_weights(self) -> bool:
         return "weights" in self.attrs
+
+    @property
+    def has_redshifts(self) -> bool:
+        return "redshifts" in self.attrs
 
     @property
     @abstractmethod
@@ -204,6 +168,10 @@ class BaseReader(Sized, Iterator[DataChunk], AbstractContextManager):
         data = np.concatenate(chunks_data)
         patch_ids = np.concatenate(chunks_patch_id) if chunks_patch_id else None
         return DataChunk(PatchData(data), patch_ids)
+
+    def get_probe(self, probe_size: int) -> DataChunk:
+        sparse_factor = np.ceil(self.num_records / probe_size)
+        return self.read(sparse_factor)
 
 
 def issue_io_log(num_records: int, num_chunks: int, source: str) -> None:
