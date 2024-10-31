@@ -50,16 +50,45 @@ class DataChunk(Sized):
 
 
 class ChunkGenerator(AbstractContextManager, Iterator[DataChunk]):
+    """Base class for data readers and generators."""
+
     @property
     @abstractmethod
     def has_weights(self) -> bool:
+        """Whether this data source provides weights."""
         pass
 
     @property
     @abstractmethod
     def has_redshifts(self) -> bool:
+        """Whether this data source provides redshifts."""
         pass
 
     @abstractmethod
-    def get_probe(self) -> DataChunk:
+    def get_probe(self, probe_size: int) -> DataChunk:
+        """
+        Get a small subsample from the data source.
+
+        Depending on the source, this may be a randomly generated sample with
+        or a regular subset with `approximately` the requested number of
+        records.
+
+        .. Note::
+            In the latter case, the sample is likey slightly smaller, since
+            the sparse sampling factor will be rounded up to the next larger
+            integer. E.g. when requesting 5 out of 11 total records, the method
+            will return every 2nd record, i.e. a total of 4 instead of 5.
+
+        Args:
+            probe_size:
+                The approximate number of records to obtain.
+
+        Returns:
+            A chunk of data from the data source with the approximate requested
+            size.
+        """
         pass
+
+
+class BoxGenerator(ChunkGenerator):
+    pass

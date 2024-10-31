@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.catalog.containers import TypePatchCenters
-    from yaw.catalog.generator import ChunkGenerator, DataChunk
+    from yaw.catalog.generators import ChunkGenerator, DataChunk
 
 
 class ChunkProcessingTask:

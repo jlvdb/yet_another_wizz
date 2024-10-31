@@ -15,7 +15,7 @@ from astropy.io import fits
 from pyarrow import parquet
 
 from yaw.catalog.utils import PatchData
-from yaw.catalog.generator import ChunkGenerator, DataChunk
+from yaw.catalog.generators import ChunkGenerator, DataChunk
 from yaw.utils.logging import long_num_format
 
 if TYPE_CHECKING:

@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from yaw.catalog.generators import ChunkGenerator
     from yaw.catalog.utils import MockDataFrame as DataFrame
 
     TypePatchCenters = Union["Catalog", AngularCoordinates]
@@ -683,6 +684,104 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             progress=progress,
             max_workers=max_workers,
             **reader_kwargs,
+        )
+
+        if parallel.on_root():
+            logger.info("computing patch metadata")
+        new = cls.__new__(cls)
+        new.cache_directory = Path(cache_directory)
+        new._patches = load_patches(
+            new.cache_directory,
+            patch_centers=patch_centers,
+            progress=progress,
+            max_workers=max_workers,
+        )
+        return new
+
+    @classmethod
+    def from_random(
+        cls,
+        cache_directory: Path | str,
+        generator: ChunkGenerator,
+        num_randoms: int,
+        *,
+        patch_centers: TypePatchCenters | None = None,
+        patch_num: int | None = None,
+        overwrite: bool = False,
+        progress: bool = False,
+        max_workers: int | None = None,
+        chunksize: int | None = None,
+        probe_size: int = -1,
+    ) -> Catalog:
+        """
+        Create a new catalog instance from a data file.
+
+        Generate a catalog from uniform random data points in chunks, assign
+        objects to spatial patches, write the patches to a cache on disk, and
+        compute the patch meta data.
+
+        The generator object must be created separately by the user.
+
+        .. note::
+            One of the optional patch creation arguments (``patch_centers``, or
+            ``patch_num``) must be provided (``patch_name`` is not supported).
+
+        Args:
+            cache_directory:
+                The cache directory to use for this catalog. Created
+                automatically or overwritten if requested.
+            generator:
+                A random generator (:obj:`~yaw.catalog.generator.ChunkGenerator`)
+                instance from which samples are drawn.
+            num_randoms:
+                The number of randoms to generate.
+
+        Keyword Args:
+            patch_centers:
+                A list of patch centers to use when creating the patches. Can be
+                either :obj:`~yaw.AngularCoordinates` or an other
+                :obj:`~yaw.Catalog` as reference.
+            patch_num:
+                Automatically compute patch centers from a sparse sample of the
+                input data using `treecorr`. Requires an additional scan of the
+                input file to read a sparse sampling of the object coordinates.
+                Ignored if ``patch_centers`` or ``patch_name`` is given.
+            overwrite:
+                Whether to overwrite an existing catalog at the given cache
+                location. If the directory is not a valid catalog, a
+                ``FileExistsError`` is raised.
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+            chunksize:
+                The maximum number of records to generate and write at once.
+            probe_size:
+                The number of initial random samples to draw read when
+                generating patch centers (``patch_num``).
+
+        Returns:
+            A new catalog instance.
+
+        Raises:
+            FileExistsError:
+                If the cache directory exists or is not a valid catalog when
+                providing ``overwrite=True``.
+        """
+        mode = PatchMode.determine(patch_centers, None, patch_num)
+        if mode == PatchMode.create:
+            patch_centers = create_patch_centers(generator, patch_num, probe_size)
+
+        # split the data into patches and create the cached Patch instances.
+        write_patches(
+            cache_directory,
+            generator,
+            patch_centers,
+            overwrite=overwrite,
+            progress=progress,
+            max_workers=max_workers,
+            buffersize=chunksize,
         )
 
         if parallel.on_root():

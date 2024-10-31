@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from mpi4py.MPI import Comm
 
     from yaw.catalog.containers import TypePatchCenters
-    from yaw.catalog.generator import ChunkGenerator
+    from yaw.catalog.generators import ChunkGenerator
 
 
 class WorkerManager:

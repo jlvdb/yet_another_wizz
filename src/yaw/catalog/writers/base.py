@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.catalog.containers import TypePatchCenters
-    from yaw.catalog.generator import ChunkGenerator
+    from yaw.catalog.generators import ChunkGenerator
     from yaw.catalog.utils import TypePatchIDs
 
 CHUNKSIZE = 65_536
