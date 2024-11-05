@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from abc import abstractmethod
+import logging
+from abc import ABC, abstractmethod
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Iterator, Sized
 
@@ -8,6 +9,7 @@ import numpy as np
 
 from yaw.catalog.utils import PatchData, PatchIDs
 from yaw.utils import parallel
+from yaw.utils.logging import long_num_format
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -16,6 +18,8 @@ if TYPE_CHECKING:
     from yaw.catalog.utils import TypePatchIDs
 
 CHUNKSIZE = 16_777_216
+
+logger = logging.getLogger(__name__)
 
 
 class DataChunk(Sized):
@@ -95,34 +99,30 @@ class ChunkGenerator(AbstractContextManager, Sized, Iterator[DataChunk]):
         pass
 
 
-class BoxGenerator(ChunkGenerator):
+class RandomIterator(ChunkGenerator):
     def __init__(
-        self,
-        num_randoms: int,
-        ra_min: float,
-        ra_max: float,
-        dec_min: float,
-        dec_max: float,
-        weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
-        chunksize: int | None = None,
-        seed: int = 12345,
+        self, generator: RandomGenerator, num_randoms: int, chunksize: int | None = None
     ) -> None:
-        self.x_min, self.y_min = self._sky2cylinder(
-            np.deg2rad(ra_min), np.deg2rad(dec_min)
-        )
-        self.x_max, self.y_max = self._sky2cylinder(
-            np.deg2rad(ra_max), np.deg2rad(dec_max)
-        )
-
-        self.weights = weights
-        self.redshifts = redshifts
+        self.generator = generator
 
         self.num_randoms = num_randoms
-        self.rng = np.random.default_rng(seed)
-
         self.chunksize = chunksize or CHUNKSIZE
-        self._num_samples = 0
+
+        self._num_samples = 0  # state
+
+        logger.info(
+            "generating %s random points in %d chunks",
+            long_num_format(num_randoms),
+            len(self),
+        )
+
+    @property
+    def has_weights(self) -> bool:
+        return self.generator.has_weights
+
+    @property
+    def has_redshifts(self) -> bool:
+        return self.generator.has_redshifts
 
     def __len__(self) -> int:
         return int(np.ceil(self.num_randoms / self.chunksize))
@@ -145,11 +145,31 @@ class BoxGenerator(ChunkGenerator):
         num_generate = self.chunksize
         if self._num_samples > self.num_randoms:
             num_generate -= self._num_samples - self.num_randoms
-        return self.get_probe(num_generate)
+        return self.generator(num_generate)
 
     def __iter__(self) -> Iterator[DataChunk]:
-        self._num_samples = 0
+        self._num_samples = 0  # reset state
         return self
+
+    def get_probe(self, probe_size: int) -> DataChunk:
+        return self.generator(probe_size)
+
+
+class RandomGenerator(ABC):
+    @abstractmethod
+    def __init__(
+        self,
+        *args,
+        weights: NDArray | None = None,
+        redshifts: NDArray | None = None,
+        seed: int = 12345,
+        **kwargs,
+    ) -> None:
+        self.rng = np.random.default_rng(seed)
+
+        self.weights = weights
+        self.redshifts = redshifts
+        self.data_size = self.get_data_size()
 
     @property
     def has_weights(self) -> bool:
@@ -159,18 +179,62 @@ class BoxGenerator(ChunkGenerator):
     def has_redshifts(self) -> bool:
         return self.redshifts is not None
 
-    @property
-    def num_source_values(self) -> int:
-        length = [
-            len(attr) for attr in (self.weights, self.redshifts) if attr is not None
-        ]
-        if len(length) == 0:
+    def get_data_size(self) -> int:
+        if self.weights is None and self.redshifts is None:
             return -1
-        elif max(length) != min(length):
+        elif self.weights is None:
+            return len(self.redshifts)
+        elif self.redshifts is None:
+            return len(self.weights)
+
+        if len(self.weights) != len(self.redshifts):
             raise ValueError(
                 "number of 'weights' and 'redshifts' to draw from does not match"
             )
-        return max(length)
+        return len(self.weights)
+
+    def _draw_attributes(self, probe_size: int) -> dict[str, NDArray]:
+        if self.data_size == -1:
+            return dict()
+
+        data = dict()
+        idx = self.rng.integers(0, self.data_size, size=probe_size)
+        if self.has_weights:
+            data["weights"] = self.weights[idx]
+        if self.has_redshifts:
+            data["redshifts"] = self.redshifts[idx]
+        return data
+
+    @abstractmethod
+    def __call__(self, probe_size: int) -> DataChunk:
+        pass
+
+    def get_iterator(
+        self, num_randoms: int, chunksize: int | None = None
+    ) -> RandomIterator:
+        return RandomIterator(self, num_randoms, chunksize)
+
+
+class BoxGenerator(RandomGenerator):
+    def __init__(
+        self,
+        ra_min: float,
+        ra_max: float,
+        dec_min: float,
+        dec_max: float,
+        *,
+        weights: NDArray | None = None,
+        redshifts: NDArray | None = None,
+        seed: int = 12345,
+    ) -> None:
+        super().__init__(weights=weights, redshifts=redshifts, seed=seed)
+
+        self.x_min, self.y_min = self._sky2cylinder(
+            np.deg2rad(ra_min), np.deg2rad(dec_min)
+        )
+        self.x_max, self.y_max = self._sky2cylinder(
+            np.deg2rad(ra_max), np.deg2rad(dec_max)
+        )
 
     def _sky2cylinder(self, ra: NDArray, dec: NDArray) -> tuple[NDArray, NDArray]:
         x = ra
@@ -182,17 +246,12 @@ class BoxGenerator(ChunkGenerator):
         dec = np.arcsin(y)
         return ra, dec
 
-    def get_probe(self, probe_size: int) -> DataChunk:
+    def __call__(self, probe_size: int) -> DataChunk:
         x = self.rng.uniform(self.x_min, self.x_max, probe_size)
         y = self.rng.uniform(self.y_min, self.y_max, probe_size)
 
         data = dict(degrees=False)
         data["ra"], data["dec"] = self._cylinder2sky(x, y)
-        if self.has_weights or self.has_redshifts:
-            idx = self.rng.integers(0, self.num_source_values, size=probe_size)
-            if self.has_weights:
-                data["weights"] = self.weights[idx]
-            if self.has_redshifts:
-                data["redshifts"] = self.redshifts[idx]
-
+        attrs = self._draw_attributes(probe_size)
+        data.update(attrs)
         return DataChunk.from_dict(data)

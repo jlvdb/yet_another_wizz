@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw.catalog.generators import RandomGenerator
 from yaw.catalog.readers import DataFrameReader, new_filereader
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import (
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from yaw.catalog.generators import ChunkGenerator
     from yaw.catalog.utils import MockDataFrame as DataFrame
 
     TypePatchCenters = Union["Catalog", AngularCoordinates]
@@ -293,45 +293,6 @@ class Patch(PatchBase):
                 If the trees have not been build previously.
         """
         return BinnedTrees(self)
-
-
-def write_catalog(
-    cache_directory: Path | str,
-    generator: ChunkGenerator,
-    *,
-    ra_name: str,
-    dec_name: str,
-    weight_name: str | None = None,
-    redshift_name: str | None = None,
-    patch_centers: TypePatchCenters | None = None,
-    patch_name: str | None = None,
-    patch_num: int | None = None,
-    degrees: bool = True,
-    chunksize: int | None = None,
-    probe_size: int = -1,
-    overwrite: bool = False,
-    progress: bool = False,
-    max_workers: int | None = None,
-    buffersize: int = -1,
-    **reader_kwargs,
-) -> None:
-    mode = PatchMode.determine(patch_centers, patch_name, patch_num)
-    if mode == PatchMode.create:
-        patch_centers = None
-        if parallel.on_root():
-            patch_centers = create_patch_centers(generator, patch_num, probe_size)
-        patch_centers = parallel.COMM.bcast(patch_centers, root=0)
-
-    # split the data into patches and create the cached Patch instances.
-    write_patches(
-        cache_directory,
-        generator,
-        patch_centers,
-        overwrite=overwrite,
-        progress=progress,
-        max_workers=max_workers,
-        buffersize=buffersize,
-    )
 
 
 def read_patch_ids(cache_directory: Path) -> list[int]:
@@ -701,13 +662,15 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     def from_random(
         cls,
         cache_directory: Path | str,
-        generator: ChunkGenerator,
+        generator: RandomGenerator,
+        num_randoms: int,
         *,
         patch_centers: TypePatchCenters | None = None,
         patch_num: int | None = None,
         overwrite: bool = False,
         progress: bool = False,
         max_workers: int | None = None,
+        chunksize: int | None = None,
         probe_size: int = -1,
     ) -> Catalog:
         """
@@ -728,7 +691,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 The cache directory to use for this catalog. Created
                 automatically or overwritten if requested.
             generator:
-                A random generator (:obj:`~yaw.catalog.generator.ChunkGenerator`)
+                A random generator (:obj:`~yaw.catalog.generator.RandomGenerator`)
                 instance from which samples are drawn.
             num_randoms:
                 The number of randoms to generate.
@@ -766,17 +729,19 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 If the cache directory exists or is not a valid catalog when
                 providing ``overwrite=True``.
         """
+        rand_iter = generator.get_iterator(num_randoms, chunksize)
+
         mode = PatchMode.determine(patch_centers, None, patch_num)
         if mode == PatchMode.create:
             patch_centers = None
             if parallel.on_root():
-                patch_centers = create_patch_centers(generator, patch_num, probe_size)
+                patch_centers = create_patch_centers(rand_iter, patch_num, probe_size)
             patch_centers = parallel.COMM.bcast(patch_centers, root=0)
 
         # split the data into patches and create the cached Patch instances.
         write_patches(
             cache_directory,
-            generator,
+            rand_iter,
             patch_centers,
             overwrite=overwrite,
             progress=progress,

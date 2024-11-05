@@ -122,6 +122,7 @@ class BaseReader(ChunkGenerator):
 
     @abstractmethod
     def read(self, sparse: int) -> DataChunk:
+        sparse = int(sparse)
         n_read = 0
 
         chunks_data = []
