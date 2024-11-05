@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.catalog.generators import RandomGenerator
 from yaw.catalog.readers import DataFrameReader, new_filereader
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import (
@@ -35,6 +34,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from yaw.catalog.generators import RandomGenerator
     from yaw.catalog.utils import MockDataFrame as DataFrame
 
     TypePatchCenters = Union["Catalog", AngularCoordinates]
