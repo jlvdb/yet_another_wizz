@@ -5,7 +5,6 @@
 
     - Add back uniform randoms
     - Update flowchart
-    - Add missing example
     - Add changelog for v3
 
 

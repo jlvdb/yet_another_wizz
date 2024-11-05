@@ -60,6 +60,7 @@ def format_time(elapsed: float) -> str:
 
 class ProgressPrinter:
     """Helper that manages the progress bar layout."""
+
     __slots__ = ("template", "stream")
 
     def __init__(self, num_items: int | None, stream: TextIOBase) -> None:
@@ -95,6 +96,7 @@ class Indicator(Iterable[T]):
     controlls, how often the progress bar is updated, text is written by default
     to `stderr`.
     """
+
     __slots__ = ("iterable", "num_items", "min_interval", "printer")
 
     def __init__(
@@ -179,6 +181,7 @@ class CustomFormatter(Formatter):
     """Formatter for logging, using colors when possible. The default format is
     ``[level code] | ``, where level code is a three letter abbreviation for the
     log level."""
+
     level = "%(levelname).3s"
     msg = "%(message)s"
     FORMATS = {
@@ -198,6 +201,7 @@ class CustomFormatter(Formatter):
 class OnlyYAWFilter(Filter):
     """Filter all log message that are not emmited by any of the internal
     ``yaw`` loggers."""
+
     def filter(self, record):
         record.exc_info = None
         record.exc_text = None

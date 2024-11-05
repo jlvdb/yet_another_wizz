@@ -6,34 +6,30 @@ import warnings
 from abc import abstractmethod
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, Literal, Union, get_args
+from typing import TYPE_CHECKING, get_args
 
 import astropy.cosmology
 import numpy as np
 
-from yaw.containers import Binning, RedshiftBinningFactory
-from yaw.containers import Tbin_method as Tbin_method_auto
-from yaw.containers import Tclosed, YamlSerialisable, default_bin_method, default_closed
+from yaw.containers import Binning, RedshiftBinningFactory, YamlSerialisable
+from yaw.options import BinMethod, Closed, get_options
 from yaw.utils import parallel
 from yaw.utils.cosmology import (
     CustomCosmology,
-    Tcosmology,
+    TypeCosmology,
     cosmology_is_equal,
     get_default_cosmology,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
+    from pathlib import Path
     from typing import Any, TypeVar
 
     from numpy.typing import NDArray
 
-    from yaw.containers import Tpath
-
     T = TypeVar("T")
-    Tbase_config = TypeVar("Tbase_config", bound="BaseConfig")
-
-Tbin_method_all = Union[Tbin_method_auto | Literal["custom"]]
+    TypeBaseConfig = TypeVar("TypeBaseConfig", bound="BaseConfig")
 
 __all__ = [
     "BinningConfig",
@@ -54,6 +50,7 @@ class _NotSet_meta(type):
 
 class NotSet(metaclass=_NotSet_meta):
     """Placeholder for configuration values that are not set."""
+
     pass
 
 
@@ -61,7 +58,7 @@ class ConfigError(Exception):
     pass
 
 
-def cosmology_to_yaml(cosmology: Tcosmology) -> str:
+def cosmology_to_yaml(cosmology: TypeCosmology) -> str:
     """
     Attempt to serialise a cosmology instance to YAML.
 
@@ -87,7 +84,7 @@ def cosmology_to_yaml(cosmology: Tcosmology) -> str:
     return cosmology.name
 
 
-def yaml_to_cosmology(cosmo_name: str) -> Tcosmology:
+def yaml_to_cosmology(cosmo_name: str) -> TypeCosmology:
     """Restore a cosmology class instance from a YAML string."""
     if cosmo_name not in astropy.cosmology.available:
         raise ConfigError(
@@ -97,7 +94,7 @@ def yaml_to_cosmology(cosmo_name: str) -> Tcosmology:
     return getattr(astropy.cosmology, cosmo_name)
 
 
-def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
+def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
     """
     Parse and verify that the provided cosmology is supported by
     yet_another_wizz.
@@ -122,8 +119,8 @@ def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
     elif isinstance(cosmology, str):
         return yaml_to_cosmology(cosmology)
 
-    elif not isinstance(cosmology, get_args(Tcosmology)):
-        which = ", ".join(str(c) for c in get_args(Tcosmology))
+    elif not isinstance(cosmology, get_args(TypeCosmology)):
+        which = ", ".join(str(c) for c in get_args(TypeCosmology))
         raise ConfigError(f"'cosmology' must be instance of: {which}")
 
     return cosmology
@@ -131,26 +128,16 @@ def parse_cosmology(cosmology: Tcosmology | str | None) -> Tcosmology:
 
 class Immutable:
     """Meta-class for configuration classes that prevent mutating attributes."""
+
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError(f"attribute '{name}' is immutable")
-
-
-def unpack_type(type_or_literal) -> tuple:
-    """Take a type and try to extract any literal values into at tuple."""
-    args = []
-    for item in get_args(type_or_literal):
-        items = get_args(item)
-        if len(items) > 0:
-            args.extend(items)
-        else:
-            args.append(item)
-    return tuple(args)
 
 
 @dataclass
 class Parameter:
     """Defines the meta data for a configuration parameter, including a
     describing help message."""
+
     name: str
     help: str
     type: type
@@ -164,6 +151,7 @@ class Parameter:
 
 class ParamSpec(Mapping[str, Parameter]):
     """Dict-like collection of configuration parameters."""
+
     def __init__(self, params: Iterable[Parameter]) -> None:
         self._params = {p.name: p for p in params}
 
@@ -189,16 +177,17 @@ class ParamSpec(Mapping[str, Parameter]):
 class BaseConfig(YamlSerialisable):
     """
     Meta-class for all configuration classes.
-    
+
     Implements basic interface that allows serialisation to YAML and methods to
     create or modify and existing configuration class instance without mutating
     the original.
     """
+
     @classmethod
     def from_dict(
-        cls: type[Tbase_config],
+        cls: type[TypeBaseConfig],
         the_dict: dict[str, Any],
-    ) -> Tbase_config:
+    ) -> TypeBaseConfig:
         return cls.create(**the_dict)
 
     @abstractmethod
@@ -207,12 +196,12 @@ class BaseConfig(YamlSerialisable):
 
     @classmethod
     @abstractmethod
-    def create(cls: type[Tbase_config], **kwargs: Any) -> Tbase_config:
+    def create(cls: type[TypeBaseConfig], **kwargs: Any) -> TypeBaseConfig:
         """Create a new instance with the given parameter values."""
         pass
 
     @abstractmethod
-    def modify(self: Tbase_config, **kwargs: Any | NotSet) -> Tbase_config:
+    def modify(self: TypeBaseConfig, **kwargs: Any | NotSet) -> TypeBaseConfig:
         """Create a new instance by modifing the original instance with the
         given parameter values."""
         conf_dict = self.to_dict()
@@ -234,7 +223,7 @@ class BaseConfig(YamlSerialisable):
         """
         Generate a listing of parameters that may be used by external tool
         to auto-generate an interface to this configuration class.
-        
+
         Returns:
             A :obj:`ParamSpec` instance, that is a key-value mapping from
             parameter name to the parameter meta data for this configuration
@@ -251,10 +240,6 @@ def parse_optional(value: Any | None, type: type[T]) -> T | None:
     return type(value)
 
 
-default_rweight = None
-default_resolution = None
-
-
 class ScalesConfig(BaseConfig, Immutable):
     """
     Configuration for correlation function measurement scales.
@@ -262,7 +247,7 @@ class ScalesConfig(BaseConfig, Immutable):
     Correlations are measured by counting all pairs between a minimum and
     maximum physical scale given in kpc. The code can be configured with either
     a single scale range or multiple (overlapping) scale ranges.
-    
+
     Additionally, pair counts can be weighted by the separation distance using a
     power law :math:`w(r) \\propto r^\\alpha`. For performance reasons, the pair
     counts are not weighted indivudially but in fine logarithmic bins of angular
@@ -277,6 +262,7 @@ class ScalesConfig(BaseConfig, Immutable):
         configuration, create a new instance with updated values by using the
         :meth:`modify()` method.
     """
+
     rmin: list[float] | float
     """Single or multiple lower scale limits in kpc (angular diameter
     distance)."""
@@ -295,8 +281,8 @@ class ScalesConfig(BaseConfig, Immutable):
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
         *,
-        rweight: float | None = default_rweight,
-        resolution: int | None = default_resolution,
+        rweight: float | None = None,
+        resolution: int | None = None,
     ) -> None:
         rmin: NDArray = np.atleast_1d(rmin)
         rmax: NDArray = np.atleast_1d(rmax)
@@ -357,13 +343,13 @@ class ScalesConfig(BaseConfig, Immutable):
                 name="rweight",
                 help="Optional power-law exponent :math:`\\alpha` used to weight pairs by their separation.",
                 type=float,
-                default=default_rweight,
+                default=None,
             ),
             Parameter(
                 name="resolution",
                 help="Optional number of radial logarithmic bin used to approximate the weighting by separation.",
                 type=int,
-                default=default_resolution,
+                default=None,
             ),
         ]
         return ParamSpec(params)
@@ -374,8 +360,8 @@ class ScalesConfig(BaseConfig, Immutable):
         *,
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
-        rweight: float | None = default_rweight,
-        resolution: int | None = default_resolution,
+        rweight: float | None = None,
+        resolution: int | None = None,
     ) -> ScalesConfig:
         """
         Create a new instance with the given parameters.
@@ -433,9 +419,6 @@ class ScalesConfig(BaseConfig, Immutable):
         return super().modify(rmin, rmax, rweight, resolution)
 
 
-default_num_bins = 30
-
-
 class BinningConfig(BaseConfig, Immutable):
     """
     Configuration of the redshift binning for correlation function measurements.
@@ -460,25 +443,22 @@ class BinningConfig(BaseConfig, Immutable):
         configuration, create a new instance with updated values by using the
         :meth:`modify()` method. The bin edges are recomputed when necessary.
     """
+
     binning: Binning
     """Container for the redshift bins."""
-    method: Tbin_method_all
+    method: BinMethod
     """Method used to generate the bin edges, must be either of ``linear``,
     ``comoving``, ``logspace``, or ``custom``."""
 
     def __init__(
         self,
         binning: Binning,
-        method: Tbin_method_all = default_bin_method,
+        method: BinMethod | str = BinMethod.linear,
     ) -> None:
         if not isinstance(binning, Binning):
             raise TypeError(f"'binning' must be of type '{type(binning)}'")
         object.__setattr__(self, "binning", binning)
-
-        method = parse_optional(method, str)
-        if method not in get_args(Tbin_method_auto) and method != "custom":
-            raise ValueError(f"invalid binning method '{method}'")
-        object.__setattr__(self, "method", method)
+        object.__setattr__(self, "method", BinMethod(method))
 
     @property
     def edges(self) -> NDArray:
@@ -501,7 +481,7 @@ class BinningConfig(BaseConfig, Immutable):
         return len(self.binning)
 
     @property
-    def closed(self) -> Tbin_method_all:
+    def closed(self) -> Closed:
         """String indicating if the bin edges are closed on the ``left`` or the
         ``right`` side."""
         return self.binning.closed
@@ -513,7 +493,7 @@ class BinningConfig(BaseConfig, Immutable):
 
     @classmethod
     def from_dict(
-        cls, the_dict: dict[str, Any], cosmology: Tcosmology | None = None
+        cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
     ) -> BinningConfig:
         """
         Restore the class instance from a python dictionary.
@@ -542,17 +522,17 @@ class BinningConfig(BaseConfig, Immutable):
 
     def to_dict(self) -> dict[str, Any]:
         if self.is_custom:
-            the_dict = dict(method=self.method, edges=self.binning.edges)
+            the_dict = dict(edges=self.binning.edges)
 
         else:
             the_dict = dict(
                 zmin=self.zmin,
                 zmax=self.zmax,
                 num_bins=self.num_bins,
-                method=self.method,
             )
 
-        the_dict["closed"] = self.closed
+        the_dict["method"] = str(self.method)
+        the_dict["closed"] = str(self.closed)
         return the_dict
 
     def __eq__(self, other) -> bool:
@@ -578,14 +558,14 @@ class BinningConfig(BaseConfig, Immutable):
                 name="num_bins",
                 help="Number of redshift bins to generate.",
                 type=int,
-                default=default_num_bins,
+                default=30,
             ),
             Parameter(
                 name="method",
                 help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
                 type=str,
-                choices=unpack_type(Tbin_method_all),
-                default=default_bin_method,
+                choices=get_options(Closed),
+                default=BinMethod.linear,
             ),
             Parameter(
                 name="edges",
@@ -598,8 +578,8 @@ class BinningConfig(BaseConfig, Immutable):
                 name="closed",
                 help="String indicating if the bin edges are closed on the ``left`` or the ``right`` side.",
                 type=str,
-                choices=unpack_type(Tclosed),
-                default=default_closed,
+                choices=get_options(Closed),
+                default=str(Closed.right),
             ),
         ]
         return ParamSpec(params)
@@ -610,11 +590,11 @@ class BinningConfig(BaseConfig, Immutable):
         *,
         zmin: float | None = None,
         zmax: float | None = None,
-        num_bins: int = default_num_bins,
-        method: Tbin_method_all = default_bin_method,
+        num_bins: int = 30,
+        method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
-        closed: Tclosed = default_closed,
-        cosmology: Tcosmology | str | None = None,
+        closed: Closed | str = Closed.right,
+        cosmology: TypeCosmology | str | None = None,
     ) -> BinningConfig:
         """
         Create a new instance with the given parameters.
@@ -654,16 +634,19 @@ class BinningConfig(BaseConfig, Immutable):
         if not all(custom_args_set) and not all(auto_args_set):
             raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
 
-        elif all(auto_args_set):  # generate bin edges
+        closed = Closed(closed)
+
+        if all(auto_args_set):  # generate bin edges
             if all(custom_args_set):
                 warnings.warn(
                     "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
                 )
+            method = BinMethod(method)
             bin_func = RedshiftBinningFactory(cosmology).get_method(method)
             binning = bin_func(zmin, zmax, num_bins, closed=closed)
 
         else:  # use provided bin edges
-            method = "custom"
+            method = BinMethod.custom
             binning = Binning(edges, closed=closed)
 
         return cls(binning, method=method)
@@ -673,11 +656,11 @@ class BinningConfig(BaseConfig, Immutable):
         *,
         zmin: float | NotSet = NotSet,
         zmax: float | NotSet = NotSet,
-        num_bins: int | NotSet = default_num_bins,
-        method: Tbin_method_all | NotSet = NotSet,
+        num_bins: int | NotSet = NotSet,
+        method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | NotSet = NotSet,
-        closed: Tclosed | NotSet = NotSet,
-        cosmology: Tcosmology | str | None | NotSet = NotSet,
+        closed: Closed | str | NotSet = NotSet,
+        cosmology: TypeCosmology | str | None | NotSet = NotSet,
     ) -> BinningConfig:
         """
         Create a new configuration instance with updated parameter values.
@@ -717,13 +700,14 @@ class BinningConfig(BaseConfig, Immutable):
             the_dict["zmin"] = self.zmin if zmin is NotSet else zmin
             the_dict["zmax"] = self.zmax if zmax is NotSet else zmax
             the_dict["num_bins"] = self.num_bins if num_bins is NotSet else num_bins
-            the_dict["method"] = self.method if method is NotSet else method
-            the_dict["closed"] = self.closed if closed is NotSet else closed
+            the_dict["method"] = self.method if method is NotSet else BinMethod(method)
 
         else:
             the_dict = dict(edges=edges)
-            the_dict["closed"] = self.closed if closed is NotSet else closed
-            the_dict["method"] = "custom"
+            the_dict["method"] = BinMethod.custom
+
+        the_dict["method"] = str(the_dict["method"])
+        the_dict["closed"] = str(self.closed if closed is NotSet else Closed(closed))
 
         return type(self).from_dict(the_dict, cosmology=cosmology)
 
@@ -747,11 +731,12 @@ class Configuration(BaseConfig, Immutable):
         configuration, create a new instance with updated values by using the
         :meth:`modify()` method. The bin edges are recomputed when necessary.
     """
+
     scales: ScalesConfig
     """Organises the configuration of correlation scales."""
     binning: BinningConfig
     """Organises the configuration of redshift bins."""
-    cosmology: Tcosmology | str
+    cosmology: TypeCosmology | str
     """Optional cosmological model to use for distance computations."""
     max_workers: int | None
     """Limit the number of workers for parallel operations (all by default)."""
@@ -760,7 +745,7 @@ class Configuration(BaseConfig, Immutable):
         self,
         scales: ScalesConfig,
         binning: BinningConfig,
-        cosmology: Tcosmology | str | None = None,
+        cosmology: TypeCosmology | str | None = None,
         max_workers: int | None = None,
     ) -> None:
         if not isinstance(scales, ScalesConfig):
@@ -812,7 +797,7 @@ class Configuration(BaseConfig, Immutable):
         )
 
     @classmethod
-    def from_file(cls, path: Tpath) -> Configuration:
+    def from_file(cls, path: Path | str) -> Configuration:
         new = None
 
         if parallel.on_root():
@@ -822,7 +807,7 @@ class Configuration(BaseConfig, Immutable):
 
         return parallel.COMM.bcast(new, root=0)
 
-    def to_file(self, path: Tpath) -> None:
+    def to_file(self, path: Path | str) -> None:
         if parallel.on_root():
             logger.info("writing configuration file: %s", path)
 
@@ -859,17 +844,17 @@ class Configuration(BaseConfig, Immutable):
         # ScalesConfig
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
-        rweight: float | None = default_rweight,
-        resolution: int | None = default_resolution,
+        rweight: float | None = None,
+        resolution: int | None = None,
         # BinningConfig
         zmin: float | None = None,
         zmax: float | None = None,
-        num_bins: int = default_num_bins,
-        method: Tbin_method_all = default_bin_method,
+        num_bins: int = 30,
+        method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
-        closed: Tclosed = default_closed,
+        closed: Closed | str = Closed.right,
         # uncategorized
-        cosmology: Tcosmology | str | None = default_cosmology,
+        cosmology: TypeCosmology | str | None = default_cosmology,
         max_workers: int | None = None,
     ) -> Configuration:
         """
@@ -948,11 +933,11 @@ class Configuration(BaseConfig, Immutable):
         zmin: float | NotSet = NotSet,
         zmax: float | NotSet = NotSet,
         num_bins: int | NotSet = NotSet,
-        method: Tbin_method_all | NotSet = NotSet,
+        method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | None = NotSet,
-        closed: Tclosed | NotSet = NotSet,
+        closed: Closed | str | NotSet = NotSet,
         # uncategorized
-        cosmology: Tcosmology | str | None | NotSet = NotSet,
+        cosmology: TypeCosmology | str | None | NotSet = NotSet,
         max_workers: int | None | NotSet = NotSet,
     ) -> Configuration:
         """

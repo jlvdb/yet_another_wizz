@@ -8,6 +8,7 @@ import scipy.optimize
 
 from yaw.config import Configuration
 from yaw.corrfunc import CorrData
+from yaw.options import PlotStyle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from yaw.catalog import Catalog, Patch
     from yaw.config import BinningConfig
     from yaw.containers import Binning
-    from yaw.corrfunc import CorrFunc, Tcorr
+    from yaw.corrfunc import CorrFunc, TypeCorrData
 
 __all__ = [
     "HistData",
@@ -80,6 +81,7 @@ class HistData(CorrData):
             2-dim array containing jackknife samples of the histogram counts,
             expected to have shape (:obj:`num_samples`, :obj:`num_bins`).
     """
+
     __slots__ = ("binning", "data", "samples")
 
     @classmethod
@@ -151,13 +153,13 @@ class HistData(CorrData):
         n = "normalised " if self.density else " "
         return f"n(z) {n}histogram covariance matrix ({self.num_bins}x{self.num_bins})"
 
-    _default_plot_style = "step"
+    _default_plot_style = PlotStyle.step
 
     def normalised(self, *args, **kwargs) -> HistData:
         """
         Normalises the redshift histogram to a probability density.
 
-        Any function arguments are discarded.        
+        Any function arguments are discarded.
 
         Returns:
             A new instance with a normalisation factor applied to the counts and
@@ -197,6 +199,7 @@ class RedshiftData(CorrData):
             2-dim array containing `M` jackknife samples of the data, expected
             to have shape (:obj:`num_samples`, :obj:`num_bins`).
     """
+
     __slots__ = ("binning", "data", "samples")
 
     @classmethod
@@ -224,7 +227,7 @@ class RedshiftData(CorrData):
         Keyword Args:
             ref_data:
                 Optional autocorrelation function amplitude of the reference
-                sample (:math:`w_{ss}`), must be a :obj:`~yaw.CorrData` 
+                sample (:math:`w_{ss}`), must be a :obj:`~yaw.CorrData`
                 nstance.
             unk_data:
                 Optional autocorrelation function amplitude of the unknown
@@ -296,7 +299,7 @@ class RedshiftData(CorrData):
             cross_corr:
                 The cross-correlation function pair counts (:math:`w_{sp}`),
                 must be a :obj:`~yaw.CorrFunc` instance.
-                
+
         Keyword Args:
             ref_corr:
                 Optional autocorrelation function pair counts of the reference
@@ -336,9 +339,9 @@ class RedshiftData(CorrData):
         """Descriptive comment for header of .cov file."""
         return f"n(z) estimate covariance matrix ({self.num_bins}x{self.num_bins})"
 
-    _default_plot_style = "point"
+    _default_plot_style = PlotStyle.point
 
-    def normalised(self, target: Tcorr | None = None) -> RedshiftData:
+    def normalised(self, target: TypeCorrData | None = None) -> RedshiftData:
         """
         Attempts to normalise the redshift estimate to a probability density.
 
@@ -347,7 +350,7 @@ class RedshiftData(CorrData):
         redshift range of the binning. Alternatively, the normalisation may be
         optained by fitting to another data container to achieve a relative
         normalisation.
-        
+
         .. warning::
             Both approaches are inaccuarte due to noise fluctions (in particular
             negative correlation amplitudes).

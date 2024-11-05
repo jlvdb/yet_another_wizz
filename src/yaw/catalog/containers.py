@@ -4,7 +4,7 @@ import logging
 from collections import deque
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -18,7 +18,8 @@ from yaw.catalog.utils import (
     PatchData,
 )
 from yaw.catalog.writers import PATCH_INFO_FILE, PatchMode, create_patch_centers
-from yaw.containers import Tpath, YamlSerialisable, default_closed, parse_binning
+from yaw.containers import YamlSerialisable, parse_binning
+from yaw.options import Closed
 from yaw.utils import AngularCoordinates, AngularDistances, parallel
 from yaw.utils.logging import Indicator
 
@@ -33,10 +34,10 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from yaw.catalog.generators import ChunkGenerator
     from yaw.catalog.utils import MockDataFrame as DataFrame
-    from yaw.containers import Tclosed
 
-    Tcenters = Union["Catalog", AngularCoordinates]
+    TypePatchCenters = Union["Catalog", AngularCoordinates]
 
 __all__ = [
     "Catalog",
@@ -66,6 +67,7 @@ class Metadata(YamlSerialisable):
             Radius around center point containing all data points,
             :obj:`~yaw.AngularDistances` in radian.
     """
+
     __slots__ = (
         "num_records",
         "total",
@@ -122,7 +124,7 @@ class Metadata(YamlSerialisable):
             coords:
                 Coordinates of patch data points, given as
                 :obj:`~yaw.AngularCoordinates`.
- 
+
         Keyword Args:
             weights:
                 Optional, weights of data points.
@@ -186,6 +188,7 @@ class Patch(PatchBase):
     Supports efficient pickeling as long as the cached data is not deleted or
     moved.
     """
+
     __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
 
     meta: Metadata
@@ -194,7 +197,7 @@ class Patch(PatchBase):
     containing radius."""
 
     def __init__(
-        self, cache_path: Tpath, center: AngularCoordinates | None = None
+        self, cache_path: Path | str, center: AngularCoordinates | None = None
     ) -> None:
         self.cache_path = Path(cache_path)
         meta_data_file = self.cache_path / "meta.yml"
@@ -236,10 +239,10 @@ class Patch(PatchBase):
             setattr(self, key, value)
 
     @staticmethod
-    def id_from_path(cache_path: Tpath) -> int:
+    def id_from_path(cache_path: Path | str) -> int:
         """
         Extract the integer patch ID from the cache path.
-        
+
         .. caution::
             This will fail if the patch has not been created through a
             :obj:`~yaw.Catalog` instance, which manages the patch creation.
@@ -277,13 +280,13 @@ class Patch(PatchBase):
     def get_trees(self) -> BinnedTrees:
         """
         Try loading the binary search trees.
-        
+
         Loads the tree(s) from the ``trees.pkl`` pickle file, other raises an
         error.
 
         Returns:
             :obj:`~yaw.catalog.trees.BinnedTrees` container with a single or
-            multiple (when catalog is binned in redshift) binary search trees. 
+            multiple (when catalog is binned in redshift) binary search trees.
 
         Raises:
             FileNotFoundError:
@@ -293,14 +296,14 @@ class Patch(PatchBase):
 
 
 def write_catalog(
-    cache_directory: Tpath,
-    source: DataFrame | Tpath,
+    cache_directory: Path | str,
+    generator: ChunkGenerator,
     *,
     ra_name: str,
     dec_name: str,
     weight_name: str | None = None,
     redshift_name: str | None = None,
-    patch_centers: Tcenters | None = None,
+    patch_centers: TypePatchCenters | None = None,
     patch_name: str | None = None,
     patch_num: int | None = None,
     degrees: bool = True,
@@ -312,40 +315,17 @@ def write_catalog(
     buffersize: int = -1,
     **reader_kwargs,
 ) -> None:
-    constructor = (
-        new_filereader if isinstance(source, get_args(Tpath)) else DataFrameReader
-    )
-
-    reader = None
-    if parallel.on_root():
-        actual_reader = constructor(
-            source,
-            ra_name=ra_name,
-            dec_name=dec_name,
-            weight_name=weight_name,
-            redshift_name=redshift_name,
-            patch_name=patch_name,
-            chunksize=chunksize,
-            degrees=degrees,
-            **reader_kwargs,
-        )
-        reader = actual_reader.get_dummy()
-
-    reader = parallel.COMM.bcast(reader, root=0)
-    if parallel.on_root():
-        reader = actual_reader
-
     mode = PatchMode.determine(patch_centers, patch_name, patch_num)
     if mode == PatchMode.create:
         patch_centers = None
         if parallel.on_root():
-            patch_centers = create_patch_centers(reader, patch_num, probe_size)
+            patch_centers = create_patch_centers(generator, patch_num, probe_size)
         patch_centers = parallel.COMM.bcast(patch_centers, root=0)
 
     # split the data into patches and create the cached Patch instances.
     write_patches(
         cache_directory,
-        reader,
+        generator,
         patch_centers,
         overwrite=overwrite,
         progress=progress,
@@ -364,7 +344,7 @@ def read_patch_ids(cache_directory: Path) -> list[int]:
 def load_patches(
     cache_directory: Path,
     *,
-    patch_centers: Tcenters | None,
+    patch_centers: TypePatchCenters | None,
     progress: bool,
     max_workers: int | None = None,
 ) -> dict[int, Patch]:
@@ -436,12 +416,13 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             Limit the  number of parallel workers for this operation (all by
             default).
     """
+
     __slots__ = ("cache_directory", "_patches")
 
     _patches: dict[int, Patch]
 
     def __init__(
-        self, cache_directory: Tpath, *, max_workers: int | None = None
+        self, cache_directory: Path | str, *, max_workers: int | None = None
     ) -> None:
         if parallel.on_root():
             logger.info("restoring from cache directory: %s", cache_directory)
@@ -460,14 +441,14 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     @classmethod
     def from_dataframe(
         cls,
-        cache_directory: Tpath,
+        cache_directory: Path | str,
         dataframe: DataFrame,
         *,
         ra_name: str,
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: Tcenters | None = None,
+        patch_centers: TypePatchCenters | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
@@ -544,23 +525,33 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 If the cache directory exists or is not a valid catalog when
                 providing ``overwrite=True``.
         """
-        write_catalog(
-            cache_directory,
-            source=dataframe,
+        reader = DataFrameReader(
+            dataframe,
             ra_name=ra_name,
             dec_name=dec_name,
             weight_name=weight_name,
             redshift_name=redshift_name,
-            patch_centers=patch_centers,
             patch_name=patch_name,
-            patch_num=patch_num,
-            degrees=degrees,
             chunksize=chunksize,
-            probe_size=probe_size,
+            degrees=degrees,
+            **reader_kwargs,
+        )
+        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
+        if mode == PatchMode.create:
+            patch_centers = None
+            if parallel.on_root():
+                patch_centers = create_patch_centers(reader, patch_num, probe_size)
+            patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+
+        # split the data into patches and create the cached Patch instances.
+        write_patches(
+            cache_directory,
+            reader,
+            patch_centers,
             overwrite=overwrite,
             progress=progress,
             max_workers=max_workers,
-            **reader_kwargs,
+            buffersize=-1,
         )
 
         if parallel.on_root():
@@ -578,14 +569,14 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     @classmethod
     def from_file(
         cls,
-        cache_directory: Tpath,
-        path: Tpath,
+        cache_directory: Path | str,
+        path: Path | str,
         *,
         ra_name: str,
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: Tcenters | None = None,
+        patch_centers: TypePatchCenters | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
@@ -665,23 +656,132 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         Additional reader keyword arguments are passed on to the file reader
         class constuctor.
         """
-        write_catalog(
-            cache_directory,
-            source=path,
+        reader = new_filereader(
+            path,
             ra_name=ra_name,
             dec_name=dec_name,
             weight_name=weight_name,
             redshift_name=redshift_name,
-            patch_centers=patch_centers,
             patch_name=patch_name,
-            patch_num=patch_num,
-            degrees=degrees,
             chunksize=chunksize,
-            probe_size=probe_size,
+            degrees=degrees,
+            **reader_kwargs,
+        )
+        mode = PatchMode.determine(patch_centers, patch_name, patch_num)
+        if mode == PatchMode.create:
+            patch_centers = None
+            if parallel.on_root():
+                patch_centers = create_patch_centers(reader, patch_num, probe_size)
+            patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+
+        # split the data into patches and create the cached Patch instances.
+        write_patches(
+            cache_directory,
+            reader,
+            patch_centers,
             overwrite=overwrite,
             progress=progress,
             max_workers=max_workers,
-            **reader_kwargs,
+            buffersize=-1,
+        )
+
+        if parallel.on_root():
+            logger.info("computing patch metadata")
+        new = cls.__new__(cls)
+        new.cache_directory = Path(cache_directory)
+        new._patches = load_patches(
+            new.cache_directory,
+            patch_centers=patch_centers,
+            progress=progress,
+            max_workers=max_workers,
+        )
+        return new
+
+    @classmethod
+    def from_random(
+        cls,
+        cache_directory: Path | str,
+        generator: ChunkGenerator,
+        *,
+        patch_centers: TypePatchCenters | None = None,
+        patch_num: int | None = None,
+        overwrite: bool = False,
+        progress: bool = False,
+        max_workers: int | None = None,
+        probe_size: int = -1,
+    ) -> Catalog:
+        """
+        Create a new catalog instance from a data file.
+
+        Generate a catalog from uniform random data points in chunks, assign
+        objects to spatial patches, write the patches to a cache on disk, and
+        compute the patch meta data.
+
+        The generator object must be created separately by the user.
+
+        .. note::
+            One of the optional patch creation arguments (``patch_centers``, or
+            ``patch_num``) must be provided (``patch_name`` is not supported).
+
+        Args:
+            cache_directory:
+                The cache directory to use for this catalog. Created
+                automatically or overwritten if requested.
+            generator:
+                A random generator (:obj:`~yaw.catalog.generator.ChunkGenerator`)
+                instance from which samples are drawn.
+            num_randoms:
+                The number of randoms to generate.
+
+        Keyword Args:
+            patch_centers:
+                A list of patch centers to use when creating the patches. Can be
+                either :obj:`~yaw.AngularCoordinates` or an other
+                :obj:`~yaw.Catalog` as reference.
+            patch_num:
+                Automatically compute patch centers from a sparse sample of the
+                input data using `treecorr`. Requires an additional scan of the
+                input file to read a sparse sampling of the object coordinates.
+                Ignored if ``patch_centers`` or ``patch_name`` is given.
+            overwrite:
+                Whether to overwrite an existing catalog at the given cache
+                location. If the directory is not a valid catalog, a
+                ``FileExistsError`` is raised.
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+            chunksize:
+                The maximum number of records to generate and write at once.
+            probe_size:
+                The number of initial random samples to draw read when
+                generating patch centers (``patch_num``).
+
+        Returns:
+            A new catalog instance.
+
+        Raises:
+            FileExistsError:
+                If the cache directory exists or is not a valid catalog when
+                providing ``overwrite=True``.
+        """
+        mode = PatchMode.determine(patch_centers, None, patch_num)
+        if mode == PatchMode.create:
+            patch_centers = None
+            if parallel.on_root():
+                patch_centers = create_patch_centers(generator, patch_num, probe_size)
+            patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+
+        # split the data into patches and create the cached Patch instances.
+        write_patches(
+            cache_directory,
+            generator,
+            patch_centers,
+            overwrite=overwrite,
+            progress=progress,
+            max_workers=max_workers,
+            buffersize=-1,
         )
 
         if parallel.on_root():
@@ -761,7 +861,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         self,
         binning: NDArray | None = None,
         *,
-        closed: Tclosed = default_closed,
+        closed: Closed | str = Closed.right,
         leafsize: int = 16,
         force: bool = False,
         progress: bool = False,
@@ -793,6 +893,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 default). Takes precedence over the value in the configuration.
         """
         binning = parse_binning(binning, optional=True)
+        closed = Closed(closed)  # parse early for error checks
 
         if parallel.on_root():
             logger.debug(
@@ -804,7 +905,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
             BinnedTrees.build,
             self.values(),
             func_args=(binning,),
-            func_kwargs=dict(closed=closed, leafsize=leafsize, force=force),
+            func_kwargs=dict(closed=str(closed), leafsize=leafsize, force=force),
             max_workers=max_workers,
         )
         if progress:
@@ -815,5 +916,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
 
 Catalog.get.__doc__ = "Return the :obj:`~yaw.Patch` for ID if exists, else default."
 Catalog.keys.__doc__ = "A set-like object providing a view of all patch IDs."
-Catalog.values.__doc__ = "A set-like object providing a view of all :obj:`~yaw.Patch` es."
+Catalog.values.__doc__ = (
+    "A set-like object providing a view of all :obj:`~yaw.Patch` es."
+)
 Catalog.items.__doc__ = "A set-like object providing a view of `(key, value)` pairs."

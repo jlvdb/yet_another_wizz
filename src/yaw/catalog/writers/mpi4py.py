@@ -11,18 +11,18 @@ from yaw.catalog.writers.base import (
     logger,
     split_into_patches,
 )
-from yaw.containers import Tpath
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 from yaw.utils.parallel import EndOfQueue
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     from mpi4py.MPI import Comm
 
-    from yaw.catalog.containers import Tcenters
-    from yaw.catalog.readers import BaseReader
+    from yaw.catalog.containers import TypePatchCenters
+    from yaw.catalog.generators import ChunkGenerator
 
 
 class WorkerManager:
@@ -63,7 +63,7 @@ def scatter_data_chunk(comm: Comm, reader_rank: int, chunk: DataChunk) -> DataCh
 def chunk_processing_task(
     comm: Comm,
     worker_config: WorkerManager,
-    patch_centers: Tcenters | None,
+    patch_centers: TypePatchCenters | None,
     chunk_iter: Iterator[DataChunk],
 ) -> None:
     if patch_centers is not None:
@@ -80,7 +80,7 @@ def chunk_processing_task(
 
 
 def writer_task(
-    cache_directory: Tpath,
+    cache_directory: Path | str,
     *,
     has_weights: bool,
     has_redshifts: bool,
@@ -100,9 +100,9 @@ def writer_task(
 
 
 def write_patches(
-    path: Tpath,
-    reader: BaseReader,
-    patch_centers: Tcenters,
+    path: Path | str,
+    generator: ChunkGenerator,
+    patch_centers: TypePatchCenters,
     *,
     overwrite: bool,
     progress: bool,
@@ -122,8 +122,8 @@ def write_patches(
     if rank == worker_config.writer_rank:
         writer_task(
             cache_directory=path,
-            has_weights=reader.has_weights,
-            has_redshifts=reader.has_redshifts,
+            has_weights=generator.has_weights,
+            has_redshifts=generator.has_redshifts,
             overwrite=overwrite,
             buffersize=buffersize,
         )
@@ -132,8 +132,8 @@ def write_patches(
         if patch_centers is not None:
             patch_centers = get_patch_centers(patch_centers)
 
-        with reader:
-            chunk_iter = Indicator(reader) if progress else iter(reader)
+        with generator:
+            chunk_iter = Indicator(generator) if progress else iter(generator)
             chunk_processing_task(
                 worker_comm,
                 worker_config,

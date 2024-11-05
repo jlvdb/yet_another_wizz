@@ -19,10 +19,9 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     T = TypeVar("T")
-    Targ = TypeVar("Targ")
-    Tresult = TypeVar("Tresult")
-    Titer = TypeVar("Titer")
-    Tbroadcast = TypeVar("Tbroadcast", bound="Broadcastable")
+    TypeArgument = TypeVar("TypeArgument")
+    TypeResult = TypeVar("TypeResult")
+    TypeBroadcastable = TypeVar("TypeBroadcastable", bound="Broadcastable")
 
 __all__ = [
     "Broadcastable",
@@ -171,11 +170,12 @@ class ParallelJob:
     to ``functools.partial``. If ``unpack=True``, the positional arguments are
     unpacked when calling the function, otherwise they are passed as a tuple.
     """
+
     __slots__ = ("func", "func_args", "func_kwargs", "unpack")
 
     def __init__(
         self,
-        func: Callable[..., Tresult],
+        func: Callable[..., TypeResult],
         func_args: tuple,
         func_kwargs: dict,
         *,
@@ -186,7 +186,7 @@ class ParallelJob:
         self.func_kwargs = func_kwargs
         self.unpack = unpack
 
-    def __call__(self, arg: Any) -> Tresult:
+    def __call__(self, arg: Any) -> TypeResult:
         if self.unpack:
             func_args = (*arg, *self.func_args)
         else:
@@ -232,19 +232,19 @@ def _mpi_worker_task(func: ParallelJob, comm: Comm = COMM) -> None:
 
 
 def _mpi_iter_unordered(
-    func: Callable[[Targ], Tresult],
-    iterable: Iterable[Targ],
+    func: Callable[[TypeArgument], TypeResult],
+    iterable: Iterable[TypeArgument],
     *,
     func_args: tuple,
     func_kwargs: dict,
     unpack: bool = False,
     ranks: Iterable[int],
     comm: Comm = COMM,
-) -> Iterator[Tresult]:
+) -> Iterator[TypeResult]:
     """
     Asynchronous iterator that maps arguments to a worker function using MPI
     parallelism.
-    
+
     Takes a job function, an iterable of job arguments and optionally a list
     of positional and keyword arguments to bind to the job function.
     Additionally, specify if the function expects the the positional arguments
@@ -262,14 +262,14 @@ def _mpi_iter_unordered(
 
 
 def _multiprocessing_iter_unordered(
-    func: Callable[[Targ], Tresult],
-    iterable: Iterable[Targ],
+    func: Callable[[TypeArgument], TypeResult],
+    iterable: Iterable[TypeArgument],
     *,
     func_args: tuple,
     func_kwargs: dict,
     unpack: bool = False,
     num_processes: int | None = None,
-) -> Iterator[Tresult]:
+) -> Iterator[TypeResult]:
     """
     Asynchronous iterator that maps arguments to a worker function using
     multiprocessing parallelism.
@@ -290,8 +290,8 @@ def _multiprocessing_iter_unordered(
 
 
 def iter_unordered(
-    func: Callable[[Targ], Tresult],
-    iterable: Iterable[Targ],
+    func: Callable[[TypeArgument], TypeResult],
+    iterable: Iterable[TypeArgument],
     *,
     func_args: tuple | None = None,
     func_kwargs: dict | None = None,
@@ -299,7 +299,7 @@ def iter_unordered(
     max_workers: int | None = None,
     rank0_node_only: bool = False,
     comm: Comm = COMM,
-) -> Iterator[Tresult]:
+) -> Iterator[TypeResult]:
     """
     Asynchronous iterator that maps arguments to a worker function, choosing
     the parallelism mechanism (MPI/multiprocessing) automatically.
@@ -364,7 +364,7 @@ class Broadcastable(ABC):
             )
 
 
-def new_uninitialised(cls: type[Tbroadcast]) -> Tbroadcast:
+def new_uninitialised(cls: type[TypeBroadcastable]) -> TypeBroadcastable:
     """Create an empty instance of the class with all attributes initialised to
     ``None``."""
     inst = cls.__new__(cls)
@@ -403,7 +403,7 @@ def get_bcast_method(inst: T, comm: Comm = COMM) -> Callable[[T], T]:
     return comm.bcast(bcast_method, root=0)
 
 
-def bcast_instance(inst: Tbroadcast, *, comm: Comm = COMM) -> Tbroadcast:
+def bcast_instance(inst: TypeBroadcastable, *, comm: Comm = COMM) -> TypeBroadcastable:
     """Broadcast an instance of a subclass of ``Broadcastable`` to all non-root
     ranks. Instance may have any value on non-root ranks."""
     if not use_mpi():

@@ -22,8 +22,9 @@ dependencies = [
     "pyarrow",
     "pyyaml",
     "scipy",
+    "StrEnum",  # enum.StrEnum python 3.11+ only
     "treecorr>=4.3",
-    "typing-extensions",  # for Self, as long as python 3.10 is supported
+    "typing-extensions",  # typing.Self python 3.11+ only
 ]
 
 [build-system]

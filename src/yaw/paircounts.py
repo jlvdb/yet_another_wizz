@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import NDArray
 
-    from yaw.containers import Tindexing
+    from yaw.containers import TypeSliceIndex
 
 __all__ = [
     "PatchedTotals",
@@ -34,6 +34,7 @@ __all__ = [
 class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadcastable):
     """Meta-class for correlation function pair counts, recorded in bins of
     redshift and for pairs of patches."""
+
     __slots__ = ()
 
     @property
@@ -157,6 +158,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             Whether the pair counts originate from an autocorrelation
             measurement.
     """
+
     __slots__ = ("binning", "auto", "totals1", "totals2")
 
     binning: Binning
@@ -225,7 +227,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def _make_bin_slice(self, item: Tindexing) -> PatchedTotals:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedTotals:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
@@ -233,7 +235,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             binning, self.totals1[item], self.totals2[item], auto=self.auto
         )
 
-    def _make_patch_slice(self, item: Tindexing) -> PatchedTotals:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedTotals:
         if isinstance(item, int):
             item = [item]
         return type(self)(
@@ -285,12 +287,13 @@ class PatchedCounts(BinwisePatchwiseArray):
             Array of with pair counts in bins of redshift between combinations
             of patch pairs from both catalos, numpy array with shape
             (:obj:`num_bins`, :obj:`num_patches`, :obj:`num_patches`).
-    
+
     Keyword Args:
         auto:
             Whether this instance is intended for an autocorrelation
             measurement.
     """
+
     __slots__ = ("binning", "counts", "auto")
 
     binning: Binning
@@ -327,7 +330,7 @@ class PatchedCounts(BinwisePatchwiseArray):
             num_patches:
                 The number of patches in the input catalogs used for the
                 correlation measurement.
-        
+
         Keyword Args:
             auto:
                 Whether this instance is intended for an autocorrelation
@@ -413,14 +416,14 @@ class PatchedCounts(BinwisePatchwiseArray):
 
         return type(self)(self.binning, self.counts * other, auto=self.auto)
 
-    def _make_bin_slice(self, item: Tindexing) -> PatchedCounts:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedCounts:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
 
         return type(self)(binning, self.counts[item], auto=self.auto)
 
-    def _make_patch_slice(self, item: Tindexing) -> PatchedCounts:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedCounts:
         if isinstance(item, int):
             item = [item]
 
@@ -471,6 +474,7 @@ class NormalisedCounts(BinwisePatchwiseArray):
         totals:
             Container of sum of weights in patches of catalogs 1 and 2.
     """
+
     __slots__ = ("counts", "totals")
 
     counts: PatchedCounts
@@ -549,12 +553,12 @@ class NormalisedCounts(BinwisePatchwiseArray):
     def __mul__(self, other: Any) -> NormalisedCounts:
         return type(self)(self.count * other, self.total)
 
-    def _make_bin_slice(self, item: Tindexing) -> NormalisedCounts:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
         counts = self.counts.bins[item]
         totals = self.totals.bins[item]
         return type(self)(counts, totals)
 
-    def _make_patch_slice(self, item: Tindexing) -> NormalisedCounts:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
         counts = self.counts.patches[item]
         totals = self.totals.patches[item]
         return type(self)(counts, totals)
@@ -566,7 +570,7 @@ class NormalisedCounts(BinwisePatchwiseArray):
 
         I.e. the first array element contains the data associated with the first
         redshift bin and pairing the first patch with itself.
-        
+
         .. note::
             The normalisation is computed from all patches and not per patch.
 

@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 class PatchPair:
     """Container for arguments of ``process_patch_pair()`` pair counting
     function."""
+
     id1: int
     id2: int
     patch1: Patch
@@ -45,6 +46,7 @@ class PatchPair:
 class PatchPaircounts:
     """Container for results from ``process_patch_pair()`` pair counting
     function."""
+
     id1: int
     id2: int
     totals1: NDArray
@@ -122,7 +124,7 @@ def get_max_angle(
     """
     Compute the maximum angular pair separation to expect in a correlation
     measurement.
-    
+
     Used to determine which patch pairs need to be run through the pair counting
     function. The distance is computed from the cosmological model with the
     largest configured scale. The redshift is either the lowest redshift bin
@@ -141,7 +143,7 @@ def get_max_angle(
 class PatchLinkage:
     """
     Helper class to optimise the pair counting.
-    
+
     Given a configuration and a dictionary of patch links. Two patches are
     considered `linked` if they are separated by less than the sum of their
     maximum angular sepearation when counting pairs and their patch radii.
@@ -154,6 +156,7 @@ class PatchLinkage:
     given input catalogs. This ensures that all catalog pairs (DD, DR, RD, RR)
     share a consistent patch linkage.
     """
+
     def __init__(self, config: Configuration, patch_links: dict[int, set[int]]) -> None:
         self.config = config
         self.patch_links = patch_links
@@ -287,7 +290,7 @@ class PatchLinkage:
         Compute pair counts between the patches of two catalogs.
 
         Omit ``optional_catalog`` for an autocorrelation measurement.
- 
+
         - Record the sum of weights per redshift bin and patch for catalog1.
         - Record the sum of weights per redshift bin and patch for catalog2.
         - For each correlation scale, record the matrix of pair counts
@@ -348,7 +351,10 @@ class PatchLinkage:
             return [None for _ in range(self.config.scales.num_scales)]
         else:
             return self.count_pairs(
-                main_catalog, *optional_catalog, progress=progress, max_workers=max_workers
+                main_catalog,
+                *optional_catalog,
+                progress=progress,
+                max_workers=max_workers,
             )
 
 
@@ -377,7 +383,7 @@ def autocorrelate(
             :obj:`~yaw.Catalog` holding the data sample.
         random:
             :obj:`~yaw.Catalog` holding the random sample.
-    
+
     Keyword Args:
         count_rr:
             Whether to count the random-random pair counts, which enables using
@@ -462,7 +468,7 @@ def crosscorrelate(
             :obj:`~yaw.Catalog` holding the reference sample data.
         unknown:
             :obj:`~yaw.Catalog` holding the unknown sample data.
-    
+
     Keyword Args:
         ref_rand:
             :obj:`~yaw.Catalog` holding the reference random data (optional).

@@ -13,18 +13,18 @@ from yaw.catalog.writers.base import (
     split_into_patches,
     write_patches_unthreaded,
 )
-from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates, parallel
 from yaw.utils.logging import Indicator
 from yaw.utils.parallel import EndOfQueue
 
 if TYPE_CHECKING:
     from multiprocessing import Queue
+    from pathlib import Path
 
     from typing_extensions import Self
 
-    from yaw.catalog.containers import Tcenters
-    from yaw.catalog.readers import BaseReader, DataChunk
+    from yaw.catalog.containers import TypePatchCenters
+    from yaw.catalog.generators import ChunkGenerator, DataChunk
 
 
 class ChunkProcessingTask:
@@ -48,7 +48,7 @@ class ChunkProcessingTask:
 @dataclass
 class WriterProcess(AbstractContextManager):
     patch_queue: Queue[dict[int, PatchData] | EndOfQueue]
-    cache_directory: Tpath
+    cache_directory: Path | str
     has_weights: bool = field(kw_only=True)
     has_redshifts: bool = field(kw_only=True)
     overwrite: bool = field(default=True, kw_only=True)
@@ -83,9 +83,9 @@ class WriterProcess(AbstractContextManager):
 
 
 def write_patches(
-    path: Tpath,
-    reader: BaseReader,
-    patch_centers: Tcenters,
+    path: Path | str,
+    generator: ChunkGenerator,
+    patch_centers: TypePatchCenters,
     *,
     overwrite: bool,
     progress: bool,
@@ -98,7 +98,7 @@ def write_patches(
         logger.debug("running preprocessing sequentially")
         return write_patches_unthreaded(
             path,
-            reader,
+            generator,
             patch_centers,
             overwrite=overwrite,
             progress=progress,
@@ -109,7 +109,7 @@ def write_patches(
         logger.debug("running preprocessing on %d workers", max_workers)
 
     with (
-        reader,
+        generator,
         multiprocessing.Manager() as manager,
         multiprocessing.Pool(max_workers) as pool,
     ):
@@ -122,12 +122,12 @@ def write_patches(
         with WriterProcess(
             patch_queue,
             cache_directory=path,
-            has_weights=reader.has_weights,
-            has_redshifts=reader.has_redshifts,
+            has_weights=generator.has_weights,
+            has_redshifts=generator.has_redshifts,
             overwrite=overwrite,
             buffersize=buffersize,
         ):
-            chunk_iter = Indicator(reader) if progress else iter(reader)
+            chunk_iter = Indicator(generator) if progress else iter(generator)
             for chunk in chunk_iter:
                 pool.map(chunk_processing_task, chunk.split(max_workers))
 

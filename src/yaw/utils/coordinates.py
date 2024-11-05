@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import ArrayLike, NDArray
 
-    Tarray = TypeVar("Tarray", bound="CustomNumpyArray")
+    TypeArray = TypeVar("TypeArray", bound="CustomNumpyArray")
 
 __all__ = [
     "AngularCoordinates",
@@ -29,6 +29,7 @@ def sgn(val: ArrayLike) -> ArrayLike:
 class CustomNumpyArray(Iterable, Sized):
     """Meta-class that provides a interface for numpy array routines. Internal
     data is stored as a numpy array in an attribute called ``data``."""
+
     __slots__ = ("data",)
 
     data: NDArray
@@ -44,14 +45,14 @@ class CustomNumpyArray(Iterable, Sized):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self: Tarray, idx: ArrayLike) -> Tarray:
+    def __getitem__(self: TypeArray, idx: ArrayLike) -> TypeArray:
         return type(self)(self.data[idx])
 
-    def __iter__(self: Tarray) -> Iterator[Tarray]:
+    def __iter__(self: TypeArray) -> Iterator[TypeArray]:
         for i in range(len(self)):
             yield self[i]
 
-    def copy(self: Tarray) -> Tarray:
+    def copy(self: TypeArray) -> TypeArray:
         """Create a copy of this instance."""
         return type(self)(self.data.copy())
 
@@ -74,6 +75,7 @@ class AngularCoordinates(CustomNumpyArray):
             Input coordinates in radian that are broadcastable to a 2-dim numpy
             array with shape `(2, N)`.
     """
+
     data: NDArray
     """Corrdinate array with shape `(N, 2)`."""
 
@@ -125,7 +127,7 @@ class AngularCoordinates(CustomNumpyArray):
         """
         Convert angular to Eudlidean (`xyz`) coordinates.
 
-        Coordinates are projected onto the unit-sphere.        
+        Coordinates are projected onto the unit-sphere.
 
         Returns:
             2-dim numpy array with shape `(3, N)`.
@@ -174,7 +176,7 @@ class AngularCoordinates(CustomNumpyArray):
         """
         Compute the angular distance to another set of angular coordinates.
 
-        The coordinates must have either the same length or 
+        The coordinates must have either the same length or
 
         Args:
             weights:
@@ -210,6 +212,7 @@ class AngularDistances(CustomNumpyArray):
             Input distances in radian that are broadcastable to a 1-dim numpy
             array.
     """
+
     data: NDArray
     """Distance array with length `N`."""
 

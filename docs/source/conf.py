@@ -81,7 +81,7 @@ html_theme_options = {
     "announcement": f"<p>Version 3.0 released!</p>",
 }
 html_sidebars = {
-    "**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
+    "**": ["sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
 }
 html_context = {
     "default_mode": "auto",

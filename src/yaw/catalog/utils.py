@@ -2,21 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from itertools import compress
-from typing import TYPE_CHECKING, get_args
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.containers import Tpath
 from yaw.utils import AngularCoordinates
 
 if TYPE_CHECKING:
     from io import TextIOBase
-    from pathlib import Path
     from typing import Any, Generator, NewType
 
     from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-    Tpids = NewType("Tpids", NDArray[np.int16])
+    TypePatchIDs = NewType("TypePatchIDs", NDArray[np.int16])
 
 
 DATA_ATTRIBUTES = ("ra", "dec", "weights", "redshifts")
@@ -56,7 +55,7 @@ class PatchIDs:
             raise ValueError(f"'patch_ids' must be in range [{min_id}, {max_id}]")
 
     @staticmethod
-    def parse(patch_ids: ArrayLike, num_expect: int = -1) -> Tpids:
+    def parse(patch_ids: ArrayLike, num_expect: int = -1) -> TypePatchIDs:
         patch_ids = np.atleast_1d(patch_ids)
 
         PatchIDs.validate(patch_ids)
@@ -101,8 +100,8 @@ class PatchData:
         return cls(data)
 
     @classmethod
-    def from_file(cls, file: Tpath | TextIOBase) -> PatchData:
-        if isinstance(file, get_args(Tpath)):
+    def from_file(cls, file: Path | str | TextIOBase) -> PatchData:
+        if isinstance(file, (Path, str)):
             file = open(file, mode="rb")
         with file:
             has_weights, has_redshifts = cls.read_header(file)
@@ -123,8 +122,8 @@ class PatchData:
         has_redshifts = bool(header_int & (1 << 3))
         return has_weights, has_redshifts
 
-    def to_file(self, file: Tpath | TextIOBase) -> None:
-        if isinstance(file, get_args(Tpath)):
+    def to_file(self, file: Path | str | TextIOBase) -> None:
+        if isinstance(file, (Path, str)):
             file = open(file, mode="wb")
         with file:
             self.write_header(

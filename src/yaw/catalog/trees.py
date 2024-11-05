@@ -9,7 +9,8 @@ import numpy as np
 from scipy.spatial import KDTree
 
 from yaw.catalog.utils import PatchData, groupby
-from yaw.containers import default_closed, parse_binning
+from yaw.containers import parse_binning
+from yaw.options import Closed
 from yaw.utils import AngularDistances
 
 if TYPE_CHECKING:
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.catalog.containers import Patch
-    from yaw.containers import Tclosed
     from yaw.utils import AngularCoordinates
 
 __all__ = [
@@ -156,7 +156,7 @@ def build_trees(
     patch: Patch,
     binning: NDArray | None,
     *,
-    closed: str,
+    closed: Closed,
     leafsize: int,
 ) -> tuple[AngularTree]:
     if binning is not None and not patch.has_redshifts:
@@ -168,7 +168,7 @@ def build_trees(
 
     else:
         binning = np.asarray(binning)
-        bin_idx = np.digitize(chunk.redshifts, binning, right=(closed == "right"))
+        bin_idx = np.digitize(chunk.redshifts, binning, right=(closed == Closed.right))
 
         trees = []
         for i, bin_array in groupby(bin_idx, chunk.data):
@@ -199,11 +199,12 @@ class BinnedTrees(Iterable):
         patch: Patch,
         binning: NDArray | None = None,
         *,
-        closed: Tclosed = default_closed,
+        closed: Closed | str = Closed.right,
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:
         binning = parse_binning(binning, optional=True)
+        closed = Closed(closed)
 
         try:
             assert not force

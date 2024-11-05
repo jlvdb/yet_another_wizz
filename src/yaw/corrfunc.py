@@ -26,9 +26,9 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import NDArray
 
-    from yaw.containers import Tindexing, Tpath
+    from yaw.containers import TypeSliceIndex
 
-    Tcorr = TypeVar("Tcorr", bound="CorrData")
+    TypeCorrData = TypeVar("TypeCorrData", bound="CorrData")
 
 __all__ = [
     "CorrFunc",
@@ -44,6 +44,7 @@ class EstimatorError(Exception):
 
 def named(key):
     """Attatch a ``.name`` attribute to a function."""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -118,6 +119,7 @@ class CorrFunc(
         EstimatorError:
             If none of the optional pair counts are provided.
     """
+
     __slots__ = ("dd", "dr", "rd", "rr")
 
     dd: NormalisedCounts
@@ -192,7 +194,7 @@ class CorrFunc(
                 count.to_hdf(group)
 
     @classmethod
-    def from_file(cls, path: Tpath) -> CorrFunc:
+    def from_file(cls, path: Path | str) -> CorrFunc:
         new = None
 
         if parallel.on_root():
@@ -202,7 +204,7 @@ class CorrFunc(
 
         return bcast_instance(new)
 
-    def to_file(self, path: Tpath) -> None:
+    def to_file(self, path: Path | str) -> None:
         if parallel.on_root():
             logger.info("writing %s to: %s", type(self).__name__, path)
 
@@ -252,11 +254,11 @@ class CorrFunc(
         kwargs = {attr: counts * other for attr, counts in self.to_dict().items()}
         return type(self).from_dict(kwargs)
 
-    def _make_bin_slice(self, item: Tindexing) -> CorrFunc:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> CorrFunc:
         kwargs = {attr: counts.bins[item] for attr, counts in self.to_dict().items()}
         return type(self).from_dict(kwargs)
 
-    def _make_patch_slice(self, item: Tindexing) -> CorrFunc:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> CorrFunc:
         kwargs = {attr: counts.patches[item] for attr, counts in self.to_dict().items()}
         return type(self).from_dict(kwargs)
 
@@ -319,6 +321,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
             2-dim array containing `M` jackknife samples of the data, expected
             to have shape (:obj:`num_samples`, :obj:`num_bins`).
     """
+
     __slots__ = ("binning", "data", "samples")
 
     @property
@@ -338,7 +341,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
         return f"correlation function covariance matrix ({n}x{n})"
 
     @classmethod
-    def from_files(cls: type[Tcorr], path_prefix: Tpath) -> Tcorr:
+    def from_files(cls: type[TypeCorrData], path_prefix: Path | str) -> TypeCorrData:
         """
         Restore the class instance from a set of ASCII files.
 
@@ -363,7 +366,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
         return bcast_instance(new)
 
-    def to_files(self, path_prefix: Tpath) -> None:
+    def to_files(self, path_prefix: Path | str) -> None:
         """
         Serialise the class instance into a set of ASCII files.
 
@@ -397,7 +400,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 zright=self.binning.right,
                 data=self.data,
                 error=self.error,
-                closed=self.binning.closed,
+                closed=str(self.binning.closed),
             )
 
             io.write_samples(
@@ -406,7 +409,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 zleft=self.binning.left,
                 zright=self.binning.right,
                 samples=self.samples,
-                closed=self.binning.closed,
+                closed=str(self.binning.closed),
             )
 
             # write covariance for convenience only, it is not required to restore

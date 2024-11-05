@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Literal, TypeVar, Union, get_args
+from typing import TYPE_CHECKING, Generic, TypeVar, Union
 
 import h5py
 import numpy as np
@@ -12,6 +12,7 @@ import yaml
 from astropy import cosmology, units
 from numpy.exceptions import AxisError
 
+from yaw.options import BinMethodAuto, Closed, CovKind, PlotStyle
 from yaw.utils import io, plot
 from yaw.utils.cosmology import get_default_cosmology
 
@@ -21,40 +22,27 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import ArrayLike, NDArray
 
-    from yaw.utils.cosmology import Tcosmology
+    from yaw.utils.cosmology import TypeCosmology
     from yaw.utils.plot import Axis
 
     # meta-class types
-    Tserialise = TypeVar("Tdict", bound="Serialisable")
-    Tyaml = TypeVar("Tyaml", bound="YamlSerialisable")
-    Thdf = TypeVar("Thdf", bound="HdfSerializable")
-    Tascii = TypeVar("Tascii", bound="AsciiSerializable")
-    Tbinned = TypeVar("Tbinned", bound="BinwiseData")
-    Tpatched = TypeVar("Tpatched", bound="PatchwiseData")
+    TypeSerialisable = TypeVar("TypeSerialisable", bound="Serialisable")
+    TypeYamlSerialisable = TypeVar("TypeYamlSerialisable", bound="YamlSerialisable")
+    TypeHdfSerializable = TypeVar("TypeHdfSerializable", bound="HdfSerializable")
+    TypeAsciiSerializable = TypeVar("TypeAsciiSerializable", bound="AsciiSerializable")
+    TypeBinwiseData = TypeVar("TypeBinwiseData", bound="BinwiseData")
+    TypePatchwiseData = TypeVar("TypePatchwiseData", bound="PatchwiseData")
 
     # container class types
-    Tbinning = TypeVar("Tbinning", bound="Binning")
-    Tsampled = TypeVar("Tsampled", bound="SampledData")
+    TypeBinning = TypeVar("TypeBinning", bound="Binning")
+    TypeSampledData = TypeVar("TypeSampledData", bound="SampledData")
 
     # concrete types
-    Tindexing = Union[int, slice]
-Tpath = Union[Path, str]  # used with get_args
+    TypeSliceIndex = Union[int, slice]
 
 # generic types
-Tkey = TypeVar("Tkey")
-Tvalue = TypeVar("Tvalue")
-
-# literals (may be used with get_args to verify valid values)
-Tclosed = Literal["left", "right"]
-default_closed = "right"
-
-Tbin_method = Literal["linear", "comoving", "logspace"]
-default_bin_method = "linear"
-
-Tcov_kind = Literal["full", "diag", "var"]
-default_cov_kind = "full"
-
-Tstyle = Literal["point", "line", "step"]
+TypeKey = TypeVar("TypeKey")
+TypeValue = TypeVar("TypeValue")
 
 __all__ = [
     "Binning",
@@ -67,7 +55,9 @@ class Serialisable(ABC):
     dictionaries."""
 
     @classmethod
-    def from_dict(cls: type[Tserialise], the_dict: dict[str, Any]) -> Tserialise:
+    def from_dict(
+        cls: type[TypeSerialisable], the_dict: dict[str, Any]
+    ) -> TypeSerialisable:
         """
         Restore the class instance from a python dictionary.
 
@@ -98,7 +88,9 @@ class YamlSerialisable(Serialisable):
     YAML files."""
 
     @classmethod
-    def from_file(cls: type[Tyaml], path: Tpath) -> Tyaml:
+    def from_file(
+        cls: type[TypeYamlSerialisable], path: Path | str
+    ) -> TypeYamlSerialisable:
         """
         Restore the class instance from a YAML file.
 
@@ -114,7 +106,7 @@ class YamlSerialisable(Serialisable):
             kwarg_dict = yaml.safe_load(f)
         return cls.from_dict(kwarg_dict)
 
-    def to_file(self, path: Tpath) -> None:
+    def to_file(self, path: Path | str) -> None:
         """
         Serialise the class instances into a YAML file.
 
@@ -133,7 +125,9 @@ class HdfSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_hdf(cls: type[Thdf], source: h5py.Group) -> Thdf:
+    def from_hdf(
+        cls: type[TypeHdfSerializable], source: h5py.Group
+    ) -> TypeHdfSerializable:
         """
         Restore the class instance from a specific HDF5-file group.
 
@@ -158,7 +152,9 @@ class HdfSerializable(ABC):
         pass
 
     @classmethod
-    def from_file(cls: type[Thdf], path: Tpath) -> Thdf:
+    def from_file(
+        cls: type[TypeHdfSerializable], path: Path | str
+    ) -> TypeHdfSerializable:
         """
         Restore the class instance from a HDF5 file.
 
@@ -173,7 +169,7 @@ class HdfSerializable(ABC):
         with h5py.File(str(path)) as f:
             return cls.from_hdf(f)
 
-    def to_file(self, path: Tpath) -> None:
+    def to_file(self, path: Path | str) -> None:
         """
         Serialise the class instances into a HDF5 file.
 
@@ -192,7 +188,9 @@ class AsciiSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_files(cls: type[Tascii], path_prefix: Tpath) -> Tascii:
+    def from_files(
+        cls: type[TypeAsciiSerializable], path_prefix: Path | str
+    ) -> TypeAsciiSerializable:
         """
         Restore the class instance from a set of ASCII files.
 
@@ -208,7 +206,7 @@ class AsciiSerializable(ABC):
         pass
 
     @abstractmethod
-    def to_files(self, path_prefix: Tpath) -> None:
+    def to_files(self, path_prefix: Path | str) -> None:
         """
         Serialise the class instance into a set of ASCII files.
 
@@ -224,7 +222,7 @@ class AsciiSerializable(ABC):
         pass
 
 
-class Indexer(Generic[Tkey, Tvalue], Iterator):
+class Indexer(Generic[TypeKey, TypeValue], Iterator):
     """
     Indexing helper that implements indexing, slicing, and iteration over items
     for a class that does not natively support this.
@@ -232,19 +230,20 @@ class Indexer(Generic[Tkey, Tvalue], Iterator):
     Takes a single argument, a function that takes a slice or list of indices as
     input and creates a new instance of the class with the subset of its data.
     """
+
     __slots__ = ("_callback", "_iter_state")
 
-    def __init__(self, slice_callback: Callable[[Tkey], Tvalue]) -> None:
+    def __init__(self, slice_callback: Callable[[TypeKey], TypeValue]) -> None:
         self._callback = slice_callback
         self._iter_state = 0
 
     def __repr__(self) -> str:
         return f"{type(self)}[]"
 
-    def __getitem__(self, item: Tkey) -> Tvalue:
+    def __getitem__(self, item: TypeKey) -> TypeValue:
         return self._callback(item)
 
-    def __next__(self) -> Tvalue:
+    def __next__(self) -> TypeValue:
         try:
             item = self._callback(self._iter_state)
         except IndexError as err:
@@ -253,7 +252,7 @@ class Indexer(Generic[Tkey, Tvalue], Iterator):
         self._iter_state += 1
         return item
 
-    def __iter__(self) -> Iterator[Tvalue]:
+    def __iter__(self) -> Iterator[TypeValue]:
         self._iter_state = 0
         return self
 
@@ -268,13 +267,15 @@ class PatchwiseData(ABC):
         pass
 
     @abstractmethod
-    def _make_patch_slice(self: Tpatched, item: Tindexing) -> Tpatched:
+    def _make_patch_slice(
+        self: TypePatchwiseData, item: TypeSliceIndex
+    ) -> TypePatchwiseData:
         """Factory method called by :meth:`patches` to create a new instance
         from a subset of patches."""
         pass
 
     @property
-    def patches(self: Tpatched) -> Indexer[Tindexing, Tpatched]:
+    def patches(self: TypePatchwiseData) -> Indexer[TypeSliceIndex, TypePatchwiseData]:
         """
         Indexing helper to create a new instance from a subset of patches.
 
@@ -333,13 +334,13 @@ class BinwiseData(ABC):
         return len(self.binning)
 
     @abstractmethod
-    def _make_bin_slice(self: Tbinned, item: Tindexing) -> Tbinned:
+    def _make_bin_slice(self: TypeBinwiseData, item: TypeSliceIndex) -> TypeBinwiseData:
         """Factory method called by :meth:`bins` to create a new instance
         from a subset of bins."""
         pass
 
     @property
-    def bins(self: Tbinned) -> Indexer[Tindexing, Tbinned]:
+    def bins(self: TypeBinwiseData) -> Indexer[TypeSliceIndex, TypeBinwiseData]:
         """
         Indexing helper to create a new instance from a subset of patches.
 
@@ -351,7 +352,7 @@ class BinwiseData(ABC):
             the previous bin to encompass all omitted bins, e.g. selecting
             the first and third bin of ``(0, 1], (1, 2], (2, 3]`` will result
             in a binning with edges ``(0, 2], (2, 3]``.
-            
+
             Slicing is unaffected since it always results in a contiguous subset
             of bins.
         """
@@ -440,23 +441,21 @@ class Binning(HdfSerializable):
             Indicating which side of the bin edges is a closed interval, must be
             ``left`` or ``right`` (default).
     """
+
     __slots__ = ("edges", "closed")
 
     edges: NDArray
     """Array containing the edges of all bins, including the rightmost edge."""
-    closed: Tclosed
+    closed: Closed
     """Indicating which side of the bin edges is a closed interval, either
     ``left`` or ``right``."""
 
-    def __init__(self, edges: ArrayLike, closed: Tclosed = default_closed) -> None:
-        if closed not in get_args(Tclosed):
-            raise ValueError("invalid value for 'closed'")
-
+    def __init__(self, edges: ArrayLike, closed: Closed | str = Closed.right) -> None:
         self.edges = parse_binning(edges)
-        self.closed = closed
+        self.closed = Closed(closed)
 
     @classmethod
-    def from_hdf(cls: type[Tbinning], source: Group) -> Tbinning:
+    def from_hdf(cls: type[TypeBinning], source: Group) -> TypeBinning:
         # ignore "version" since there is no equivalent in legacy
         edges = source["edges"][:]
         closed = source["closed"][()].decode("utf-8")
@@ -464,7 +463,7 @@ class Binning(HdfSerializable):
 
     def to_hdf(self, dest: Group) -> None:
         io.write_version_tag(dest)
-        dest.create_dataset("closed", data=self.closed)
+        dest.create_dataset("closed", data=str(self.closed))
         dest.create_dataset("edges", data=self.edges, **io.HDF_COMPRESSION)
 
     def __repr__(self) -> str:
@@ -484,7 +483,7 @@ class Binning(HdfSerializable):
     def __len__(self) -> int:
         return len(self.edges) - 1
 
-    def __getitem__(self, item: Tindexing) -> Binning:
+    def __getitem__(self, item: TypeSliceIndex) -> Binning:
         left = np.atleast_1d(self.left[item])
         right = np.atleast_1d(self.right[item])
         edges = np.append(left, right[-1])
@@ -520,7 +519,7 @@ class Binning(HdfSerializable):
         """Array containing the width of the bins."""
         return np.diff(self.edges)
 
-    def copy(self: Tbinning) -> Tbinning:
+    def copy(self: TypeBinning) -> TypeBinning:
         """Create a copy of this instance."""
         return Binning(self.edges.copy(), closed=str(self.closed))
 
@@ -528,18 +527,29 @@ class Binning(HdfSerializable):
 class RedshiftBinningFactory:
     """Simple factory class to create redshift binnings. Takes an optional
     cosmology as input for distance conversions."""
-    def __init__(self, cosmology: Tcosmology | None = None) -> None:
+
+    def __init__(self, cosmology: TypeCosmology | None = None) -> None:
         self.cosmology = cosmology or get_default_cosmology()
 
     def linear(
-        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+        self,
+        min: float,
+        max: float,
+        num_bins: int,
+        *,
+        closed: Closed | str = Closed.right,
     ) -> Binning:
         """Creates a linear redshift binning between a min and max redshift."""
         edges = np.linspace(min, max, num_bins + 1)
         return Binning(edges, closed=closed)
 
     def comoving(
-        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+        self,
+        min: float,
+        max: float,
+        num_bins: int,
+        *,
+        closed: Closed | str = Closed.right,
     ) -> Binning:
         """Creates a binning linear in comoving distance between a min and max
         redshift."""
@@ -552,7 +562,12 @@ class RedshiftBinningFactory:
         return Binning(edges.value, closed=closed)
 
     def logspace(
-        self, min: float, max: float, num_bins: int, *, closed: Tclosed = default_closed
+        self,
+        min: float,
+        max: float,
+        num_bins: int,
+        *,
+        closed: Closed | str = Closed.right,
     ) -> Binning:
         """Creates a binning linear in 1+ln(z) between a min and max redshift."""
         log_min, log_max = np.log([1.0 + min, 1.0 + max])
@@ -560,19 +575,16 @@ class RedshiftBinningFactory:
         return Binning(edges, closed=closed)
 
     def get_method(
-        self, method: Tbin_method = default_bin_method
+        self, method: BinMethodAuto | str = BinMethodAuto.linear
     ) -> Callable[..., Binning]:
         """Use a string identifier to select the desired factory method."""
-        if method not in get_args(Tbin_method):
-            raise ValueError(f"invalid binning method '{method}'")
-
-        return getattr(self, method)
+        return getattr(self, BinMethodAuto(method))
 
 
 def cov_from_samples(
     samples: NDArray | Sequence[NDArray],
     rowvar: bool = False,
-    kind: Tcov_kind = default_cov_kind,
+    kind: CovKind | str = CovKind.full,
 ) -> NDArray:
     """Compute a joint covariance from a sequence of data samples.
 
@@ -593,8 +605,7 @@ def cov_from_samples(
             Determines the kind of covariance computed, can be either of
             ``full`` (default), ``diag``, or ``var`` (main diagonal only).
     """
-    if kind not in get_args(Tcov_kind):
-        raise ValueError(f"invalid covariance kind '{kind}'")
+    kind = CovKind(kind)
 
     ax_samples = 1 if rowvar else 0
     ax_observ = 0 if rowvar else 1
@@ -638,7 +649,7 @@ class SampledData(BinwiseData):
     Implements convenience method to estimate the standard error, covariance
     and correlation matrix, and plotting methods. Additionally implements
     ``len()``, comparison with the ``==`` operator and addition with
-    ``+``/``-``.    
+    ``+``/``-``.
 
     Args:
         binning:
@@ -648,8 +659,9 @@ class SampledData(BinwiseData):
         samples:
             2-dim array containing `M` jackknife samples of the data, expected
             to have shape `(M, N)`.
-            
+
     """
+
     __slots__ = ("binning", "data", "samples")
 
     binning: Binning
@@ -737,7 +749,7 @@ class SampledData(BinwiseData):
             and np.array_equal(self.samples, other.samples, equal_nan=True)
         )
 
-    def __add__(self, other: Any) -> Tsampled:
+    def __add__(self, other: Any) -> TypeSampledData:
         """Add data and samples of other to self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -750,7 +762,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def __sub__(self, other: Any) -> Tsampled:
+    def __sub__(self, other: Any) -> TypeSampledData:
         """Subtract data and samples of other from self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -763,7 +775,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def _make_bin_slice(self: Tsampled, item: Tindexing) -> Tsampled:
+    def _make_bin_slice(self: TypeSampledData, item: TypeSliceIndex) -> TypeSampledData:
         if not isinstance(item, (int, np.integer, slice)):
             raise TypeError("item selector must be a slice or integer type")
 
@@ -813,14 +825,14 @@ class SampledData(BinwiseData):
 
         return True
 
-    _default_plot_style = "point"
+    _default_plot_style = PlotStyle.point
 
     def plot(
         self,
         *,
         color: str | NDArray | None = None,
         label: str | None = None,
-        style: Tstyle | None = None,
+        style: PlotStyle | str | None = None,
         ax: Axis | None = None,
         xoffset: float = 0.0,
         plot_kwargs: dict[str, Any] | None = None,
@@ -838,7 +850,7 @@ class SampledData(BinwiseData):
             style:
                 Plotting style, must be either of
                   - ``point``: point with error bar,
-                  - ``line``: line with tranparent shade marking the errors, or
+                  - ``line``: line with transparent shade marking the errors, or
                   - ``step``: same as ``line``, but using a step-plot to
                     emulate a histgram-style visualisation.
             ax:
@@ -854,7 +866,7 @@ class SampledData(BinwiseData):
                 Whether to scale the data and uncertainty by the inverse of the
                 redshift bin width.
         """
-        style = style or self._default_plot_style
+        style = PlotStyle(style or self._default_plot_style)
         plot_kwargs = plot_kwargs or {}
         plot_kwargs.update(dict(color=color, label=label))
 
