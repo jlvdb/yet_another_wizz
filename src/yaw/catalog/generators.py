@@ -99,7 +99,7 @@ class ChunkGenerator(AbstractContextManager, Sized, Iterator[DataChunk]):
         pass
 
 
-class RandomIterator(ChunkGenerator):
+class RandomChunkGenerator(ChunkGenerator):
     def __init__(
         self, generator: RandomGenerator, num_randoms: int, chunksize: int | None = None
     ) -> None:
@@ -211,8 +211,8 @@ class RandomGenerator(ABC):
 
     def get_iterator(
         self, num_randoms: int, chunksize: int | None = None
-    ) -> RandomIterator:
-        return RandomIterator(self, num_randoms, chunksize)
+    ) -> RandomChunkGenerator:
+        return RandomChunkGenerator(self, num_randoms, chunksize)
 
 
 class BoxGenerator(RandomGenerator):
