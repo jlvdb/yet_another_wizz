@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod
-from collections.abc import Iterable, Iterator, Sized
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,8 +12,8 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import parquet
 
-from yaw.catalog.utils import PatchData
 from yaw.catalog.generators import CHUNKSIZE, ChunkGenerator, DataChunk
+from yaw.catalog.utils import PatchData
 from yaw.utils import parallel
 from yaw.utils.logging import long_num_format
 
@@ -377,7 +377,9 @@ class FitsReader(FileReader):
             self._hdu = self._file[hdu]
 
             super()._init_source(path)
-            issue_io_log(self.num_records, self.num_chunks, f"from FITS file: {self.path}")
+            issue_io_log(
+                self.num_records, self.num_chunks, f"from FITS file: {self.path}"
+            )
 
     @property
     def num_records(self) -> int:
@@ -413,7 +415,9 @@ class HDFReader(FileReader):
             self._file = h5py.File(path, mode="r")
 
             super()._init_source(path)
-            issue_io_log(self.num_records, self.num_chunks, f"from HDF5 file: {self.path}")
+            issue_io_log(
+                self.num_records, self.num_chunks, f"from HDF5 file: {self.path}"
+            )
 
     @property
     def num_records(self) -> int:

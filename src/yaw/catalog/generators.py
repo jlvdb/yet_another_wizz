@@ -10,9 +10,8 @@ from yaw.catalog.utils import PatchData, PatchIDs
 from yaw.utils import parallel
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
-
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.catalog.utils import TypePatchIDs
 
@@ -109,8 +108,12 @@ class BoxGenerator(ChunkGenerator):
         chunksize: int | None = None,
         seed: int = 12345,
     ) -> None:
-        self.x_min, self.y_min = self._sky2cylinder(np.deg2rad(ra_min), np.deg2rad(dec_min))
-        self.x_max, self.y_max = self._sky2cylinder(np.deg2rad(ra_max), np.deg2rad(dec_max))
+        self.x_min, self.y_min = self._sky2cylinder(
+            np.deg2rad(ra_min), np.deg2rad(dec_min)
+        )
+        self.x_max, self.y_max = self._sky2cylinder(
+            np.deg2rad(ra_max), np.deg2rad(dec_max)
+        )
 
         self.weights = weights
         self.redshifts = redshifts
@@ -158,11 +161,15 @@ class BoxGenerator(ChunkGenerator):
 
     @property
     def num_source_values(self) -> int:
-        length = [len(attr) for attr in (self.weights, self.redshifts) if attr is not None]
+        length = [
+            len(attr) for attr in (self.weights, self.redshifts) if attr is not None
+        ]
         if len(length) == 0:
             return -1
         elif max(length) != min(length):
-            raise ValueError("number of 'weights' and 'redshifts' to draw from does not match")
+            raise ValueError(
+                "number of 'weights' and 'redshifts' to draw from does not match"
+            )
         return max(length)
 
     def _sky2cylinder(self, ra: NDArray, dec: NDArray) -> tuple[NDArray, NDArray]:
@@ -181,7 +188,7 @@ class BoxGenerator(ChunkGenerator):
 
         data = dict(degrees=False)
         data["ra"], data["dec"] = self._cylinder2sky(x, y)
-        if self.has_weights or self. has_redshifts:
+        if self.has_weights or self.has_redshifts:
             idx = self.rng.integers(0, self.num_source_values, size=probe_size)
             if self.has_weights:
                 data["weights"] = self.weights[idx]
