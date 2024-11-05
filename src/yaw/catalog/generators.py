@@ -156,6 +156,7 @@ class RandomChunkGenerator(ChunkGenerator):
 
 
 class RandomGenerator(ABC):
+    """Meta-class for all random point generators."""
     @abstractmethod
     def __init__(
         self,
@@ -173,13 +174,28 @@ class RandomGenerator(ABC):
 
     @property
     def has_weights(self) -> bool:
+        """Whether this data source provides weights."""
         return self.weights is not None
 
     @property
     def has_redshifts(self) -> bool:
+        """Whether this data source provides redshifts."""
         return self.redshifts is not None
 
     def get_data_size(self) -> int:
+        """
+        Get the number attached data samples to draw from.
+        
+        Checks the length of the :attr:`weights` and :attr:`redshifts` and
+        returns their length. If neither are defined, returns -1.
+
+        Returns:
+            Number of observations or -1.
+
+        Raises:
+            ValueError:
+                If the lengths of the arrays do not match.
+        """
         if self.weights is None and self.redshifts is None:
             return -1
         elif self.weights is None:
@@ -194,6 +210,17 @@ class RandomGenerator(ABC):
         return len(self.weights)
 
     def _draw_attributes(self, probe_size: int) -> dict[str, NDArray]:
+        """
+        Draw a number of samples from attached data samples.
+        
+        Args:
+            probe_size:
+                Number of points to draw with repetition from the data samples.
+
+        Returns:
+            Dictionary with optional keys ``weights`` and ``redshifts`` with
+            drawn samples.
+        """
         if self.data_size == -1:
             return dict()
 
@@ -212,10 +239,49 @@ class RandomGenerator(ABC):
     def get_iterator(
         self, num_randoms: int, chunksize: int | None = None
     ) -> RandomChunkGenerator:
+        """
+        Get a chunked random generator with fixed size.
+        
+        Used internally by :obj:`~yaw.Catalog` to create a random catalog from
+        this generator.
+
+        Args:
+            num_randoms:
+                Number of random points to generate in total.
+            chunksize:
+                Size of each chunk of random points.
+
+        Returns:
+            An interator that generates a fixed number of randoms in chunks.
+        """
         return RandomChunkGenerator(self, num_randoms, chunksize)
 
 
 class BoxGenerator(RandomGenerator):
+    """
+    Generates random points within an fixed R.A./Dec. window.
+
+    Generators are used with the :meth:`~yaw.Catalog.from_random` method to
+    create a catalog with uniformly distributed random coordiantes. Additional
+    redshifts or weights (e.g. from an observed data sample) may be attached to
+    randomly sample from their distribution.
+
+    Args:
+        ra_min:
+            The lower limit of the right ascension in degrees.
+        ra_max:
+            The upper limit of the right ascension in degrees.
+        dec_min:
+            The lower limit of the declination in degrees.
+        dec_max:
+            The upper limit of the declination in degrees.
+
+    Attributes:
+        weights:
+            Optional array of weights to draw from.
+        redshifts:
+            Optional array of redshifts to draw from.
+    """
     def __init__(
         self,
         ra_min: float,
