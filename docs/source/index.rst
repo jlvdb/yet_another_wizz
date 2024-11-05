@@ -3,7 +3,6 @@
 .. important::
     Fix required:
 
-    - Add back uniform randoms
     - Update flowchart
     - Add changelog for v3
 

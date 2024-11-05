@@ -286,7 +286,7 @@ of redshifts or weights, if desired. For example:
     )
 
     cat = yaw.Catalog.from_random(
-        "path/to/cache,
+        "path/to/cache",
         generator,
         num_randoms=10_000_000,
         # patch_centers=None,
@@ -294,3 +294,11 @@ of redshifts or weights, if desired. For example:
         # overwrite=False,
         progress=True,  # shows a progress bar, default: False
     )
+
+
+.. figure:: /_static/rand_density.png
+    :figwidth: 100%
+    :alt: Example redshift estiamte
+
+    Example distribution of randomly generated points from the example above in
+    an equal-area projection.
