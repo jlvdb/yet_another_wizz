@@ -148,12 +148,12 @@ def create_patch_centers(
 ) -> AngularCoordinates:
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
-    data_probe = generator.get_probe(probe_size)
+    data_probe = generator.get_probe(probe_size).data
 
     if parallel.on_root():
         logger.info(
             "computing patch centers from subset of %s records",
-            long_num_format(data_probe),
+            long_num_format(len(data_probe)),
         )
 
     coords = data_probe.coords
