@@ -41,24 +41,27 @@ plot = [
 mpi = [
     "mpi4py",
 ]
+healpix = [
+    "healpy",
+]
 docs = [
     "sphinx",
     "sphinx-design",
     "sphinx-copybutton",
     "pydata-sphinx-theme",
-    # note that yaw_cli is currently necessary to generate the joint docs
-]
-test = [
-    "yet_another_wizz[plot]",
-    "coverage",
-    "pytest",
-    "pytest-cov",
 ]
 style = [
     "black",
     "isort",
     "flake8",
     "pre-commit",
+]
+test = [
+    "yet_another_wizz[plot]",
+    "yet_another_wizz[healpy]",
+    "coverage",
+    "pytest",
+    "pytest-cov",
 ]
 dev = [
     "yet_another_wizz[docs]",
