@@ -10,8 +10,8 @@ This API reference manual details the primary functions and object in the
     :figwidth: 100%
     :alt: API flowchart
 
-    Flowchart indicating the relationship between the most important classes
-    and functions in `yet_another_wizz` used for redshift estimation.
+    Example flowchart indicating the relationship between the most important
+    classes and functions in `yet_another_wizz` used for redshift estimation.
 
 
 
