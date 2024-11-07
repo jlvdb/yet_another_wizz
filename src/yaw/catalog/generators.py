@@ -114,11 +114,12 @@ class RandomChunkGenerator(ChunkGenerator):
 
         self._num_samples = 0  # state
 
-        logger.info(
-            "generating %s random points in %d chunks",
-            long_num_format(num_randoms),
-            len(self),
-        )
+        if parallel.on_root():
+            logger.info(
+                "generating %s random points in %d chunks",
+                long_num_format(num_randoms),
+                len(self),
+            )
 
     @property
     def has_weights(self) -> bool:
