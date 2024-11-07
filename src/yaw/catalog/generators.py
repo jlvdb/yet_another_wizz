@@ -12,7 +12,6 @@ from yaw.utils import parallel
 from yaw.utils.logging import long_num_format
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
     from typing_extensions import Self
 
     from yaw.catalog.utils import TypePatchIDs

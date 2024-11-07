@@ -9,8 +9,8 @@ from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, get_args
 
 import astropy.cosmology
-from astropy import units
 import numpy as np
+from astropy import units
 
 from yaw.containers import Binning, YamlSerialisable
 from yaw.options import BinMethod, BinMethodAuto, Closed, get_options

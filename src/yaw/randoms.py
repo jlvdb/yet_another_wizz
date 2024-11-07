@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 class RandomsBase(ABC):
     """Meta-class for all random point generators."""
+
     @abstractmethod
     def __init__(
         self,
@@ -49,7 +50,7 @@ class RandomsBase(ABC):
     def get_data_size(self) -> int:
         """
         Get the number attached data samples to draw from.
-        
+
         Checks the length of the :attr:`weights` and :attr:`redshifts` and
         returns their length. If neither are defined, returns -1.
 
@@ -77,7 +78,7 @@ class RandomsBase(ABC):
     def _draw_coords(self, probe_size: int) -> dict[str, NDArray]:
         """
         Draw a number of random uniform coordinates in radian.
-        
+
         Args:
             probe_size:
                 Number of points to draw with repetition from the data samples.
@@ -90,7 +91,7 @@ class RandomsBase(ABC):
     def _draw_attributes(self, probe_size: int) -> dict[str, NDArray]:
         """
         Draw a number of samples from attached data samples.
-        
+
         Args:
             probe_size:
                 Number of points to draw with repetition from the data samples.
@@ -117,7 +118,7 @@ class RandomsBase(ABC):
         Args:
             probe_size:
                 Number of points to generate.
-        
+
         Returns:
             Dictionary of arrays, always contains keys ``ra`` and ``dec`` for
             coordinates of random points in radian. Optionally contains
@@ -164,6 +165,7 @@ class BoxRandoms(RandomsBase):
         redshifts:
             Optional array of redshifts to draw from.
     """
+
     def __init__(
         self,
         ra_min: float,
@@ -244,15 +246,16 @@ class HealPixRandoms(RandomsBase):
         ImportError:
             If ``healpy`` is not installed.
     """
+
     def __init__(
         self,
         pix_values: NDArray,
         *,
         nested: bool = False,
         is_mask: bool = False,
-        weights = None,
-        redshifts = None,
-        seed = 12345,
+        weights=None,
+        redshifts=None,
+        seed=12345,
     ):
         if not HEALPY_ENABLED:
             raise ImportError("could not import optional dependency 'healpy'")
