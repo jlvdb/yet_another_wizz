@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Iterator, Sized
 
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.catalog.utils import TypePatchIDs
+    from yaw.randoms import RandomsBase
 
 CHUNKSIZE = 16_777_216
 
@@ -35,10 +36,10 @@ class DataChunk(Sized):
         self.patch_ids = patch_ids
 
     @classmethod
-    def from_dict(cls, the_dict: dict) -> DataChunk:
+    def from_dict(cls, the_dict: dict, degrees: bool = True) -> DataChunk:
         return cls(
             patch_ids=the_dict.pop("patch_ids", None),
-            data=PatchData.from_columns(**the_dict),
+            data=PatchData.from_columns(degrees=degrees, **the_dict),
         )
 
     def __len__(self) -> int:
@@ -99,9 +100,13 @@ class ChunkGenerator(AbstractContextManager, Sized, Iterator[DataChunk]):
         pass
 
 
+def call_thing(generator: RandomsBase, probe_size: int) -> DataChunk:
+    return DataChunk.from_dict(generator(probe_size), degrees=False)
+
+
 class RandomChunkGenerator(ChunkGenerator):
     def __init__(
-        self, generator: RandomGenerator, num_randoms: int, chunksize: int | None = None
+        self, generator: RandomsBase, num_randoms: int, chunksize: int | None = None
     ) -> None:
         self.generator = generator
 
@@ -145,179 +150,12 @@ class RandomChunkGenerator(ChunkGenerator):
         num_generate = self.chunksize
         if self._num_samples > self.num_randoms:
             num_generate -= self._num_samples - self.num_randoms
-        return self.generator(num_generate)
+        return self.get_probe(num_generate)
 
     def __iter__(self) -> Iterator[DataChunk]:
         self._num_samples = 0  # reset state
         return self
 
     def get_probe(self, probe_size: int) -> DataChunk:
-        return self.generator(probe_size)
-
-
-class RandomGenerator(ABC):
-    """Meta-class for all random point generators."""
-    @abstractmethod
-    def __init__(
-        self,
-        *args,
-        weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
-        seed: int = 12345,
-        **kwargs,
-    ) -> None:
-        self.rng = np.random.default_rng(seed)
-
-        self.weights = weights
-        self.redshifts = redshifts
-        self.data_size = self.get_data_size()
-
-    @property
-    def has_weights(self) -> bool:
-        """Whether this data source provides weights."""
-        return self.weights is not None
-
-    @property
-    def has_redshifts(self) -> bool:
-        """Whether this data source provides redshifts."""
-        return self.redshifts is not None
-
-    def get_data_size(self) -> int:
-        """
-        Get the number attached data samples to draw from.
-        
-        Checks the length of the :attr:`weights` and :attr:`redshifts` and
-        returns their length. If neither are defined, returns -1.
-
-        Returns:
-            Number of observations or -1.
-
-        Raises:
-            ValueError:
-                If the lengths of the arrays do not match.
-        """
-        if self.weights is None and self.redshifts is None:
-            return -1
-        elif self.weights is None:
-            return len(self.redshifts)
-        elif self.redshifts is None:
-            return len(self.weights)
-
-        if len(self.weights) != len(self.redshifts):
-            raise ValueError(
-                "number of 'weights' and 'redshifts' to draw from does not match"
-            )
-        return len(self.weights)
-
-    def _draw_attributes(self, probe_size: int) -> dict[str, NDArray]:
-        """
-        Draw a number of samples from attached data samples.
-        
-        Args:
-            probe_size:
-                Number of points to draw with repetition from the data samples.
-
-        Returns:
-            Dictionary with optional keys ``weights`` and ``redshifts`` with
-            drawn samples.
-        """
-        if self.data_size == -1:
-            return dict()
-
-        data = dict()
-        idx = self.rng.integers(0, self.data_size, size=probe_size)
-        if self.has_weights:
-            data["weights"] = self.weights[idx]
-        if self.has_redshifts:
-            data["redshifts"] = self.redshifts[idx]
-        return data
-
-    @abstractmethod
-    def __call__(self, probe_size: int) -> DataChunk:
-        pass
-
-    def get_iterator(
-        self, num_randoms: int, chunksize: int | None = None
-    ) -> RandomChunkGenerator:
-        """
-        Get a chunked random generator with fixed size.
-        
-        Used internally by :obj:`~yaw.Catalog` to create a random catalog from
-        this generator.
-
-        Args:
-            num_randoms:
-                Number of random points to generate in total.
-            chunksize:
-                Size of each chunk of random points.
-
-        Returns:
-            An interator that generates a fixed number of randoms in chunks.
-        """
-        return RandomChunkGenerator(self, num_randoms, chunksize)
-
-
-class BoxGenerator(RandomGenerator):
-    """
-    Generates random points within an fixed R.A./Dec. window.
-
-    Generators are used with the :meth:`~yaw.Catalog.from_random` method to
-    create a catalog with uniformly distributed random coordiantes. Additional
-    redshifts or weights (e.g. from an observed data sample) may be attached to
-    randomly sample from their distribution.
-
-    Args:
-        ra_min:
-            The lower limit of the right ascension in degrees.
-        ra_max:
-            The upper limit of the right ascension in degrees.
-        dec_min:
-            The lower limit of the declination in degrees.
-        dec_max:
-            The upper limit of the declination in degrees.
-
-    Attributes:
-        weights:
-            Optional array of weights to draw from.
-        redshifts:
-            Optional array of redshifts to draw from.
-    """
-    def __init__(
-        self,
-        ra_min: float,
-        ra_max: float,
-        dec_min: float,
-        dec_max: float,
-        *,
-        weights: NDArray | None = None,
-        redshifts: NDArray | None = None,
-        seed: int = 12345,
-    ) -> None:
-        super().__init__(weights=weights, redshifts=redshifts, seed=seed)
-
-        self.x_min, self.y_min = self._sky2cylinder(
-            np.deg2rad(ra_min), np.deg2rad(dec_min)
-        )
-        self.x_max, self.y_max = self._sky2cylinder(
-            np.deg2rad(ra_max), np.deg2rad(dec_max)
-        )
-
-    def _sky2cylinder(self, ra: NDArray, dec: NDArray) -> tuple[NDArray, NDArray]:
-        x = ra
-        y = np.sin(dec)
-        return x, y
-
-    def _cylinder2sky(self, x: NDArray, y: NDArray) -> tuple[NDArray, NDArray]:
-        ra = x
-        dec = np.arcsin(y)
-        return ra, dec
-
-    def __call__(self, probe_size: int) -> DataChunk:
-        x = self.rng.uniform(self.x_min, self.x_max, probe_size)
-        y = self.rng.uniform(self.y_min, self.y_max, probe_size)
-
-        data = dict(degrees=False)
-        data["ra"], data["dec"] = self._cylinder2sky(x, y)
-        attrs = self._draw_attributes(probe_size)
-        data.update(attrs)
-        return DataChunk.from_dict(data)
+        data = self.generator(probe_size)
+        return DataChunk.from_dict(data, degrees=False)

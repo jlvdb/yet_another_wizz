@@ -1,11 +1,5 @@
 .. title:: Documentation of yet_another_wizz
 
-.. important::
-    Fix required:
-
-    - Update flowchart
-    - Add changelog for v3
-
 
 .. grid::
     :gutter: 2 3 4 4

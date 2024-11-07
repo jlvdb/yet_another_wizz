@@ -266,16 +266,17 @@ Additionally, the redshift estimate can be plotted easily:
 Generating random points
 ------------------------
 
-The code provides a simple method to generate uniform random points within a
-rectangular footprint on sky, i.e. in a fixed window of right ascension and
-declination. Additionally, the method allows to draw samples from an array
-of redshifts or weights, if desired. For example:
+The code provides simple methods to :ref:`generate<generator>` uniform random
+points. The simplest methods generates them within a rectangular footprint on
+sky, i.e. in a fixed window of right ascension and declination. Additionally,
+the method allows to draw samples from an array of observed redshifts or
+weights, if desired. For example:
 
 .. code-block:: python
 
-    from yaw.catalog import BoxGenerator
+    from yaw.randoms import BoxRandoms
 
-    generator = BoxGenerator(
+    generator = BoxRandoms(
         ra_min=0.0,
         ra_max=90.0,
         dec_min=0.0,

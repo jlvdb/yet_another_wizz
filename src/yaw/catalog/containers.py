@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw.catalog.generators import RandomChunkGenerator
 from yaw.catalog.readers import DataFrameReader, new_filereader
 from yaw.catalog.trees import BinnedTrees
 from yaw.catalog.utils import (
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from yaw.catalog.generators import RandomGenerator
+    from yaw.catalog.generators import RandomsBase
     from yaw.catalog.utils import MockDataFrame as DataFrame
 
     TypePatchCenters = Union["Catalog", AngularCoordinates]
@@ -344,8 +345,8 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     Besides right ascension and declination coordinates, catalogs may have
     additional per-object weights and redshifts.
 
-    Catalogs divided into spatial :obj:`~yaw.Patch` es, which each cache a
-    portion of the data on disk to minimise the memory footprint when dealing
+    Catalogs divided into spatial :obj:`~yaw.catalog.Patch` es, which each cache
+    a portion of the data on disk to minimise the memory footprint when dealing
     with large data-sets, allowing to process the data in a patch-wise manner,
     only loading data from disk when they are needed. Additionally, the patches
     are used to estimate uncertainties using jackknife resampling.
@@ -662,7 +663,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
     def from_random(
         cls,
         cache_directory: Path | str,
-        generator: RandomGenerator,
+        generator: RandomsBase,
         num_randoms: int,
         *,
         patch_centers: TypePatchCenters | None = None,
@@ -680,7 +681,8 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         objects to spatial patches, write the patches to a cache on disk, and
         compute the patch meta data.
 
-        The generator object must be created separately by the user.
+        The :ref:`generator object<generator>` must be created separately by the
+        user.
 
         .. note::
             One of the optional patch creation arguments (``patch_centers``, or
@@ -691,7 +693,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 The cache directory to use for this catalog. Created
                 automatically or overwritten if requested.
             generator:
-                A random generator (:obj:`~yaw.catalog.generator.RandomGenerator`)
+                A random generator (:obj:`~yaw.catalog.generator.RandomsBase`)
                 instance from which samples are drawn.
             num_randoms:
                 The number of randoms to generate.
@@ -729,7 +731,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 If the cache directory exists or is not a valid catalog when
                 providing ``overwrite=True``.
         """
-        rand_iter = generator.get_iterator(num_randoms, chunksize)
+        rand_iter = RandomChunkGenerator(generator, num_randoms, chunksize)
 
         mode = PatchMode.determine(patch_centers, None, patch_num)
         if mode == PatchMode.create:

@@ -220,16 +220,14 @@ class DataFrameReader(BaseReader):
         data = {
             attr: chunk[col].to_numpy() for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._data[col][::sparse].to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
 
 class FileReader(BaseReader):
@@ -354,8 +352,7 @@ class ParquetReader(FileReader):
             attr: table.column(col).to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def __iter__(self) -> Iterator[DataChunk]:
         if parallel.on_root():
@@ -398,16 +395,14 @@ class FitsReader(FileReader):
             attr: swap_byteorder(hdu_data[col][group_slice])
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: swap_byteorder(self._hdu.data[col][::sparse])
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
 
 class HDFReader(FileReader):
@@ -436,16 +431,14 @@ class HDFReader(FileReader):
             attr: self._file[col][offset : offset + self.chunksize]
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._file[col][::sparse]
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
 
 def new_filereader(

@@ -49,7 +49,8 @@ autodoc_typehints = "signature"
 autosummary_generate = True
 autoclass_content = "class"
 autodoc_default_options = {
-    "exclude-members": "__init__",
+    "special-members": "__call__",
+    "show-inheritance": True,
 }
 
 copybutton_prompt_text = r">>> |\.\.\. |\$ "

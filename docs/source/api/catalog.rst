@@ -21,14 +21,3 @@ on disk. These patches are managed by the following classes:
 
     catalog.Patch
     catalog.Metadata
-
-
-Next to files and objects in memory, inputs for the catalog class can also be
-generated randomly. For this there are corrently the following generators for
-uniform random data points implemented.
-
-
-.. autosummary::
-    :toctree: autogen
-
-    catalog.BoxGenerator

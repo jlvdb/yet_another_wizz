@@ -21,6 +21,7 @@ Python API
     :maxdepth: 2
 
     api/catalog
+    api/randoms
     api/config
     api/measurements
     api/corrfunc
