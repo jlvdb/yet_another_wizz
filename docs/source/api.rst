@@ -4,13 +4,15 @@ API Reference
 =============
 
 This API reference manual details the primary functions and object in the
-`yet_another_wizz` python package ``yaw``. The flowchart below outlines the
-relationship between these functions and objects from the inputs catalogs to the
-final redshift estimate.
+`yet_another_wizz` python package ``yaw``.
 
-.. image:: /_static/flowchart.svg
-    :width: 800
+.. figure:: /_static/flowchart.svg
+    :figwidth: 100%
     :alt: API flowchart
+
+    Flowchart indicating the relationship between the most important classes
+    and functions in `yet_another_wizz` used for redshift estimation.
+
 
 
 Python API
