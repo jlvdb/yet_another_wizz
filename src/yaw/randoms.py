@@ -217,7 +217,7 @@ class HealPixRandoms(RandomsBase):
         points, but randomly draws pixel center coordinates from the highest
         possible mask resolution supported by `HealPix`. This corresponds to
         about :math:`3.5 \\times 10^{18}` possible unique points on a full-sky
-        map.
+        map, or about :math:`2500` pixels/arcsec.
 
     Args:
         pix_values:
@@ -268,16 +268,16 @@ class HealPixRandoms(RandomsBase):
             raise ValueError("pixel values must be positive for random generation")
 
         # check which of the pixels are masked
-        self._ipix_unmasked = np.nonzero(values)[0]
         if not nested:
-            self._ipix_unmasked = healpy.ring2nest(self.nside, ipix=self._ipix_unmasked)
+            values = healpy.reorder(values, inp="RING", out="NESTED")
+        self._ipix_unmasked = np.nonzero(values)[0]
 
         # compute the probability of drawing from unmasked pixels
         if is_mask:
             self._probability = None
         else:
-            values = values / values.sum()
-            self._probability = values[self._ipix_unmasked]
+            masked_values = values[self._ipix_unmasked]
+            self._probability = masked_values / masked_values.sum()
 
     def _draw_coords(self, probe_size: int) -> tuple[NDArray, NDArray]:
         MAX_ORDER = 29
@@ -296,4 +296,7 @@ class HealPixRandoms(RandomsBase):
 
         # draw random pixel IDs at maximum resolution and get center coordinates
         ipix_rand = ipix_scaled + self.rng.integers(0, scale, size=probe_size)
-        return healpy.pix2ang(nside=MAX_NSIDE, ipix=ipix_rand, nest=True, lonlat=True)
+        ra, dec = healpy.pix2ang(
+            nside=MAX_NSIDE, ipix=ipix_rand, nest=True, lonlat=True
+        )
+        return np.deg2rad(ra), np.deg2rad(dec)
