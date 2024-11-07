@@ -9,12 +9,10 @@ from typing import TYPE_CHECKING, Generic, TypeVar, Union
 import h5py
 import numpy as np
 import yaml
-from astropy import cosmology, units
 from numpy.exceptions import AxisError
 
-from yaw.options import BinMethodAuto, Closed, CovKind, PlotStyle
+from yaw.options import Closed, CovKind, PlotStyle
 from yaw.utils import io, plot
-from yaw.utils.cosmology import get_default_cosmology
 
 if TYPE_CHECKING:
     from typing import Any
@@ -22,7 +20,6 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import ArrayLike, NDArray
 
-    from yaw.utils.cosmology import TypeCosmology
     from yaw.utils.plot import Axis
 
     # meta-class types
@@ -522,63 +519,6 @@ class Binning(HdfSerializable):
     def copy(self: TypeBinning) -> TypeBinning:
         """Create a copy of this instance."""
         return Binning(self.edges.copy(), closed=str(self.closed))
-
-
-class RedshiftBinningFactory:
-    """Simple factory class to create redshift binnings. Takes an optional
-    cosmology as input for distance conversions."""
-
-    def __init__(self, cosmology: TypeCosmology | None = None) -> None:
-        self.cosmology = cosmology or get_default_cosmology()
-
-    def linear(
-        self,
-        min: float,
-        max: float,
-        num_bins: int,
-        *,
-        closed: Closed | str = Closed.right,
-    ) -> Binning:
-        """Creates a linear redshift binning between a min and max redshift."""
-        edges = np.linspace(min, max, num_bins + 1)
-        return Binning(edges, closed=closed)
-
-    def comoving(
-        self,
-        min: float,
-        max: float,
-        num_bins: int,
-        *,
-        closed: Closed | str = Closed.right,
-    ) -> Binning:
-        """Creates a binning linear in comoving distance between a min and max
-        redshift."""
-        comov_min, comov_cmax = self.cosmology.comoving_distance([min, max])
-        comov_edges = np.linspace(comov_min, comov_cmax, num_bins + 1)
-        if not isinstance(comov_edges, units.Quantity):
-            comov_edges = comov_edges * units.Mpc
-
-        edges = cosmology.z_at_value(self.cosmology.comoving_distance, comov_edges)
-        return Binning(edges.value, closed=closed)
-
-    def logspace(
-        self,
-        min: float,
-        max: float,
-        num_bins: int,
-        *,
-        closed: Closed | str = Closed.right,
-    ) -> Binning:
-        """Creates a binning linear in 1+ln(z) between a min and max redshift."""
-        log_min, log_max = np.log([1.0 + min, 1.0 + max])
-        edges = np.logspace(log_min, log_max, num_bins + 1, base=np.e) - 1.0
-        return Binning(edges, closed=closed)
-
-    def get_method(
-        self, method: BinMethodAuto | str = BinMethodAuto.linear
-    ) -> Callable[..., Binning]:
-        """Use a string identifier to select the desired factory method."""
-        return getattr(self, BinMethodAuto(method))
 
 
 def cov_from_samples(
