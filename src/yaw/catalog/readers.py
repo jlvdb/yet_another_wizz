@@ -322,7 +322,7 @@ class ParquetReader(FileReader):
 
             super()._init_source(path)
             issue_io_log(
-                self.num_records, self.num_chunks, f"from Parquet file: {self.path}"
+                self.num_records, self.num_chunks, f"Parquet file: {self.path}"
             )
 
     @property
@@ -375,9 +375,7 @@ class FitsReader(FileReader):
             self._hdu = self._file[hdu]
 
             super()._init_source(path)
-            issue_io_log(
-                self.num_records, self.num_chunks, f"from FITS file: {self.path}"
-            )
+            issue_io_log(self.num_records, self.num_chunks, f"FITS file: {self.path}")
 
     @property
     def num_records(self) -> int:
@@ -411,9 +409,7 @@ class HDFReader(FileReader):
             self._file = h5py.File(path, mode="r")
 
             super()._init_source(path)
-            issue_io_log(
-                self.num_records, self.num_chunks, f"from HDF5 file: {self.path}"
-            )
+            issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {self.path}")
 
     @property
     def num_records(self) -> int:
