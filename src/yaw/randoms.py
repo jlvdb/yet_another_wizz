@@ -204,6 +204,10 @@ class HealPixRandoms(RandomsBase):
     """
     Generates random points within a `HealPix` mask.
 
+    The input mask can either be interpreted as a boolean mask or a probability
+    map that indicates the probability at which random points should be
+    generated in a given pixel. Requires installing ``healpy``.
+
     Call instance to generate random points.
 
     .. Caution::
@@ -235,6 +239,10 @@ class HealPixRandoms(RandomsBase):
             Optional array of redshifts to draw from.
         nside:
             The `HealPix` ``nside`` value of the input mask.
+
+    Raises:
+        ImportError:
+            If ``healpy`` is not installed.
     """
     def __init__(
         self,
