@@ -99,10 +99,6 @@ class ChunkGenerator(AbstractContextManager, Sized, Iterator[DataChunk]):
         pass
 
 
-def call_thing(generator: RandomsBase, probe_size: int) -> DataChunk:
-    return DataChunk.from_dict(generator(probe_size), degrees=False)
-
-
 class RandomChunkGenerator(ChunkGenerator):
     def __init__(
         self, generator: RandomsBase, num_randoms: int, chunksize: int | None = None
