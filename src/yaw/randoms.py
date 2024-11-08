@@ -216,8 +216,7 @@ class HealPixRandoms(RandomsBase):
         To improve performance, this method does not create continuous random
         points, but randomly draws pixel center coordinates from the highest
         possible mask resolution supported by `HealPix`. This corresponds to
-        about :math:`3.5 \\times 10^{18}` possible unique points on a full-sky
-        map, or about :math:`2500` pixels/arcsec.
+        a resolution of about :math:`2500` pixels/arcsec.
 
     Args:
         pix_values:
