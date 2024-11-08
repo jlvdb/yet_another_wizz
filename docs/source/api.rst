@@ -19,7 +19,6 @@ Catalog data
 
 .. currentmodule:: yaw
 
-
 The following class manages input data catalogs with coordinates and optional
 redshifts and weights:
 
@@ -46,7 +45,6 @@ Random generators
 
 .. currentmodule:: yaw
 
-
 Catalogs can also be generated randomly, e.g. to create random samples for the
 correlation measurements. The corresponding :meth:`~yaw.Catalog.from_random`
 method accepts one of the following generators for uniform random data points:
@@ -63,7 +61,6 @@ Configuration
 -------------
 
 .. currentmodule:: yaw
-
 
 There is one central class that manages all configuration parameters for the
 correlation measurements. These include the correlation scales, pair weighting,
@@ -91,7 +88,6 @@ Correlation measurements
 
 .. currentmodule:: yaw
 
-
 The cross- and autocorrelation measurements are implemented in two functions,
 which both take a configuration object, and multiple data catalogs as input:
 
@@ -106,7 +102,6 @@ Correlation Functions
 ---------------------
 
 .. currentmodule:: yaw
-
 
 The functions that measure correlations return a special container that stores
 pair counts per redshift bin and spatial patches:
@@ -134,7 +129,6 @@ Data containers
 ---------------
 
 .. currentmodule:: yaw
-
 
 The pair counts from the correlation measurements can be converted to a
 correlation function and redshift estimte (including bias bias mitigation) with
@@ -164,7 +158,6 @@ Utilities
 
 .. currentmodule:: yaw
 
-
 There are two utility classes in `yet_another_wizz` that are used to handle
 angular coordinates and distance computations in angular and 3-dimensional
 Euclidean coordintes:
@@ -189,7 +182,6 @@ Parameter options
 -----------------
 
 .. currentmodule:: yaw.options
-
 
 The following string enumerations list commonly used configuration parameters
 with a fixed set of options. They are usually interchangeable with string

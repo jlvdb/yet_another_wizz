@@ -71,7 +71,7 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadca
                 Whether to raise exceptions if any of the checks fail.
 
         Returns:
-            Whether the number of patches is identical ``require=False``.
+            Whether the number of patches is identical if ``require=False``.
 
         Raises:
             TypeError:
@@ -445,8 +445,8 @@ class PatchedCounts(BinwisePatchwiseArray):
             patch_id2:
                 ID/index of the patch from catalog 2.
             counts_binned:
-                Array with pair counts per redshift bin with length
-                :obj:`num_patches`.
+                Array with pair counts per redshift bin between patches with
+                length :obj:`num_patches`.
         """
         self.counts[:, patch_id1, patch_id2] = counts_binned
 
