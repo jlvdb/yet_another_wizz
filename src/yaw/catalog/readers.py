@@ -122,6 +122,7 @@ class BaseReader(ChunkGenerator):
 
     @abstractmethod
     def read(self, sparse: int) -> DataChunk:
+        sparse = int(sparse)
         n_read = 0
 
         chunks_data = []
@@ -219,16 +220,14 @@ class DataFrameReader(BaseReader):
         data = {
             attr: chunk[col].to_numpy() for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._data[col][::sparse].to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
 
 class FileReader(BaseReader):
@@ -323,7 +322,7 @@ class ParquetReader(FileReader):
 
             super()._init_source(path)
             issue_io_log(
-                self.num_records, self.num_chunks, f"from Parquet file: {self.path}"
+                self.num_records, self.num_chunks, f"Parquet file: {self.path}"
             )
 
     @property
@@ -353,8 +352,7 @@ class ParquetReader(FileReader):
             attr: table.column(col).to_numpy()
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def __iter__(self) -> Iterator[DataChunk]:
         if parallel.on_root():
@@ -377,9 +375,7 @@ class FitsReader(FileReader):
             self._hdu = self._file[hdu]
 
             super()._init_source(path)
-            issue_io_log(
-                self.num_records, self.num_chunks, f"from FITS file: {self.path}"
-            )
+            issue_io_log(self.num_records, self.num_chunks, f"FITS file: {self.path}")
 
     @property
     def num_records(self) -> int:
@@ -397,16 +393,14 @@ class FitsReader(FileReader):
             attr: swap_byteorder(hdu_data[col][group_slice])
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: swap_byteorder(self._hdu.data[col][::sparse])
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
 
 class HDFReader(FileReader):
@@ -415,9 +409,7 @@ class HDFReader(FileReader):
             self._file = h5py.File(path, mode="r")
 
             super()._init_source(path)
-            issue_io_log(
-                self.num_records, self.num_chunks, f"from HDF5 file: {self.path}"
-            )
+            issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {self.path}")
 
     @property
     def num_records(self) -> int:
@@ -435,16 +427,14 @@ class HDFReader(FileReader):
             attr: self._file[col][offset : offset + self.chunksize]
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
     def read(self, sparse: int) -> DataChunk:
         data = {
             attr: self._file[col][::sparse]
             for attr, col in zip(self.attrs, self.columns)
         }
-        data["degrees"] = self.degrees
-        return DataChunk.from_dict(data)
+        return DataChunk.from_dict(data, degrees=self.degrees)
 
 
 def new_filereader(

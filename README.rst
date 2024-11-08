@@ -62,9 +62,14 @@ using the provided setup for `conda`::
 This will creates a new environment called ``yaw`` and install the code together
 with the ``openmpi`` implementation of MPI.
 
-There is also a `plugin interface <https://github.com/LSSTDESC/rail_yaw>`_ 
-for the Redshift Assessment Infrastructure Layers
-(`RAIL <https://github.com/LSSTDESC/rail>`_) pipeline.
+Alternative use the pip install option::
+
+    pip install yet_another_wizz[mpi]
+
+Other optional dependencies (not installed by default) are:
+
+- ``matplotlib`` to enable plotting methods.
+- ``healpy`` to enable generating random samples based on `HealPix` masks.
 
 
 Usage
@@ -72,6 +77,10 @@ Usage
 
 For more information about how to use the python code, please refer to the usage
 examples in the official documentation.
+
+There is also a `plugin interface <https://github.com/LSSTDESC/rail_yaw>`_ 
+for the Redshift Assessment Infrastructure Layers
+(`RAIL <https://github.com/LSSTDESC/rail>`_) pipeline.
 
 Previous versions of `yet_another_wizz` could also be run as a command line tool
 when installing the sparate command-line client `yet_another_wizz_cli`. This
