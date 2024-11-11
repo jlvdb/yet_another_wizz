@@ -31,8 +31,7 @@ class RandomsBase(ABC):
         seed: int = 12345,
         **kwargs,
     ) -> None:
-        self.rng = np.random.default_rng(seed)
-
+        self.reseed(seed)
         self.weights = weights
         self.redshifts = redshifts
         self.data_size = self.get_data_size()
@@ -74,8 +73,15 @@ class RandomsBase(ABC):
             )
         return len(self.weights)
 
+    def reseed(self, seed: int | None = None) -> None:
+        if seed is None:
+            seed = self.seed
+        else:
+            seed = int(seed)
+        self.rng = np.random.default_rng(seed)
+
     @abstractmethod
-    def _draw_coords(self, probe_size: int) -> dict[str, NDArray]:
+    def _draw_coords(self, probe_size: int) -> tuple[NDArray, NDArray]:
         """
         Draw a number of random uniform coordinates in radian.
 
@@ -196,7 +202,7 @@ class BoxRandoms(RandomsBase):
         dec = np.arcsin(y)
         return ra, dec
 
-    def _draw_coords(self, probe_size: int) -> dict[str, NDArray]:
+    def _draw_coords(self, probe_size: int) -> tuple[NDArray, NDArray]:
         x = self.rng.uniform(self.x_min, self.x_max, probe_size)
         y = self.rng.uniform(self.y_min, self.y_max, probe_size)
         return self._cylinder2sky(x, y)
@@ -279,6 +285,11 @@ class HealPixRandoms(RandomsBase):
             self._probability = masked_values / masked_values.sum()
 
     def _draw_coords(self, probe_size: int) -> tuple[NDArray, NDArray]:
+        """
+        The general idea is to generate a list of pixels to draw coordinates
+        from. Then go to that pixel, view it at the highest possible resolution
+        and draw a random sub-pixel and use its center coordinate.
+        """
         MAX_ORDER = 29
         MAX_NSIDE = 2**MAX_ORDER  # sample random pixel IDs at this resolution
 
