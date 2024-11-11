@@ -90,7 +90,7 @@ class RandomsBase(ABC):
                 Number of points to draw with repetition from the data samples.
 
         Returns:
-            Dictionary with keys ``ra`` and ``dec`` with random coordinates.
+            Tuple of arrays containing random right ascensions and declinations.
         """
         pass
 
