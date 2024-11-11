@@ -39,32 +39,6 @@ class InconsistentTreesError(Exception):
     pass
 
 
-class PatchIDs:
-    itemtype = "i2"
-
-    @staticmethod
-    def validate(patch_ids: ArrayLike) -> None:
-        min_id = 0
-        max_id = np.iinfo(np.int16).max
-
-        patch_ids = np.asarray(patch_ids)
-        if patch_ids.ndim > 1:
-            raise ValueError("'patch_ids' must be scalar or 1-dimensional")
-
-        if patch_ids.min() < min_id or patch_ids.max() > max_id:
-            raise ValueError(f"'patch_ids' must be in range [{min_id}, {max_id}]")
-
-    @staticmethod
-    def parse(patch_ids: ArrayLike, num_expect: int = -1) -> TypePatchIDs:
-        patch_ids = np.atleast_1d(patch_ids)
-
-        PatchIDs.validate(patch_ids)
-        if num_expect > 0 and len(patch_ids) != num_expect:
-            raise ValueError("'patch_ids' does not have expected length")
-
-        return patch_ids.astype(PatchIDs.itemtype, casting="same_kind", copy=False)
-
-
 class PatchData:
     __slots__ = ("data",)
     itemtype = "f8"
