@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 import pyarrow as pa
 from astropy.io import fits
-from pyarrow import parquet, Table
+from pyarrow import Table, parquet
 
 from yaw.utils import parallel
 from yaw.utils.logging import long_num_format
@@ -19,9 +19,9 @@ from yaw.utils.logging import long_num_format
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import TypeVar
-    from typing_extensions import Self
 
     from numpy.typing import DTypeLike, NDArray
+    from typing_extensions import Self
 
     from yaw.randoms import RandomsBase
 
@@ -80,7 +80,9 @@ class DataChunk:
         chkfinite: bool = True,
     ) -> TypeDataChunk:
         values = (ra, dec, weights, redshifts, patch_ids)
-        inputs = {attr: value for attr, value in zip(DATA_ATTRS, values) if value is not None}
+        inputs = {
+            attr: value for attr, value in zip(DATA_ATTRS, values) if value is not None
+        }
 
         if patch_ids is not None:
             check_patch_ids(patch_ids)
@@ -119,7 +121,7 @@ class DataChunk:
 class DataChunkReader(AbstractContextManager, Iterator[TypeDataChunk]):
     """
     Base class for chunked data readers and generators.
-    
+
     Iterates the data source in a fixed chunk size up to a fixed capacity.
 
     .. Caution::
@@ -128,6 +130,7 @@ class DataChunkReader(AbstractContextManager, Iterator[TypeDataChunk]):
         - On a non-root worker yield None. The user is resposible for
           broadcasting if desired.
     """
+
     chunksize: int
     _num_records: int
     _num_samples: int  # used to track iteration state
@@ -295,7 +298,9 @@ class DataReader(DataChunkReader):
         **reader_kwargs,
     ) -> None:
         columns = (ra_name, dec_name, weight_name, redshift_name, patch_name)
-        self._columns = {attr: name for attr, name in zip(DATA_ATTRS, columns) if name is not None}
+        self._columns = {
+            attr: name for attr, name in zip(DATA_ATTRS, columns) if name is not None
+        }
 
         self.degrees = degrees
         self.chunksize = chunksize or CHUNKSIZE
@@ -329,7 +334,7 @@ class DataReader(DataChunkReader):
 
         else:
             data = None
-        
+
         parallel.COMM.Barrier()
         return data
 
@@ -389,10 +394,6 @@ class DataFrameReader(DataReader):
 
 
 class FileReader(DataReader):
-    @abstractmethod
-    def _close_file(self) -> None:
-        pass
-
     def __enter__(self) -> Self:
         return self
 
@@ -524,7 +525,9 @@ class HDFReader(FileReader):
     def _load_next_chunk(self) -> DataChunk:
         start = self._num_samples
         end = start + self.chunksize
-        kwargs = {attr: self._file[col][start:end] for attr, col in self._columns.items()}
+        kwargs = {
+            attr: self._file[col][start:end] for attr, col in self._columns.items()
+        }
         return DataChunk.create(**kwargs, degrees=self.degrees)
 
 
@@ -583,17 +586,19 @@ class ParquetReader(FileReader):
             groups.append(next_group)
 
         oversized_chunk = pa.concat_tables(groups)
-        remainder = oversized_chunk[self.chunksize:]
+        remainder = oversized_chunk[self.chunksize :]
         if len(remainder) > 0:
             self._group_cache.appendleft(remainder)
 
-        return oversized_chunk[:self.chunksize]
+        return oversized_chunk[: self.chunksize]
 
     def _load_next_chunk(self) -> DataChunk:
         self._load_groups()
         table = self._extract_chunk()
 
-        kwargs = {attr: table.column(col).to_numpy() for attr, col in self._columns.items()}
+        kwargs = {
+            attr: table.column(col).to_numpy() for attr, col in self._columns.items()
+        }
         return DataChunk.create(**kwargs, degrees=self.degrees)
 
     def __iter__(self) -> Iterator[TypeDataChunk]:
