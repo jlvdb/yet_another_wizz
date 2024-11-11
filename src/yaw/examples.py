@@ -1,4 +1,5 @@
-"""This module provides some precomputed example data, which are loaded when
+"""
+This module provides some precomputed example data, which are loaded when
 importing the module, e.g.
 
 >>> from yaw import examples  # reads the data sets from disk
@@ -6,7 +7,7 @@ importing the module, e.g.
 CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=64)
 """
 
-from pathlib import Path
+import importlib.resources
 
 from yaw.corrfunc import CorrFunc
 
@@ -20,7 +21,7 @@ __all__ = [
 ]
 
 
-_path = Path(__file__).parent
+_path = importlib.resources.files("yaw").joinpath("../example_data")
 
 w_sp = CorrFunc.from_file(_path / "cross_1.hdf")
 """Example data from a crosscorrelation measurement
@@ -46,5 +47,3 @@ patched_count = normalised_counts.counts
 patched_total = normalised_counts.totals
 """Example data for patch-wise total number of objects
 (:obj:`~yaw.paircounts.PatchedTotal` instance, from :obj:`w_sp.dd.total`)"""
-
-del _path
