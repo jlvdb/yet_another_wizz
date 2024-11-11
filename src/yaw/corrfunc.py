@@ -15,10 +15,10 @@ from yaw.containers import (
     PatchwiseData,
     SampledData,
     Serialisable,
+    write_version_tag,
 )
 from yaw.paircounts import NormalisedCounts
 from yaw import parallel
-from yaw.utils import io
 from yaw.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
@@ -190,7 +190,7 @@ class CorrFunc(
         return cls.from_dict(kwargs)
 
     def to_hdf(self, dest: Group) -> None:
-        io.write_version_tag(dest)
+        write_version_tag(dest)
 
         names = ("data_data", "data_random", "random_data", "random_random")
         for name, count in zip(names, self.to_dict().values()):
@@ -363,8 +363,8 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
             path_prefix = Path(path_prefix)
 
-            edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
-            samples = io.load_samples(path_prefix.with_suffix(".smp"))
+            edges, closed, data = load_data(path_prefix.with_suffix(".dat"))
+            samples = load_samples(path_prefix.with_suffix(".smp"))
             binning = Binning(edges, closed=closed)
 
             new = cls(binning, data, samples)
@@ -398,7 +398,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
             path_prefix = Path(path_prefix)
 
-            io.write_data(
+            write_data(
                 path_prefix.with_suffix(".dat"),
                 self._description_data,
                 zleft=self.binning.left,
@@ -408,7 +408,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 closed=str(self.binning.closed),
             )
 
-            io.write_samples(
+            write_samples(
                 path_prefix.with_suffix(".smp"),
                 self._description_samples,
                 zleft=self.binning.left,
@@ -418,7 +418,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
             )
 
             # write covariance for convenience only, it is not required to restore
-            io.write_covariance(
+            write_covariance(
                 path_prefix.with_suffix(".cov"),
                 self._description_covariance,
                 covariance=self.covariance,
