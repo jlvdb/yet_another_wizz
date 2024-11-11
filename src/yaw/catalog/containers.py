@@ -21,8 +21,9 @@ from yaw.catalog.utils import (
 from yaw.catalog.writers import PATCH_INFO_FILE, PatchMode, create_patch_centers
 from yaw.containers import YamlSerialisable, parse_binning
 from yaw.options import Closed
-from yaw.utils import AngularCoordinates, AngularDistances, parallel
-from yaw.utils.logging import Indicator
+from yaw import parallel
+from yaw.utils import AngularCoordinates, AngularDistances
+from yaw.logging import Indicator
 
 if parallel.use_mpi():
     from yaw.catalog.writers.mpi4py import write_patches

@@ -8,7 +8,7 @@ from yaw.catalog import trees
 from yaw.catalog.containers import Patch
 from yaw.catalog.utils import PatchData
 from yaw.catalog.writers import PatchWriter
-from yaw.utils.coordinates import AngularCoordinates
+from yaw.coordinates import AngularCoordinates
 
 
 @mark.parametrize(

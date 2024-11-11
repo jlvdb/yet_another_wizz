@@ -3,7 +3,7 @@ from logging import DEBUG, LogRecord, getLogger
 
 from pytest import mark
 
-from yaw.utils import logging
+from yaw import logging
 
 
 @mark.parametrize(

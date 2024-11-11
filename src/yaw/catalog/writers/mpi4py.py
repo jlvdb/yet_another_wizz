@@ -11,9 +11,9 @@ from yaw.catalog.writers.base import (
     logger,
     split_into_patches,
 )
-from yaw.utils import parallel
-from yaw.utils.logging import Indicator
-from yaw.utils.parallel import EndOfQueue
+from yaw import parallel
+from yaw.logging import Indicator
+from yaw.parallel import EndOfQueue
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

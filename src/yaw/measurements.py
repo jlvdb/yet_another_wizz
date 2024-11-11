@@ -11,8 +11,9 @@ import numpy as np
 from yaw.catalog.utils import InconsistentPatchesError
 from yaw.corrfunc import CorrFunc
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
-from yaw.utils import AngularDistances, parallel, separation_physical_to_angle
-from yaw.utils.logging import Indicator
+from yaw import parallel
+from yaw.utils import AngularDistances, separation_physical_to_angle
+from yaw.logging import Indicator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

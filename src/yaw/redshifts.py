@@ -9,8 +9,8 @@ import scipy.optimize
 from yaw.config import Configuration
 from yaw.corrfunc import CorrData
 from yaw.options import PlotStyle
-from yaw.utils import parallel
-from yaw.utils.logging import Indicator
+from yaw import parallel
+from yaw.logging import Indicator
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

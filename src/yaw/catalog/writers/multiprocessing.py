@@ -13,9 +13,10 @@ from yaw.catalog.writers.base import (
     split_into_patches,
     write_patches_unthreaded,
 )
-from yaw.utils import AngularCoordinates, parallel
-from yaw.utils.logging import Indicator
-from yaw.utils.parallel import EndOfQueue
+from yaw import parallel
+from yaw.utils import AngularCoordinates
+from yaw.logging import Indicator
+from yaw.parallel import EndOfQueue
 
 if TYPE_CHECKING:
     from multiprocessing import Queue

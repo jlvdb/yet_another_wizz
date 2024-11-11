@@ -1,4 +1,4 @@
-from yaw.utils import parallel
+from yaw import parallel
 
 
 class Dummy:

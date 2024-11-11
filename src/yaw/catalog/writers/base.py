@@ -13,8 +13,9 @@ from scipy.cluster import vq
 
 from yaw.catalog.readers import DataChunk
 from yaw.catalog.utils import CatalogBase, PatchBase, PatchData, PatchIDs, groupby
-from yaw.utils import AngularCoordinates, parallel
-from yaw.utils.logging import Indicator, long_num_format
+from yaw import parallel
+from yaw.utils import AngularCoordinates
+from yaw.logging import Indicator, long_num_format
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

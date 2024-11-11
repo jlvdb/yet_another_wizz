@@ -13,8 +13,8 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import Table, parquet
 
-from yaw.utils import parallel
-from yaw.utils.logging import long_num_format
+from yaw import parallel
+from yaw.logging import long_num_format
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

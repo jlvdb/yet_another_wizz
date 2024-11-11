@@ -12,7 +12,8 @@ import yaml
 from numpy.exceptions import AxisError
 
 from yaw.options import Closed, CovKind, PlotStyle
-from yaw.utils import io, plot
+from yaw import plot_utils
+from yaw.utils import io
 
 if TYPE_CHECKING:
     from typing import Any
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import ArrayLike, NDArray
 
-    from yaw.utils.plot import Axis
+    from yaw.plot_utils import Axis
 
     # meta-class types
     TypeSerialisable = TypeVar("TypeSerialisable", bound="Serialisable")
@@ -45,6 +46,34 @@ __all__ = [
     "Binning",
     "SampledData",
 ]
+
+HDF_COMPRESSION = dict(fletcher32=True, compression="gzip", shuffle=True)
+"""Default HDF5 compression options."""
+
+
+def write_version_tag(dest: Group) -> None:
+    """Write a ``version`` tag with the current code version to a HDF5 file
+    group."""
+    from yaw._version import __version__
+
+    dest.create_dataset("version", data=__version__)
+
+
+def load_version_tag(source: Group) -> str:
+    """Load the code version that created a HDF5 file from a ``version`` tag in
+    the current group."""
+    try:
+        tag = source["version"][()]
+        return tag.decode("utf-8")
+
+    except KeyError:
+        return "2.x.x"
+
+
+def is_legacy_dataset(source: Group) -> bool:
+    """Determine, if the current file has been created by an old version of
+    `yet_another_wizz` (version < 3.0)."""
+    return "version" not in source
 
 
 class Serialisable(ABC):
@@ -459,9 +488,9 @@ class Binning(HdfSerializable):
         return cls(edges, closed=closed)
 
     def to_hdf(self, dest: Group) -> None:
-        io.write_version_tag(dest)
+        write_version_tag(dest)
         dest.create_dataset("closed", data=str(self.closed))
-        dest.create_dataset("edges", data=self.edges, **io.HDF_COMPRESSION)
+        dest.create_dataset("edges", data=self.edges, **HDF_COMPRESSION)
 
     def __repr__(self) -> str:
         if self.closed == "left":
@@ -822,14 +851,14 @@ class SampledData(BinwiseData):
             yerr *= dz
 
         if indicate_zero:
-            ax = plot.zero_line(ax=ax)
+            ax = plot_utils.zero_line(ax=ax)
 
         if style == "point":
-            return plot.point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plot_utils.point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "line":
-            return plot.line_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plot_utils.line_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "step":
-            return plot.step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plot_utils.step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
 
         raise ValueError(f"invalid plot style '{style}'")
 
@@ -849,7 +878,7 @@ class SampledData(BinwiseData):
             ax:
                 Matplotlib axis to plot onto.
         """
-        return plot.correlation_matrix(
+        return plot_utils.correlation_matrix(
             self.correlation,
             ticks=self.binning.mids if redshift else None,
             cmap=cmap,

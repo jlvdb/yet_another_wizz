@@ -2,7 +2,7 @@ import numpy as np
 from astropy.cosmology import FLRW, Planck15
 from pytest import approx, raises
 
-from yaw.utils.cosmology import (
+from yaw.cosmology import (
     CustomCosmology,
     cosmology_is_equal,
     get_default_cosmology,

@@ -14,8 +14,8 @@ from astropy import units
 
 from yaw.containers import Binning, YamlSerialisable
 from yaw.options import BinMethod, BinMethodAuto, Closed, get_options
-from yaw.utils import parallel
-from yaw.utils.cosmology import (
+from yaw import parallel
+from yaw.cosmology import (
     CustomCosmology,
     TypeCosmology,
     cosmology_is_equal,
