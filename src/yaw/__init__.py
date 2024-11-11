@@ -7,10 +7,10 @@ from yaw._version import __version__, __version_tuple__
 from yaw.catalog import Catalog
 from yaw.config import Configuration
 from yaw.containers import Binning
+from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.corrfunc import CorrData, CorrFunc
 from yaw.measurements import autocorrelate, crosscorrelate
 from yaw.redshifts import HistData, RedshiftData
-from yaw.utils import AngularCoordinates, AngularDistances
 
 __all__ = [
     "__version__",

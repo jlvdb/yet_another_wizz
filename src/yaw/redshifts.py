@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 import scipy.optimize
 
+from yaw import parallel
 from yaw.config import Configuration
 from yaw.corrfunc import CorrData
-from yaw.options import PlotStyle
-from yaw import parallel
 from yaw.logging import Indicator
+from yaw.options import PlotStyle
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

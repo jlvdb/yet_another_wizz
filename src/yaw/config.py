@@ -12,15 +12,15 @@ import astropy.cosmology
 import numpy as np
 from astropy import units
 
-from yaw.containers import Binning, YamlSerialisable
-from yaw.options import BinMethod, BinMethodAuto, Closed, get_options
 from yaw import parallel
+from yaw.containers import Binning, YamlSerialisable
 from yaw.cosmology import (
     CustomCosmology,
     TypeCosmology,
     cosmology_is_equal,
     get_default_cosmology,
 )
+from yaw.options import BinMethod, BinMethodAuto, Closed, get_options
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator

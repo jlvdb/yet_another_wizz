@@ -5,6 +5,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from yaw import parallel
 from yaw.catalog.utils import PatchData
 from yaw.catalog.writers.base import (
     CatalogWriter,
@@ -13,8 +14,7 @@ from yaw.catalog.writers.base import (
     split_into_patches,
     write_patches_unthreaded,
 )
-from yaw import parallel
-from yaw.utils import AngularCoordinates
+from yaw.coordinates import AngularCoordinates
 from yaw.logging import Indicator
 from yaw.parallel import EndOfQueue
 

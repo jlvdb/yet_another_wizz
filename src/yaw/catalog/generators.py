@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Iterator, Sized
 
 import numpy as np
 
-from yaw.catalog.utils import PatchData, PatchIDs
 from yaw import parallel
+from yaw.catalog.utils import PatchData, PatchIDs
 from yaw.logging import long_num_format
 
 if TYPE_CHECKING:

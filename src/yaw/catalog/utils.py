@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.utils import AngularCoordinates
+from yaw.coordinates import AngularCoordinates
 
 if TYPE_CHECKING:
     from io import TextIOBase

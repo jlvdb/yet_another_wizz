@@ -10,8 +10,8 @@ from scipy.spatial import KDTree
 
 from yaw.catalog.utils import PatchData, groupby
 from yaw.containers import parse_binning
+from yaw.coordinates import AngularDistances
 from yaw.options import Closed
-from yaw.utils import AngularDistances
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.catalog.containers import Patch
-    from yaw.utils import AngularCoordinates
+    from yaw.coordinates import AngularCoordinates
 
 __all__ = [
     "AngularTree",

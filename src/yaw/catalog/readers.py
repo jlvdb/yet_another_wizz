@@ -12,9 +12,9 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import parquet
 
+from yaw import parallel
 from yaw.catalog.generators import CHUNKSIZE, ChunkGenerator, DataChunk
 from yaw.catalog.utils import PatchData
-from yaw import parallel
 from yaw.logging import long_num_format
 
 if TYPE_CHECKING:

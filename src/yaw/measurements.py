@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.catalog.utils import InconsistentPatchesError
-from yaw.corrfunc import CorrFunc
-from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw import parallel
-from yaw.utils import AngularDistances, separation_physical_to_angle
+from yaw.catalog.utils import InconsistentPatchesError
+from yaw.coordinates import AngularDistances, separation_physical_to_angle
+from yaw.corrfunc import CorrFunc
 from yaw.logging import Indicator
+from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

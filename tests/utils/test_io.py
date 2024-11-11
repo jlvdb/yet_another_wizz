@@ -5,8 +5,6 @@ import numpy as np
 from numpy.testing import assert_almost_equal
 from pytest import mark
 
-from yaw.utils import io
-
 
 @mark.parametrize(
     "value,width,expect",

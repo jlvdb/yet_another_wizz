@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw import parallel
 from yaw.catalog.generators import RandomChunkGenerator
 from yaw.catalog.readers import DataFrameReader, new_filereader
 from yaw.catalog.trees import BinnedTrees
@@ -20,10 +21,9 @@ from yaw.catalog.utils import (
 )
 from yaw.catalog.writers import PATCH_INFO_FILE, PatchMode, create_patch_centers
 from yaw.containers import YamlSerialisable, parse_binning
-from yaw.options import Closed
-from yaw import parallel
-from yaw.utils import AngularCoordinates, AngularDistances
+from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.logging import Indicator
+from yaw.options import Closed
 
 if parallel.use_mpi():
     from yaw.catalog.writers.mpi4py import write_patches

@@ -11,9 +11,8 @@ import numpy as np
 import yaml
 from numpy.exceptions import AxisError
 
-from yaw.options import Closed, CovKind, PlotStyle
 from yaw import plot_utils
-from yaw.utils import io
+from yaw.options import Closed, CovKind, PlotStyle
 
 if TYPE_CHECKING:
     from typing import Any

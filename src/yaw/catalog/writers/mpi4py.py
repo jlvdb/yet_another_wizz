@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from mpi4py import MPI
 
+from yaw import parallel
 from yaw.catalog.readers import DataChunk
 from yaw.catalog.writers.base import (
     CatalogWriter,
@@ -11,7 +12,6 @@ from yaw.catalog.writers.base import (
     logger,
     split_into_patches,
 )
-from yaw import parallel
 from yaw.logging import Indicator
 from yaw.parallel import EndOfQueue
 

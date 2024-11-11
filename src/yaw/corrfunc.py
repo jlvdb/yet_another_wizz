@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw import parallel
 from yaw.containers import (
     AsciiSerializable,
     Binning,
@@ -18,7 +19,6 @@ from yaw.containers import (
     write_version_tag,
 )
 from yaw.paircounts import NormalisedCounts
-from yaw import parallel
 from yaw.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:

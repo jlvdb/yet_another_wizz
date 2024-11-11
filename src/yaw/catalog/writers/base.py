@@ -11,10 +11,10 @@ import numpy as np
 import treecorr
 from scipy.cluster import vq
 
+from yaw import parallel
 from yaw.catalog.readers import DataChunk
 from yaw.catalog.utils import CatalogBase, PatchBase, PatchData, PatchIDs, groupby
-from yaw import parallel
-from yaw.utils import AngularCoordinates
+from yaw.coordinates import AngularCoordinates
 from yaw.logging import Indicator, long_num_format
 
 if TYPE_CHECKING:

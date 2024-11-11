@@ -12,8 +12,8 @@ from yaw.containers import (
     HdfSerializable,
     PatchwiseData,
     SampledData,
-    load_legacy_binning,
     is_legacy_dataset,
+    load_legacy_binning,
     write_version_tag,
 )
 from yaw.parallel import Broadcastable
