@@ -673,7 +673,7 @@ class FitsReader(FileReader):
             self._num_records = len(self._hdu_data)
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
-        issue_io_log(self.num_records, self.num_chunks, f"FITS file: {self.path}")
+        issue_io_log(self.num_records, self.num_chunks, f"FITS file: {path}")
 
         super().__init__(
             path,
@@ -738,11 +738,11 @@ class HDFReader(FileReader):
     ) -> None:
         self._num_records = None
         if parallel.on_root():
-            self._file = h5py.File(path, mode="r")
+            self._file = h5py.File(str(path), mode="r")
             self._num_records = len(self._file[ra_name])
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
-        issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {self.path}")
+        issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {path}")
 
         super().__init__(
             path,
@@ -808,11 +808,11 @@ class ParquetReader(FileReader):
     ) -> None:
         self._num_records = None
         if parallel.on_root():
-            self._file = parquet.ParquetFile(self.path)
+            self._file = parquet.ParquetFile(str(path))
             self._num_records = self._file.metadata.num_rows
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
-        issue_io_log(self.num_records, self.num_chunks, f"Parquet file: {self.path}")
+        issue_io_log(self.num_records, self.num_chunks, f"Parquet file: {path}")
 
         super().__init__(
             path,
