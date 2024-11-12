@@ -294,7 +294,9 @@ class Patch:
         try:
             self.meta = Metadata.from_file(meta_data_file)
             with self.data_path.open(mode="rb") as f:
-                self._has_weights, self._has_redshifts = read_header(f)
+                column_info = read_header(f)
+                self._has_weights = column_info["weights"]
+                self._has_redshifts = column_info["redshifts"]
 
         except FileNotFoundError:
             data = read_patch_data(self.data_path)
