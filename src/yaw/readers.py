@@ -420,7 +420,7 @@ class DataReader(DataChunkReader):
     @abstractmethod
     def __init__(
         self,
-        *,
+        *args,
         ra_name: str,
         dec_name: str,
         weight_name: str | None = None,
@@ -552,6 +552,7 @@ class DataFrameReader(DataReader):
     ) -> None:
         self._data = data
         self._num_records = len(data)
+        self.chunksize = chunksize or CHUNKSIZE  # we need this early
         issue_io_log(self.num_records, self.num_chunks, "memory")
 
         super().__init__(
@@ -673,10 +674,10 @@ class FitsReader(FileReader):
             self._num_records = len(self._hdu_data)
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self.chunksize = chunksize or CHUNKSIZE  # we need this early
         issue_io_log(self.num_records, self.num_chunks, f"FITS file: {path}")
 
         super().__init__(
-            path,
             ra_name=ra_name,
             dec_name=dec_name,
             weight_name=weight_name,
@@ -742,10 +743,10 @@ class HDFReader(FileReader):
             self._num_records = len(self._file[ra_name])
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self.chunksize = chunksize or CHUNKSIZE  # we need this early
         issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {path}")
 
         super().__init__(
-            path,
             ra_name=ra_name,
             dec_name=dec_name,
             weight_name=weight_name,
@@ -812,10 +813,10 @@ class ParquetReader(FileReader):
             self._num_records = self._file.metadata.num_rows
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self.chunksize = chunksize or CHUNKSIZE  # we need this early
         issue_io_log(self.num_records, self.num_chunks, f"Parquet file: {path}")
 
         super().__init__(
-            path,
             ra_name=ra_name,
             dec_name=dec_name,
             weight_name=weight_name,
