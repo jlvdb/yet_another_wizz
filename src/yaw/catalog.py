@@ -67,16 +67,26 @@ class PatchMode(Enum):
         log_sink = logger.debug if parallel.on_root() else lambda *x: x
 
         if patch_centers is not None:
+            if not isinstance(patch_centers, (AngularCoordinates, Catalog)):
+                raise TypeError(
+                    "'patch_centers' must be a set of coordinates or another catalog")
             check_patch_ids(len(patch_centers))
+
             log_sink("applying %d patches", len(patch_centers))
             return PatchMode.apply
 
         if patch_name is not None:
+            if not isinstance(patch_name, str):
+                raise TypeError("'patch_name' must be a string")
+
             log_sink("dividing patches based on '%s'", patch_name)
             return PatchMode.divide
 
         elif patch_num is not None:
+            if not isinstance(patch_num, int):
+                raise TypeError("'patch_num' must be an integer")
             check_patch_ids(patch_num)
+
             log_sink("creating %d patches", patch_num)
             return PatchMode.create
 

@@ -677,7 +677,7 @@ class FitsReader(FileReader):
             self._num_records = len(self._hdu_data)
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
-        self.chunksize = chunksize or CHUNKSIZE  # we need this early
+        self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"FITS file: {path}")
 
         super().__init__(
@@ -746,7 +746,7 @@ class HDFReader(FileReader):
             self._num_records = len(self._file[ra_name])
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
-        self.chunksize = chunksize or CHUNKSIZE  # we need this early
+        self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {path}")
 
         super().__init__(
@@ -816,7 +816,7 @@ class ParquetReader(FileReader):
             self._num_records = self._file.metadata.num_rows
 
         self._num_records = parallel.COMM.bcast(self._num_records, root=0)
-        self.chunksize = chunksize or CHUNKSIZE  # we need this early
+        self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"Parquet file: {path}")
 
         super().__init__(
@@ -829,10 +829,6 @@ class ParquetReader(FileReader):
             degrees=degrees,
         )
 
-        # this final check is necessary since HDF5 columns are independent
-        if parallel.on_root():
-            common_len_assert([self._file[col] for col in self._columns.values()])
-
     def _get_group_cache_size(self) -> int:
         """Get the number of records currently stored in the row-group cache."""
         return sum(len(group) for group in self._group_cache)
@@ -842,8 +838,11 @@ class ParquetReader(FileReader):
         constructed."""
         while self._get_group_cache_size() < self.chunksize:
             group_idx = len(self._group_cache)
-            next_group = self._file.read_row_group(group_idx, self._columns.values())
-            self._group_cache.append(next_group)
+            try:
+                next_group = self._file.read_row_group(group_idx, self._columns.values())
+                self._group_cache.append(next_group)
+            except Exception:
+                break  # end of file reached before chunk is full
 
     def _extract_chunk(self) -> Table:
         """Extract a data from the row-group cache and return a chunk as a
@@ -851,9 +850,12 @@ class ParquetReader(FileReader):
         num_records = 0
         groups = []
         while num_records < self.chunksize:
-            next_group = self._group_cache.popleft()
-            num_records += len(next_group)
-            groups.append(next_group)
+            try:
+                next_group = self._group_cache.popleft()
+                num_records += len(next_group)
+                groups.append(next_group)
+            except:
+                break  # end of file reached before chunk is full
 
         oversized_chunk = pa.concat_tables(groups)
         remainder = oversized_chunk[self.chunksize :]
