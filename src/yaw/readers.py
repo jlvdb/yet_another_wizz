@@ -591,6 +591,7 @@ class FileReader(DataReader):
         self._close_file()
 
     def _close_file(self) -> None:
+        """Close the underlying file(pointer)."""
         if parallel.on_root():
             self._file.close()
 
@@ -835,7 +836,7 @@ class ParquetReader(FileReader):
 
     def _load_groups(self) -> None:
         """Keep reading row-groups from the input file until a full chunk can be
-        constructed."""
+        constructed or the end of the file is reached."""
         while self._get_group_cache_size() < self.chunksize:
             group_idx = len(self._group_cache)
             try:
