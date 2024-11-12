@@ -14,23 +14,24 @@ from astropy.io import fits
 from pyarrow import Table, parquet
 
 from yaw import parallel
+from yaw.config import NotSet
+from yaw.coordinates import AngularCoordinates
 from yaw.logging import long_num_format
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from typing import TypeVar
+    from typing import NewType, TypeVar
 
     from numpy.typing import ArrayLike, DTypeLike, NDArray
     from typing_extensions import Self
 
     from yaw.randoms import RandomsBase
 
-    TypeDataChunk = TypeVar("TypeDataChunk", NDArray)
+    TypeDataChunk = NewType("TypeDataChunk", NDArray)
+    TypePatchIDs = NewType("TypePatchIDs", NDArray[np.int16])
+    T = TypeVar("T")
 
 CHUNKSIZE = 16_777_216
-"""Default chunk size to use, optimised for parallel performance."""
-
-DATA_ATTRS = ("ra", "dec", "weights", "redshifts", "patch_ids")
 """Default chunk size to use, optimised for parallel performance."""
 
 PATCH_ID_DTYPE = "i2"
@@ -86,6 +87,9 @@ def check_patch_ids(patch_ids: ArrayLike) -> None:
 
 
 class DataChunk:
+    ATTR_NAMES = ("ra", "dec", "weights", "redshifts", "patch_ids")
+    """Default chunk size to use, optimised for parallel performance."""
+
     @staticmethod
     def create(
         ra: NDArray,
@@ -123,7 +127,8 @@ class DataChunk:
                 Whether to ensure that all input values are finite.
 
         Returns:
-            Numpy array with input values stored in fields.
+            Numpy array with input values stored in fields with order ``ra``,
+            ``dec``, (``weights``, ``redshifts``, ``patch_ids``).
 
         Raises:
             ValueError:
@@ -131,7 +136,9 @@ class DataChunk:
         """
         values = (ra, dec, weights, redshifts, patch_ids)
         inputs = {
-            attr: value for attr, value in zip(DATA_ATTRS, values) if value is not None
+            attr: value
+            for attr, value in zip(DataChunk.ATTR_NAMES, values)
+            if value is not None
         }
 
         if patch_ids is not None:
@@ -152,7 +159,14 @@ class DataChunk:
         return array
 
     @staticmethod
-    def pop_field(chunk: TypeDataChunk, field: str) -> tuple[TypeDataChunk, NDArray]:
+    def get_coords(chunk: TypeDataChunk) -> AngularCoordinates:
+        coords = np.empty((len(chunk), 2), dtype="f8")
+        coords[:, 0] = chunk["ra"]
+        coords[:, 1] = chunk["dec"]
+        return AngularCoordinates(coords)
+
+    @staticmethod
+    def pop(chunk: TypeDataChunk, field: str) -> tuple[TypeDataChunk, NDArray]:
         """
         Remove a field from a numpy array holding a chunk of data and return
         its values.
@@ -178,8 +192,50 @@ class DataChunk:
         return new_chunk, popped_values
 
     @staticmethod
-    def has_attr(chunk: TypeDataChunk, attr: str) -> bool:
+    def hasattr(chunk: TypeDataChunk, attr: str) -> bool:
+        """
+        Check if a numpy array holding a chunk of data contains a given field.
+
+        Args:
+            chunk:
+                Numpy array with composite data type (fields).
+            field:
+                Name of the field to remove from the chunk.
+
+        Returns:
+            Whether the field is contained in the array.
+        """
         return attr in chunk.dtype.fields
+
+    @staticmethod
+    def getattr(chunk: TypeDataChunk, attr: str, default: T = NotSet) -> NDArray | T:
+        """
+        Retrieve a given field from a numpy array holding a chunk of data.
+
+        Args:
+            chunk:
+                Numpy array with composite data type (fields).
+            field:
+                Name of the field to remove from the chunk.
+            default:
+                Optional value to return in case the array does not contain the
+                field.
+
+        Returns:
+            The values stored in the field or the default if the field is not
+            present.
+
+        Raises:
+            ValueError:
+                If the array does not contain the field and no default is
+                provided.
+        """
+        try:
+            return chunk[attr]
+        except ValueError:
+            if default is NotSet:
+                raise
+            return default
 
 
 class DataChunkReader(AbstractContextManager, Iterator[TypeDataChunk]):
@@ -373,7 +429,9 @@ class DataReader(DataChunkReader):
     ) -> None:
         columns = (ra_name, dec_name, weight_name, redshift_name, patch_name)
         self._columns = {
-            attr: name for attr, name in zip(DATA_ATTRS, columns) if name is not None
+            attr: name
+            for attr, name in zip(DataChunk.ATTR_NAMES, columns)
+            if name is not None
         }
 
         self.degrees = degrees

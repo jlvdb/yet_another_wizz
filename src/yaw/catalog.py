@@ -3,311 +3,184 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Mapping
+from contextlib import AbstractContextManager
+from enum import Enum
 from pathlib import Path
+from shutil import rmtree
 from typing import TYPE_CHECKING
 
 import numpy as np
+import treecorr
+from scipy.cluster import vq
 
 from yaw import parallel
-from yaw.catalog.generators import RandomChunkGenerator
-from yaw.catalog.readers import DataFrameReader, new_filereader
-from yaw.catalog.trees import BinnedTrees
-from yaw.catalog.utils import (
-    PATCH_NAME_TEMPLATE,
-    CatalogBase,
-    InconsistentPatchesError,
-    PatchBase,
-    PatchData,
-)
-from yaw.catalog.writers import PATCH_INFO_FILE, PatchMode, create_patch_centers
-from yaw.containers import YamlSerialisable, parse_binning
+from yaw.containers import parse_binning
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.logging import Indicator
+from yaw.logging import Indicator, long_num_format
 from yaw.options import Closed
-
-if parallel.use_mpi():
-    from yaw.catalog.writers.mpi4py import write_patches
-else:
-    from yaw.catalog.writers.multiprocessing import write_patches
+from yaw.parallel import EndOfQueue
+from yaw.patch import Patch, PatchWriter
+from yaw.randoms import RandomsBase
+from yaw.readers import (
+    PATCH_ID_DTYPE,
+    DataChunk,
+    DataChunkReader,
+    DataFrame,
+    DataFrameReader,
+    RandomReader,
+    check_patch_ids,
+    new_filereader,
+)
+from yaw.trees import BinnedTrees, groupby
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Any, Union
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
-    from yaw.catalog.generators import RandomsBase
-    from yaw.catalog.utils import MockDataFrame as DataFrame
-
-    TypePatchCenters = Union["Catalog", AngularCoordinates]
-
-__all__ = [
-    "Catalog",
-    "Patch",
-]
-
-logger = logging.getLogger("yaw.catalog")
+    from yaw.readers import TypeDataChunk, TypePatchIDs
 
 
-class Metadata(YamlSerialisable):
-    """
-    Container for patch meta data.
+PATCH_NAME_TEMPLATE = "patch_{:d}"
+PATCH_INFO_FILE = "patch_ids.bin"
 
-    Bundles the number of records stored in the patch, the sum of weights, and
-    distribution of objects on sky through the center point and containing
-    radius.
+logger = logging.getLogger(__name__)
 
-    Args:
-        num_records:
-            Number of data points in the patch.
-        total:
-            Sum of point weights or same as :obj:`num_records`.
-        center:
-            Center point (mean) of all data points,
-            :obj:`~yaw.AngularCoordinates` in radian.
-        radius:
-            Radius around center point containing all data points,
-            :obj:`~yaw.AngularDistances` in radian.
-    """
 
-    __slots__ = (
-        "num_records",
-        "total",
-        "center",
-        "radius",
+class InconsistentPatchesError(Exception):
+    pass
+
+
+class PatchMode(Enum):
+    apply = 0
+    divide = 1
+    create = 2
+
+    @classmethod
+    def determine(
+        cls,
+        patch_centers: AngularCoordinates | Catalog | None,
+        patch_name: str | None,
+        patch_num: int | None,
+    ) -> PatchMode:
+        log_sink = logger.debug if parallel.on_root() else lambda *x: x
+
+        if patch_centers is not None:
+            check_patch_ids(len(patch_centers))
+            log_sink("applying %d patches", len(patch_centers))
+            return PatchMode.apply
+
+        if patch_name is not None:
+            log_sink("dividing patches based on '%s'", patch_name)
+            return PatchMode.divide
+
+        elif patch_num is not None:
+            check_patch_ids(patch_num)
+            log_sink("creating %d patches", patch_num)
+            return PatchMode.create
+
+        raise ValueError("no patch method specified")
+
+
+def get_patch_centers(instance: AngularCoordinates | Catalog) -> AngularCoordinates:
+    try:
+        return instance.get_centers()
+    except AttributeError as err:
+        if isinstance(instance, AngularCoordinates):
+            return instance
+        raise TypeError(
+            "'patch_centers' must be of type 'Catalog' or 'AngularCoordinates'"
+        ) from err
+
+
+def create_patch_centers(
+    reader: DataChunkReader, patch_num: int, probe_size: int
+) -> AngularCoordinates:
+    if probe_size < 10 * patch_num:
+        probe_size = int(100_000 * np.sqrt(patch_num))
+    data_probe = reader.get_probe(probe_size)
+
+    if parallel.on_root():
+        logger.info(
+            "computing patch centers from subset of %s records",
+            long_num_format(len(data_probe)),
+        )
+
+    cat = treecorr.Catalog(
+        ra=DataChunk.getattr(data_probe, "ra"),
+        ra_units="radians",
+        dec=DataChunk.getattr(data_probe, "dec"),
+        dec_units="radians",
+        w=DataChunk.getattr(data_probe, "weights"),
+        npatch=patch_num,
+        config=dict(num_threads=parallel.get_size()),
     )
 
-    num_records: int
-    """Number of data points in the patch."""
-    total: float
-    """Sum of point weights."""
-    center: AngularCoordinates
-    """Center point (mean) of all data points."""
-    radius: AngularDistances
-    """Radius around center point containing all data points."""
-
-    def __init__(
-        self,
-        *,
-        num_records: int,
-        total: float,
-        center: AngularCoordinates,
-        radius: AngularDistances,
-    ) -> None:
-        self.num_records = num_records
-        self.total = total
-        self.center = center
-        self.radius = radius
-
-    def __repr__(self) -> str:
-        items = (
-            f"num_records={self.num_records}",
-            f"total={self.total}",
-            f"center={self.center}",
-            f"radius={self.radius}",
-        )
-        return f"{type(self).__name__}({', '.join(items)})"
-
-    @classmethod
-    def compute(
-        cls,
-        coords: AngularCoordinates,
-        *,
-        weights: NDArray | None = None,
-        center: AngularCoordinates | None = None,
-    ) -> Metadata:
-        """
-        Compute the meta data from the patch data.
-
-        If no weights are provided, the sum of weights will equal the number of
-        data points. Weights are also used when computing the center point.
-
-        Args:
-            coords:
-                Coordinates of patch data points, given as
-                :obj:`~yaw.AngularCoordinates`.
-
-        Keyword Args:
-            weights:
-                Optional, weights of data points.
-            center:
-                Optional, use this specific center point, e.g. when using an
-                externally computed patch center.
-
-        Returns:
-            Final instance of meta data.
-        """
-        new = super().__new__(cls)
-        new.num_records = len(coords)
-        if weights is None:
-            new.total = float(new.num_records)
-        else:
-            new.total = float(np.sum(weights))
-
-        if center is not None:
-            if len(center) != 1:
-                raise ValueError("'center' must be one single coordinate")
-            new.center = center.copy()
-        else:
-            new.center = coords.mean(weights)
-        new.radius = coords.distance(new.center).max()
-
-        return new
-
-    @classmethod
-    def from_dict(cls, kwarg_dict: dict) -> Metadata:
-        center = AngularCoordinates(kwarg_dict.pop("center"))
-        radius = AngularDistances(kwarg_dict.pop("radius"))
-        return cls(center=center, radius=radius, **kwarg_dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(
-            num_records=int(self.num_records),
-            total=float(self.total),
-            center=self.center.tolist()[0],  # 2-dim by default
-            radius=self.radius.tolist()[0],  # 1-dim by default
-        )
+    return AngularCoordinates.from_3d(cat.patch_centers)
 
 
-class Patch(PatchBase):
+def assign_patch_centers(patch_centers: NDArray, data: TypeDataChunk) -> TypePatchIDs:
+    coords = DataChunk.get_coords(data)
+    ids, _ = vq.vq(coords.to_3d(), patch_centers)
+    return ids.astype(PATCH_ID_DTYPE)
+
+
+def split_into_patches(
+    chunk: TypeDataChunk, patch_centers: NDArray | None
+) -> dict[int, TypeDataChunk]:
+    has_patch_ids = DataChunk.hasattr(chunk, "patch_ids")
+
+    # statement order matters
+    if patch_centers is not None:
+        patch_ids = assign_patch_centers(patch_centers, chunk.data)
+        if has_patch_ids:
+            chunk, _ = DataChunk.pop(chunk, "patch_ids")
+    elif has_patch_ids:
+        chunk, patch_ids = DataChunk.pop(chunk, "patch_ids")
+    else:  # pragma: no cover
+        raise RuntimeError("found no way to obtain patch centers")
+
+    return {
+        int(patch_id): patch_data
+        for patch_id, patch_data in groupby(patch_ids, chunk.data.data)
+    }
+
+
+def get_patch_path_from_id(cache_directory: Path | str, patch_id: int) -> Path:
     """
-    A single spatial patch of catalog data.
+    Get the patch to a specific patch cache directory, given the patch
+    ID/index.
 
-    Data has point coordinates and optionally weights and redshifts. This data
-    is cached on disk in a binary file (``data.bin``) that is read when
-    accessing any of the classes data attributes. Additionaly meta data, such as
-    the patch center and radius, that describe the spatial distribution of the
-    contained data points, are availble and stored as YAML file (``meta.yml``)
-
-    The cached data is organised in a single directory as follows::
-
-        [cache_path]/
-          ├╴ data.bin
-          ├╴ meta.yml
-          ├╴ binning   (optional, see catalog.trees.BinnedTrees)
-          └╴ trees.pkl (optional, see catalog.trees.BinnedTrees)
-
-    Supports efficient pickeling as long as the cached data is not deleted or
-    moved.
+    Returns:
+        Path as a :obj:`pathlib.Path`.
     """
+    return Path(cache_directory) / PATCH_NAME_TEMPLATE.format(patch_id)
 
-    __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
 
-    meta: Metadata
-    """Patch meta data; number of records stored in the patch, the sum of
-    weights, and distribution of objects on sky through the center point and
-    containing radius."""
+def get_id_from_patch_path(cache_path: Path | str) -> int:
+    """
+    Extract the integer patch ID from the cache path.
 
-    def __init__(
-        self, cache_path: Path | str, center: AngularCoordinates | None = None
-    ) -> None:
-        self.cache_path = Path(cache_path)
-        meta_data_file = self.cache_path / "meta.yml"
-
-        try:
-            self.meta = Metadata.from_file(meta_data_file)
-            with self.data_path.open(mode="rb") as f:
-                self._has_weights, self._has_redshifts = PatchData.read_header(f)
-
-        except FileNotFoundError:
-            data = PatchData.from_file(self.data_path)
-            self._has_weights = data.has_weights
-            self._has_redshifts = data.has_redshifts
-
-            self.meta = Metadata.compute(
-                data.coords, weights=data.weights, center=center
-            )
-            self.meta.to_file(meta_data_file)
-
-    def __repr__(self) -> str:
-        items = (
-            f"num_records={self.meta.num_records}",
-            f"total={self.meta.total}",
-            f"has_weights={self._has_weights}",
-            f"has_redshifts={self._has_redshifts}",
-        )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
-
-    def __getstate__(self) -> dict:
-        return dict(
-            cache_path=self.cache_path,
-            meta=self.meta,
-            _has_weights=self._has_weights,
-            _has_redshifts=self._has_redshifts,
-        )
-
-    def __setstate__(self, state) -> None:
-        for key, value in state.items():
-            setattr(self, key, value)
-
-    @staticmethod
-    def id_from_path(cache_path: Path | str) -> int:
-        """
-        Extract the integer patch ID from the cache path.
-
-        .. caution::
-            This will fail if the patch has not been created through a
-            :obj:`~yaw.Catalog` instance, which manages the patch creation.
-        """
-        _, id_str = Path(cache_path).name.split("_")
-        return int(id_str)
-
-    def load_data(self) -> PatchData:
-        """
-        Load the cached object data with coordinates and optional weights and
-        redshifts.
-
-        Returns:
-            A special :obj:`PatchData` container that has the same
-            :obj:`coords`, :obj:`weights`, and :obj:`redshifts` attributes as
-            :obj:`Patch`.
-        """
-        return PatchData.from_file(self.data_path)
-
-    @property
-    def coords(self) -> AngularCoordinates:
-        """Coordinates in right ascension and declination, in radian."""
-        return self.load_data().coords
-
-    @property
-    def weights(self) -> NDArray | None:
-        """Weights or ``None`` if there are no weights."""
-        return self.load_data().weights
-
-    @property
-    def redshifts(self) -> NDArray | None:
-        """Redshifts or ``None`` if there are no redshifts."""
-        return self.load_data().redshifts
-
-    def get_trees(self) -> BinnedTrees:
-        """
-        Try loading the binary search trees.
-
-        Loads the tree(s) from the ``trees.pkl`` pickle file, other raises an
-        error.
-
-        Returns:
-            :obj:`~yaw.catalog.trees.BinnedTrees` container with a single or
-            multiple (when catalog is binned in redshift) binary search trees.
-
-        Raises:
-            FileNotFoundError:
-                If the trees have not been build previously.
-        """
-        return BinnedTrees(self)
+    .. caution::
+        This will fail if the patch has not been created through a
+        :obj:`~yaw.Catalog` instance, which manages the patch creation.
+    """
+    _, id_str = Path(cache_path).name.split("_")
+    return int(id_str)
 
 
 def read_patch_ids(cache_directory: Path) -> list[int]:
     path = cache_directory / PATCH_INFO_FILE
     if not path.exists():
         raise InconsistentPatchesError("patch info file not found")
-    return np.fromfile(path, dtype=np.int16).tolist()
+    return np.fromfile(path, dtype=PATCH_ID_DTYPE).tolist()
 
 
 def load_patches(
     cache_directory: Path,
     *,
-    patch_centers: TypePatchCenters | None,
+    patch_centers: AngularCoordinates | Catalog | None,
     progress: bool,
     max_workers: int | None = None,
 ) -> dict[int, Patch]:
@@ -334,11 +207,365 @@ def load_patches(
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_ids))
 
-    patches = {Patch.id_from_path(patch.cache_path): patch for patch in patch_iter}
+    patches = {get_id_from_patch_path(patch.cache_path): patch for patch in patch_iter}
     return parallel.COMM.bcast(patches, root=0)
 
 
-class Catalog(CatalogBase, Mapping[int, Patch]):
+class CatalogWriter(AbstractContextManager):
+    __slots__ = (
+        "cache_directory",
+        "has_weights",
+        "has_redshifts",
+        "buffersize",
+        "writers",
+    )
+
+    def __init__(
+        self,
+        cache_directory: Path | str,
+        *,
+        overwrite: bool = True,
+        has_weights: bool,
+        has_redshifts: bool,
+        buffersize: int = -1,
+    ) -> None:
+        self.cache_directory = Path(cache_directory)
+        cache_exists = self.cache_directory.exists()
+
+        if parallel.on_root():
+            logger.info(
+                "%s cache directory: %s",
+                "overwriting" if cache_exists and overwrite else "using",
+                cache_directory,
+            )
+
+        if self.cache_directory.exists():
+            if overwrite:
+                rmtree(self.cache_directory)
+            else:
+                raise FileExistsError(f"cache directory exists: {cache_directory}")
+
+        self.has_weights = has_weights
+        self.has_redshifts = has_redshifts
+
+        self.buffersize = buffersize
+        self.cache_directory.mkdir()
+        self.writers: dict[int, PatchWriter] = {}
+
+    def __repr__(self) -> str:
+        items = (
+            f"num_patches={self.num_patches}",
+            f"has_weights={self.has_weights}",
+            f"has_redshifts={self.has_redshifts}",
+            f"max_buffersize={self.buffersize * self.num_patches}",
+        )
+        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self.finalize()
+
+    @property
+    def num_patches(self) -> int:
+        return len(self.writers)
+
+    def get_writer(self, patch_id: int) -> PatchWriter:
+        try:
+            return self.writers[patch_id]
+
+        except KeyError:
+            writer = PatchWriter(
+                self.get_patch_path(patch_id),
+                has_weights=self.has_weights,
+                has_redshifts=self.has_redshifts,
+                buffersize=self.buffersize,
+            )
+            self.writers[patch_id] = writer
+            return writer
+
+    def process_patches(self, patches: dict[int, TypeDataChunk]) -> None:
+        for patch_id, patch in patches.items():
+            self.get_writer(patch_id).process_chunk(patch)
+
+    def finalize(self) -> None:
+        empty_patches = set()
+        for patch_id, writer in self.writers.items():
+            writer.close()
+            if writer.num_processed == 0:
+                empty_patches.add(patch_id)
+
+        for patch_id in empty_patches:
+            raise ValueError(f"patch with ID {patch_id} contains no data")
+
+        patch_ids = np.fromiter(self.writers.keys(), dtype=np.int16)
+        np.sort(patch_ids).tofile(self.cache_directory / PATCH_INFO_FILE)
+
+
+def write_patches_unthreaded(
+    path: Path | str,
+    reader: DataChunkReader,
+    patch_centers: AngularCoordinates | Catalog,
+    *,
+    overwrite: bool,
+    progress: bool,
+    buffersize: int = -1,
+) -> None:
+    with reader:
+        if patch_centers is not None:
+            patch_centers = get_patch_centers(patch_centers).to_3d()
+
+        with CatalogWriter(
+            cache_directory=path,
+            has_weights=reader.has_weights,
+            has_redshifts=reader.has_redshifts,
+            overwrite=overwrite,
+            buffersize=buffersize,
+        ) as writer:
+            chunk_iter = Indicator(reader) if progress else iter(reader)
+            for chunk in chunk_iter:
+                patches = split_into_patches(chunk, patch_centers)
+                writer.process_patches(patches)
+
+
+if parallel.use_mpi():
+    from mpi4py import MPI
+
+    if TYPE_CHECKING:
+        from mpi4py.MPI import Comm
+
+    class WorkerManager:
+        def __init__(self, max_workers: int | None, reader_rank: int = 0) -> None:
+            self.reader_rank = reader_rank
+
+            max_workers = parallel.get_size(max_workers)
+            self.active_ranks = parallel.ranks_on_same_node(reader_rank, max_workers)
+
+            self.active_ranks.discard(reader_rank)
+            self.writer_rank = self.active_ranks.pop()
+            self.active_ranks.add(reader_rank)
+
+        def get_comm(self) -> Comm:
+            rank = parallel.COMM.Get_rank()
+            if rank in self.active_ranks:
+                return parallel.COMM.Split(1, rank)
+            else:
+                return parallel.COMM.Split(MPI.UNDEFINED, rank)
+
+    def scatter_data_chunk(comm: Comm, reader_rank: int, chunk: DataChunk) -> DataChunk:
+        num_ranks = comm.Get_size()
+
+        if comm.Get_rank() == reader_rank:
+            splits = chunk.split(num_ranks)
+
+            for rank, split in enumerate(splits):
+                if rank != reader_rank:
+                    comm.send(split, dest=rank, tag=2)
+
+            return splits[reader_rank]
+
+        else:
+            return comm.recv(source=0, tag=2)
+
+    def chunk_processing_task(
+        comm: Comm,
+        worker_config: WorkerManager,
+        patch_centers: AngularCoordinates | Catalog | None,
+        chunk_iter: Iterator[DataChunk],
+    ) -> None:
+        if patch_centers is not None:
+            patch_centers = patch_centers.to_3d()
+
+        reader_rank = parallel.world_to_comm_rank(comm, worker_config.reader_rank)
+
+        for chunk in chunk_iter:
+            worker_chunk = scatter_data_chunk(comm, reader_rank, chunk)
+            patches = split_into_patches(worker_chunk, patch_centers)
+            parallel.COMM.send(patches, dest=worker_config.writer_rank, tag=1)
+
+        comm.Barrier()
+
+    def writer_task(
+        cache_directory: Path | str,
+        *,
+        has_weights: bool,
+        has_redshifts: bool,
+        overwrite: bool = True,
+        buffersize: int = -1,
+    ) -> None:
+        recv = parallel.COMM.recv
+        with CatalogWriter(
+            cache_directory,
+            has_weights=has_weights,
+            has_redshifts=has_redshifts,
+            overwrite=overwrite,
+            buffersize=buffersize,
+        ) as writer:
+            while (patches := recv(source=MPI.ANY_SOURCE, tag=1)) is not EndOfQueue:
+                writer.process_patches(patches)
+
+    def write_patches(
+        path: Path | str,
+        reader: DataChunkReader,
+        patch_centers: AngularCoordinates | Catalog,
+        *,
+        overwrite: bool,
+        progress: bool,
+        max_workers: int | None = None,
+        buffersize: int = -1,
+    ) -> None:
+        max_workers = parallel.get_size(max_workers)
+        if max_workers < 2:
+            raise ValueError("catalog creation requires at least two workers")
+        if parallel.on_root():
+            logger.debug("running preprocessing on %d workers", max_workers)
+
+        rank = parallel.COMM.Get_rank()
+        worker_config = WorkerManager(max_workers, 0)
+        worker_comm = worker_config.get_comm()
+
+        if rank == worker_config.writer_rank:
+            writer_task(
+                cache_directory=path,
+                has_weights=reader.has_weights,
+                has_redshifts=reader.has_redshifts,
+                overwrite=overwrite,
+                buffersize=buffersize,
+            )
+
+        elif rank in worker_config.active_ranks:
+            if patch_centers is not None:
+                patch_centers = get_patch_centers(patch_centers)
+
+            with reader:
+                chunk_iter = Indicator(reader) if progress else iter(reader)
+                chunk_processing_task(
+                    worker_comm,
+                    worker_config,
+                    patch_centers,
+                    chunk_iter,
+                )
+
+            worker_comm.Free()
+
+        if parallel.COMM.Get_rank() == worker_config.reader_rank:
+            parallel.COMM.send(EndOfQueue, dest=worker_config.writer_rank, tag=1)
+        parallel.COMM.Barrier()
+
+else:
+    import multiprocessing
+    from dataclasses import dataclass, field
+
+    if TYPE_CHECKING:
+        from multiprocessing import Queue
+
+    class ChunkProcessingTask:
+        def __init__(
+            self,
+            patch_queue: Queue[dict[int, TypeDataChunk] | EndOfQueue],
+            patch_centers: AngularCoordinates | None,
+        ) -> None:
+            self.patch_queue = patch_queue
+
+            if isinstance(patch_centers, AngularCoordinates):
+                self.patch_centers = patch_centers.to_3d()
+            else:
+                self.patch_centers = None
+
+        def __call__(self, chunk: DataChunk) -> dict[int, TypeDataChunk]:
+            patches = split_into_patches(chunk, self.patch_centers)
+            self.patch_queue.put(patches)
+
+    @dataclass
+    class WriterProcess(AbstractContextManager):
+        patch_queue: Queue[dict[int, TypeDataChunk] | EndOfQueue]
+        cache_directory: Path | str
+        has_weights: bool = field(kw_only=True)
+        has_redshifts: bool = field(kw_only=True)
+        overwrite: bool = field(default=True, kw_only=True)
+        buffersize: int = field(default=-1, kw_only=True)
+
+        def __post_init__(self) -> None:
+            self.process = multiprocessing.Process(target=self.task)
+
+        def __enter__(self) -> Self:
+            self.start()
+            return self
+
+        def __exit__(self, *args, **kwargs) -> None:
+            self.join()
+
+        def task(self) -> None:
+            with CatalogWriter(
+                self.cache_directory,
+                overwrite=self.overwrite,
+                has_weights=self.has_weights,
+                has_redshifts=self.has_redshifts,
+                buffersize=self.buffersize,
+            ) as writer:
+                while (patches := self.patch_queue.get()) is not EndOfQueue:
+                    writer.process_patches(patches)
+
+        def start(self) -> None:
+            self.process.start()
+
+        def join(self) -> None:
+            self.process.join()
+
+    def write_patches(
+        path: Path | str,
+        reader: DataChunkReader,
+        patch_centers: AngularCoordinates | Catalog,
+        *,
+        overwrite: bool,
+        progress: bool,
+        max_workers: int | None = None,
+        buffersize: int = -1,
+    ) -> None:
+        max_workers = parallel.get_size(max_workers)
+
+        if max_workers == 1:
+            logger.debug("running preprocessing sequentially")
+            return write_patches_unthreaded(
+                path,
+                reader,
+                patch_centers,
+                overwrite=overwrite,
+                progress=progress,
+                buffersize=buffersize,
+            )
+
+        else:
+            logger.debug("running preprocessing on %d workers", max_workers)
+
+        with (
+            reader,
+            multiprocessing.Manager() as manager,
+            multiprocessing.Pool(max_workers) as pool,
+        ):
+            patch_queue = manager.Queue()
+
+            if patch_centers is not None:
+                patch_centers = get_patch_centers(patch_centers)
+            chunk_processing_task = ChunkProcessingTask(patch_queue, patch_centers)
+
+            with WriterProcess(
+                patch_queue,
+                cache_directory=path,
+                has_weights=reader.has_weights,
+                has_redshifts=reader.has_redshifts,
+                overwrite=overwrite,
+                buffersize=buffersize,
+            ):
+                chunk_iter = Indicator(reader) if progress else iter(reader)
+                for chunk in chunk_iter:
+                    pool.map(chunk_processing_task, chunk.split(max_workers))
+
+                patch_queue.put(EndOfQueue)
+
+
+class Catalog(Mapping[int, Patch]):
     """
     A container for catalog data.
 
@@ -411,7 +638,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: TypePatchCenters | None = None,
+        patch_centers: AngularCoordinates | Catalog | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
@@ -539,7 +766,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         dec_name: str,
         weight_name: str | None = None,
         redshift_name: str | None = None,
-        patch_centers: TypePatchCenters | None = None,
+        patch_centers: AngularCoordinates | Catalog | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
         degrees: bool = True,
@@ -667,7 +894,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         generator: RandomsBase,
         num_randoms: int,
         *,
-        patch_centers: TypePatchCenters | None = None,
+        patch_centers: AngularCoordinates | Catalog | None = None,
         patch_num: int | None = None,
         overwrite: bool = False,
         progress: bool = False,
@@ -732,7 +959,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
                 If the cache directory exists or is not a valid catalog when
                 providing ``overwrite=True``.
         """
-        rand_iter = RandomChunkGenerator(generator, num_randoms, chunksize)
+        rand_iter = RandomReader(generator, num_randoms, chunksize)
 
         mode = PatchMode.determine(patch_centers, None, patch_num)
         if mode == PatchMode.create:
@@ -839,7 +1066,7 @@ class Catalog(CatalogBase, Mapping[int, Patch]):
         Build binary search trees on for each patch.
 
         The trees are cached in the patches' cache directory and can be
-        retrieved from individual patches through :obj:`~yaw.Patch.get_trees()`.
+        retrieved through ``yaw.trees.BinnedTrees(patch)``.
 
         Args:
             binning:

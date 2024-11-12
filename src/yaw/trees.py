@@ -3,15 +3,15 @@ from __future__ import annotations
 import pickle
 from collections.abc import Iterable, Sized
 from itertools import repeat
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Generator
 
 import numpy as np
 from scipy.spatial import KDTree
 
-from yaw.catalog.utils import PatchData, groupby
 from yaw.containers import parse_binning
 from yaw.coordinates import AngularDistances
 from yaw.options import Closed
+from yaw.readers import DataChunk
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -19,13 +19,23 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from yaw.catalog.containers import Patch
     from yaw.coordinates import AngularCoordinates
+    from yaw.patch import Patch
 
 __all__ = [
     "AngularTree",
     "BinnedTrees",
+    "groupby",
 ]
+
+
+def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, NDArray]]:
+    idx_sort = np.argsort(key_array)
+    keys_sorted = key_array[idx_sort]
+    values_sorted = value_array[idx_sort]
+
+    uniques, idx_split = np.unique(keys_sorted, return_index=True)
+    yield from zip(uniques, np.split(values_sorted, idx_split[1:]))
 
 
 def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
@@ -164,19 +174,21 @@ def build_trees(
     chunk = patch.load_data()
 
     if binning is None:
-        trees = AngularTree(chunk.coords, chunk.weights, leafsize=leafsize)
+        coords = DataChunk.get_coords(chunk)
+        weights = DataChunk.getattr(chunk, "weights", None)
+        trees = AngularTree(coords, weights, leafsize=leafsize)
 
     else:
         binning = np.asarray(binning)
-        bin_idx = np.digitize(chunk.redshifts, binning, right=(closed == Closed.right))
+        redshifts = DataChunk.getattr(chunk, "redshifts", None)
+        bin_idx = np.digitize(redshifts, binning, right=(closed == Closed.right))
 
         trees = []
         for i, bin_array in groupby(bin_idx, chunk.data):
             if 0 < i < len(binning):
-                bin_data = PatchData(bin_array)
-                tree = AngularTree(
-                    bin_data.coords, weights=bin_data.weights, leafsize=leafsize
-                )
+                coords = DataChunk.get_coords(chunk)
+                weights = DataChunk.getattr(chunk, "weights", None)
+                tree = AngularTree(coords, weights=weights, leafsize=leafsize)
                 trees.append(tree)
 
     return trees

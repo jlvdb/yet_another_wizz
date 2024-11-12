@@ -9,11 +9,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from yaw import parallel
-from yaw.catalog.utils import InconsistentPatchesError
+from yaw.catalog import InconsistentPatchesError
 from yaw.coordinates import AngularDistances, separation_physical_to_angle
 from yaw.corrfunc import CorrFunc
 from yaw.logging import Indicator
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
+from yaw.trees import BinnedTrees
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -73,8 +74,8 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
         config.scales.rmax, zmids, cosmology=config.cosmology
     )
 
-    trees1 = iter(patch_pair.patch1.get_trees())
-    trees2 = iter(patch_pair.patch2.get_trees())
+    trees1 = iter(BinnedTrees(patch_pair.patch1))
+    trees2 = iter(BinnedTrees(patch_pair.patch2))
 
     binned_counts = np.empty((config.scales.num_scales, num_bins))
     totals1 = np.empty((num_bins,))
