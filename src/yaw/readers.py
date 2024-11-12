@@ -12,7 +12,7 @@ import numpy as np
 import pyarrow as pa
 from astropy.io import fits
 from numpy.typing import NDArray
-from pyarrow import Table, parquet
+from pyarrow import ArrowException, Table, parquet
 
 from yaw import parallel
 from yaw.config import NotSet
@@ -839,9 +839,11 @@ class ParquetReader(FileReader):
         while self._get_group_cache_size() < self.chunksize:
             group_idx = len(self._group_cache)
             try:
-                next_group = self._file.read_row_group(group_idx, self._columns.values())
+                next_group = self._file.read_row_group(
+                    group_idx, self._columns.values()
+                )
                 self._group_cache.append(next_group)
-            except Exception:
+            except ArrowException:
                 break  # end of file reached before chunk is full
 
     def _extract_chunk(self) -> Table:
@@ -854,7 +856,7 @@ class ParquetReader(FileReader):
                 next_group = self._group_cache.popleft()
                 num_records += len(next_group)
                 groups.append(next_group)
-            except:
+            except IndexError:
                 break  # end of file reached before chunk is full
 
         oversized_chunk = pa.concat_tables(groups)

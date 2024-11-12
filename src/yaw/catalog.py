@@ -69,7 +69,8 @@ class PatchMode(Enum):
         if patch_centers is not None:
             if not isinstance(patch_centers, (AngularCoordinates, Catalog)):
                 raise TypeError(
-                    "'patch_centers' must be a set of coordinates or another catalog")
+                    "'patch_centers' must be a set of coordinates or another catalog"
+                )
             check_patch_ids(len(patch_centers))
 
             log_sink("applying %d patches", len(patch_centers))
@@ -152,8 +153,7 @@ def split_into_patches(
         raise RuntimeError("found no way to obtain patch centers")
 
     return {
-        int(patch_id): patch_data
-        for patch_id, patch_data in groupby(patch_ids, chunk)
+        int(patch_id): patch_data for patch_id, patch_data in groupby(patch_ids, chunk)
     }
 
 
