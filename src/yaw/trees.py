@@ -184,10 +184,10 @@ def build_trees(
         bin_idx = np.digitize(redshifts, binning, right=(closed == Closed.right))
 
         trees = []
-        for i, bin_array in groupby(bin_idx, chunk.data):
+        for i, bin_array in groupby(bin_idx, chunk):
             if 0 < i < len(binning):
-                coords = DataChunk.get_coords(chunk)
-                weights = DataChunk.getattr(chunk, "weights", None)
+                coords = DataChunk.get_coords(bin_array)
+                weights = DataChunk.getattr(bin_array, "weights", None)
                 tree = AngularTree(coords, weights=weights, leafsize=leafsize)
                 trees.append(tree)
 

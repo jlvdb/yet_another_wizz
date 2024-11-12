@@ -74,11 +74,9 @@ class RandomsBase(ABC):
         return len(self.weights)
 
     def reseed(self, seed: int | None = None) -> None:
-        if seed is None:
-            seed = self.seed
-        else:
-            seed = int(seed)
-        self.rng = np.random.default_rng(seed)
+        if seed is not None:
+            self.seed = int(seed)
+        self.rng = np.random.default_rng(self.seed)
 
     @abstractmethod
     def _draw_coords(self, probe_size: int) -> tuple[NDArray, NDArray]:

@@ -112,7 +112,7 @@ def create_patch_centers(
         ra_units="radians",
         dec=DataChunk.getattr(data_probe, "dec"),
         dec_units="radians",
-        w=DataChunk.getattr(data_probe, "weights"),
+        w=DataChunk.getattr(data_probe, "weights", None),
         npatch=patch_num,
         config=dict(num_threads=parallel.get_size()),
     )

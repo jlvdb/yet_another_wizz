@@ -5,12 +5,13 @@ from abc import abstractmethod
 from collections import deque
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Sequence, Sized
+from typing import TYPE_CHECKING, Iterator, NewType, Sequence, Sized
 
 import h5py
 import numpy as np
 import pyarrow as pa
 from astropy.io import fits
+from numpy.typing import NDArray
 from pyarrow import Table, parquet
 
 from yaw import parallel
@@ -20,16 +21,16 @@ from yaw.logging import long_num_format
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from typing import NewType, TypeVar
+    from typing import TypeVar
 
-    from numpy.typing import ArrayLike, DTypeLike, NDArray
+    from numpy.typing import ArrayLike, DTypeLike
     from typing_extensions import Self
 
     from yaw.randoms import RandomsBase
 
-    TypeDataChunk = NewType("TypeDataChunk", NDArray)
     TypePatchIDs = NewType("TypePatchIDs", NDArray[np.int16])
     T = TypeVar("T")
+TypeDataChunk = NewType("TypeDataChunk", NDArray)
 
 CHUNKSIZE = 16_777_216
 """Default chunk size to use, optimised for parallel performance."""
@@ -238,7 +239,7 @@ class DataChunk:
             return default
 
 
-class DataChunkReader(AbstractContextManager, Iterator[TypeDataChunk]):
+class DataChunkReader(AbstractContextManager, Sized, Iterator[TypeDataChunk]):
     """
     Base class for chunked data readers and generators.
 
@@ -255,6 +256,9 @@ class DataChunkReader(AbstractContextManager, Iterator[TypeDataChunk]):
     _num_records: int
     _num_samples: int  # used to track iteration state
 
+    def __len__(self) -> int:
+        return self.num_chunks
+
     @property
     @abstractmethod
     def has_weights(self) -> bool:
@@ -268,7 +272,6 @@ class DataChunkReader(AbstractContextManager, Iterator[TypeDataChunk]):
         pass
 
     @property
-    @abstractmethod
     def num_records(self) -> int:
         """The number of records this reader produces."""
         return self._num_records

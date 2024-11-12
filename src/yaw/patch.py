@@ -21,6 +21,8 @@ __all__ = [
     "Patch",
 ]
 
+PATCH_DATA_FILE = "data.bin"
+
 logger = logging.getLogger(__name__)
 
 
@@ -210,6 +212,11 @@ class PatchWriter:
         return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
 
     @property
+    def data_path(self) -> Path:
+        """Path to binary file with patch data."""
+        return self.cache_path / PATCH_DATA_FILE
+
+    @property
     def cachesize(self) -> int:
         return sum(len(shard) for shard in self._shards)
 
@@ -233,7 +240,7 @@ class PatchWriter:
         self._file = None
 
     def process_chunk(self, data: TypeDataChunk) -> None:
-        if DataChunk.hasattr("patch_ids"):
+        if DataChunk.hasattr(data, "patch_ids"):
             raise ValueError("'patch_ids' field must stripped before writing data")
 
         self._shards.append(data)
@@ -291,7 +298,9 @@ class Patch:
             self._has_redshifts = DataChunk.hasattr(data, "redshifts")
 
             self.meta = Metadata.compute(
-                DataChunk.get_coords(data), weights=data.weights, center=center
+                DataChunk.get_coords(data),
+                weights=DataChunk.getattr(data, "weights", None),
+                center=center,
             )
             self.meta.to_file(meta_data_file)
 
@@ -319,7 +328,7 @@ class Patch:
     @property
     def data_path(self) -> Path:
         """Path to binary file with patch data."""
-        return self.cache_path / "data.bin"
+        return self.cache_path / PATCH_DATA_FILE
 
     @property
     def has_weights(self) -> bool:

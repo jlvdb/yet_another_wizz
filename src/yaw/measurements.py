@@ -10,8 +10,9 @@ import numpy as np
 
 from yaw import parallel
 from yaw.catalog import InconsistentPatchesError
-from yaw.coordinates import AngularDistances, separation_physical_to_angle
+from yaw.coordinates import AngularDistances
 from yaw.corrfunc import CorrFunc
+from yaw.cosmology import separation_physical_to_angle
 from yaw.logging import Indicator
 from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.trees import BinnedTrees

@@ -4,11 +4,21 @@ import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_equal
 from pytest import fixture, mark, raises
 
-from yaw.catalog import trees
-from yaw.catalog.containers import Patch
-from yaw.catalog.utils import PatchData
-from yaw.catalog.writers import PatchWriter
+from yaw import trees
 from yaw.coordinates import AngularCoordinates
+from yaw.patch import Patch, PatchWriter
+from yaw.readers import DataChunk
+
+
+def test_groupby():
+    n_items = 4
+    items = np.arange(n_items)
+    n_tile = 5
+    array = np.tile(items, n_tile)
+
+    for item, (key, data) in zip(items, trees.groupby(array, array)):
+        assert item == key
+        assert_array_equal(data, np.full(n_tile, item))
 
 
 @mark.parametrize(
@@ -256,7 +266,7 @@ class TestAngularTree:
 
 @fixture(name="test_patch_no_z")
 def fixture_test_patch_no_z(test_points, tmp_path):
-    data = PatchData.from_columns(test_points.ra, test_points.dec)
+    data = DataChunk.create(test_points.ra, test_points.dec)
 
     path = tmp_path / "patch_no_z"
     writer = PatchWriter(path, has_weights=False, has_redshifts=False)
@@ -268,7 +278,7 @@ def fixture_test_patch_no_z(test_points, tmp_path):
 
 @fixture(name="test_patch")
 def fixture_test_patch(test_points, tmp_path):
-    data = PatchData.from_columns(
+    data = DataChunk.create(
         test_points.ra,
         test_points.dec,
         redshifts=np.arange(len(test_points)) % 2 + 0.5,
