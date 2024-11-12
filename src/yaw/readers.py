@@ -686,7 +686,7 @@ class FitsReader(FileReader):
             degrees=degrees,
         )
 
-    def _load_next_chunk(self) -> DataChunk:
+    def _get_next_chunk(self) -> DataChunk:
         def get_data_swapped(colname: str) -> NDArray:
             start = self._num_samples
             end = start + self.chunksize
@@ -758,7 +758,7 @@ class HDFReader(FileReader):
         if parallel.on_root():
             common_len_assert([self._file[col] for col in self._columns.values()])
 
-    def _load_next_chunk(self) -> DataChunk:
+    def _get_next_chunk(self) -> DataChunk:
         start = self._num_samples
         end = start + self.chunksize
         kwargs = {
@@ -858,7 +858,7 @@ class ParquetReader(FileReader):
 
         return oversized_chunk[: self.chunksize]
 
-    def _load_next_chunk(self) -> DataChunk:
+    def _get_next_chunk(self) -> DataChunk:
         self._load_groups()
         table = self._extract_chunk()
 
