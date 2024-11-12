@@ -443,7 +443,10 @@ class DataReader(DataChunkReader):
         iter(self)  # reset state
 
         if parallel.on_root():
-            logger.debug("selecting input columns: %s", ", ".join(self.columns))
+            logger.debug(
+                "selecting input columns: %s",
+                ", ".join(self._columns.values()),
+            )
 
     @property
     def has_weights(self) -> bool:
