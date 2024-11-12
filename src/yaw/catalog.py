@@ -133,7 +133,7 @@ def split_into_patches(
 
     # statement order matters
     if patch_centers is not None:
-        patch_ids = assign_patch_centers(patch_centers, chunk.data)
+        patch_ids = assign_patch_centers(patch_centers, chunk)
         if has_patch_ids:
             chunk, _ = DataChunk.pop(chunk, "patch_ids")
     elif has_patch_ids:
@@ -143,7 +143,7 @@ def split_into_patches(
 
     return {
         int(patch_id): patch_data
-        for patch_id, patch_data in groupby(patch_ids, chunk.data.data)
+        for patch_id, patch_data in groupby(patch_ids, chunk)
     }
 
 
@@ -277,7 +277,7 @@ class CatalogWriter(AbstractContextManager):
 
         except KeyError:
             writer = PatchWriter(
-                self.get_patch_path(patch_id),
+                get_patch_path_from_id(self.cache_directory, patch_id),
                 has_weights=self.has_weights,
                 has_redshifts=self.has_redshifts,
                 buffersize=self.buffersize,

@@ -220,6 +220,10 @@ class PatchWriter:
     def cachesize(self) -> int:
         return sum(len(shard) for shard in self._shards)
 
+    @property
+    def num_processed(self) -> int:
+        return self._num_processed
+
     def open(self) -> None:
         if self._file is None:
             self._file = self.data_path.open(mode="ab")
