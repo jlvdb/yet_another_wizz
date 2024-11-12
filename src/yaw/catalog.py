@@ -357,7 +357,7 @@ if parallel.use_mpi():
         num_ranks = comm.Get_size()
 
         if comm.Get_rank() == reader_rank:
-            splits = chunk.split(num_ranks)
+            splits = np.array_split(chunk, num_ranks)
 
             for rank, split in enumerate(splits):
                 if rank != reader_rank:
@@ -560,7 +560,7 @@ else:
             ):
                 chunk_iter = Indicator(reader) if progress else iter(reader)
                 for chunk in chunk_iter:
-                    pool.map(chunk_processing_task, chunk.split(max_workers))
+                    pool.map(chunk_processing_task, np.array_split(chunk, max_workers))
 
                 patch_queue.put(EndOfQueue)
 
