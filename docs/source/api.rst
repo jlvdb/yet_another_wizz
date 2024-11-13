@@ -6,12 +6,17 @@ API Reference
 This API reference manual details the primary functions and object in the
 `yet_another_wizz` python package ``yaw``.
 
+.. tip::
+    For more details on the internal package structure, refer to the
+    :ref:`developer notes<dev_notes>` below.
+
 .. figure:: /_static/flowchart.svg
     :figwidth: 80%
     :alt: API flowchart
 
     Example flowchart indicating the relationship between the most important
-    classes and functions in `yet_another_wizz` used for redshift estimation.
+    public classes and functions in `yet_another_wizz` used for redshift
+    estimation.
 
 
 Catalog data
@@ -196,3 +201,12 @@ values and are parsed automatically.
     BinMethod
     CovKind
     PlotStyle
+
+-----
+
+.. _dev_notes:
+
+Developer notes
+===============
+
+.. automodule:: yaw
