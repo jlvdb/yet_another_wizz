@@ -37,7 +37,10 @@ if TYPE_CHECKING:
 
 
 PATCH_NAME_TEMPLATE = "patch_{:d}"
+"""Template to name patch directories in catalog cache directory."""
+
 PATCH_INFO_FILE = "patch_ids.bin"
+"""Name of file listing patch IDs in catalog cache directory."""
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +50,8 @@ class InconsistentPatchesError(Exception):
 
 
 class PatchMode(Enum):
+    """Enumeration to specify the patch creation method."""
+
     apply = 0
     divide = 1
     create = 2
@@ -58,6 +63,39 @@ class PatchMode(Enum):
         patch_name: str | None,
         patch_num: int | None,
     ) -> PatchMode:
+        """
+        Determine the patch creation method to use.
+
+        Method is determined from the three possible input parameters in the
+        :obj:`~yaw.Catalog` creation routines, by checking which of the
+        parameters are set in the following order of precedence:
+        ``patch_centers`` > ``patch_name`` > ``patch_num``
+
+        Args:
+            patch_centers:
+                A list of patch centers to use when creating the patches. Can be
+                either :obj:`~yaw.AngularCoordinates` or an other
+                :obj:`~yaw.Catalog` as reference.
+            patch_name:
+                Optional column name in the data frame for a column with integer
+                patch indices. Indices must be contiguous and starting from 0.
+                Ignored if ``patch_centers`` is given.
+            patch_num:
+                Automatically compute patch centers from a sparse sample of the
+                input data using `treecorr`. Requires an additional scan of the
+                input file to read a sparse sampling of the object coordinates.
+                Ignored if ``patch_centers`` or ``patch_name`` is given.
+
+        Returns:
+            The Enum value indicating which patch creation method to use.
+
+        Raises:
+            TypeError:
+                If the input values are of an invalid type.
+            ValueError:
+                If the number of patches exceeds the maximum allowed number or
+                none of the input parameters are provided.
+        """
         log_sink = logger.debug if parallel.on_root() else lambda *x: x
 
         if patch_centers is not None:
@@ -89,6 +127,8 @@ class PatchMode(Enum):
 
 
 def get_patch_centers(instance: AngularCoordinates | Catalog) -> AngularCoordinates:
+    """Extract the patch centers from a set of angular coordinates or a catalog
+    instance, raises ``TypeError`` otherwise."""
     try:
         return instance.get_centers()
     except AttributeError as err:
@@ -102,6 +142,24 @@ def get_patch_centers(instance: AngularCoordinates | Catalog) -> AngularCoordina
 def create_patch_centers(
     reader: DataChunkReader, patch_num: int, probe_size: int
 ) -> AngularCoordinates:
+    """
+    Automatically create new patch centers from a data source.
+
+    Data source can be a file reader or random generator. Patch centers are
+    computed from a small data subset using ``treecorr`` for optimal efficiency.
+
+    Args:
+        reader:
+            A :obj:`DataChunkReader` instance that exposes a random generator or
+            file reader.
+        patch_num:
+            The number of patches to create.
+        probe_size:
+            The size of the subsample from which the patches are computed.
+
+    Returns:
+        A new set of angular coordinates of the patch centers.
+    """
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
     data_probe = reader.get_probe(probe_size)
@@ -126,6 +184,23 @@ def create_patch_centers(
 
 
 def assign_patch_centers(patch_centers: NDArray, data: TypeDataChunk) -> TypePatchIDs:
+    """
+    Computes the patch ID for a set of objects and patch center coordinates.
+
+    Objects are assigned to the nearest patch center, expressed by the index of
+    the patch center in the input list of patch centers.
+
+    Args:
+        patch_centers:
+            Numpy array of patch center coordinates in radian and shape
+            `(N, 2)`.
+        data:
+            Numpy array holding input object coordinates, i.e. a chunk of
+            catalog data, must contain with fields ``ra`` and ``dec``.
+
+    Returns:
+        Array of 16-bit integer patch IDs for each input obejct.
+    """
     coords = DataChunk.get_coords(data)
     ids, _ = vq.vq(coords.to_3d(), patch_centers)
     return ids.astype(PATCH_ID_DTYPE)
@@ -134,6 +209,30 @@ def assign_patch_centers(patch_centers: NDArray, data: TypeDataChunk) -> TypePat
 def split_into_patches(
     chunk: TypeDataChunk, patch_centers: NDArray | None
 ) -> dict[int, TypeDataChunk]:
+    """
+    Split a numpy array of catalog data into patches.
+
+    If patch centers are provided, assigns patch IDs from nearest patch center.
+    If a patch ID column is contained in the input data, uses that to assign
+    objects to patches.
+
+    Args:
+        chunk:
+            Numpy array holding input object coordinates, i.e. a chunk of
+            catalog data, must contain with fields ``ra`` and ``dec``, and
+            optionally ``patch_ids``.
+        patch_centers:
+            Optional, numpy array of patch center coordinates in radian and
+            shape `(N, 2)`.
+
+    Returns:
+        Dictionary with patch IDs as keys and subset of input data chunk with
+        objects belonging to the corresponding patch ID.
+
+    Raises:
+        RuntimeError:
+            If neither patch centers nor patch IDs per object are provided.
+    """
     has_patch_ids = DataChunk.hasattr(chunk, "patch_ids")
 
     # statement order matters
@@ -153,8 +252,13 @@ def split_into_patches(
 
 def get_patch_path_from_id(cache_directory: Path | str, patch_id: int) -> Path:
     """
-    Get the patch to a specific patch cache directory, given the patch
-    ID/index.
+    Get the patch to a specific patch cache directory.
+
+    Args:
+        cache_directory:
+            The cache directory used by the parent catalog.
+        patch_id:
+            ID of the patch for which to optain the patch cache directory.
 
     Returns:
         Path as a :obj:`pathlib.Path`.
@@ -164,17 +268,19 @@ def get_patch_path_from_id(cache_directory: Path | str, patch_id: int) -> Path:
 
 def get_id_from_patch_path(cache_path: Path | str) -> int:
     """
-    Extract the integer patch ID from the cache path.
+    Extract the integer patch ID from a patch cache path.
 
     .. caution::
         This will fail if the patch has not been created through a
-        :obj:`~yaw.Catalog` instance, which manages the patch creation.
+        :obj:`CatalogWriter` instance, which manages the patch creation.
     """
     _, id_str = Path(cache_path).name.split("_")
     return int(id_str)
 
 
 def read_patch_ids(cache_directory: Path) -> list[int]:
+    """Reads a list of patch IDs in a catalog from a metadata file stored in the
+    catalog's cache directory."""
     path = cache_directory / PATCH_INFO_FILE
     if not path.exists():
         raise InconsistentPatchesError("patch info file not found")
@@ -188,6 +294,27 @@ def load_patches(
     progress: bool,
     max_workers: int | None = None,
 ) -> dict[int, Patch]:
+    """
+    Instantiate all patches stored in a catalog's cache directory.
+
+    Function is MPI aware, patches are loaded on the root worker and broadcasted
+    to all workers. Computes patch metadata if not present. If patch centers
+    are provided, only the patch radius is computed but not the patch centers.
+
+    Args:
+        cache_directory:
+            Cache directory of the parent catalog.
+
+    Keyword Args:
+        patch_centers:
+            Optional set of angular coordinates or catalog instance that
+            defines the exact patch centers to use.
+        progress:
+            Show a progress on the terminal (disabled by default).
+        max_workers:
+            Limit the  number of parallel workers for this operation (all by
+            default).
+    """
     patch_ids = None
     if parallel.on_root():
         patch_ids = read_patch_ids(cache_directory)
@@ -216,6 +343,45 @@ def load_patches(
 
 
 class CatalogWriter(AbstractContextManager):
+    """
+    A helper class that handles a stream of input catalog data and splits and
+    writes it to patches.
+
+    Args:
+        cache_directory:
+            Cache directory of the catalog.
+
+    Keyword Args:
+        overwrite:
+            Whether to overwrite an existing catalog at the given cache
+            location.
+        has_weights:
+            Whether the input data chunks include object weights.
+        has_redshifts:
+            Whether the input data chunks include object redshifts.
+        buffersize:
+            Optional, maximum number of records to store in the internal cache
+            of each patch writer.
+
+    Attributes:
+        cache_directory:
+            Cache directory to use when creating the patches.
+        has_weights:
+            Whether the input data chunks include object weights.
+        has_redshifts:
+            Whether the input data chunks include object redshifts.
+        writers:
+            Dictionary of patch IDs / :obj:`~yaw.patch.PatchWriters` that
+            delegates writing data for an individual patch.
+        buffersize:
+            Optional, maximum number of records to store in the internal cache
+            of each patch writer.
+
+    Raises:
+        FileExistsError:
+            If the cache directory already exists and ``overwrite==False``.
+    """
+
     __slots__ = (
         "cache_directory",
         "has_weights",
@@ -273,9 +439,12 @@ class CatalogWriter(AbstractContextManager):
 
     @property
     def num_patches(self) -> int:
+        """The number of unique patch IDs encountered so far."""
         return len(self.writers)
 
     def get_writer(self, patch_id: int) -> PatchWriter:
+        """Get the patch writer for the given patch ID and create it if it does
+        not yet exist."""
         try:
             return self.writers[patch_id]
 
@@ -290,10 +459,32 @@ class CatalogWriter(AbstractContextManager):
             return writer
 
     def process_patches(self, patches: dict[int, TypeDataChunk]) -> None:
+        """
+        Process a dictionary of catalog data split into patches.
+
+        Dictionary values are sent to the individual patch data writers which
+        cache the data in memory temporarily or write them to disk.
+
+        Args:
+            patches:
+                A dictionary of patch ID / numpy array with catalog data
+                (containing ``ra``, ``dec``, or optionally ``weights`` and
+                ``redshifts`` fields).
+        """
         for patch_id, patch in patches.items():
             self.get_writer(patch_id).process_chunk(patch)
 
     def finalize(self) -> None:
+        """
+        Finalise the catalog cache directory.
+
+        Flushes all patch writer caches and writes a list of patch IDs to
+        the cache directory that simplifes loading the catalog instance later.
+
+        Raises:
+            ValueError:
+                If any of the patches does not contain any data.
+        """
         empty_patches = set()
         for patch_id, writer in self.writers.items():
             writer.close()
@@ -310,12 +501,41 @@ class CatalogWriter(AbstractContextManager):
 def write_patches_unthreaded(
     path: Path | str,
     reader: DataChunkReader,
-    patch_centers: AngularCoordinates | Catalog,
+    patch_centers: AngularCoordinates | Catalog | None,
     *,
     overwrite: bool,
     progress: bool,
     buffersize: int = -1,
 ) -> None:
+    """
+    Read catalog from an input source and write the data to catalog cache
+    directory.
+
+    Creates patch centers automatically from data source if none are provided.
+    This is a fallback implementation if parallel workers are disabled.
+
+    Args:
+        path:
+            The target cache directory.
+        reader:
+            A :obj:`DataChunkReader` instance that exposes a random generator or
+            file reader.
+        patch_centers:
+            Optional set of angular coordinates or catalog instance that
+            defines the exact patch centers to use.
+
+    Keyword Args:
+        overwrite:
+            Whether to overwrite an existing catalog at the given cache
+            location. If the directory is not a valid catalog, a
+            ``FileExistsError`` is raised.
+        progress:
+            Show a progress on the terminal (disabled by default).
+        buffersize:
+            Optional, maximum number of records to store in the internal cache
+            of each patch writer.
+
+    """
     with reader:
         if patch_centers is not None:
             patch_centers = get_patch_centers(patch_centers).to_3d()
@@ -334,12 +554,19 @@ def write_patches_unthreaded(
 
 
 if parallel.use_mpi():
+    """Implementation of parallel input data processing based on OpenMPI."""
+
     from mpi4py import MPI
 
     if TYPE_CHECKING:
         from mpi4py.MPI import Comm
 
     class WorkerManager:
+        """Contains information required by the MPI workers to coordinate
+        parallel processing: rank that is responsible for reading, rank that is
+        responsible for writing and which ranks are responsible for processing
+        chunk data in parallel."""
+
         def __init__(self, max_workers: int | None, reader_rank: int = 0) -> None:
             self.reader_rank = reader_rank
 
@@ -358,6 +585,8 @@ if parallel.use_mpi():
                 return parallel.COMM.Split(MPI.UNDEFINED, rank)
 
     def scatter_data_chunk(comm: Comm, reader_rank: int, chunk: DataChunk) -> DataChunk:
+        """Takes a chunk of catalog data, splits it into chunks and broadcasts
+        the chunks to the parallel chunk processing tasks."""
         num_ranks = comm.Get_size()
 
         if comm.Get_rank() == reader_rank:
@@ -378,6 +607,8 @@ if parallel.use_mpi():
         patch_centers: AngularCoordinates | Catalog | None,
         chunk_iter: Iterator[DataChunk],
     ) -> None:
+        """A dedicated parallel worker task which splits catalog data into
+        paches and sends the data to the writer process."""
         if patch_centers is not None:
             patch_centers = patch_centers.to_3d()
 
@@ -398,6 +629,9 @@ if parallel.use_mpi():
         overwrite: bool = True,
         buffersize: int = -1,
     ) -> None:
+        """A dedicated writer process that recieves a dictionary with patch IDs
+        and patch data to write using a :obj:`CatalogWriter`, terminated when
+        receiving :obj:`EndOfQueue` sentinel."""
         recv = parallel.COMM.recv
         with CatalogWriter(
             cache_directory,
@@ -412,13 +646,51 @@ if parallel.use_mpi():
     def write_patches(
         path: Path | str,
         reader: DataChunkReader,
-        patch_centers: AngularCoordinates | Catalog,
+        patch_centers: AngularCoordinates | Catalog | None,
         *,
         overwrite: bool,
         progress: bool,
         max_workers: int | None = None,
         buffersize: int = -1,
     ) -> None:
+        """
+        Read catalog from an input source and write the data to catalog cache
+        directory.
+
+        Creates patch centers automatically from data source if none are
+        provided. This is an implementation with MPI parallelsim. The root rank
+        is responsible for reading data from the source, one rank is responsible
+        for writing to the cache directory, any remaining ranks process the
+        input data.
+
+        .. Note::
+            The code tries to schedule all work only on the same node that
+            hosts the root tasks to avoid inter-node communication.
+
+        Args:
+            path:
+                The target cache directory.
+            reader:
+                A :obj:`DataChunkReader` instance that exposes a random
+                generator or file reader.
+            patch_centers:
+                Optional set of angular coordinates or catalog instance that
+                defines the exact patch centers to use.
+
+        Keyword Args:
+            overwrite:
+                Whether to overwrite an existing catalog at the given cache
+                location. If the directory is not a valid catalog, a
+                ``FileExistsError`` is raised.
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+            buffersize:
+                Optional, maximum number of records to store in the internal
+                cache of each patch writer.
+        """
         max_workers = parallel.get_size(max_workers)
         if max_workers < 2:
             raise ValueError("catalog creation requires at least two workers")
@@ -458,6 +730,9 @@ if parallel.use_mpi():
         parallel.COMM.Barrier()
 
 else:
+    """Implementation of parallel input data processing based on python's
+    multiprocessing."""
+
     import multiprocessing
     from dataclasses import dataclass, field
 
@@ -465,6 +740,9 @@ else:
         from multiprocessing import Queue
 
     class ChunkProcessingTask:
+        """Defines the worker task which splits catalog data into paches and
+        puts the data into the writer process queue."""
+
         def __init__(
             self,
             patch_queue: Queue[dict[int, TypeDataChunk] | EndOfQueue],
@@ -483,6 +761,10 @@ else:
 
     @dataclass
     class WriterProcess(AbstractContextManager):
+        """A dedicated writer process that recieves a dictionary with patch IDs
+        and patch data to write using a :obj:`CatalogWriter`, terminated when
+        receiving :obj:`EndOfQueue` sentinel."""
+
         patch_queue: Queue[dict[int, TypeDataChunk] | EndOfQueue]
         cache_directory: Path | str
         has_weights: bool = field(kw_only=True)
@@ -520,13 +802,46 @@ else:
     def write_patches(
         path: Path | str,
         reader: DataChunkReader,
-        patch_centers: AngularCoordinates | Catalog,
+        patch_centers: AngularCoordinates | Catalog | None,
         *,
         overwrite: bool,
         progress: bool,
         max_workers: int | None = None,
         buffersize: int = -1,
     ) -> None:
+        """
+        Read catalog from an input source and write the data to catalog cache
+        directory.
+
+        Creates patch centers automatically from data source if none are
+        provided. This is an implementation with MPI parallelsim. There is a
+        dedicated process that handles writing data to the catalog cache
+        directory.
+
+        Args:
+            path:
+                The target cache directory.
+            reader:
+                A :obj:`DataChunkReader` instance that exposes a random
+                generator or file reader.
+            patch_centers:
+                Optional set of angular coordinates or catalog instance that
+                defines the exact patch centers to use.
+
+        Keyword Args:
+            overwrite:
+                Whether to overwrite an existing catalog at the given cache
+                location. If the directory is not a valid catalog, a
+                ``FileExistsError`` is raised.
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default).
+            buffersize:
+                Optional, maximum number of records to store in the internal
+                cache of each patch writer.
+        """
         max_workers = parallel.get_size(max_workers)
 
         if max_workers == 1:
@@ -599,6 +914,11 @@ class Catalog(Mapping[int, Patch]):
           ├╴ patch_1/
           │  ...
           └╴ patch_N/
+
+    .. caution::
+        Empty patches are currently not supported and the catalog creation will
+        fail if a patch without any data is encountered (e.g. if the input
+        catalog is too sparse or inhomogeneous).
 
     Args:
         cache_directory:
