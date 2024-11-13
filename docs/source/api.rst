@@ -34,8 +34,8 @@ on disk. These patches are managed by the following classes:
 .. autosummary::
     :toctree: autogen
 
-    catalog.Patch
-    catalog.Metadata
+    patch.Patch
+    patch.Metadata
 
 
 .. _generator:
