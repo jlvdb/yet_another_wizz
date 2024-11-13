@@ -10,17 +10,6 @@ from yaw.patch import Patch, PatchWriter
 from yaw.readers import DataChunk
 
 
-def test_groupby():
-    n_items = 4
-    items = np.arange(n_items)
-    n_tile = 5
-    array = np.tile(items, n_tile)
-
-    for item, (key, data) in zip(items, trees.groupby(array, array)):
-        assert item == key
-        assert_array_equal(data, np.full(n_tile, item))
-
-
 @mark.parametrize(
     "ang_min,ang_max",
     [

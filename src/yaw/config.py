@@ -21,7 +21,7 @@ from yaw.cosmology import (
     cosmology_is_equal,
     get_default_cosmology,
 )
-from yaw.options import BinMethod, BinMethodAuto, Closed, get_options
+from yaw.options import BinMethod, BinMethodAuto, Closed, NotSet, get_options
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -40,20 +40,6 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
-
-
-class _NotSet_meta(type):
-    def __repr__(self) -> str:
-        return "NotSet"  # pragma: no cover
-
-    def __bool__(self) -> bool:
-        return False
-
-
-class NotSet(metaclass=_NotSet_meta):
-    """Placeholder for configuration values that are not set."""
-
-    pass
 
 
 class ConfigError(Exception):

@@ -15,9 +15,9 @@ from numpy.typing import NDArray
 from pyarrow import ArrowException, Table, parquet
 
 from yaw import parallel
-from yaw.config import NotSet
 from yaw.coordinates import AngularCoordinates
-from yaw.logging import long_num_format
+from yaw.options import NotSet
+from yaw.utils import format_long_num
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -351,7 +351,7 @@ class RandomReader(DataChunkReader):
         if parallel.on_root():
             logger.info(
                 "generating %s random points in %d chunks",
-                long_num_format(num_randoms),
+                format_long_num(num_randoms),
                 len(self),
             )
 
@@ -509,7 +509,7 @@ def issue_io_log(num_records: int, num_chunks: int, source: str) -> None:
     if parallel.on_root():
         logger.info(
             "loading %s records in %d chunks from %s",
-            long_num_format(num_records),
+            format_long_num(num_records),
             num_chunks,
             source,
         )

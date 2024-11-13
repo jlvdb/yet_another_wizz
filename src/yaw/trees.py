@@ -3,7 +3,7 @@ from __future__ import annotations
 import pickle
 from collections.abc import Iterable, Sized
 from itertools import repeat
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.spatial import KDTree
@@ -12,6 +12,7 @@ from yaw.containers import parse_binning
 from yaw.coordinates import AngularDistances
 from yaw.options import Closed
 from yaw.readers import DataChunk
+from yaw.utils import groupby
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -25,30 +26,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AngularTree",
     "BinnedTrees",
-    "groupby",
 ]
-
-
-def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, NDArray]]:
-    """
-    Implements a groupby-operation on numpy array.
-
-    Args:
-        key_array:
-            Array with keys from which unique groups are formed.
-        value_array:
-            Array with arbitrary type that will split into groups along its
-            first dimension.
-
-    Yields:
-        Tuples of key and array of values corresponding to this key.
-    """
-    idx_sort = np.argsort(key_array)
-    keys_sorted = key_array[idx_sort]
-    values_sorted = value_array[idx_sort]
-
-    uniques, idx_split = np.unique(keys_sorted, return_index=True)
-    yield from zip(uniques, np.split(values_sorted, idx_split[1:]))
 
 
 def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:

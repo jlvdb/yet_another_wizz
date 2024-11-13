@@ -10,6 +10,7 @@ from numpy.exceptions import AxisError
 from yaw import plot_utils
 from yaw.abc import BinwiseData, HdfSerializable
 from yaw.options import Closed, CovKind, PlotStyle
+from yaw.utils import HDF_COMPRESSION, write_version_tag
 
 if TYPE_CHECKING:
     from typing import Any
@@ -30,9 +31,6 @@ __all__ = [
     "Binning",
     "SampledData",
 ]
-
-HDF_COMPRESSION = dict(fletcher32=True, compression="gzip", shuffle=True)
-"""Default HDF5 compression options."""
 
 
 def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray | None:
@@ -154,31 +152,6 @@ class Binning(HdfSerializable):
     def copy(self: TypeBinning) -> TypeBinning:
         """Create a copy of this instance."""
         return Binning(self.edges.copy(), closed=str(self.closed))
-
-
-def write_version_tag(dest: Group) -> None:
-    """Write a ``version`` tag with the current code version to a HDF5 file
-    group."""
-    from yaw._version import __version__
-
-    dest.create_dataset("version", data=__version__)
-
-
-def load_version_tag(source: Group) -> str:
-    """Load the code version that created a HDF5 file from a ``version`` tag in
-    the current group."""
-    try:
-        tag = source["version"][()]
-        return tag.decode("utf-8")
-
-    except KeyError:
-        return "2.x.x"
-
-
-def is_legacy_dataset(source: Group) -> bool:
-    """Determine, if the current file has been created by an old version of
-    `yet_another_wizz` (version < 3.0)."""
-    return "version" not in source
 
 
 def load_legacy_binning(source: Group) -> Binning:

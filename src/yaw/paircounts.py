@@ -6,15 +6,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
-from yaw.containers import (
-    HDF_COMPRESSION,
-    Binning,
-    SampledData,
-    is_legacy_dataset,
-    load_legacy_binning,
-    write_version_tag,
-)
+from yaw.containers import Binning, SampledData, load_legacy_binning
 from yaw.parallel import Broadcastable
+from yaw.utils import HDF_COMPRESSION, is_legacy_dataset, write_version_tag
 
 if TYPE_CHECKING:
     from typing import Any

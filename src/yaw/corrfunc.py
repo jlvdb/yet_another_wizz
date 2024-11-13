@@ -15,9 +15,10 @@ from yaw.abc import (
     PatchwiseData,
     Serialisable,
 )
-from yaw.containers import Binning, SampledData, write_version_tag
+from yaw.containers import Binning, SampledData
 from yaw.paircounts import NormalisedCounts
 from yaw.parallel import Broadcastable, bcast_instance
+from yaw.utils import format_float_fixed_width, write_version_tag
 
 if TYPE_CHECKING:
     from typing import Any, TypeVar
@@ -423,16 +424,6 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
             )
 
         parallel.COMM.Barrier()
-
-
-def format_float_fixed_width(value: float, width: int) -> str:
-    """Format a floating point number as string with fixed width."""
-    string = f"{value: .{width}f}"
-    if "nan" in string or "inf" in string:
-        string = f"{string.rstrip():>{width}s}"
-
-    num_digits = len(string.split(".")[0])
-    return string[: max(width, num_digits)]
 
 
 def create_columns(columns: list[str], closed: str) -> list[str]:

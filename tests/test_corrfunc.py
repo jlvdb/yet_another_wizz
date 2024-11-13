@@ -1,26 +1,8 @@
-from math import inf, nan
-
 import numpy as np
 from numpy.testing import assert_almost_equal
 from pytest import mark
 
 from yaw import corrfunc
-
-
-@mark.parametrize(
-    "value,width,expect",
-    [
-        (0.1, 3, " 0."),
-        (-12.3, 5, "-12.3"),
-        (0.001, 9, " 0.001000"),
-        (123, 9, " 123.0000"),
-        (123, 3, " 123"),
-        (inf, 2, " inf"),
-        (nan, 6, "   nan"),
-    ],
-)
-def test_format_float_fixed_width(value, width, expect):
-    assert corrfunc.format_float_fixed_width(value, width) == expect
 
 
 @mark.parametrize("closed,braces", [("left", "[)"), ("right", "(]")])

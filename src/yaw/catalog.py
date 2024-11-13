@@ -16,7 +16,7 @@ from scipy.cluster import vq
 from yaw import parallel
 from yaw.containers import parse_binning
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.logging import Indicator, long_num_format
+from yaw.logging import Indicator
 from yaw.options import Closed
 from yaw.parallel import EndOfQueue
 from yaw.patch import Patch, PatchWriter
@@ -31,6 +31,7 @@ from yaw.readers import (
     new_filereader,
 )
 from yaw.trees import BinnedTrees, groupby
+from yaw.utils import format_long_num
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -114,7 +115,7 @@ def create_patch_centers(
     if parallel.on_root():
         logger.info(
             "computing patch centers from subset of %s records",
-            long_num_format(len(data_probe)),
+            format_long_num(len(data_probe)),
         )
 
     cat = treecorr.Catalog(

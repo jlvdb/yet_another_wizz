@@ -3,6 +3,20 @@ from enum import auto
 from strenum import StrEnum
 
 
+class _NotSet_meta(type):
+    def __repr__(self) -> str:
+        return "NotSet"  # pragma: no cover
+
+    def __bool__(self) -> bool:
+        return False
+
+
+class NotSet(metaclass=_NotSet_meta):
+    """Placeholder for configuration values that are not set."""
+
+    pass
+
+
 class Closed(StrEnum):
     """
     Possible values for parameter ``closed``.
