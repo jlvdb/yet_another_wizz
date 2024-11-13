@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sized
     from typing import Any, Generator
 
     from h5py import Group
@@ -35,6 +36,19 @@ def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, ND
 
     uniques, idx_split = np.unique(keys_sorted, return_index=True)
     yield from zip(uniques, np.split(values_sorted, idx_split[1:]))
+
+
+def common_len_assert(sized: Iterable[Sized]) -> int:
+    """Verify that a set of containers has the same length and return this
+    common length."""
+    length = None
+    for item in sized:
+        if length is None:
+            length = len(item)
+        else:
+            if len(item) != length:
+                raise ValueError("length of inputs does not match")
+    return length
 
 
 def write_version_tag(dest: Group) -> None:

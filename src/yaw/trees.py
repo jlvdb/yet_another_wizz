@@ -10,8 +10,8 @@ from scipy.spatial import KDTree
 
 from yaw.containers import parse_binning
 from yaw.coordinates import AngularDistances
+from yaw.datachunk import DataChunk
 from yaw.options import Closed
-from yaw.readers import DataChunk
 from yaw.utils import groupby
 
 if TYPE_CHECKING:

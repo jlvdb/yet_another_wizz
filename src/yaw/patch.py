@@ -9,13 +9,15 @@ import numpy as np
 
 from yaw.abc import YamlSerialisable
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.readers import DataChunk, TypeDataChunk
+from yaw.datachunk import DataChunk
 
 if TYPE_CHECKING:
     from io import TextIOBase
     from typing import Any
 
     from numpy.typing import NDArray
+
+    from yaw.datachunk import TypeDataChunk
 
 __all__ = [
     "Patch",

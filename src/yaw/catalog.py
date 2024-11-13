@@ -16,20 +16,13 @@ from scipy.cluster import vq
 from yaw import parallel
 from yaw.containers import parse_binning
 from yaw.coordinates import AngularCoordinates, AngularDistances
+from yaw.datachunk import PATCH_ID_DTYPE, DataChunk, DataChunkReader, check_patch_ids
 from yaw.logging import Indicator
 from yaw.options import Closed
 from yaw.parallel import EndOfQueue
 from yaw.patch import Patch, PatchWriter
 from yaw.randoms import RandomsBase
-from yaw.readers import (
-    PATCH_ID_DTYPE,
-    DataChunk,
-    DataChunkReader,
-    DataFrameReader,
-    RandomReader,
-    check_patch_ids,
-    new_filereader,
-)
+from yaw.readers import DataFrameReader, RandomReader, new_filereader
 from yaw.trees import BinnedTrees, groupby
 from yaw.utils import format_long_num
 
@@ -39,7 +32,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
-    from yaw.readers import DataFrame, TypeDataChunk, TypePatchIDs
+    from yaw.datachunk import TypeDataChunk, TypePatchIDs
+    from yaw.readers import DataFrame
 
 
 PATCH_NAME_TEMPLATE = "patch_{:d}"
