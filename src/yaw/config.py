@@ -13,7 +13,8 @@ import numpy as np
 from astropy import units
 
 from yaw import parallel
-from yaw.containers import Binning, YamlSerialisable
+from yaw.abc import YamlSerialisable
+from yaw.containers import Binning
 from yaw.cosmology import (
     CustomCosmology,
     TypeCosmology,

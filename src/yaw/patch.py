@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.containers import YamlSerialisable
+from yaw.abc import YamlSerialisable
 from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.readers import DataChunk, TypeDataChunk
 

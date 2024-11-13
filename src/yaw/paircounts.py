@@ -5,12 +5,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
 from yaw.containers import (
     HDF_COMPRESSION,
     Binning,
-    BinwiseData,
-    HdfSerializable,
-    PatchwiseData,
     SampledData,
     is_legacy_dataset,
     load_legacy_binning,

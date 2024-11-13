@@ -8,16 +8,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from yaw import parallel
-from yaw.containers import (
+from yaw.abc import (
     AsciiSerializable,
-    Binning,
     BinwiseData,
     HdfSerializable,
     PatchwiseData,
-    SampledData,
     Serialisable,
-    write_version_tag,
 )
+from yaw.containers import Binning, SampledData, write_version_tag
 from yaw.paircounts import NormalisedCounts
 from yaw.parallel import Broadcastable, bcast_instance
 
