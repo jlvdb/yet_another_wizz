@@ -92,25 +92,36 @@ class MockComm:
     not installed."""
 
     def Barrier(self) -> None:
+        """Mock-implementation of a synchronisation barrier, does nothing
+        here."""
         pass
 
     def Bcast(self, value: T, *args, **kwargs) -> T:
+        """Mock-implementation of broadcasting array buffers, returns value
+        here."""
         return value
 
     def bcast(self, value: T, *args, **kwargs) -> T:
+        """Mock-implementation of broadcasting python objects, returns value
+        here."""
         return value
 
     def Get_size(self) -> int:
+        """Mock-implementation of getting number of parallel workers, here the
+        number of processes."""
         return _num_processes()
 
     def Get_rank(self) -> int:
+        """Mock-implementation of getting the worker rank, always 0 here."""
         return 0
 
 
 if use_mpi():
     COMM = MPI.COMM_WORLD
+    """The default communicator that `yet_another_wizz` uses (world comm)."""
 else:
     COMM = MockComm()
+    """The default communicator that `yet_another_wizz` uses (mock-up comm)."""
 
 
 def get_size(max_workers: int | None = None, comm: Comm = COMM) -> int:

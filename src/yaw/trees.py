@@ -30,6 +30,19 @@ __all__ = [
 
 
 def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, NDArray]]:
+    """
+    Implements a groupby-operation on numpy array.
+
+    Args:
+        key_array:
+            Array with keys from which unique groups are formed.
+        value_array:
+            Array with arbitrary type that will split into groups along its
+            first dimension.
+
+    Yields:
+        Tuples of key and array of values corresponding to this key.
+    """
     idx_sort = np.argsort(key_array)
     keys_sorted = key_array[idx_sort]
     values_sorted = value_array[idx_sort]
@@ -39,6 +52,26 @@ def groupby(key_array: NDArray, value_array: NDArray) -> Generator[tuple[Any, ND
 
 
 def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
+    """
+    Take a set of lower and upper angular limits and put them into a 2-dim
+    array.
+
+    Checks that input array are 1-dim with same length, checks that lower values
+    are smaller than upper values and are in range :math:`[0.0, \\pi]`.
+
+    Args:
+        ang_min:
+            Array of lower angular limits in radian.
+        ang_max:
+            Array of upper angular limits in radian.
+
+    Returns:
+        Single array of pairs of lower and upper angular limits in radian.
+
+    Raises:
+        ValueError:
+            If any of the checks fail.
+    """
     ang_min = np.atleast_1d(ang_min).astype(np.float64)
     ang_max = np.atleast_1d(ang_max).astype(np.float64)
 
@@ -59,6 +92,26 @@ def parse_ang_limits(ang_min: NDArray, ang_max: NDArray) -> NDArray[np.float64]:
 def get_ang_bins(
     ang_range: NDArray, weight_scale: float | None, weight_res: int
 ) -> NDArray:
+    """
+    Compute an array of angular bin edges, factoring in the angular limits and
+    optional finer binning required for computing angular weights.
+
+    Converts the pairs of angular limits into a flat array and optionally
+    intersperses extra logarithmically-spaced bin edges needed to compute
+    angular weights.
+
+    Args:
+        ang_range:
+            Single array of pairs of lower and upper angular limits in radian.
+        weight_scale:
+            If not ``None``, add the bins for angular weights.
+        weight_res:
+            The number of logarithmic bins for angular weights if
+            ``weight_scale`` is provided.
+
+    Returns:
+        Array of bin edges used for pair counting.
+    """
     log_range = np.log10(ang_range)
 
     if weight_scale is not None:
@@ -73,12 +126,14 @@ def get_ang_bins(
 
 
 def logarithmic_mid(edges: NDArray) -> NDArray:
+    """Compute the logarithm centers of a set of bin edges."""
     log_edges = np.log10(edges)
     log_mids = (log_edges[:-1] + log_edges[1:]) / 2.0
     return 10.0**log_mids
 
 
 def dispatch_counts(counts: NDArray, cumulative: bool) -> NDArray:
+    """Extract counts per angular bin from pair counting function."""
     if cumulative:
         return np.diff(counts)
     return counts[1:]  # discard counts within [0, ang_min)
@@ -87,6 +142,23 @@ def dispatch_counts(counts: NDArray, cumulative: bool) -> NDArray:
 def get_counts_for_limits(
     counts: NDArray, ang_bins: NDArray, ang_limits: NDArray
 ) -> NDArray:
+    """
+    Compute the pair counts measured on an arbitrary angular binning for a set
+    of lower and upper limits.
+
+    Sums pair counts of bins that overlap with each of the angular limits.
+
+    Args:
+        counts:
+            The pair counts in angular bins.
+        ang_bins:
+            The bin edges in radian used to count the pairs.
+        ang_limits:
+            Single array of pairs of lower and upper angular limits in radian.
+
+    Returns:
+        Array with pair counts, one entry for each set of scale limits.
+    """
     final_counts = np.empty(len(ang_limits), dtype=counts.dtype)
     for i, (ang_min, ang_max) in enumerate(ang_limits):
         idx_min = np.argmin(np.abs(ang_bins - ang_min))
@@ -97,6 +169,36 @@ def get_counts_for_limits(
 
 
 class AngularTree(Sized):
+    """
+    A binary search tree for angular coordinates.
+
+    For performance reasons, data is projected internally onto the unit sphere
+    and angular distances are computed as the corresponding chord distance
+    between points.
+
+    Args:
+        coords:
+            Angular coordinates of points from which the tree is build, must be
+            an instance of :obj:`~yaw.AngularCoordinates`.
+        weights:
+            Optional array of weights for each point.
+
+    Keyword Args:
+        leafsize:
+            The number of points stored in the leaf nodes of the tree.
+
+    Attributes:
+        num_records:
+            The number of data points stored in this tree.
+        weights:
+            The array of weights for the datapoints, default on 1.0.
+        total:
+            The total weight of points stored in the tree, defaults to number
+            of points if no weights are provided.
+        tree:
+            The underlying :obj:`scipy.spatial.KDTree`.
+    """
+
     __slots__ = ("num_records", "weights", "total", "tree")
 
     def __init__(
@@ -129,6 +231,7 @@ class AngularTree(Sized):
 
     @property
     def data(self) -> NDArray:
+        """Accessor for internally stored data in Euclidean coordinates."""
         return self.tree.data
 
     def count(
@@ -140,6 +243,29 @@ class AngularTree(Sized):
         weight_scale: float | None = None,
         weight_res: int = 50,
     ) -> NDArray[np.float64]:
+        """
+        Count the nubmer of neighbours with another tree.
+
+        Args:
+            other:
+                The second tree, pairs are counted between combinations of
+                points from both trees.
+            ang_min:
+                Array of lower angular limits in radian.
+            ang_max:
+                Array of upper angular limits in radian.
+
+        Keyword Args:
+            weight_scale:
+                The power-law weight to apply to pair counts, i.e. scaling pair
+                counts by the angular separation to the power of this value.
+            weight_res:
+                The number of angular bins to use to approximate the weighting
+                by separation.
+
+        Returns:
+            Pair counts between pairs of lower and upper angular limits.
+        """
         ang_limits = parse_ang_limits(ang_min, ang_max)
         ang_bins = get_ang_bins(ang_limits, weight_scale, weight_res)
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
@@ -168,7 +294,34 @@ def build_trees(
     *,
     closed: Closed,
     leafsize: int,
-) -> tuple[AngularTree]:
+) -> AngularTree | tuple[AngularTree]:
+    """
+    Build a (set of) trees from the data of a patch.
+
+    Multiple trees are constructed if a redshift binning is provided, one tree
+    per bin. This requires that the patch has redshift data.
+
+    Args:
+        patch:
+            The catalog patch from which the tree(s) are constructed.
+        binning:
+            The optional redshift bin edges to use for binning the patch data.
+
+    Keyword Args:
+        closed:
+            Whether the intervals of the bin edges are closed on the ``left`` or
+            ``right`` side.
+        leafsize:
+            The number of points stored in the leaf nodes of the tree.
+
+    Returns:
+        A single tree :obj:`~yaw.trees.AngularTree` if no binning is provided,
+        otherwise a tuple of trees, one for each redshift bin.
+
+    Raises:
+        ValueError:
+            If bin edges are provided but patch has not redshifts attached.
+    """
     if binning is not None and not patch.has_redshifts:
         raise ValueError("patch has no 'redshifts' attached")
     chunk = patch.load_data()
@@ -194,8 +347,44 @@ def build_trees(
     return trees
 
 
-class BinnedTrees(Iterable):
+class BinnedTrees(Iterable[AngularTree]):
+    """
+    Container for a single or multiple :obj:`AngularTree` s cached on disk.
+
+    Constructs a binary search tree for a set of redshift bins, or a single tree
+    if no binning is provided. The trees are constructed using the :meth:`build``
+    method from a :obj:`~yaw.patch.Patch` and stored as pickle file within its
+    cache directory. Additionally stores the bin edges in a separate file which
+    allows skipping rebuilding trees if the binning did not change.
+
+    The tree adds the following two files to the patches cache directory::
+
+        [cache_path]/
+            ├╴ ...
+            ├╴ binning
+            └╴ trees.pkl
+
+    .. Note::
+        To simplify passing trees between parallel workers, the trees are not
+        held in memory but instead loaded lazily when accessed.
+
+        The object can be iterated, which yields the individual trees. If no
+        binning is used, yields repeatedly yields the same, single tree.
+
+    Args:
+        patch:
+            Restore previously created tree(s) from a given patch.
+
+    Raises:
+        FileNotFoundError:
+            If no trees have been built previously.
+    """
+
     __slots__ = ("_patch", "binning")
+
+    binning: NDArray | None
+    """The optional bin edges used to bin the patch data in redshift before
+    building trees."""
 
     def __init__(self, patch: Patch) -> None:
         self._patch = patch
@@ -215,6 +404,37 @@ class BinnedTrees(Iterable):
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:
+        """
+        Rebuild the trees from a given patch.
+
+        If a binning is provided, bins the patch data into bins of redshift and
+        builds one tree per bin. If there are existing trees cached, the trees
+        are only rebuild if the binning is not identical or building is forced.
+
+        Args:
+            patch:
+                Patch which provides the input data and the cache directory.
+            binning:
+                Optional, must be an array of redshift bin edges or ``None`` to
+                not perform any binning.
+
+        Keyword Args:
+            closed:
+                Whether the intervals of the bin edges are closed on the
+                ``left`` or ``right`` side.
+            leafsize:
+                The number of points stored in the leaf nodes of the tree.
+            force:
+                Whether to force rebuilding the trees even if trees with the
+                same binning exist in the cache (not done by default).
+
+        Returns:
+            The new binned tree instance.
+
+        Raises:
+            ValueError:
+                If bin edges are provided but patch has not redshifts attached.
+        """
         binning = parse_binning(binning, optional=True)
         closed = Closed(closed)
 
@@ -243,27 +463,34 @@ class BinnedTrees(Iterable):
 
     @property
     def cache_path(self) -> Path:
+        """The cache patch, indentical to the underlying patch."""
         return self._patch.cache_path
 
     @property
     def binning_file(self) -> Path:
+        """Path to the file that stores the redshift binning as binary data."""
         return self.cache_path / "binning"
 
     @property
     def trees_file(self) -> Path:
+        """Path to the pickled binary trees."""
         return self.cache_path / "trees.pkl"
 
     @property
     def num_bins(self) -> int | None:
+        """Number of redshift bins used for the trees or ``None``."""
         try:
             return len(self.binning) - 1
         except TypeError:
             return None
 
     def is_binned(self) -> bool:
+        """Whether tree(s) are binned (multiple) or not (single tree)."""
         return self.binning is not None
 
     def binning_equal(self, binning: NDArray | None) -> bool:
+        """Compare if another binning is identical to the current one stored
+        internally."""
         if self.binning is None and binning is None:
             return True
 
@@ -274,6 +501,13 @@ class BinnedTrees(Iterable):
 
     @property
     def trees(self) -> AngularTree | tuple[AngularTree]:
+        """
+        Load and obtain the pickled, cached binary trees.
+
+        Returns:
+            A single :obj:`AngularTree` if no redshift binning was used, a tuple
+            of trees otherwise.
+        """
         with self.trees_file.open(mode="rb") as f:
             return pickle.load(f)
 

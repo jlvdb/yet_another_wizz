@@ -25,7 +25,6 @@ from yaw.readers import (
     PATCH_ID_DTYPE,
     DataChunk,
     DataChunkReader,
-    DataFrame,
     DataFrameReader,
     RandomReader,
     check_patch_ids,
@@ -39,7 +38,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
-    from yaw.readers import TypeDataChunk, TypePatchIDs
+    from yaw.readers import DataFrame, TypeDataChunk, TypePatchIDs
 
 
 PATCH_NAME_TEMPLATE = "patch_{:d}"

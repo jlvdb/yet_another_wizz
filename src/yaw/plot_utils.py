@@ -33,6 +33,9 @@ __all__ = [
 
 
 def check_plotting_enabled(func):
+    """Checks if matplotlib was imported and otherwise raises an import error
+    before the function is called."""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         if not PLOTTING_ENABLED:
@@ -44,7 +47,7 @@ def check_plotting_enabled(func):
 
 @check_plotting_enabled
 def zero_line(*, ax: Axis | None = None) -> Axis:
-    """Plot a thing line at ``y=0``."""
+    """Plot a thin black line at ``y=0``."""
     ax = ax or plt.gca()
 
     lw = 0.7
