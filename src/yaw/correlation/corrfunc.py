@@ -7,39 +7,27 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw import parallel
-from yaw.abc import (
-    AsciiSerializable,
-    BinwiseData,
-    HdfSerializable,
-    PatchwiseData,
-    Serialisable,
-)
-from yaw.containers import Binning, SampledData
-from yaw.paircounts import NormalisedCounts
-from yaw.parallel import Broadcastable, bcast_instance
-from yaw.utils import format_float_fixed_width, write_version_tag
+from yaw.binning import Binning
+from yaw.correlation.corrdata import CorrData
+from yaw.correlation.paircounts import NormalisedCounts
+from yaw.utils import parallel, write_version_tag
+from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
+from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
-    from typing import Any, TypeVar
+    from typing import Any
 
     from h5py import Group
     from numpy.typing import NDArray
 
-    from yaw.containers import TypeSliceIndex
-
-    TypeCorrData = TypeVar("TypeCorrData", bound="CorrData")
+    from yaw.utils.abc import TypeSliceIndex
 
 __all__ = [
     "CorrFunc",
-    "CorrData",
 ]
 
 
-PRECISION = 10
-"""The precision of floats when encoding as ASCII."""
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("yaw.correlation")
 
 
 class EstimatorError(Exception):
@@ -103,18 +91,18 @@ class CorrFunc(
     Args:
         dd:
             The data-data pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
 
     Keyword Args:
         dr:
             The optional data-random pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
         rd:
             The optional random-random pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
         rr:
             The optional random-random pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
 
     Raises:
         ValueError:
@@ -305,235 +293,3 @@ class CorrFunc(
         corr_data = estimator(**counts_values)
         corr_samples = estimator(**counts_samples)
         return CorrData(self.binning, corr_data, corr_samples)
-
-
-class CorrData(AsciiSerializable, SampledData, Broadcastable):
-    """
-    Container for a correlation functino measured in bins of redshift.
-
-    Implements convenience methods to estimate the standard error, covariance
-    and correlation matrix, and plotting methods. Additionally implements
-    ``len()``, comparison with the ``==`` operator and addition with
-    ``+``/``-``.
-
-    Args:
-        binning:
-            The redshift :~yaw.Binning` applied to the data.
-        data:
-            Array containing the values in each of the redshift bin.
-        samples:
-            2-dim array containing `M` jackknife samples of the data, expected
-            to have shape (:obj:`num_samples`, :obj:`num_bins`).
-    """
-
-    __slots__ = ("binning", "data", "samples")
-
-    @property
-    def _description_data(self) -> str:
-        """Descriptive comment for header of .dat file."""
-        return "correlation function with symmetric 68% percentile confidence"
-
-    @property
-    def _description_samples(self) -> str:
-        """Descriptive comment for header of .smp file."""
-        return f"{self.num_samples} correlation function jackknife samples"
-
-    @property
-    def _description_covariance(self) -> str:
-        """Descriptive comment for header of .cov file."""
-        n = self.num_bins
-        return f"correlation function covariance matrix ({n}x{n})"
-
-    @classmethod
-    def from_files(cls: type[TypeCorrData], path_prefix: Path | str) -> TypeCorrData:
-        """
-        Restore the class instance from a set of ASCII files.
-
-        Args:
-            path_prefix:
-                A path (:obj:`str` or :obj:`pathlib.Path`) prefix used as
-                ``[path_prefix].{dat,smp,cov}``, pointing to the ASCII files
-                to restore from, see also :meth:`to_files()`.
-        """
-        new = None
-
-        if parallel.on_root():
-            logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
-
-            path_prefix = Path(path_prefix)
-
-            edges, closed, data = load_data(path_prefix.with_suffix(".dat"))
-            samples = load_samples(path_prefix.with_suffix(".smp"))
-            binning = Binning(edges, closed=closed)
-
-            new = cls(binning, data, samples)
-
-        return bcast_instance(new)
-
-    def to_files(self, path_prefix: Path | str) -> None:
-        """
-        Serialise the class instance into a set of ASCII files.
-
-        This method creates three files, which are all readable with
-        ``numpy.loadtxt``:
-
-        - ``[path_prefix].dat``: File with header and four columns, the left
-          and right redshift bin edges, data, and errors.
-        - ``[path_prefix].smp``: File containing the jackknife samples. The
-          first two columns are the left and right redshift bin edges, the
-          remaining columns each represent one jackknife sample.
-        - ``[path_prefix].cov``: File storing the covariance matrix.
-
-        Args:
-            path_prefix:
-                A path (:obj:`str` or :obj:`pathlib.Path`) prefix
-                ``[path_prefix].{dat,smp,cov}`` pointing to the ASCII files
-                to serialise into, see also :meth:`from_files()`.
-        """
-        if parallel.on_root():
-            logger.info(
-                "writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix
-            )
-
-            path_prefix = Path(path_prefix)
-
-            write_data(
-                path_prefix.with_suffix(".dat"),
-                self._description_data,
-                zleft=self.binning.left,
-                zright=self.binning.right,
-                data=self.data,
-                error=self.error,
-                closed=str(self.binning.closed),
-            )
-
-            write_samples(
-                path_prefix.with_suffix(".smp"),
-                self._description_samples,
-                zleft=self.binning.left,
-                zright=self.binning.right,
-                samples=self.samples,
-                closed=str(self.binning.closed),
-            )
-
-            # write covariance for convenience only, it is not required to restore
-            write_covariance(
-                path_prefix.with_suffix(".cov"),
-                self._description_covariance,
-                covariance=self.covariance,
-            )
-
-        parallel.COMM.Barrier()
-
-
-def create_columns(columns: list[str], closed: str) -> list[str]:
-    """
-    Create a list of columns for the output file.
-
-    The first two columns are always ``z_low`` and ``z_high`` (left and right
-    bin edges) and an indication, which of the two intervals are closed.
-    """
-    if closed == "left":
-        all_columns = ["[z_low", "z_high)"]
-    else:
-        all_columns = ["(z_low", "z_high]"]
-    all_columns.extend(columns)
-    return all_columns
-
-
-def write_header(f, description, columns) -> None:
-    """Write the file header, starting with the column list, followed by an
-    additional descriptive message."""
-    line = " ".join(f"{col:>{PRECISION}s}" for col in columns)
-
-    f.write(f"# {description}\n")
-    f.write(f"#{line[1:]}\n")
-
-
-def load_header(path: Path) -> tuple[str, list[str], str]:
-    """Restore the file description, column names and whether the left or right
-    edge of the binning is closed."""
-
-    def unwrap_line(line):
-        return line.lstrip("#").strip()
-
-    with path.open() as f:
-        description = unwrap_line(f.readline())
-        columns = unwrap_line(f.readline()).split()
-
-    closed = "left" if columns[0][0] == "[" else "right"
-    return description, columns, closed
-
-
-def write_data(
-    path: Path,
-    description: str,
-    *,
-    zleft: NDArray,
-    zright: NDArray,
-    data: NDArray,
-    error: NDArray,
-    closed: str,
-) -> None:
-    """Write data to a ASCII text file, i.e. bin edges, redshift estimate and
-    its uncertainty."""
-    with path.open("w") as f:
-        write_header(f, description, create_columns(["nz", "nz_err"], closed))
-
-        for values in zip(zleft, zright, data, error):
-            formatted = [format_float_fixed_width(value, PRECISION) for value in values]
-            f.write(" ".join(formatted) + "\n")
-
-
-def load_data(path: Path) -> tuple[NDArray, str, NDArray]:
-    """Read data from a ASCII text file, i.e. bin edges, redshift estimate and
-    its uncertainty."""
-    _, _, closed = load_header(path)
-
-    zleft, zright, data, _ = np.loadtxt(path).T
-    edges = np.append(zleft, zright[-1])
-    return edges, closed, data
-
-
-def write_samples(
-    path: Path,
-    description: str,
-    *,
-    zleft: NDArray,
-    zright: NDArray,
-    samples: NDArray,
-    closed: str,
-) -> None:
-    """Write the redshift estimate jackknife samples as ASCII text file."""
-    with path.open("w") as f:
-        sample_columns = [f"jack_{i}" for i in range(len(samples))]
-        write_header(f, description, create_columns(sample_columns, closed))
-
-        for zleft, zright, samples in zip(zleft, zright, samples.T):
-            formatted = [
-                format_float_fixed_width(zleft, PRECISION),
-                format_float_fixed_width(zright, PRECISION),
-            ]
-            formatted.extend(
-                format_float_fixed_width(value, PRECISION) for value in samples
-            )
-            f.write(" ".join(formatted) + "\n")
-
-
-def load_samples(path: Path) -> NDArray:
-    """Read the redshift estimate jackknife samples from an ASCII text file."""
-    return np.loadtxt(path).T[2:]  # remove binning columns
-
-
-def write_covariance(path: Path, description: str, *, covariance: NDArray) -> None:
-    """Write the covariance as fixed width matrix of ASCII text to a file."""
-    with path.open("w") as f:
-        f.write(f"# {description}\n")
-
-        for row in covariance:
-            for value in row:
-                f.write(f"{value: .{PRECISION - 3}e} ")
-            f.write("\n")
-
-
-# NOTE: load_covariance() not required

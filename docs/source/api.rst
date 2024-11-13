@@ -39,8 +39,8 @@ on disk. These patches are managed by the following classes:
 .. autosummary::
     :toctree: autogen
 
-    patch.Patch
-    patch.Metadata
+    catalog.patch.Patch
+    catalog.patch.Metadata
 
 
 .. _generator:
@@ -84,8 +84,8 @@ usually it is not necessary to interact with these sub-classes directly.
 .. autosummary::
     :toctree: autogen
 
-    config.ScalesConfig
-    config.BinningConfig
+    config.scales.ScalesConfig
+    config.binning.BinningConfig
 
 
 Correlation measurements
@@ -125,9 +125,9 @@ the normalisation factor for the pair counts):
 .. autosummary::
     :toctree: autogen
 
-    paircounts.NormalisedCounts
-    paircounts.PatchedCounts
-    paircounts.PatchedTotals
+    correlation.paircounts.NormalisedCounts
+    correlation.paircounts.PatchedCounts
+    correlation.paircounts.PatchedTotals
 
 
 Data containers
@@ -208,5 +208,3 @@ values and are parsed automatically.
 
 Developer notes
 ===============
-
-.. automodule:: yaw

@@ -5,10 +5,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.abc import BinwiseData, HdfSerializable, PatchwiseData
-from yaw.containers import Binning, SampledData, load_legacy_binning
-from yaw.parallel import Broadcastable
+from yaw.binning import Binning, load_legacy_binning
+from yaw.correlation.corrdata import SampledData
 from yaw.utils import HDF_COMPRESSION, is_legacy_dataset, write_version_tag
+from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData
+from yaw.utils.parallel import Broadcastable
 
 if TYPE_CHECKING:
     from typing import Any
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import NDArray
 
-    from yaw.containers import TypeSliceIndex
+    from yaw.utils.abc import TypeSliceIndex
 
 __all__ = [
     "PatchedTotals",
@@ -101,7 +102,7 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadca
 
         Returns:
             Sum over patches and jackknife samples thereof packed in an
-            instance of :obj:`~yaw.containers.SampledData`.
+            instance of :obj:`~yaw.correlation.corrdata.SampledData`.
         """
         bin_patch_array = self.get_array()
 

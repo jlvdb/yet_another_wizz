@@ -13,18 +13,22 @@ import numpy as np
 import treecorr
 from scipy.cluster import vq
 
-from yaw import parallel
-from yaw.containers import parse_binning
+from yaw.binning import parse_binning
+from yaw.catalog.datachunk import (
+    PATCH_ID_DTYPE,
+    DataChunk,
+    DataChunkReader,
+    check_patch_ids,
+)
+from yaw.catalog.patch import Patch, PatchWriter
+from yaw.catalog.readers import DataFrameReader, RandomReader, new_filereader
+from yaw.catalog.trees import BinnedTrees, groupby
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.datachunk import PATCH_ID_DTYPE, DataChunk, DataChunkReader, check_patch_ids
-from yaw.logging import Indicator
 from yaw.options import Closed
-from yaw.parallel import EndOfQueue
-from yaw.patch import Patch, PatchWriter
 from yaw.randoms import RandomsBase
-from yaw.readers import DataFrameReader, RandomReader, new_filereader
-from yaw.trees import BinnedTrees, groupby
-from yaw.utils import format_long_num
+from yaw.utils import format_long_num, parallel
+from yaw.utils.logging import Indicator
+from yaw.utils.parallel import EndOfQueue
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -32,8 +36,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
-    from yaw.datachunk import TypeDataChunk, TypePatchIDs
-    from yaw.readers import DataFrame
+    from yaw.catalog.datachunk import TypeDataChunk, TypePatchIDs
+    from yaw.catalog.readers import DataFrame
 
 
 PATCH_NAME_TEMPLATE = "patch_{:d}"
@@ -371,8 +375,8 @@ class CatalogWriter(AbstractContextManager):
         has_redshifts:
             Whether the input data chunks include object redshifts.
         writers:
-            Dictionary of patch IDs / :obj:`~yaw.patch.PatchWriters` that
-            delegates writing data for an individual patch.
+            Dictionary of patch IDs / :obj:`~yaw.catalog.patch.PatchWriters`
+            that delegates writing data for an individual patch.
         buffersize:
             Optional, maximum number of records to store in the internal cache
             of each patch writer.

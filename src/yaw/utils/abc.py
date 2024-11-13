@@ -11,7 +11,7 @@ import yaml
 if TYPE_CHECKING:
     from typing import Any
 
-    from yaw.containers import Binning
+    from yaw.binning import Binning
 
     # meta-class types
     TypeSerialisable = TypeVar("TypeSerialisable", bound="Serialisable")

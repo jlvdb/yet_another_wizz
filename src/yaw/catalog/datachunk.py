@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING, Iterator, NewType, Sized
 import numpy as np
 from numpy.typing import NDArray
 
-from yaw import parallel
 from yaw.coordinates import AngularCoordinates
 from yaw.options import NotSet
-from yaw.utils import common_len_assert
+from yaw.utils import common_len_assert, parallel
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

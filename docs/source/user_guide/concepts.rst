@@ -38,7 +38,7 @@ of the code. Every input data set is automatically cached when creating a new
 measurements.
 
 Therefore, every catalog instance is tied to a cache directory on disk, where
-the data is stored in :obj:`~yaw.catalog.Patch` es and read back on demand.
+the data is stored in :obj:`~yaw.catalog.patch.Patch` es and read back on demand.
 Therefore it is beneficial to choose a cache location on a fast device, such as
 an SSD, RAID system, or file systems optimised for parallel processing.
 

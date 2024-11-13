@@ -3,7 +3,7 @@ from logging import DEBUG, LogRecord, getLogger
 
 from pytest import mark
 
-from yaw import logging
+from yaw.utils import logging
 
 
 def test_Indicator(capsys):

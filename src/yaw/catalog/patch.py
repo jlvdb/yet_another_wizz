@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.abc import YamlSerialisable
+from yaw.catalog.datachunk import DataChunk
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.datachunk import DataChunk
+from yaw.utils.abc import YamlSerialisable
 
 if TYPE_CHECKING:
     from io import TextIOBase
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from yaw.datachunk import TypeDataChunk
+    from yaw.catalog.datachunk import TypeDataChunk
 
 __all__ = [
     "Patch",

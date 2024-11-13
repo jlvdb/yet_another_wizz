@@ -2,6 +2,15 @@ from enum import auto
 
 from strenum import StrEnum
 
+__all__ = [
+    "BinMethod",
+    "BinMethodAuto",
+    "Closed",
+    "CovKind",
+    "NotSet",
+    "PlotStyle",
+]
+
 
 class _NotSet_meta(type):
     def __repr__(self) -> str:

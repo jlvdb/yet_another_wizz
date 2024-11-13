@@ -4,10 +4,10 @@ import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_equal
 from pytest import fixture, mark, raises
 
-from yaw import trees
+from yaw.catalog import trees
 from yaw.coordinates import AngularCoordinates
-from yaw.patch import Patch, PatchWriter
-from yaw.readers import DataChunk
+from yaw.catalog.patch import Patch, PatchWriter
+from yaw.catalog.readers import DataChunk
 
 
 @mark.parametrize(

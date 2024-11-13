@@ -12,15 +12,14 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import ArrowException, Table, parquet
 
-from yaw import parallel
-from yaw.datachunk import DataChunk, DataChunkReader
-from yaw.utils import common_len_assert, format_long_num
+from yaw.catalog.datachunk import DataChunk, DataChunkReader
+from yaw.utils import common_len_assert, format_long_num, parallel
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
-    from yaw.datachunk import TypeDataChunk
+    from yaw.catalog.datachunk import TypeDataChunk
     from yaw.randoms import RandomsBase
 
 CHUNKSIZE = 16_777_216

@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw import parallel
-from yaw.catalog import InconsistentPatchesError
+from yaw.catalog.catalog import InconsistentPatchesError
+from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
-from yaw.corrfunc import CorrFunc
+from yaw.correlation.corrfunc import CorrFunc
+from yaw.correlation.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
 from yaw.cosmology import separation_physical_to_angle
-from yaw.logging import Indicator
-from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
-from yaw.trees import BinnedTrees
+from yaw.utils import parallel
+from yaw.utils.logging import Indicator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

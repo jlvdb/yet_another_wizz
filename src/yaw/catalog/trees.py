@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import KDTree
 
-from yaw.containers import parse_binning
+from yaw.binning import parse_binning
+from yaw.catalog.datachunk import DataChunk
 from yaw.coordinates import AngularDistances
-from yaw.datachunk import DataChunk
 from yaw.options import Closed
 from yaw.utils import groupby
 
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from yaw.catalog.patch import Patch
     from yaw.coordinates import AngularCoordinates
-    from yaw.patch import Patch
 
 __all__ = [
     "AngularTree",
@@ -293,8 +293,8 @@ def build_trees(
             The number of points stored in the leaf nodes of the tree.
 
     Returns:
-        A single tree :obj:`~yaw.trees.AngularTree` if no binning is provided,
-        otherwise a tuple of trees, one for each redshift bin.
+        A single tree :obj:`~yaw.catalog.trees.AngularTree` if no binning is
+        provided, otherwise a tuple of trees, one for each redshift bin.
 
     Raises:
         ValueError:
@@ -331,9 +331,9 @@ class BinnedTrees(Iterable[AngularTree]):
 
     Constructs a binary search tree for a set of redshift bins, or a single tree
     if no binning is provided. The trees are constructed using the :meth:`build``
-    method from a :obj:`~yaw.patch.Patch` and stored as pickle file within its
-    cache directory. Additionally stores the bin edges in a separate file which
-    allows skipping rebuilding trees if the binning did not change.
+    method from a :obj:`~yaw.catalog.patch.Patch` and stored as pickle file
+    within its cache directory. Additionally stores the bin edges in a separate
+    file which allows skipping rebuilding trees if the binning did not change.
 
     The tree adds the following two files to the patches cache directory::
 

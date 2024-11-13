@@ -1,167 +1,42 @@
 from __future__ import annotations
 
+import logging
 import warnings
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, Union
 
 import numpy as np
 from numpy.exceptions import AxisError
 
-from yaw import plot_utils
-from yaw.abc import BinwiseData, HdfSerializable
-from yaw.options import Closed, CovKind, PlotStyle
-from yaw.utils import HDF_COMPRESSION, write_version_tag
+from yaw.binning import Binning
+from yaw.options import CovKind, PlotStyle
+from yaw.utils import format_float_fixed_width, parallel, plotting
+from yaw.utils.abc import AsciiSerializable, BinwiseData
+from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from h5py import Group
     from numpy.typing import ArrayLike, NDArray
 
-    from yaw.plot_utils import Axis
+    from yaw.utils.plotting import Axis
 
     # container class types
-    TypeBinning = TypeVar("TypeBinning", bound="Binning")
     TypeSampledData = TypeVar("TypeSampledData", bound="SampledData")
+    TypeCorrData = TypeVar("TypeCorrData", bound="CorrData")
 
     # concrete types
     TypeSliceIndex = Union[int, slice]
 
 __all__ = [
-    "Binning",
-    "SampledData",
+    "CorrData",
 ]
 
+PRECISION = 10
+"""The precision of floats when encoding as ASCII."""
 
-def parse_binning(binning: NDArray | None, *, optional: bool = False) -> NDArray | None:
-    """
-    Parse an array containing bin edges, including the right-most one.
-
-    Input array must be 1-dim with len > 2 and bin edges must increase
-    monotonically. Input may also be None, if ``optional=True``.
-    """
-    if optional and binning is None:
-        return None
-
-    binning = np.asarray(binning, dtype=np.float64)
-    if binning.ndim != 1 or len(binning) < 2:
-        raise ValueError("bin edges must be one-dimensionals with length > 2")
-
-    if np.any(np.diff(binning) <= 0.0):
-        raise ValueError("bin edges must increase monotonically")
-
-    return binning
-
-
-class Binning(HdfSerializable):
-    """
-    Container for a redshift binning.
-
-    Provides convenience methods to access attributes like edges, centers, and
-    bin widths. Additionally implements ``len()``, comparison with ``==``,
-    addition with ``+``/``-``, iteration over redshift bins, and pickling.
-
-    Args:
-        edges:
-            Sequence of bin edges that are non-overlapping, monotonically
-            increasing, and can be broadcasted to a numpy array.
-
-    Keyword Args:
-        closed:
-            Indicating which side of the bin edges is a closed interval, must be
-            ``left`` or ``right`` (default).
-    """
-
-    __slots__ = ("edges", "closed")
-
-    edges: NDArray
-    """Array containing the edges of all bins, including the rightmost edge."""
-    closed: Closed
-    """Indicating which side of the bin edges is a closed interval, either
-    ``left`` or ``right``."""
-
-    def __init__(self, edges: ArrayLike, closed: Closed | str = Closed.right) -> None:
-        self.edges = parse_binning(edges)
-        self.closed = Closed(closed)
-
-    @classmethod
-    def from_hdf(cls: type[TypeBinning], source: Group) -> TypeBinning:
-        # ignore "version" since there is no equivalent in legacy
-        edges = source["edges"][:]
-        closed = source["closed"][()].decode("utf-8")
-        return cls(edges, closed=closed)
-
-    def to_hdf(self, dest: Group) -> None:
-        write_version_tag(dest)
-        dest.create_dataset("closed", data=str(self.closed))
-        dest.create_dataset("edges", data=self.edges, **HDF_COMPRESSION)
-
-    def __repr__(self) -> str:
-        if self.closed == "left":
-            lb, rb = "[)"
-        else:
-            lb, rb = "(]"
-        return f"{lb}{self.edges[0]:.3f}...{self.edges[-1]:.3f}{rb}"
-
-    def __getstate__(self) -> dict:
-        return dict(edges=self.edges, closed=self.closed)
-
-    def __setstate__(self, state) -> None:
-        for key, value in state.items():
-            setattr(self, key, value)
-
-    def __len__(self) -> int:
-        return len(self.edges) - 1
-
-    def __getitem__(self, item: TypeSliceIndex) -> Binning:
-        left = np.atleast_1d(self.left[item])
-        right = np.atleast_1d(self.right[item])
-        edges = np.append(left, right[-1])
-        return type(self)(edges, closed=self.closed)
-
-    def __iter__(self) -> Iterator[Binning]:
-        for i in range(len(self)):
-            yield type(self)(self.edges[i : i + 2], closed=self.closed)
-
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, type(self)):
-            return NotImplemented
-
-        return np.array_equal(self.edges, other.edges) and self.closed == other.closed
-
-    @property
-    def mids(self) -> NDArray:
-        """Array containing the centers of the bins."""
-        return (self.edges[:-1] + self.edges[1:]) / 2.0
-
-    @property
-    def left(self) -> NDArray:
-        """Array containing the left edges of the bins."""
-        return self.edges[:-1]
-
-    @property
-    def right(self) -> NDArray:
-        """Array containing the right edges of the bins."""
-        return self.edges[1:]
-
-    @property
-    def dz(self) -> NDArray:
-        """Array containing the width of the bins."""
-        return np.diff(self.edges)
-
-    def copy(self: TypeBinning) -> TypeBinning:
-        """Create a copy of this instance."""
-        return Binning(self.edges.copy(), closed=str(self.closed))
-
-
-def load_legacy_binning(source: Group) -> Binning:
-    """Special function to load a binning stored in HDF5 files from yaw<3.0."""
-    dataset = source["binning"]
-    left, right = dataset[:].T
-    edges = np.append(left, right[-1])
-
-    closed = dataset.attrs["closed"]
-    return Binning(edges, closed=closed)
+logger = logging.getLogger("yaw.correlation")
 
 
 def cov_from_samples(
@@ -465,14 +340,14 @@ class SampledData(BinwiseData):
             yerr *= dz
 
         if indicate_zero:
-            ax = plot_utils.zero_line(ax=ax)
+            ax = plotting.zero_line(ax=ax)
 
         if style == "point":
-            return plot_utils.point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plotting.point_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "line":
-            return plot_utils.line_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plotting.line_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
         elif style == "step":
-            return plot_utils.step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
+            return plotting.step_uncertainty(x, y, yerr, ax=ax, **plot_kwargs)
 
         raise ValueError(f"invalid plot style '{style}'")
 
@@ -492,9 +367,241 @@ class SampledData(BinwiseData):
             ax:
                 Matplotlib axis to plot onto.
         """
-        return plot_utils.correlation_matrix(
+        return plotting.correlation_matrix(
             self.correlation,
             ticks=self.binning.mids if redshift else None,
             cmap=cmap,
             ax=ax,
         )
+
+
+class CorrData(AsciiSerializable, SampledData, Broadcastable):
+    """
+    Container for a correlation functino measured in bins of redshift.
+
+    Implements convenience methods to estimate the standard error, covariance
+    and correlation matrix, and plotting methods. Additionally implements
+    ``len()``, comparison with the ``==`` operator and addition with
+    ``+``/``-``.
+
+    Args:
+        binning:
+            The redshift :~yaw.Binning` applied to the data.
+        data:
+            Array containing the values in each of the redshift bin.
+        samples:
+            2-dim array containing `M` jackknife samples of the data, expected
+            to have shape (:obj:`num_samples`, :obj:`num_bins`).
+    """
+
+    __slots__ = ("binning", "data", "samples")
+
+    @property
+    def _description_data(self) -> str:
+        """Descriptive comment for header of .dat file."""
+        return "correlation function with symmetric 68% percentile confidence"
+
+    @property
+    def _description_samples(self) -> str:
+        """Descriptive comment for header of .smp file."""
+        return f"{self.num_samples} correlation function jackknife samples"
+
+    @property
+    def _description_covariance(self) -> str:
+        """Descriptive comment for header of .cov file."""
+        n = self.num_bins
+        return f"correlation function covariance matrix ({n}x{n})"
+
+    @classmethod
+    def from_files(cls: type[TypeCorrData], path_prefix: Path | str) -> TypeCorrData:
+        """
+        Restore the class instance from a set of ASCII files.
+
+        Args:
+            path_prefix:
+                A path (:obj:`str` or :obj:`pathlib.Path`) prefix used as
+                ``[path_prefix].{dat,smp,cov}``, pointing to the ASCII files
+                to restore from, see also :meth:`to_files()`.
+        """
+        new = None
+
+        if parallel.on_root():
+            logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
+
+            path_prefix = Path(path_prefix)
+
+            edges, closed, data = load_data(path_prefix.with_suffix(".dat"))
+            samples = load_samples(path_prefix.with_suffix(".smp"))
+            binning = Binning(edges, closed=closed)
+
+            new = cls(binning, data, samples)
+
+        return bcast_instance(new)
+
+    def to_files(self, path_prefix: Path | str) -> None:
+        """
+        Serialise the class instance into a set of ASCII files.
+
+        This method creates three files, which are all readable with
+        ``numpy.loadtxt``:
+
+        - ``[path_prefix].dat``: File with header and four columns, the left
+          and right redshift bin edges, data, and errors.
+        - ``[path_prefix].smp``: File containing the jackknife samples. The
+          first two columns are the left and right redshift bin edges, the
+          remaining columns each represent one jackknife sample.
+        - ``[path_prefix].cov``: File storing the covariance matrix.
+
+        Args:
+            path_prefix:
+                A path (:obj:`str` or :obj:`pathlib.Path`) prefix
+                ``[path_prefix].{dat,smp,cov}`` pointing to the ASCII files
+                to serialise into, see also :meth:`from_files()`.
+        """
+        if parallel.on_root():
+            logger.info(
+                "writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix
+            )
+
+            path_prefix = Path(path_prefix)
+
+            write_data(
+                path_prefix.with_suffix(".dat"),
+                self._description_data,
+                zleft=self.binning.left,
+                zright=self.binning.right,
+                data=self.data,
+                error=self.error,
+                closed=str(self.binning.closed),
+            )
+
+            write_samples(
+                path_prefix.with_suffix(".smp"),
+                self._description_samples,
+                zleft=self.binning.left,
+                zright=self.binning.right,
+                samples=self.samples,
+                closed=str(self.binning.closed),
+            )
+
+            # write covariance for convenience only, it is not required to restore
+            write_covariance(
+                path_prefix.with_suffix(".cov"),
+                self._description_covariance,
+                covariance=self.covariance,
+            )
+
+        parallel.COMM.Barrier()
+
+
+def create_columns(columns: list[str], closed: str) -> list[str]:
+    """
+    Create a list of columns for the output file.
+
+    The first two columns are always ``z_low`` and ``z_high`` (left and right
+    bin edges) and an indication, which of the two intervals are closed.
+    """
+    if closed == "left":
+        all_columns = ["[z_low", "z_high)"]
+    else:
+        all_columns = ["(z_low", "z_high]"]
+    all_columns.extend(columns)
+    return all_columns
+
+
+def write_header(f, description, columns) -> None:
+    """Write the file header, starting with the column list, followed by an
+    additional descriptive message."""
+    line = " ".join(f"{col:>{PRECISION}s}" for col in columns)
+
+    f.write(f"# {description}\n")
+    f.write(f"#{line[1:]}\n")
+
+
+def load_header(path: Path) -> tuple[str, list[str], str]:
+    """Restore the file description, column names and whether the left or right
+    edge of the binning is closed."""
+
+    def unwrap_line(line):
+        return line.lstrip("#").strip()
+
+    with path.open() as f:
+        description = unwrap_line(f.readline())
+        columns = unwrap_line(f.readline()).split()
+
+    closed = "left" if columns[0][0] == "[" else "right"
+    return description, columns, closed
+
+
+def write_data(
+    path: Path,
+    description: str,
+    *,
+    zleft: NDArray,
+    zright: NDArray,
+    data: NDArray,
+    error: NDArray,
+    closed: str,
+) -> None:
+    """Write data to a ASCII text file, i.e. bin edges, redshift estimate and
+    its uncertainty."""
+    with path.open("w") as f:
+        write_header(f, description, create_columns(["nz", "nz_err"], closed))
+
+        for values in zip(zleft, zright, data, error):
+            formatted = [format_float_fixed_width(value, PRECISION) for value in values]
+            f.write(" ".join(formatted) + "\n")
+
+
+def load_data(path: Path) -> tuple[NDArray, str, NDArray]:
+    """Read data from a ASCII text file, i.e. bin edges, redshift estimate and
+    its uncertainty."""
+    _, _, closed = load_header(path)
+
+    zleft, zright, data, _ = np.loadtxt(path).T
+    edges = np.append(zleft, zright[-1])
+    return edges, closed, data
+
+
+def write_samples(
+    path: Path,
+    description: str,
+    *,
+    zleft: NDArray,
+    zright: NDArray,
+    samples: NDArray,
+    closed: str,
+) -> None:
+    """Write the redshift estimate jackknife samples as ASCII text file."""
+    with path.open("w") as f:
+        sample_columns = [f"jack_{i}" for i in range(len(samples))]
+        write_header(f, description, create_columns(sample_columns, closed))
+
+        for zleft, zright, samples in zip(zleft, zright, samples.T):
+            formatted = [
+                format_float_fixed_width(zleft, PRECISION),
+                format_float_fixed_width(zright, PRECISION),
+            ]
+            formatted.extend(
+                format_float_fixed_width(value, PRECISION) for value in samples
+            )
+            f.write(" ".join(formatted) + "\n")
+
+
+def load_samples(path: Path) -> NDArray:
+    """Read the redshift estimate jackknife samples from an ASCII text file."""
+    return np.loadtxt(path).T[2:]  # remove binning columns
+
+
+def write_covariance(path: Path, description: str, *, covariance: NDArray) -> None:
+    """Write the covariance as fixed width matrix of ASCII text to a file."""
+    with path.open("w") as f:
+        f.write(f"# {description}\n")
+
+        for row in covariance:
+            for value in row:
+                f.write(f"{value: .{PRECISION - 3}e} ")
+            f.write("\n")
+
+
+# NOTE: load_covariance() not required
