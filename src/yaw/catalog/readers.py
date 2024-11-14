@@ -405,8 +405,8 @@ class FitsReader(FileReader):
 
     def _get_next_chunk(self) -> DataChunk:
         def get_data_swapped(colname: str) -> NDArray:
-            start = self._num_samples
-            end = start + self.chunksize
+            end = self._num_samples  # already incremented by chunksize in __next__
+            start = end - self.chunksize
             array = self._hdu_data[colname][start:end]
 
             return array.view(array.dtype.newbyteorder()).byteswap()
@@ -476,8 +476,8 @@ class HDFReader(FileReader):
             common_len_assert([self._file[col] for col in self._columns.values()])
 
     def _get_next_chunk(self) -> DataChunk:
-        start = self._num_samples
-        end = start + self.chunksize
+        end = self._num_samples  # already incremented by chunksize in __next__
+        start = end - self.chunksize
         kwargs = {
             attr: self._file[col][start:end] for attr, col in self._columns.items()
         }
@@ -542,6 +542,8 @@ class ParquetReader(FileReader):
             degrees=degrees,
         )
 
+        self._group_idx = 0  # parquet file iteration state
+
     def _get_group_cache_size(self) -> int:
         """Get the number of records currently stored in the row-group cache."""
         return sum(len(group) for group in self._group_cache)
@@ -550,12 +552,12 @@ class ParquetReader(FileReader):
         """Keep reading row-groups from the input file until a full chunk can be
         constructed or the end of the file is reached."""
         while self._get_group_cache_size() < self.chunksize:
-            group_idx = len(self._group_cache)
             try:
                 next_group = self._file.read_row_group(
-                    group_idx, self._columns.values()
+                    self._group_idx, self._columns.values()
                 )
                 self._group_cache.append(next_group)
+                self._group_idx += 1
             except ArrowException:
                 break  # end of file reached before chunk is full
 
@@ -591,4 +593,5 @@ class ParquetReader(FileReader):
     def __iter__(self) -> Iterator[TypeDataChunk]:
         # additonal iteration state requried by parquet file implementation
         self._group_cache = deque()
+        self._group_idx = 0
         return super().__iter__()
