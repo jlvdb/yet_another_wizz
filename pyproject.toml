@@ -77,7 +77,10 @@ where = [
 
 [tool.setuptools.package-data]
 yaw = [
-    "../example_data/*",
+    "examples/*.hdf",
+    "examples/*.dat",
+    "examples/*.cov",
+    "examples/*.smp",
 ]
 
 [tool.pytest.ini_options]

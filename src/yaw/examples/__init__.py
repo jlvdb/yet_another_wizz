@@ -7,7 +7,7 @@ importing the module, e.g.
 CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=64)
 """
 
-import importlib.resources
+from pathlib import Path
 
 from yaw.correlation.corrfunc import CorrFunc
 
@@ -21,7 +21,7 @@ __all__ = [
 ]
 
 
-_path = importlib.resources.files("yaw").joinpath("../example_data")
+_path = Path(__file__).parent
 
 w_sp = CorrFunc.from_file(_path / "cross_1.hdf")
 """Example data from a crosscorrelation measurement
