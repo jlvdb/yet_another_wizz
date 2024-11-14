@@ -437,9 +437,9 @@ class Patch:
         redshifts.
 
         Returns:
-            A special :obj:`PatchData` container that has the same
-            :obj:`coords`, :obj:`weights`, and :obj:`redshifts` attributes as
-            :obj:`Patch`.
+            A numpy array with composite data type. The fields represent the
+            different data columns and can be ``ra``, ``dec``, ``weights``, and
+            ``redshifts``, where the latter two are optional.
         """
         return read_patch_data(self.data_path)
 
