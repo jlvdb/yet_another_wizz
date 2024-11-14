@@ -166,25 +166,27 @@ def create_patch_centers(
     """
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
-    data_probe = reader.get_probe(probe_size)
-
     if parallel.on_root():
         logger.info(
             "computing patch centers from subset of %s records",
-            format_long_num(len(data_probe)),
+            format_long_num(probe_size),
         )
 
-    cat = treecorr.Catalog(
-        ra=DataChunk.getattr(data_probe, "ra"),
-        ra_units="radians",
-        dec=DataChunk.getattr(data_probe, "dec"),
-        dec_units="radians",
-        w=DataChunk.getattr(data_probe, "weights", None),
-        npatch=patch_num,
-        config=dict(num_threads=parallel.get_size()),
-    )
+    data_probe = reader.get_probe(probe_size)
 
-    return AngularCoordinates.from_3d(cat.patch_centers)
+    patch_centers = None
+    if parallel.on_root():
+        cat = treecorr.Catalog(
+            ra=DataChunk.getattr(data_probe, "ra"),
+            ra_units="radians",
+            dec=DataChunk.getattr(data_probe, "dec"),
+            dec_units="radians",
+            w=DataChunk.getattr(data_probe, "weights", None),
+            npatch=patch_num,
+            config=dict(num_threads=parallel.get_size()),
+        )
+        patch_centers = AngularCoordinates.from_3d(cat.patch_centers)
+    return parallel.COMM.bcast(patch_centers, root=0)
 
 
 def assign_patch_centers(patch_centers: NDArray, data: TypeDataChunk) -> TypePatchIDs:
@@ -1056,10 +1058,7 @@ class Catalog(Mapping[int, Patch]):
         )
         mode = PatchMode.determine(patch_centers, patch_name, patch_num)
         if mode == PatchMode.create:
-            patch_centers = None
-            if parallel.on_root():
-                patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+            patch_centers = create_patch_centers(reader, patch_num, probe_size)
 
         # split the data into patches and create the cached Patch instances.
         write_patches(
@@ -1187,10 +1186,7 @@ class Catalog(Mapping[int, Patch]):
         )
         mode = PatchMode.determine(patch_centers, patch_name, patch_num)
         if mode == PatchMode.create:
-            patch_centers = None
-            if parallel.on_root():
-                patch_centers = create_patch_centers(reader, patch_num, probe_size)
-            patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+            patch_centers = create_patch_centers(reader, patch_num, probe_size)
 
         # split the data into patches and create the cached Patch instances.
         write_patches(
@@ -1291,10 +1287,7 @@ class Catalog(Mapping[int, Patch]):
 
         mode = PatchMode.determine(patch_centers, None, patch_num)
         if mode == PatchMode.create:
-            patch_centers = None
-            if parallel.on_root():
-                patch_centers = create_patch_centers(rand_iter, patch_num, probe_size)
-            patch_centers = parallel.COMM.bcast(patch_centers, root=0)
+            patch_centers = create_patch_centers(rand_iter, patch_num, probe_size)
 
         # split the data into patches and create the cached Patch instances.
         write_patches(

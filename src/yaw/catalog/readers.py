@@ -69,17 +69,11 @@ class RandomReader(DataChunkReader):
 
     @property
     def has_weights(self) -> bool:
-        has_weights = None
-        if parallel.on_root():
-            has_weights = self.generator.has_weights
-        return parallel.COMM.bcast(has_weights, root=0)
+        return self.generator.has_weights
 
     @property
     def has_redshifts(self) -> bool:
-        has_redshifts = None
-        if parallel.on_root():
-            has_redshifts = self.generator.has_redshifts
-        return parallel.COMM.bcast(has_redshifts, root=0)
+        return self.generator.has_redshifts
 
     def __enter__(self) -> Self:
         return self
