@@ -7,7 +7,7 @@ import numpy as np
 import scipy.optimize
 
 from yaw.config import Configuration
-from yaw.corrfunc import CorrData
+from yaw.correlation.corrfunc import CorrData
 from yaw.options import PlotStyle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
@@ -15,10 +15,10 @@ from yaw.utils.logging import Indicator
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+    from yaw.binning import Binning
     from yaw.catalog import Catalog, Patch
     from yaw.config import BinningConfig
-    from yaw.containers import Binning
-    from yaw.corrfunc import CorrFunc, TypeCorrData
+    from yaw.correlation.corrfunc import CorrFunc, TypeCorrData
 
 __all__ = [
     "HistData",

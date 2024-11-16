@@ -71,7 +71,9 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = [
+    "src",
+]
 
 [tool.setuptools.package-data]
 yaw = [

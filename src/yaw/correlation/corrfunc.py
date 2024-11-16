@@ -7,35 +7,27 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.containers import (
-    AsciiSerializable,
-    Binning,
-    BinwiseData,
-    HdfSerializable,
-    PatchwiseData,
-    SampledData,
-    Serialisable,
-)
-from yaw.paircounts import NormalisedCounts
-from yaw.utils import io, parallel
+from yaw.binning import Binning
+from yaw.correlation.corrdata import CorrData
+from yaw.correlation.paircounts import NormalisedCounts
+from yaw.utils import parallel, write_version_tag
+from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
 from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
-    from typing import Any, TypeVar
+    from typing import Any
 
     from h5py import Group
     from numpy.typing import NDArray
 
-    from yaw.containers import TypeSliceIndex
-
-    TypeCorrData = TypeVar("TypeCorrData", bound="CorrData")
+    from yaw.utils.abc import TypeSliceIndex
 
 __all__ = [
     "CorrFunc",
-    "CorrData",
 ]
 
-logger = logging.getLogger(__name__)
+
+logger = logging.getLogger("yaw.correlation")
 
 
 class EstimatorError(Exception):
@@ -99,18 +91,18 @@ class CorrFunc(
     Args:
         dd:
             The data-data pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
 
     Keyword Args:
         dr:
             The optional data-random pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
         rd:
             The optional random-random pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
         rr:
             The optional random-random pair counts as
-            :obj:`~yaw.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
 
     Raises:
         ValueError:
@@ -185,7 +177,7 @@ class CorrFunc(
         return cls.from_dict(kwargs)
 
     def to_hdf(self, dest: Group) -> None:
-        io.write_version_tag(dest)
+        write_version_tag(dest)
 
         names = ("data_data", "data_random", "random_data", "random_random")
         for name, count in zip(names, self.to_dict().values()):
@@ -301,122 +293,3 @@ class CorrFunc(
         corr_data = estimator(**counts_values)
         corr_samples = estimator(**counts_samples)
         return CorrData(self.binning, corr_data, corr_samples)
-
-
-class CorrData(AsciiSerializable, SampledData, Broadcastable):
-    """
-    Container for a correlation functino measured in bins of redshift.
-
-    Implements convenience methods to estimate the standard error, covariance
-    and correlation matrix, and plotting methods. Additionally implements
-    ``len()``, comparison with the ``==`` operator and addition with
-    ``+``/``-``.
-
-    Args:
-        binning:
-            The redshift :~yaw.Binning` applied to the data.
-        data:
-            Array containing the values in each of the redshift bin.
-        samples:
-            2-dim array containing `M` jackknife samples of the data, expected
-            to have shape (:obj:`num_samples`, :obj:`num_bins`).
-    """
-
-    __slots__ = ("binning", "data", "samples")
-
-    @property
-    def _description_data(self) -> str:
-        """Descriptive comment for header of .dat file."""
-        return "correlation function with symmetric 68% percentile confidence"
-
-    @property
-    def _description_samples(self) -> str:
-        """Descriptive comment for header of .smp file."""
-        return f"{self.num_samples} correlation function jackknife samples"
-
-    @property
-    def _description_covariance(self) -> str:
-        """Descriptive comment for header of .cov file."""
-        n = self.num_bins
-        return f"correlation function covariance matrix ({n}x{n})"
-
-    @classmethod
-    def from_files(cls: type[TypeCorrData], path_prefix: Path | str) -> TypeCorrData:
-        """
-        Restore the class instance from a set of ASCII files.
-
-        Args:
-            path_prefix:
-                A path (:obj:`str` or :obj:`pathlib.Path`) prefix used as
-                ``[path_prefix].{dat,smp,cov}``, pointing to the ASCII files
-                to restore from, see also :meth:`to_files()`.
-        """
-        new = None
-
-        if parallel.on_root():
-            logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
-
-            path_prefix = Path(path_prefix)
-
-            edges, closed, data = io.load_data(path_prefix.with_suffix(".dat"))
-            samples = io.load_samples(path_prefix.with_suffix(".smp"))
-            binning = Binning(edges, closed=closed)
-
-            new = cls(binning, data, samples)
-
-        return bcast_instance(new)
-
-    def to_files(self, path_prefix: Path | str) -> None:
-        """
-        Serialise the class instance into a set of ASCII files.
-
-        This method creates three files, which are all readable with
-        ``numpy.loadtxt``:
-
-        - ``[path_prefix].dat``: File with header and four columns, the left
-          and right redshift bin edges, data, and errors.
-        - ``[path_prefix].smp``: File containing the jackknife samples. The
-          first two columns are the left and right redshift bin edges, the
-          remaining columns each represent one jackknife sample.
-        - ``[path_prefix].cov``: File storing the covariance matrix.
-
-        Args:
-            path_prefix:
-                A path (:obj:`str` or :obj:`pathlib.Path`) prefix
-                ``[path_prefix].{dat,smp,cov}`` pointing to the ASCII files
-                to serialise into, see also :meth:`from_files()`.
-        """
-        if parallel.on_root():
-            logger.info(
-                "writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix
-            )
-
-            path_prefix = Path(path_prefix)
-
-            io.write_data(
-                path_prefix.with_suffix(".dat"),
-                self._description_data,
-                zleft=self.binning.left,
-                zright=self.binning.right,
-                data=self.data,
-                error=self.error,
-                closed=str(self.binning.closed),
-            )
-
-            io.write_samples(
-                path_prefix.with_suffix(".smp"),
-                self._description_samples,
-                zleft=self.binning.left,
-                zright=self.binning.right,
-                samples=self.samples,
-                closed=str(self.binning.closed),
-            )
-
-            # write covariance for convenience only, it is not required to restore
-            io.write_covariance(
-                path_prefix.with_suffix(".cov"),
-                self._description_covariance,
-                covariance=self.covariance,
-            )
-
-        parallel.COMM.Barrier()

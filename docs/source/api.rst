@@ -6,12 +6,17 @@ API Reference
 This API reference manual details the primary functions and object in the
 `yet_another_wizz` python package ``yaw``.
 
+.. tip::
+    For more details on the internal package structure, refer to the
+    :ref:`developer notes<dev_notes>` below.
+
 .. figure:: /_static/flowchart.svg
     :figwidth: 80%
     :alt: API flowchart
 
     Example flowchart indicating the relationship between the most important
-    classes and functions in `yet_another_wizz` used for redshift estimation.
+    public classes and functions in `yet_another_wizz` used for redshift
+    estimation.
 
 
 Catalog data
@@ -34,8 +39,8 @@ on disk. These patches are managed by the following classes:
 .. autosummary::
     :toctree: autogen
 
-    catalog.Patch
-    catalog.Metadata
+    catalog.patch.Patch
+    catalog.patch.Metadata
 
 
 .. _generator:
@@ -79,8 +84,8 @@ usually it is not necessary to interact with these sub-classes directly.
 .. autosummary::
     :toctree: autogen
 
-    config.ScalesConfig
-    config.BinningConfig
+    config.scales.ScalesConfig
+    config.binning.BinningConfig
 
 
 Correlation measurements
@@ -120,9 +125,9 @@ the normalisation factor for the pair counts):
 .. autosummary::
     :toctree: autogen
 
-    paircounts.NormalisedCounts
-    paircounts.PatchedCounts
-    paircounts.PatchedTotals
+    correlation.paircounts.NormalisedCounts
+    correlation.paircounts.PatchedCounts
+    correlation.paircounts.PatchedTotals
 
 
 Data containers
@@ -196,3 +201,10 @@ values and are parsed automatically.
     BinMethod
     CovKind
     PlotStyle
+
+-----
+
+.. _dev_notes:
+
+Developer notes
+===============

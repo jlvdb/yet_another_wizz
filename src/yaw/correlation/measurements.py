@@ -8,10 +8,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.catalog.utils import InconsistentPatchesError
-from yaw.corrfunc import CorrFunc
-from yaw.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
-from yaw.utils import AngularDistances, parallel, separation_physical_to_angle
+from yaw.catalog.catalog import InconsistentPatchesError
+from yaw.catalog.trees import BinnedTrees
+from yaw.coordinates import AngularDistances
+from yaw.correlation.corrfunc import CorrFunc
+from yaw.correlation.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
+from yaw.cosmology import separation_physical_to_angle
+from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
 if TYPE_CHECKING:
@@ -72,8 +75,8 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
         config.scales.rmax, zmids, cosmology=config.cosmology
     )
 
-    trees1 = iter(patch_pair.patch1.get_trees())
-    trees2 = iter(patch_pair.patch2.get_trees())
+    trees1 = iter(BinnedTrees(patch_pair.patch1))
+    trees2 = iter(BinnedTrees(patch_pair.patch2))
 
     binned_counts = np.empty((config.scales.num_scales, num_bins))
     totals1 = np.empty((num_bins,))

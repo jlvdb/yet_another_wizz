@@ -1,4 +1,5 @@
-from .containers import Catalog, Metadata, Patch
+from yaw.catalog.catalog import Catalog
+from yaw.catalog.patch import Metadata, Patch
 
 __all__ = [
     "Catalog",

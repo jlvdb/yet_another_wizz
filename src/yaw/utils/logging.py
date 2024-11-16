@@ -10,8 +10,8 @@ from timeit import default_timer
 from typing import TYPE_CHECKING, TypeVar
 
 from yaw._version import __version__
-
-from .parallel import get_size, on_root, use_mpi
+from yaw.utils import format_time
+from yaw.utils.parallel import get_size, on_root, use_mpi
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -34,28 +34,6 @@ def set_indicator_prefix(prefix: str) -> None:
     """Set the global ``INDICATOR_PREFIX`` to a specific value."""
     global INDICATOR_PREFIX
     INDICATOR_PREFIX = str(prefix)
-
-
-def long_num_format(x: float | int) -> str:
-    """
-    Format a floating point number as string with a numerical suffix.
-
-    E.g.: 1234.0 is converted to ``1.23K``.
-    """
-    x = float(f"{x:.3g}")
-    exp = 0
-    while abs(x) >= 1000:
-        exp += 1
-        x /= 1000.0
-    prefix = str(x).rstrip("0").rstrip(".")
-    suffix = ["", "K", "M", "B", "T"][exp]
-    return prefix + suffix
-
-
-def format_time(elapsed: float) -> str:
-    """Format time in seconds as minutes and seconds: ``[MM]MmSS.SSs``"""
-    minutes, seconds = divmod(elapsed, 60)
-    return f"{minutes:.0f}m{seconds:05.2f}s"
 
 
 class ProgressPrinter:

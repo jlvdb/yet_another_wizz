@@ -5,15 +5,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.containers import (
-    Binning,
-    BinwiseData,
-    HdfSerializable,
-    PatchwiseData,
-    SampledData,
-    load_legacy_binning,
-)
-from yaw.utils import io
+from yaw.binning import Binning, load_legacy_binning
+from yaw.correlation.corrdata import SampledData
+from yaw.utils import HDF_COMPRESSION, is_legacy_dataset, write_version_tag
+from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData
 from yaw.utils.parallel import Broadcastable
 
 if TYPE_CHECKING:
@@ -22,7 +17,7 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import NDArray
 
-    from yaw.containers import TypeSliceIndex
+    from yaw.utils.abc import TypeSliceIndex
 
 __all__ = [
     "PatchedTotals",
@@ -107,7 +102,7 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadca
 
         Returns:
             Sum over patches and jackknife samples thereof packed in an
-            instance of :obj:`~yaw.containers.SampledData`.
+            instance of :obj:`~yaw.correlation.corrdata.SampledData`.
         """
         bin_patch_array = self.get_array()
 
@@ -195,7 +190,7 @@ class PatchedTotals(BinwisePatchwiseArray):
 
         new.totals1 = source["totals1"][:]
         new.totals2 = source["totals2"][:]
-        if io.is_legacy_dataset(source):
+        if is_legacy_dataset(source):
             new.totals1 = np.transpose(new.totals1)
             new.totals2 = np.transpose(new.totals2)
             new.binning = load_legacy_binning(source)
@@ -205,12 +200,12 @@ class PatchedTotals(BinwisePatchwiseArray):
         return new
 
     def to_hdf(self, dest: Group) -> None:
-        io.write_version_tag(dest)
+        write_version_tag(dest)
         self.binning.to_hdf(dest.create_group("binning"))
         dest.create_dataset("auto", data=self.auto)
 
-        dest.create_dataset("totals1", data=self.totals1, **io.HDF_COMPRESSION)
-        dest.create_dataset("totals2", data=self.totals2, **io.HDF_COMPRESSION)
+        dest.create_dataset("totals1", data=self.totals1, **HDF_COMPRESSION)
+        dest.create_dataset("totals2", data=self.totals2, **HDF_COMPRESSION)
 
     @property
     def num_patches(self) -> int:
@@ -347,7 +342,7 @@ class PatchedCounts(BinwisePatchwiseArray):
     def from_hdf(cls, source: Group) -> PatchedCounts:
         auto = source["auto"][()]
 
-        if io.is_legacy_dataset(source):
+        if is_legacy_dataset(source):
             binning = load_legacy_binning(source)
 
             num_patches = source["n_patches"][()]
@@ -368,7 +363,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         return new
 
     def to_hdf(self, dest: Group) -> None:
-        io.write_version_tag(dest)
+        write_version_tag(dest)
 
         self.binning.to_hdf(dest.create_group("binning"))
         dest.create_dataset("auto", data=self.auto)
@@ -377,11 +372,11 @@ class PatchedCounts(BinwisePatchwiseArray):
         is_nonzero = np.any(self.counts, axis=0)
         patch_ids1, patch_ids2 = np.nonzero(is_nonzero)
         patch_pairs = np.column_stack([patch_ids1, patch_ids2])
-        dest.create_dataset("patch_pairs", data=patch_pairs, **io.HDF_COMPRESSION)
+        dest.create_dataset("patch_pairs", data=patch_pairs, **HDF_COMPRESSION)
 
         counts = self.counts[:, patch_ids1, patch_ids2]
         binned_counts = np.moveaxis(counts, 0, -1)  # match patch_pairs
-        dest.create_dataset("binned_counts", data=binned_counts, **io.HDF_COMPRESSION)
+        dest.create_dataset("binned_counts", data=binned_counts, **HDF_COMPRESSION)
 
     @property
     def num_patches(self) -> int:
@@ -493,16 +488,16 @@ class NormalisedCounts(BinwisePatchwiseArray):
 
     @classmethod
     def from_hdf(cls, source: Group) -> NormalisedCounts:
-        name = "count" if io.is_legacy_dataset(source) else "counts"
+        name = "count" if is_legacy_dataset(source) else "counts"
         counts = PatchedCounts.from_hdf(source[name])
 
-        name = "total" if io.is_legacy_dataset(source) else "totals"
+        name = "total" if is_legacy_dataset(source) else "totals"
         totals = PatchedTotals.from_hdf(source[name])
 
         return cls(counts=counts, totals=totals)
 
     def to_hdf(self, dest: Group) -> None:
-        io.write_version_tag(dest)
+        write_version_tag(dest)
 
         group = dest.create_group("counts")
         self.counts.to_hdf(group)

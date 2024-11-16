@@ -6,34 +6,6 @@ from pytest import mark
 from yaw.utils import logging
 
 
-@mark.parametrize(
-    "value,expect",
-    [
-        (-123.0, "-123"),
-        (1234.0, "1.23K"),
-        (1235.0, "1.24K"),
-        (12345, "12.3K"),
-        (123456, "123K"),
-        (1234567, "1.23M"),
-    ],
-)
-def test_long_num_format(value, expect):
-    assert logging.long_num_format(value) == expect
-
-
-@mark.parametrize(
-    "value,expect",
-    [
-        (1.9, "0m01.90s"),
-        (59.99, "0m59.99s"),
-        (61.9, "1m01.90s"),
-        (3600, "60m00.00s"),
-    ],
-)
-def test_format_time(value, expect):
-    assert logging.format_time(value) == expect
-
-
 def test_Indicator(capsys):
     iterator = range(10)
     stream = sys.stdout
