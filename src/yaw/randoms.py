@@ -1,9 +1,17 @@
+"""
+Implements random generators that can be sampled to create random catalogs for
+correlation measurements. The generators create uniform random coordinates and
+can additionally draw weights or redshifts from a set of observed values.
+"""
+
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from yaw.datachunk import DataAttrs, DataChunk, HasAttrs, TypeDataChunk
 
 HEALPY_ENABLED = False
 """Healpix-based randoms are enabled if healpy can be imported."""
@@ -19,7 +27,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-class RandomsBase(ABC):
+class RandomsBase(HasAttrs):
     """Meta-class for all random point generators."""
 
     @abstractmethod
@@ -31,20 +39,14 @@ class RandomsBase(ABC):
         seed: int = 12345,
         **kwargs,
     ) -> None:
+        self._data_attrs = DataAttrs(
+            has_weights=weights is not None,
+            has_redshifts=redshifts is not None,
+        )
         self.reseed(seed)
         self.weights = weights
         self.redshifts = redshifts
         self.data_size = self.get_data_size()
-
-    @property
-    def has_weights(self) -> bool:
-        """Whether this data source provides weights."""
-        return self.weights is not None
-
-    @property
-    def has_redshifts(self) -> bool:
-        """Whether this data source provides redshifts."""
-        return self.redshifts is not None
 
     def get_data_size(self) -> int:
         """
@@ -115,7 +117,7 @@ class RandomsBase(ABC):
             data["redshifts"] = self.redshifts[idx]
         return data
 
-    def __call__(self, probe_size: int) -> dict[str, NDArray]:
+    def __call__(self, probe_size: int) -> TypeDataChunk:
         """
         Draw a new sample of uniform random points.
 
@@ -129,11 +131,9 @@ class RandomsBase(ABC):
             ``weights`` and/or ``redshifts`` if data as been provided to sample
             from.
         """
-        coords = self._draw_coords(probe_size)
-        coords = {key: value for key, value in zip(("ra", "dec"), coords)}
-
-        attrs = self._draw_attributes(probe_size)
-        return coords | attrs
+        ra, dec = self._draw_coords(probe_size)
+        optionals = self._draw_attributes(probe_size)
+        return DataChunk.create(ra, dec, **optionals, degrees=False, chkfinite=False)
 
 
 class BoxRandoms(RandomsBase):

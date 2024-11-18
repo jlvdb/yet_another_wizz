@@ -9,8 +9,8 @@ import numpy as np
 from scipy.spatial import KDTree
 
 from yaw.binning import parse_binning
-from yaw.catalog.datachunk import DataChunk
 from yaw.coordinates import AngularDistances
+from yaw.datachunk import DataChunk
 from yaw.options import Closed
 from yaw.utils import groupby
 

@@ -14,16 +14,22 @@ import treecorr
 from scipy.cluster import vq
 
 from yaw.binning import parse_binning
-from yaw.catalog.datachunk import (
-    PATCH_ID_DTYPE,
-    DataChunk,
-    DataChunkReader,
-    check_patch_ids,
-)
 from yaw.catalog.patch import Patch, PatchWriter
-from yaw.catalog.readers import DataFrameReader, RandomReader, new_filereader
+from yaw.catalog.readers import (
+    DataChunkReader,
+    DataFrameReader,
+    RandomReader,
+    new_filereader,
+)
 from yaw.catalog.trees import BinnedTrees, groupby
 from yaw.coordinates import AngularCoordinates, AngularDistances
+from yaw.datachunk import (
+    PATCH_ID_DTYPE,
+    DataAttrs,
+    DataChunk,
+    HasAttrs,
+    check_patch_ids,
+)
 from yaw.options import Closed
 from yaw.randoms import RandomsBase
 from yaw.utils import format_long_num, parallel
@@ -36,8 +42,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
-    from yaw.catalog.datachunk import TypeDataChunk, TypePatchIDs
     from yaw.catalog.readers import DataFrame
+    from yaw.datachunk import TypeDataChunk, TypePatchIDs
 
 
 PATCH_NAME_TEMPLATE = "patch_{:d}"
@@ -247,6 +253,7 @@ def split_into_patches(
         if has_patch_ids:
             chunk, _ = DataChunk.pop(chunk, "patch_ids")
     elif has_patch_ids:
+        # patch IDs will be redundant information so we delete them
         chunk, patch_ids = DataChunk.pop(chunk, "patch_ids")
     else:  # pragma: no cover
         raise RuntimeError("found no way to obtain patch centers")
@@ -348,7 +355,7 @@ def load_patches(
     return parallel.COMM.bcast(patches, root=0)
 
 
-class CatalogWriter(AbstractContextManager):
+class CatalogWriter(AbstractContextManager, HasAttrs):
     """
     A helper class that handles a stream of input catalog data and splits and
     writes it to patches.
@@ -361,10 +368,9 @@ class CatalogWriter(AbstractContextManager):
         overwrite:
             Whether to overwrite an existing catalog at the given cache
             location.
-        has_weights:
-            Whether the input data chunks include object weights.
-        has_redshifts:
-            Whether the input data chunks include object redshifts.
+        data_attributes:
+            An instance of :obj:`yaw.datachunk.DataAttrs` indicating which
+            optional data attributes are processed by the pipeline.
         buffersize:
             Optional, maximum number of records to store in the internal cache
             of each patch writer.
@@ -372,10 +378,6 @@ class CatalogWriter(AbstractContextManager):
     Attributes:
         cache_directory:
             Cache directory to use when creating the patches.
-        has_weights:
-            Whether the input data chunks include object weights.
-        has_redshifts:
-            Whether the input data chunks include object redshifts.
         writers:
             Dictionary of patch IDs / :obj:`~yaw.catalog.patch.PatchWriters`
             that delegates writing data for an individual patch.
@@ -389,9 +391,8 @@ class CatalogWriter(AbstractContextManager):
     """
 
     __slots__ = (
+        "_data_attrs",
         "cache_directory",
-        "has_weights",
-        "has_redshifts",
         "buffersize",
         "writers",
     )
@@ -400,11 +401,11 @@ class CatalogWriter(AbstractContextManager):
         self,
         cache_directory: Path | str,
         *,
+        data_attributes: DataAttrs,
         overwrite: bool = True,
-        has_weights: bool,
-        has_redshifts: bool,
         buffersize: int = -1,
     ) -> None:
+        self._data_attrs = data_attributes
         self.cache_directory = Path(cache_directory)
         cache_exists = self.cache_directory.exists()
 
@@ -420,9 +421,6 @@ class CatalogWriter(AbstractContextManager):
                 rmtree(self.cache_directory)
             else:
                 raise FileExistsError(f"cache directory exists: {cache_directory}")
-
-        self.has_weights = has_weights
-        self.has_redshifts = has_redshifts
 
         self.buffersize = buffersize
         self.cache_directory.mkdir()
@@ -457,8 +455,7 @@ class CatalogWriter(AbstractContextManager):
         except KeyError:
             writer = PatchWriter(
                 get_patch_path_from_id(self.cache_directory, patch_id),
-                has_weights=self.has_weights,
-                has_redshifts=self.has_redshifts,
+                data_attributes=self.copy_attrs(),
                 buffersize=self.buffersize,
             )
             self.writers[patch_id] = writer
@@ -548,8 +545,7 @@ def write_patches_unthreaded(
 
         with CatalogWriter(
             cache_directory=path,
-            has_weights=reader.has_weights,
-            has_redshifts=reader.has_redshifts,
+            data_attributes=reader.copy_attrs(),
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
@@ -630,8 +626,7 @@ if parallel.use_mpi():
     def writer_task(
         cache_directory: Path | str,
         *,
-        has_weights: bool,
-        has_redshifts: bool,
+        data_attributes: DataAttrs,
         overwrite: bool = True,
         buffersize: int = -1,
     ) -> None:
@@ -641,8 +636,7 @@ if parallel.use_mpi():
         recv = parallel.COMM.recv
         with CatalogWriter(
             cache_directory,
-            has_weights=has_weights,
-            has_redshifts=has_redshifts,
+            data_attributes=data_attributes,
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
@@ -710,8 +704,7 @@ if parallel.use_mpi():
         if rank == worker_config.writer_rank:
             writer_task(
                 cache_directory=path,
-                has_weights=reader.has_weights,
-                has_redshifts=reader.has_redshifts,
+                data_attributes=reader.copy_attrs(),
                 overwrite=overwrite,
                 buffersize=buffersize,
             )
@@ -773,8 +766,7 @@ else:
 
         patch_queue: Queue[dict[int, TypeDataChunk] | EndOfQueue]
         cache_directory: Path | str
-        has_weights: bool = field(kw_only=True)
-        has_redshifts: bool = field(kw_only=True)
+        data_attributes: DataAttrs = field(kw_only=True)
         overwrite: bool = field(default=True, kw_only=True)
         buffersize: int = field(default=-1, kw_only=True)
 
@@ -792,8 +784,7 @@ else:
             with CatalogWriter(
                 self.cache_directory,
                 overwrite=self.overwrite,
-                has_weights=self.has_weights,
-                has_redshifts=self.has_redshifts,
+                data_attributes=self.data_attributes,
                 buffersize=self.buffersize,
             ) as writer:
                 while (patches := self.patch_queue.get()) is not EndOfQueue:
@@ -878,8 +869,7 @@ else:
             with WriterProcess(
                 patch_queue,
                 cache_directory=path,
-                has_weights=reader.has_weights,
-                has_redshifts=reader.has_redshifts,
+                data_attributes=reader.copy_attrs(),
                 overwrite=overwrite,
                 buffersize=buffersize,
             ):
