@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import ABC
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, NewType
 
 import numpy as np
@@ -31,6 +31,13 @@ if TYPE_CHECKING:
     TypePatchIDs = NewType("TypePatchIDs", NDArray[np.int16])
     T = TypeVar("T")
 TypeDataChunk = NewType("TypeDataChunk", NDArray)
+
+__all__ = [
+    "ATTR_ORDER",
+    "DataAttrs",
+    "DataChunk",
+]
+
 
 PATCH_ID_DTYPE = "i2"
 """Default data type for patch IDs, larger integer type will likely result in
@@ -102,6 +109,16 @@ class DataAttrs:
         attrs = [attr for attr in ATTR_ORDER[:2]]
         attrs.extend(attr for attr in ATTR_ORDER[2:] if getattr(self, f"has_{attr}"))
         return attrs
+
+
+def get_attrs_formatted(
+    data_attributes: DataAttrs, *, skip_patch_ids: bool = True
+) -> str:
+    """Helper function to format the boolean attribute flags."""
+    values = asdict(data_attributes).copy()
+    if skip_patch_ids:
+        values.pop("has_patch_ids", None)
+    return ", ".join(f"{attr}={value}" for attr, value in values.items())
 
 
 class HasAttrs(ABC):

@@ -23,6 +23,10 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+__all__ = [
+    "BinningConfig",
+]
+
 
 class RedshiftBinningFactory:
     """Simple factory class to create redshift binnings. Takes an optional

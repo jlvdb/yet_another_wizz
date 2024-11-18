@@ -22,7 +22,14 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import ArrowException, Table, parquet
 
-from yaw.datachunk import ATTR_ORDER, DataAttrs, DataChunk, HasAttrs, TypeDataChunk
+from yaw.datachunk import (
+    ATTR_ORDER,
+    DataAttrs,
+    DataChunk,
+    HasAttrs,
+    TypeDataChunk,
+    get_attrs_formatted,
+)
 from yaw.utils import common_len_assert, format_long_num, parallel
 
 if TYPE_CHECKING:
@@ -30,6 +37,15 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.randoms import RandomsBase
+
+__all__ = [
+    "DataFrameReader",
+    "FitsReader",
+    "HDFReader",
+    "ParquetReader",
+    "RandomReader",
+    "new_filereader",
+]
 
 CHUNKSIZE = 16_777_216
 """Default chunk size to use, optimised for parallel performance."""
@@ -150,6 +166,11 @@ class RandomReader(DataChunkReader):
                 format_long_num(num_randoms),
                 len(self),
             )
+
+    def __repr__(self) -> str:
+        source = type(self.generator).__name__
+        attrs = get_attrs_formatted(self._data_attrs)
+        return f"{type(self)}({source=}, {attrs})"
 
     def __enter__(self) -> Self:
         return self
@@ -352,6 +373,10 @@ class DataFrameReader(DataReader):
             degrees=degrees,
         )
 
+    def __repr__(self) -> str:
+        attrs = get_attrs_formatted(self._data_attrs)
+        return f"{type(self)}({attrs})"
+
     def __enter__(self) -> Self:
         return self
 
@@ -369,6 +394,13 @@ class DataFrameReader(DataReader):
 
 
 class FileReader(DataReader):
+    path: Path
+
+    def __repr__(self) -> str:
+        source = str(self.path)
+        attrs = get_attrs_formatted(self._data_attrs)
+        return f"{type(self)}({source=}, {attrs})"
+
     def __enter__(self) -> Self:
         return self
 
@@ -456,6 +488,7 @@ class FitsReader(FileReader):
         degrees: bool = True,
         hdu: int = 1,
     ) -> None:
+        self.path = Path(path)
         self._num_records = None
         if parallel.on_root():
             self._file = fits.open(str(path))
@@ -527,6 +560,7 @@ class HDFReader(FileReader):
         degrees: bool = True,
         **kwargs,
     ) -> None:
+        self.path = Path(path)
         self._num_records = None
         if parallel.on_root():
             self._file = h5py.File(str(path), mode="r")
@@ -598,6 +632,7 @@ class ParquetReader(FileReader):
         degrees: bool = True,
         **kwargs,
     ) -> None:
+        self.path = Path(path)
         self._num_records = None
         if parallel.on_root():
             self._file = parquet.ParquetFile(str(path))

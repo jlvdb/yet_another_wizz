@@ -21,6 +21,12 @@ if TYPE_CHECKING:
     T = TypeVar("T")
     TypeBaseConfig = TypeVar("TypeBaseConfig", bound="BaseConfig")
 
+__all__ = [
+    "ConfigError",
+    "Parameter",
+    "ParamSpec",
+]
+
 
 class ConfigError(Exception):
     pass

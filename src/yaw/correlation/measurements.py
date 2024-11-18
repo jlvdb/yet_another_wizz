@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from yaw.config import Configuration
 
 __all__ = [
-    "PatchLinkage",
     "autocorrelate",
     "crosscorrelate",
 ]

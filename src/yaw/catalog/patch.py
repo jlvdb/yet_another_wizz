@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.datachunk import DataAttrs, DataChunk, HasAttrs
+from yaw.datachunk import DataAttrs, DataChunk, HasAttrs, get_attrs_formatted
 from yaw.utils.abc import YamlSerialisable
 
 if TYPE_CHECKING:
@@ -28,7 +28,9 @@ if TYPE_CHECKING:
     from yaw.datachunk import TypeDataChunk
 
 __all__ = [
+    "Metadata",
     "Patch",
+    "PatchWriter",
 ]
 
 PATCH_DATA_FILE = "data.bin"
@@ -91,8 +93,8 @@ class Metadata(YamlSerialisable):
         items = (
             f"num_records={self.num_records}",
             f"total={self.total}",
-            f"center={self.center}",
-            f"radius={self.radius}",
+            f"center={self.center.data[0]}",
+            f"radius={self.radius.data[0]}",
         )
         return f"{type(self).__name__}({', '.join(items)})"
 
@@ -174,7 +176,7 @@ def read_patch_data(path: Path | str) -> tuple[DataAttrs, TypeDataChunk]:
     return data_attrs, rawdata.view(dtype)
 
 
-class PatchWriter:
+class PatchWriter(HasAttrs):
     """
     Incrementally writes catalog data for a single patch.
 
@@ -232,6 +234,7 @@ class PatchWriter:
         self.open()
         header = data_attributes.to_bytes()
         self._file.write(header)
+        self._data_attrs = data_attributes
 
     def __repr__(self) -> str:
         items = (
@@ -239,7 +242,8 @@ class PatchWriter:
             f"cachesize={self.cachesize}",
             f"processed={self._num_processed}",
         )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
+        attrs = get_attrs_formatted(self._data_attrs)
+        return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_path}"
 
     @property
     def data_path(self) -> Path:
@@ -352,13 +356,9 @@ class Patch(HasAttrs):
             self.meta.to_file(meta_data_file)
 
     def __repr__(self) -> str:
-        items = (
-            f"num_records={self.meta.num_records}",
-            f"total={self.meta.total}",
-            f"has_weights={self.has_weights}",
-            f"has_redshifts={self.has_redshifts}",
-        )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
+        num = f"num_records={self.meta.num_records}"
+        attrs = get_attrs_formatted(self._data_attrs)
+        return f"{type(self).__name__}({num}, {attrs}) @ {self.cache_path}"
 
     def __getstate__(self) -> dict:
         return dict(

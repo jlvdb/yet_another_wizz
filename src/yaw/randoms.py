@@ -28,6 +28,11 @@ except ImportError:
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+__all__ = [
+    "BoxRandoms",
+    "HealPixRandoms",
+]
+
 
 class RandomsBase(HasAttrs):
     """Meta-class for all random point generators."""
@@ -194,6 +199,11 @@ class BoxRandoms(RandomsBase):
         self.x_max, self.y_max = self._sky2cylinder(
             np.deg2rad(ra_max), np.deg2rad(dec_max)
         )
+
+    def __repr__(self) -> str:
+        string = repr(self._data_attrs)
+        string = string.lstrip(str(type(self._data_attrs)))
+        return f"{type(self).__name__}{string}"
 
     def _sky2cylinder(self, ra: NDArray, dec: NDArray) -> tuple[NDArray, NDArray]:
         x = ra
