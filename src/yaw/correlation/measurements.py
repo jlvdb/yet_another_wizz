@@ -275,7 +275,7 @@ class PatchLinkage:
         self,
         catalog1: Catalog,
         catalog2: Catalog | None = None,
-    ) -> tuple[PatchPair]:
+    ) -> tuple[PatchPair, ...]:
         """Wrapper around ``iter_patch_id_pairs()`` that yields ``PatchPair``
         instances instead of a tuple of patch IDs."""
         auto = catalog2 is None

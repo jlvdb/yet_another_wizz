@@ -1366,11 +1366,11 @@ class Catalog(Mapping[int, Patch]):
             return False
         raise InconsistentPatchesError("'redshifts' not consistent")
 
-    def get_num_records(self) -> tuple[int]:
+    def get_num_records(self) -> tuple[int, ...]:
         """Get the number of records in each patches."""
         return tuple(patch.meta.num_records for patch in self.values())
 
-    def get_totals(self) -> tuple[float]:
+    def get_totals(self) -> tuple[float, ...]:
         """Get the sum of weights of the patches."""
         return tuple(patch.meta.total for patch in self.values())
 

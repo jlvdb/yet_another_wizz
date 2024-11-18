@@ -284,7 +284,7 @@ def build_trees(
     binning: Binning | None,
     *,
     leafsize: int,
-) -> AngularTree | tuple[AngularTree]:
+) -> AngularTree | tuple[AngularTree, ...]:
     """
     Build a (set of) trees from the data of a patch.
 
@@ -493,7 +493,7 @@ class BinnedTrees(Iterable[AngularTree]):
         return False
 
     @property
-    def trees(self) -> AngularTree | tuple[AngularTree]:
+    def trees(self) -> AngularTree | tuple[AngularTree, ...]:
         """
         Load and obtain the pickled, cached binary trees.
 
