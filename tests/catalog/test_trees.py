@@ -5,9 +5,9 @@ from numpy.testing import assert_almost_equal, assert_array_equal
 from pytest import fixture, mark, raises
 
 from yaw.catalog import trees
-from yaw.coordinates import AngularCoordinates
 from yaw.catalog.patch import Patch, PatchWriter
 from yaw.catalog.readers import DataChunk
+from yaw.coordinates import AngularCoordinates
 
 
 @mark.parametrize(
@@ -255,10 +255,10 @@ class TestAngularTree:
 
 @fixture(name="test_patch_no_z")
 def fixture_test_patch_no_z(test_points, tmp_path):
-    data = DataChunk.create(test_points.ra, test_points.dec)
+    attrs, data = DataChunk.create(test_points.ra, test_points.dec)
 
     path = tmp_path / "patch_no_z"
-    writer = PatchWriter(path, has_weights=False, has_redshifts=False)
+    writer = PatchWriter(path, data_attributes=attrs)
     writer.process_chunk(data)
     writer.close()
 
@@ -267,14 +267,14 @@ def fixture_test_patch_no_z(test_points, tmp_path):
 
 @fixture(name="test_patch")
 def fixture_test_patch(test_points, tmp_path):
-    data = DataChunk.create(
+    attrs, data = DataChunk.create(
         test_points.ra,
         test_points.dec,
         redshifts=np.arange(len(test_points)) % 2 + 0.5,
     )
 
     path = tmp_path / "patch"
-    writer = PatchWriter(path, has_weights=False, has_redshifts=True)
+    writer = PatchWriter(path, data_attributes=attrs)
     writer.process_chunk(data)
     writer.close()
 
