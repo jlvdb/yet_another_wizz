@@ -473,7 +473,7 @@ class BinnedTrees(Iterable[AngularTree]):
     def num_bins(self) -> int | None:
         """Number of redshift bins used for the trees or ``None``."""
         try:
-            return len(self.binning) - 1
+            return len(self.binning)
         except TypeError:
             return None
 
