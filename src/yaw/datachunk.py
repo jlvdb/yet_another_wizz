@@ -177,7 +177,7 @@ class DataChunk:
         patch_ids: NDArray | None = None,
         degrees: bool = True,
         chkfinite: bool = True,
-    ) -> TypeDataChunk:
+    ) -> tuple[DataAttrs, TypeDataChunk]:
         """
         Create a new numpy array holding a chunk of data.
 
@@ -215,6 +215,11 @@ class DataChunk:
         inputs = {
             attr: value for attr, value in zip(ATTR_ORDER, values) if value is not None
         }
+        data_attrs = DataAttrs(
+            has_weights=weights is not None,
+            has_redshifts=redshifts is not None,
+            has_patch_ids=patch_ids is not None,
+        )
 
         if patch_ids is not None:
             check_patch_ids(patch_ids)
@@ -231,7 +236,7 @@ class DataChunk:
             array["ra"] = np.deg2rad(array["ra"])
             array["dec"] = np.deg2rad(array["dec"])
 
-        return array
+        return data_attrs, array
 
     @staticmethod
     def get_coords(chunk: TypeDataChunk) -> AngularCoordinates:

@@ -364,7 +364,8 @@ class DataFrameReader(DataReader):
         chunk = self._data[start:end]
 
         kwargs = {attr: chunk[name].to_numpy() for attr, name in self._columns.items()}
-        return DataChunk.create(**kwargs, degrees=self.degrees)
+        _, chunk = DataChunk.create(**kwargs, degrees=self.degrees)
+        return chunk
 
 
 class FileReader(DataReader):
@@ -484,7 +485,8 @@ class FitsReader(FileReader):
             return array.view(array.dtype.newbyteorder()).byteswap()
 
         kwargs = {attr: get_data_swapped(col) for attr, col in self._columns.items()}
-        return DataChunk.create(**kwargs, degrees=self.degrees)
+        _, chunk = DataChunk.create(**kwargs, degrees=self.degrees)
+        return chunk
 
 
 class HDFReader(FileReader):
@@ -553,7 +555,8 @@ class HDFReader(FileReader):
         kwargs = {
             attr: self._file[col][start:end] for attr, col in self._columns.items()
         }
-        return DataChunk.create(**kwargs, degrees=self.degrees)
+        _, chunk = DataChunk.create(**kwargs, degrees=self.degrees)
+        return chunk
 
 
 class ParquetReader(FileReader):
@@ -663,4 +666,5 @@ class ParquetReader(FileReader):
         kwargs = {
             attr: table.column(col).to_numpy() for attr, col in self._columns.items()
         }
-        return DataChunk.create(**kwargs, degrees=self.degrees)
+        _, chunk = DataChunk.create(**kwargs, degrees=self.degrees)
+        return chunk
