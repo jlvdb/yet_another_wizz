@@ -1,7 +1,6 @@
 """
-Implements the primary function to run the pair counting to measure the
-angular correlation amplitude between data catalogs, one for cross- and one for
-autocorrelation measurements.
+Implements the cross- and autocorrelation functions to run the pair counting to
+measure the angular correlation amplitude between data catalogs.
 """
 
 from __future__ import annotations

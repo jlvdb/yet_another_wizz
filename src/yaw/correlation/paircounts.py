@@ -1,9 +1,11 @@
 """
-Implements the low-level containers for pair counts. Pair counts are stored
-for pairs of spatial patches and per redshift bin, forming a 3-dim array of
-measurements, stored as NormalisedCounts. Internally, the normalised counts
-store the actual sum of pair weights and the number of objects stored in each
-patch, from which the later normalisation of the pair counts is computed.
+Implements the low-level containers for pair counts.
+
+Pair counts are stored for pairs of spatial patches and per redshift bin,
+forming a 3-dim array of measurements, stored as NormalisedCounts. Internally,
+the normalised counts store the actual sum of pair weights and the number of
+objects stored in each patch, from which the later normalisation of the pair
+counts is computed.
 """
 
 from __future__ import annotations
