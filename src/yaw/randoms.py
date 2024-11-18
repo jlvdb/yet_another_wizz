@@ -135,7 +135,10 @@ class RandomsBase(HasAttrs):
         """
         ra, dec = self._draw_coords(probe_size)
         optionals = self._draw_attributes(probe_size)
-        return DataChunk.create(ra, dec, **optionals, degrees=False, chkfinite=False)
+        _, chunk = DataChunk.create(
+            ra, dec, **optionals, degrees=False, chkfinite=False
+        )
+        return chunk
 
 
 class BoxRandoms(RandomsBase):
