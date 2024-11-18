@@ -187,9 +187,8 @@ class SampledData(BinwiseData):
 
     def __repr__(self) -> str:
         items = (
-            f"num_samples={self.num_samples}",
-            f"num_bins={self.num_bins}",
             f"binning={self.binning}",
+            f"num_samples={self.num_samples}",
         )
         return f"{type(self).__name__}({', '.join(items)})"
 

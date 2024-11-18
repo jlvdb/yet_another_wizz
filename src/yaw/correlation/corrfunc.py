@@ -157,7 +157,7 @@ class CorrFunc(
         items = (
             f"counts={'|'.join(self.to_dict().keys())}",
             f"auto={self.auto}",
-            f"num_bins={self.num_bins}",
+            f"binning={self.binning}",
             f"num_patches={self.num_patches}",
         )
         return f"{type(self).__name__}({', '.join(items)})"

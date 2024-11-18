@@ -98,7 +98,7 @@ class Binning(HdfSerializable):
             lb, rb = "[)"
         else:
             lb, rb = "(]"
-        return f"{lb}{self.edges[0]:.3f}...{self.edges[-1]:.3f}{rb}"
+        return f"{len(self)} bins @ {lb}{self.edges[0]:.3f}...{self.edges[-1]:.3f}{rb}"
 
     def __getstate__(self) -> dict:
         return dict(edges=self.edges, closed=self.closed)

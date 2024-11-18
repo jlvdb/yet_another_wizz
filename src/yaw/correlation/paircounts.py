@@ -50,7 +50,7 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadca
     def __repr__(self) -> str:
         items = (
             f"auto={self.auto}",
-            f"num_bins={self.num_bins}",
+            f"binning={self.binning}",
             f"num_patches={self.num_patches}",
         )
         return f"{type(self).__name__}({', '.join(items)})"

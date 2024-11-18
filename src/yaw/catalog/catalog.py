@@ -26,7 +26,7 @@ import numpy as np
 import treecorr
 from scipy.cluster import vq
 
-from yaw.binning import parse_binning
+from yaw.binning import Binning
 from yaw.catalog.patch import Patch, PatchWriter
 from yaw.catalog.readers import (
     DataChunkReader,
@@ -42,6 +42,7 @@ from yaw.datachunk import (
     DataChunk,
     HasAttrs,
     check_patch_ids,
+    get_attrs_formatted,
 )
 from yaw.options import Closed
 from yaw.randoms import RandomsBase
@@ -450,11 +451,10 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
     def __repr__(self) -> str:
         items = (
             f"num_patches={self.num_patches}",
-            f"has_weights={self.has_weights}",
-            f"has_redshifts={self.has_redshifts}",
             f"max_buffersize={self.buffersize * self.num_patches}",
         )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
+        attrs = get_attrs_formatted(self._data_attrs)
+        return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_directory}"
 
     def __enter__(self) -> Self:
         return self
@@ -1326,11 +1326,11 @@ class Catalog(Mapping[int, Patch]):
     def __repr__(self) -> str:
         items = (
             f"num_patches={self.num_patches}",
-            f"total={sum(self.get_totals())}",
-            f"has_weights={self.has_weights}",
-            f"has_redshifts={self.has_redshifts}",
+            f"num_records={sum(self.get_num_records())}",
         )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
+        patch = next(iter(self.values()))
+        attrs = get_attrs_formatted(patch._data_attrs)
+        return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_directory}"
 
     def __len__(self) -> int:
         return len(self._patches)
@@ -1419,20 +1419,20 @@ class Catalog(Mapping[int, Patch]):
                 Limit the  number of parallel workers for this operation (all by
                 default). Takes precedence over the value in the configuration.
         """
-        binning = parse_binning(binning, optional=True)
-        closed = Closed(closed)  # parse early for error checks
+        if binning is not None:
+            binning = Binning(binning, closed=closed)
 
         if parallel.on_root():
             logger.debug(
                 "building patch-wise trees (%s)",
-                "unbinned" if binning is None else f"using {len(binning) - 1} bins",
+                "unbinned" if binning is None else f"using {len(binning)} bins",
             )
 
         patch_tree_iter = parallel.iter_unordered(
             BinnedTrees.build,
             self.values(),
             func_args=(binning,),
-            func_kwargs=dict(closed=str(closed), leafsize=leafsize, force=force),
+            func_kwargs=dict(leafsize=leafsize, force=force),
             max_workers=max_workers,
         )
         if progress:
