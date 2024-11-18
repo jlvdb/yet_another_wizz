@@ -1,3 +1,13 @@
+"""
+Implements some utilities for cosmological distance computations.
+
+Most notably a function to convert angular diameter distances to angles at a
+given redshift and a given cosmological model. By default, uses named
+cosmologies from ``astropy``, but also provides a base-class to implement custom
+cosmological models. Note that the cosmology typically has a minor impact on the
+derive clustering redshifts.
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

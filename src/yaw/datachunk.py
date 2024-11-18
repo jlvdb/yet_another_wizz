@@ -1,3 +1,13 @@
+"""
+Implements helper functions and base classes for objects that handle chunks of
+catalog data.
+
+Data chunks are numpy arrays with composite data type (named fields) and the
+helper functions simplify manipulating them. The data classes implement an
+interface that simplifies passing around which of the optional data attributes
+(weights, redshifts, ...) are contained in a data chunk.
+"""
+
 from __future__ import annotations
 
 from abc import ABC

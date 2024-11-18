@@ -1,3 +1,12 @@
+"""
+Implements a patch of catalog data used in correlation measurements for spatial
+resampling.
+
+Each data catalog consists of a number of patches. Each patch stores a portion
+of the catalog data, which is cached on disk. Patch data is never permanently
+held im memory, but loaded from a patch's cache directory on request.
+"""
+
 from __future__ import annotations
 
 import logging

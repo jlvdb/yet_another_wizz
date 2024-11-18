@@ -1,3 +1,8 @@
+"""
+Implements utilites to output log messages from `yet_another_wizz` or reporting
+iteration progress.
+"""
+
 from __future__ import annotations
 
 import logging

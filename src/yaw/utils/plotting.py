@@ -1,3 +1,11 @@
+"""
+Implements the plotting functions used by the CorrData, RedshiftData and
+HistData containers.
+
+Note that if matplotlib is not installed or cannot be imported, these functions
+will be available but raise an ImportError when called.
+"""
+
 from __future__ import annotations
 
 from functools import wraps

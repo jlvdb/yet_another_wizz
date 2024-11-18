@@ -1,3 +1,12 @@
+"""
+Implements reader classes that read input files or draws a fixed-size random
+sample from a generator.
+
+Readers serve as data source when creating the catalogs used for correlation
+measurements. The input data source is processed in chunks to allow out-of-
+memory processing of large datasets.
+"""
+
 from __future__ import annotations
 
 import logging

@@ -1,3 +1,8 @@
+"""
+Implements some utility functions for parallel processing, base classes, or
+logging that are used in various places in `yet_another_wizz`.
+"""
+
 from yaw.utils.misc import (
     HDF_COMPRESSION,
     common_len_assert,

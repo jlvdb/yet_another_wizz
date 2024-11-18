@@ -1,3 +1,11 @@
+"""
+Implements CorrFunc that stores all the pair counts need to compute a
+correlation function amplitude, measured in bins of redshift.
+
+Pair counts are stored separately for data-data, data-random, etc. catalog
+when running the measurements.
+"""
+
 from __future__ import annotations
 
 import logging

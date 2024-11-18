@@ -1,3 +1,7 @@
+"""
+Implements generic utility functions, e.g. for formatting data as string.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -1,3 +1,11 @@
+"""
+Defines allowed parameter values for string-type arguments with fixed options
+that are used throughout the code.
+
+E.g. the paramater ```closed`` can take two values, either ``left`` or
+``right``.
+"""
+
 from enum import auto
 
 from strenum import StrEnum

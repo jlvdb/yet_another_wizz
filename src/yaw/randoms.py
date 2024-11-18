@@ -1,6 +1,8 @@
 """
 Implements random generators that can be sampled to create random catalogs for
-correlation measurements. The generators create uniform random coordinates and
+correlation measurements.
+
+The generators create uniform random coordinates (with optional constraints) and
 can additionally draw weights or redshifts from a set of observed values.
 """
 

@@ -1,10 +1,10 @@
 """
 This module provides some precomputed example data, which are loaded when
-importing the module, e.g.
+importing the module.
 
 >>> from yaw import examples  # reads the data sets from disk
 >>> examples.w_sp
-CorrFunc(n_bins=30, z='0.070...1.420', dd=True, dr=True, rd=False, rr=False, n_patches=64)
+CorrFunc(counts=dd|dr, auto=False, num_bins=30, num_patches=64)
 """
 
 from pathlib import Path

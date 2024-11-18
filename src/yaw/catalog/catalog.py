@@ -1,3 +1,16 @@
+"""
+Implements data catalogs, which are the centeral container for row-data and
+facilitate correlation measurements.
+
+Catalogs are dictionary-like collections of patches, which each hold a portion
+of the catalog data. Data is not permanently held in memory, instead each
+catalog is tied to a cache directory on disk. To retrive data, access a patch
+and manually load the data from its cache. This design allows flexibility while
+minimising the memory footprint of large datasets.
+
+Catalogs can be constructed directly from input files or random generators.
+"""
+
 from __future__ import annotations
 
 import logging
