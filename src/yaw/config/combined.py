@@ -29,9 +29,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 __all__ = [
-    "BinningConfig",
     "Configuration",
-    "ScalesConfig",
 ]
 
 logger = logging.getLogger(__name__)

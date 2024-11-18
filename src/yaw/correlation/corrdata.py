@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CorrData",
+    "SampledData",
 ]
 
 PRECISION = 10

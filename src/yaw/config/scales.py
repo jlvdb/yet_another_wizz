@@ -25,6 +25,10 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+__all__ = [
+    "ScalesConfig",
+]
+
 
 class ScalesConfig(BaseConfig, Immutable):
     """

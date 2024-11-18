@@ -28,7 +28,9 @@ if TYPE_CHECKING:
     from yaw.datachunk import TypeDataChunk
 
 __all__ = [
+    "Metadata",
     "Patch",
+    "PatchWriter",
 ]
 
 PATCH_DATA_FILE = "data.bin"

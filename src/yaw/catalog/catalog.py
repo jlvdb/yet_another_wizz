@@ -58,6 +58,14 @@ if TYPE_CHECKING:
     from yaw.catalog.readers import DataFrame
     from yaw.datachunk import TypeDataChunk, TypePatchIDs
 
+__all__ = [
+    "Catalog",
+    "create_patch_centers",
+    "assign_patch_centers",
+    "load_patches",
+    "write_patches",
+]
+
 
 PATCH_NAME_TEMPLATE = "patch_{:d}"
 """Template to name patch directories in catalog cache directory."""

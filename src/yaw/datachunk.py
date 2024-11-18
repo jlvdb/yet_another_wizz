@@ -32,6 +32,13 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 TypeDataChunk = NewType("TypeDataChunk", NDArray)
 
+__all__ = [
+    "ATTR_ORDER",
+    "DataAttrs",
+    "DataChunk",
+]
+
+
 PATCH_ID_DTYPE = "i2"
 """Default data type for patch IDs, larger integer type will likely result in
 memory issues with covariance matrix."""

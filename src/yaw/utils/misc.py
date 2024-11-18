@@ -15,6 +15,18 @@ if TYPE_CHECKING:
     from h5py import Group
     from numpy.typing import NDArray
 
+__all__ = [
+    "HDF_COMPRESSION",
+    "groupby",
+    "common_len_assert",
+    "write_version_tag",
+    "load_version_tag",
+    "is_legacy_dataset",
+    "format_float_fixed_width",
+    "format_long_num",
+    "format_time",
+]
+
 
 HDF_COMPRESSION = dict(fletcher32=True, compression="gzip", shuffle=True)
 """Default HDF5 compression options."""

@@ -31,6 +31,15 @@ if TYPE_CHECKING:
 
     from yaw.randoms import RandomsBase
 
+__all__ = [
+    "DataFrameReader",
+    "FitsReader",
+    "HDFReader",
+    "ParquetReader",
+    "RandomReader",
+    "new_filereader",
+]
+
 CHUNKSIZE = 16_777_216
 """Default chunk size to use, optimised for parallel performance."""
 

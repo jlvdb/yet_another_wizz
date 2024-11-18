@@ -28,6 +28,11 @@ except ImportError:
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+__all__ = [
+    "BoxRandoms",
+    "HealPixRandoms",
+]
+
 
 class RandomsBase(HasAttrs):
     """Meta-class for all random point generators."""
