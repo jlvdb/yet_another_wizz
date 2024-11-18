@@ -1,3 +1,9 @@
+"""
+Implements the central configuration class for `yet_another_wizz`. This stores
+the configuration of measurement scales, redshift binning and cosmological model
+to use for correlation fuction measurements.
+"""
+
 from __future__ import annotations
 
 import logging

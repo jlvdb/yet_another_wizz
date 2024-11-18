@@ -1,14 +1,22 @@
+"""
+Implements a patch of catalog data used in correlation measurements for spatial
+resampling.
+
+Each data catalog consists of a number of patches. Each patch stores a portion
+of the catalog data, which is cached on disk. Patch data is never permanently
+held im memory, but loaded from a patch's cache directory on request.
+"""
+
 from __future__ import annotations
 
 import logging
-from itertools import compress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
-from yaw.catalog.datachunk import DataChunk
 from yaw.coordinates import AngularCoordinates, AngularDistances
+from yaw.datachunk import DataAttrs, DataChunk, HasAttrs
 from yaw.utils.abc import YamlSerialisable
 
 if TYPE_CHECKING:
@@ -17,7 +25,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from yaw.catalog.datachunk import TypeDataChunk
+    from yaw.datachunk import TypeDataChunk
 
 __all__ = [
     "Patch",
@@ -149,51 +157,7 @@ class Metadata(YamlSerialisable):
         )
 
 
-def write_header(file: TextIOBase, *, has_weights: bool, has_redshifts: bool) -> None:
-    """
-    Write a simple binary header for the catalog data file of the patch.
-
-    The header is a single big endian byte, where the first 4 bits indicate
-    which columns are present in the following binary data, in the following
-    order: right ascension, declination, weights, redshifts.
-
-    Args:
-        file:
-            Open file that supports writing binary data.
-
-    Keyword Args:
-        has_weights:
-            Whether the catalog data include weights.
-        has_weights:
-            Whether the catalog data include redshifts.
-    """
-    info = (1 << 0) | (1 << 1) | (has_weights << 2) | (has_redshifts << 3)
-    info_bytes = info.to_bytes(1, byteorder="big")
-    file.write(info_bytes)
-
-
-def read_header(file: TextIOBase) -> dict[str, bool]:
-    """
-    Write the simple binary header for the catalog data file of the patch.
-
-    Reads the header byte and returns a dictionary indicating which columns are
-    present in the following binary catalog data.
-
-    Returns:
-        Dictionary with keys ``ra``, ``dec``, ``weights``, ``redshifts`` and
-        boolean values indicating if this data column is present.
-    """
-    header_byte = file.read(1)
-    header_int = int.from_bytes(header_byte, byteorder="big")
-    return dict(
-        ra=bool(header_int & (1 << 0)),
-        dec=bool(header_int & (1 << 1)),
-        weights=bool(header_int & (1 << 2)),
-        redshifts=bool(header_int & (1 << 3)),
-    )
-
-
-def read_patch_data(path: Path | str) -> TypeDataChunk:
+def read_patch_data(path: Path | str) -> tuple[DataAttrs, TypeDataChunk]:
     """
     Read the binary catalog data stored in cache of a patch.
 
@@ -203,12 +167,11 @@ def read_patch_data(path: Path | str) -> TypeDataChunk:
         ``redshifts``, where the latter two are optional.
     """
     with open(path, mode="rb") as f:
-        column_info = read_header(f)
-        columns = compress(DataChunk.ATTR_NAMES, column_info.values())
-        dtype = np.dtype([(col, "f8") for col in columns])
+        data_attrs = DataAttrs.from_bytes(f.read(1))
+        dtype = np.dtype([(attr, "f8") for attr in data_attrs.get_list()])
         rawdata = np.fromfile(f, dtype=np.byte)
 
-    return rawdata.view(dtype)
+    return data_attrs, rawdata.view(dtype)
 
 
 class PatchWriter:
@@ -223,10 +186,9 @@ class PatchWriter:
             Path to directory that serves as cache, must not exist.
 
     Keyword Args:
-        has_weights:
-            Whether the input data chunks include object weights.
-        has_redshifts:
-            Whether the input data chunks include object redshifts.
+        data_attributes:
+            An instance of :obj:`yaw.datachunk.DataAttrs` indicating which
+            optional data attributes are processed by the pipeline.
         buffersize:
             Optional, maximum number of records to store in the internal cache.
 
@@ -254,8 +216,7 @@ class PatchWriter:
         self,
         cache_path: Path | str,
         *,
-        has_weights: bool,
-        has_redshifts: bool,
+        data_attributes: DataAttrs,
         buffersize: int = 65_536,
     ) -> None:
         self.buffersize = int(buffersize)
@@ -269,7 +230,8 @@ class PatchWriter:
 
         self._file = None
         self.open()
-        write_header(self._file, has_weights=has_weights, has_redshifts=has_redshifts)
+        header = data_attributes.to_bytes()
+        self._file.write(header)
 
     def __repr__(self) -> str:
         items = (
@@ -294,21 +256,20 @@ class PatchWriter:
         """The current number of records written to disk."""
         return self._num_processed
 
-    def open(self) -> None:
+    def open(self) -> TextIOBase:
         """If it did not already happened, opens the target file for writing."""
         if self._file is None:
             self._file = self.data_path.open(mode="ab")
+        return self._file
 
     def flush(self) -> None:
         """Flush internal cache to disk."""
         if len(self._shards) > 0:
-            self.open()  # ensure file is ready for writing
-
             data = np.concatenate(self._shards)
             self._num_processed += len(data)
             self._shards = []
 
-            data.tofile(self._file)
+            data.tofile(self.open())  # ensure file is ready for writing
 
     def close(self) -> None:
         """Flushes the internal cache and closes the file."""
@@ -338,7 +299,7 @@ class PatchWriter:
             self.flush()
 
 
-class Patch:
+class Patch(HasAttrs):
     """
     A single spatial patch of catalog data.
 
@@ -360,7 +321,7 @@ class Patch:
     moved.
     """
 
-    __slots__ = ("meta", "cache_path", "_has_weights", "_has_redshifts")
+    __slots__ = ("meta", "cache_path", "_data_attrs")
 
     meta: Metadata
     """Patch meta data; number of records stored in the patch, the sum of
@@ -379,15 +340,10 @@ class Patch:
         try:
             self.meta = Metadata.from_file(meta_data_file)
             with self.data_path.open(mode="rb") as f:
-                column_info = read_header(f)
-                self._has_weights = column_info["weights"]
-                self._has_redshifts = column_info["redshifts"]
+                self._data_attrs = DataAttrs.from_bytes(f.read(1))
 
         except FileNotFoundError:
-            data = read_patch_data(self.data_path)
-            self._has_weights = DataChunk.hasattr(data, "weights")
-            self._has_redshifts = DataChunk.hasattr(data, "redshifts")
-
+            self._data_attrs, data = read_patch_data(self.data_path)
             self.meta = Metadata.compute(
                 DataChunk.get_coords(data),
                 weights=DataChunk.getattr(data, "weights", None),
@@ -399,8 +355,8 @@ class Patch:
         items = (
             f"num_records={self.meta.num_records}",
             f"total={self.meta.total}",
-            f"has_weights={self._has_weights}",
-            f"has_redshifts={self._has_redshifts}",
+            f"has_weights={self.has_weights}",
+            f"has_redshifts={self.has_redshifts}",
         )
         return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_path}"
 
@@ -408,8 +364,7 @@ class Patch:
         return dict(
             cache_path=self.cache_path,
             meta=self.meta,
-            _has_weights=self._has_weights,
-            _has_redshifts=self._has_redshifts,
+            _data_attrs=self._data_attrs,
         )
 
     def __setstate__(self, state) -> None:
@@ -422,14 +377,9 @@ class Patch:
         return self.cache_path / PATCH_DATA_FILE
 
     @property
-    def has_weights(self) -> bool:
-        """Whether the patch data contain weights."""
-        return self._has_weights
-
-    @property
-    def has_redshifts(self) -> bool:
-        """Whether the patch data contain redshifts."""
-        return self._has_redshifts
+    def has_patch_ids(self) -> Literal[False]:
+        """Patches never provide patch IDs."""
+        return False
 
     def load_data(self) -> TypeDataChunk:
         """
@@ -441,7 +391,8 @@ class Patch:
             different data columns and can be ``ra``, ``dec``, ``weights``, and
             ``redshifts``, where the latter two are optional.
         """
-        return read_patch_data(self.data_path)
+        _, data = read_patch_data(self.data_path)
+        return data
 
     @property
     def coords(self) -> AngularCoordinates:

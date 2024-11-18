@@ -1,3 +1,8 @@
+"""
+Implements a class that stores the configuration redshift bins used to split the
+catalogs when measuring angular correlations.
+"""
+
 from __future__ import annotations
 
 import warnings

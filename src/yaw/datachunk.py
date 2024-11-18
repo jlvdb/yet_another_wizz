@@ -1,15 +1,26 @@
+"""
+Implements helper functions and base classes for objects that handle chunks of
+catalog data.
+
+Data chunks are numpy arrays with composite data type (named fields) and the
+helper functions simplify manipulating them. The data classes implement an
+interface that simplifies passing around which of the optional data attributes
+(weights, redshifts, ...) are contained in a data chunk.
+"""
+
 from __future__ import annotations
 
-from abc import abstractmethod
-from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING, Iterator, NewType, Sized
+from abc import ABC
+from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, NewType
 
 import numpy as np
 from numpy.typing import NDArray
 
 from yaw.coordinates import AngularCoordinates
 from yaw.options import NotSet
-from yaw.utils import common_len_assert, parallel
+from yaw.utils import common_len_assert
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -24,6 +35,100 @@ TypeDataChunk = NewType("TypeDataChunk", NDArray)
 PATCH_ID_DTYPE = "i2"
 """Default data type for patch IDs, larger integer type will likely result in
 memory issues with covariance matrix."""
+
+ATTR_ORDER = ("ra", "dec", "weights", "redshifts", "patch_ids")
+"""The order of attributes in a DataChunk."""
+
+
+@dataclass
+class DataAttrs:
+    """
+    Helper class to specify which of the (optional) data chunk attributes are
+    available.
+
+    Args:
+        has_weights:
+            Whether weights are available.
+        has_redshifts:
+            Whether redshifts are available.
+        has_patch_ids:
+            Whether patch IDs are available.
+    """
+
+    # match to ATTR_ORDER
+    has_weights: bool = field(default=False)
+    has_redshifts: bool = field(default=False)
+    has_patch_ids: bool = field(default=False)
+
+    @classmethod
+    def from_bytes(cls, info_bytes: bytes) -> DataAttrs:
+        """
+        Restore a class instance from a single byte of bit flags.
+
+        Args:
+            info_bytes:
+                The byte(s) encoding the state information.
+
+        Returns:
+            A new class instance.
+        """
+        state = int.from_bytes(info_bytes, byteorder="big")
+        return cls(  # match to ATTR_ORDER
+            has_weights=bool(state & (1 << 2)),
+            has_redshifts=bool(state & (1 << 3)),
+            has_patch_ids=bool(state & (1 << 4)),
+        )
+
+    def to_bytes(self) -> bytes:
+        """
+        Represent this instance as bit flags stored in a single byte.
+
+        Creates a single big endian byte, where the bits indicate which of the
+        attributes in :obj:`ATTR_ORDER` are available.
+
+        Returns:
+            A single byte with bit flags.
+        """
+        info = (  # match to ATTR_ORDER
+            (True << 0)  # "ra"
+            | (True << 1)  # "dec"
+            | (self.has_weights << 2)
+            | (self.has_redshifts << 3)
+            | (self.has_patch_ids << 4)
+        )
+        return info.to_bytes(1, byteorder="big")
+
+    def get_list(self) -> list[str]:
+        attrs = [attr for attr in ATTR_ORDER[:2]]
+        attrs.extend(attr for attr in ATTR_ORDER[2:] if getattr(self, f"has_{attr}"))
+        return attrs
+
+
+class HasAttrs(ABC):
+    """
+    Base class of objects that create or process data chunks.
+    """
+
+    _data_attrs: DataAttrs
+
+    @property
+    def has_weights(self) -> bool:
+        """Whether this data source provides weights."""
+        return self._data_attrs.has_weights
+
+    @property
+    def has_redshifts(self) -> bool:
+        """Whether this data source provides redshifts."""
+        return self._data_attrs.has_redshifts
+
+    @property
+    def has_patch_ids(self) -> bool:
+        """Whether this data source provides patch IDs."""
+        return self._data_attrs.has_patch_ids
+
+    def copy_attrs(self) -> DataAttrs:
+        """Copy the data attribute information."""
+        return deepcopy(self._data_attrs)
 
 
 def get_array_dtype(column_names: Iterable[str]) -> DTypeLike:
@@ -53,8 +158,14 @@ def check_patch_ids(patch_ids: ArrayLike) -> None:
 
 
 class DataChunk:
-    ATTR_NAMES = ("ra", "dec", "weights", "redshifts", "patch_ids")
-    """Default chunk size to use, optimised for parallel performance."""
+    """
+    Collection of functions to handle chunks of catalog data.
+
+    For simplicity, the chunks of data are just numpy arrays with a composite
+    type (named fields) instead of a dedicated class. The advantage is, that the
+    data is stored in a contiguous memory chunk that can be read from or written
+    to disk directly.
+    """
 
     @staticmethod
     def create(
@@ -100,11 +211,9 @@ class DataChunk:
             ValueError:
                 If any of the input arrays cannot be casted.
         """
-        values = (ra, dec, weights, redshifts, patch_ids)
+        values = (ra, dec, weights, redshifts, patch_ids)  # match to ATTR_ORDER
         inputs = {
-            attr: value
-            for attr, value in zip(DataChunk.ATTR_NAMES, values)
-            if value is not None
+            attr: value for attr, value in zip(ATTR_ORDER, values) if value is not None
         }
 
         if patch_ids is not None:
@@ -126,6 +235,7 @@ class DataChunk:
 
     @staticmethod
     def get_coords(chunk: TypeDataChunk) -> AngularCoordinates:
+        """Receive the stored coordinates as :ob:`AngularCoordinates`."""
         coords = np.empty((len(chunk), 2), dtype="f8")
         coords[:, 0] = chunk["ra"]
         coords[:, 1] = chunk["dec"]
@@ -202,86 +312,3 @@ class DataChunk:
             if default is NotSet:
                 raise
             return default
-
-
-class DataChunkReader(AbstractContextManager, Sized, Iterator[TypeDataChunk]):
-    """
-    Base class for chunked data readers and generators.
-
-    Iterates the data source in a fixed chunk size up to a fixed capacity.
-
-    .. Caution::
-        This iterator is supposed to work in an MPI environment as follows:
-        - On the root worker, generate/load the data and yield it.
-        - On a non-root worker yield None. The user is resposible for
-          broadcasting if desired.
-    """
-
-    chunksize: int
-    _num_records: int
-    _num_samples: int  # used to track iteration state
-
-    def __len__(self) -> int:
-        return self.num_chunks
-
-    @property
-    @abstractmethod
-    def has_weights(self) -> bool:
-        """Whether this data source provides weights."""
-        pass
-
-    @property
-    @abstractmethod
-    def has_redshifts(self) -> bool:
-        """Whether this data source provides redshifts."""
-        pass
-
-    @property
-    def num_records(self) -> int:
-        """The number of records this reader produces."""
-        return self._num_records
-
-    @property
-    def num_chunks(self) -> int:
-        """The number of chunks in which the reader produces all records."""
-        return int(np.ceil(self.num_records / self.chunksize))
-
-    @abstractmethod
-    def get_probe(self, probe_size: int) -> TypeDataChunk:
-        """
-        Get a (small) subsample from the data source.
-
-        Depending on the source, this may be a randomly generated sample or a
-        (alomst) regular subset of data records.
-
-        Args:
-            probe_size:
-                The number of records to obtain.
-
-        Returns:
-            A chunk of data from the data source with the requested size.
-
-        Raises:
-            ValueError:
-                If ``probe_size`` exceeds number of records.
-        """
-        pass
-
-    @abstractmethod
-    def _get_next_chunk(self) -> TypeDataChunk:
-        """Generate or read the next chunk of data from the source."""
-        pass
-
-    def __next__(self) -> TypeDataChunk:
-        if self._num_samples >= self.num_records:
-            raise StopIteration()
-
-        self._num_samples += self.chunksize
-
-        if parallel.on_worker():
-            return None
-        return self._get_next_chunk()
-
-    def __iter__(self) -> Iterator[TypeDataChunk]:
-        self._num_samples = 0  # reset state
-        return self

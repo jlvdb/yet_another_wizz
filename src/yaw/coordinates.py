@@ -1,3 +1,12 @@
+"""
+Implements to utility classes to represent a set of angular coordinates or
+angular separations in radian.
+
+These classes provide conversion methods between points in 3-dim Euclidean
+coordinates and angular coordinates, angular separations and chord distances,
+as well as simple coordinate arithmetic.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Sized

@@ -1,3 +1,8 @@
+"""
+Implements a class that stores the configuration of angular scales used for
+correlation function measurements.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

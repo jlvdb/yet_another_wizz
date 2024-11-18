@@ -1,3 +1,8 @@
+"""
+Implements some base-functionality used by the configuration classes in this
+module.
+"""
+
 from __future__ import annotations
 
 import pprint

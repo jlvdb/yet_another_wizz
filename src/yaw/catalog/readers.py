@@ -1,10 +1,20 @@
+"""
+Implements reader classes that read input files or draws a fixed-size random
+sample from a generator.
+
+Readers serve as data source when creating the catalogs used for correlation
+measurements. The input data source is processed in chunks to allow out-of-
+memory processing of large datasets.
+"""
+
 from __future__ import annotations
 
 import logging
 from abc import abstractmethod
 from collections import deque
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Sequence
+from typing import TYPE_CHECKING, Iterator, Sequence, Sized
 
 import h5py
 import numpy as np
@@ -12,14 +22,13 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import ArrowException, Table, parquet
 
-from yaw.catalog.datachunk import DataChunk, DataChunkReader
+from yaw.datachunk import ATTR_ORDER, DataAttrs, DataChunk, HasAttrs, TypeDataChunk
 from yaw.utils import common_len_assert, format_long_num, parallel
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
-    from yaw.catalog.datachunk import TypeDataChunk
     from yaw.randoms import RandomsBase
 
 CHUNKSIZE = 16_777_216
@@ -32,6 +41,80 @@ class DataFrame(Sequence):
     """Dummy type as stand in for pandas DataFrames."""
 
     pass
+
+
+class DataChunkReader(AbstractContextManager, Sized, Iterator[TypeDataChunk], HasAttrs):
+    """
+    Base class for reading data in chunks from a data source.
+
+    Iterates the data source in a fixed chunk size up to a fixed capacity.
+
+    .. Caution::
+        This iterator is supposed to work in an MPI environment as follows:
+        - On the root worker, generate/load the data and yield it.
+        - On a non-root worker yield None. The user is resposible for
+          broadcasting if desired.
+    """
+
+    chunksize: int
+    _num_records: int
+    _num_samples: int  # used to track iteration state
+
+    def __len__(self) -> int:
+        return self.num_chunks
+
+    @property
+    def num_records(self) -> int:
+        """The number of records this reader produces."""
+        return self._num_records
+
+    @property
+    def num_chunks(self) -> int:
+        """The number of chunks in which the reader produces all records."""
+        return int(np.ceil(self.num_records / self.chunksize))
+
+    @abstractmethod
+    def get_probe(self, probe_size: int) -> TypeDataChunk:
+        """
+        Get a (small) subsample from the data source.
+
+        Depending on the source, this may be a randomly generated sample or a
+        (alomst) regular subset of data records.
+
+        Args:
+            probe_size:
+                The number of records to obtain.
+
+        Returns:
+            A chunk of data from the data source with the requested size.
+
+        Raises:
+            ValueError:
+                If ``probe_size`` exceeds number of records.
+        """
+        pass
+
+    def _reset_iter_state(self) -> None:
+        self._num_samples = 0
+
+    @abstractmethod
+    def _get_next_chunk(self) -> TypeDataChunk:
+        """Generate or read the next chunk of data from the source."""
+        pass
+
+    def __next__(self) -> TypeDataChunk:
+        if self._num_samples >= self.num_records:
+            raise StopIteration()
+
+        self._num_samples += self.chunksize
+
+        if parallel.on_worker():
+            return None
+        return self._get_next_chunk()
+
+    def __iter__(self) -> Iterator[TypeDataChunk]:
+        self._reset_iter_state()
+        return self
 
 
 class RandomReader(DataChunkReader):
@@ -54,11 +137,12 @@ class RandomReader(DataChunkReader):
         self, generator: RandomsBase, num_randoms: int, chunksize: int | None = None
     ) -> None:
         self.generator = generator
+        self._data_attrs = generator.copy_attrs()
 
         self._num_records = num_randoms
         self.chunksize = chunksize or CHUNKSIZE
 
-        iter(self)  # reset state
+        self._reset_iter_state()
 
         if parallel.on_root():
             logger.info(
@@ -67,25 +151,15 @@ class RandomReader(DataChunkReader):
                 len(self),
             )
 
-    @property
-    def has_weights(self) -> bool:
-        has_weights = None
-        if parallel.on_root():
-            has_weights = self.generator.has_weights
-        return parallel.COMM.bcast(has_weights, root=0)
-
-    @property
-    def has_redshifts(self) -> bool:
-        has_redshifts = None
-        if parallel.on_root():
-            has_redshifts = self.generator.has_redshifts
-        return parallel.COMM.bcast(has_redshifts, root=0)
-
     def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
         return None
+
+    def _reset_iter_state(self) -> None:
+        super()._reset_iter_state()
+        self.generator.reseed()
 
     def _get_next_chunk(self) -> TypeDataChunk:
         # NOTE: _num_samples is already incremented by chunksize in __next__
@@ -93,12 +167,10 @@ class RandomReader(DataChunkReader):
         if self._num_samples >= self.num_records:
             probe_size -= self._num_samples - self.num_records
 
-        data = self.generator(probe_size)
-        return DataChunk.create(**data, degrees=False, chkfinite=False)
+        return self.generator(probe_size)
 
     def __iter__(self) -> Iterator[TypeDataChunk]:
-        self.generator.reseed()
-        self._num_samples = 0  # reset state
+        self._reset_iter_state()
         return self
 
     def get_probe(self, probe_size: int) -> TypeDataChunk:
@@ -122,8 +194,7 @@ class RandomReader(DataChunkReader):
             return None
 
         self.generator.reseed()
-        data = self.generator(probe_size)
-        return DataChunk.create(**data, degrees=False, chkfinite=False)
+        return self.generator(probe_size)
 
 
 class DataReader(DataChunkReader):
@@ -142,31 +213,32 @@ class DataReader(DataChunkReader):
         degrees: bool = True,
         **kwargs,
     ) -> None:
-        columns = (ra_name, dec_name, weight_name, redshift_name, patch_name)
+        columns = (
+            ra_name,
+            dec_name,
+            weight_name,
+            redshift_name,
+            patch_name,
+        )  # match to ATTR_ORDER
         self._columns = {
-            attr: name
-            for attr, name in zip(DataChunk.ATTR_NAMES, columns)
-            if name is not None
+            attr: name for attr, name in zip(ATTR_ORDER, columns) if name is not None
         }
+        self._data_attrs = DataAttrs(
+            has_weights=weight_name is not None,
+            has_redshifts=redshift_name is not None,
+            has_patch_ids=patch_name is not None,
+        )
 
         self.degrees = degrees
         self.chunksize = chunksize or CHUNKSIZE
 
-        iter(self)  # reset state
+        self._reset_iter_state()
 
         if parallel.on_root():
             logger.debug(
                 "selecting input columns: %s",
                 ", ".join(self._columns.values()),
             )
-
-    @property
-    def has_weights(self) -> bool:
-        return "weights" in self._columns
-
-    @property
-    def has_redshifts(self) -> bool:
-        return "redshifts" in self._columns
 
     def get_probe(self, probe_size: int) -> TypeDataChunk:
         """
@@ -542,6 +614,9 @@ class ParquetReader(FileReader):
             degrees=degrees,
         )
 
+    def _reset_iter_state(self) -> None:
+        super()._reset_iter_state()
+        self._group_cache = deque()
         self._group_idx = 0  # parquet file iteration state
 
     def _get_group_cache_size(self) -> int:
@@ -589,9 +664,3 @@ class ParquetReader(FileReader):
             attr: table.column(col).to_numpy() for attr, col in self._columns.items()
         }
         return DataChunk.create(**kwargs, degrees=self.degrees)
-
-    def __iter__(self) -> Iterator[TypeDataChunk]:
-        # additonal iteration state requried by parquet file implementation
-        self._group_cache = deque()
-        self._group_idx = 0
-        return super().__iter__()

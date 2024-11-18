@@ -1,3 +1,14 @@
+"""
+Core implementation of a parallel computation model that works with both
+MPI (mpi4py) or python's multiprocessing by having a shared API.
+
+The code dynamically figures out if running in an MPI execution environment,
+otherwise falls back to using multiprocessing (see use_mpi). Implements a
+parallel iterator for MPI that functions similar to multiprocessing's
+Pool.imap_unordered(). Also implements a mock-up of an MPI communicator that is
+used as a stand-in when running with multiprocessing.
+"""
+
 from __future__ import annotations
 
 import logging

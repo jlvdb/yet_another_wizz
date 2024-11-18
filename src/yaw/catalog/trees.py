@@ -1,3 +1,16 @@
+"""
+Implements the pair counting routines based on binary search trees (scipy
+KDTrees).
+
+Pairs are counted using the dual-tree algorithm for optimal efficiency. The
+trees store angular coordinats internally as 3-dim Euclidean coordinates
+projected on the unit-sphere.
+
+Finally, implements a wrapper class for constructing trees from a patch of
+catalog data, optionally binning the data by redshifts. The tree(s) are stored
+as pickle file in the patch's cache directory.
+"""
+
 from __future__ import annotations
 
 import pickle
@@ -9,8 +22,8 @@ import numpy as np
 from scipy.spatial import KDTree
 
 from yaw.binning import parse_binning
-from yaw.catalog.datachunk import DataChunk
 from yaw.coordinates import AngularDistances
+from yaw.datachunk import DataChunk
 from yaw.options import Closed
 from yaw.utils import groupby
 

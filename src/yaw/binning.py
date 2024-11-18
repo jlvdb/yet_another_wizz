@@ -1,3 +1,7 @@
+"""
+Implements a utility class that expresses a set of contiguous bin edges.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterator

@@ -1,3 +1,9 @@
+"""
+Implements a number of abstract base classes that define the interface of many
+of the containers used by `yet_another_wizz` to store pair counts, correlation
+functions, or redshift estimates.
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

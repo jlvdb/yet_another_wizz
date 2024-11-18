@@ -1,3 +1,15 @@
+"""
+Implements two primary classes to store estimates of redshift distributions.
+
+HistData is a tool to measure a redshift distribution histogram from a catalog
+with redshift data. Stores histogram counts, jackknife samples (from spatial
+patches) and a covariance matrix, similar to yaw.CorrData.
+
+RedshiftData is a container for the final clustering redshift estimate. Can be
+constructed directly from cross- and optional autocorrelation functions. Similar
+to yaw.CorrData, but normalises all data by the width of the redshift bins.
+"""
+
 from __future__ import annotations
 
 import logging
