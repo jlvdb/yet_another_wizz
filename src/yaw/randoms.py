@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.datachunk import DataAttrs, DataChunk, HasAttrs, TypeDataChunk
+from yaw.datachunk import DataChunk, DataChunkInfo, HandlesDataChunk, TypeDataChunk
 
 HEALPY_ENABLED = False
 """Healpix-based randoms are enabled if healpy can be imported."""
@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-class RandomsBase(HasAttrs):
+class RandomsBase(HandlesDataChunk):
     """Meta-class for all random point generators."""
 
     @abstractmethod
@@ -46,7 +46,7 @@ class RandomsBase(HasAttrs):
         seed: int = 12345,
         **kwargs,
     ) -> None:
-        self._data_attrs = DataAttrs(
+        self._chunk_info = DataChunkInfo(
             has_weights=weights is not None,
             has_redshifts=redshifts is not None,
         )
@@ -201,8 +201,8 @@ class BoxRandoms(RandomsBase):
         )
 
     def __repr__(self) -> str:
-        string = repr(self._data_attrs)
-        string = string.lstrip(str(type(self._data_attrs)))
+        string = repr(self._chunk_info)
+        string = string.lstrip(str(type(self._chunk_info)))
         return f"{type(self).__name__}{string}"
 
     def _sky2cylinder(self, ra: NDArray, dec: NDArray) -> tuple[NDArray, NDArray]:

@@ -24,11 +24,10 @@ from pyarrow import ArrowException, Table, parquet
 
 from yaw.datachunk import (
     ATTR_ORDER,
-    DataAttrs,
     DataChunk,
-    HasAttrs,
+    DataChunkInfo,
+    HandlesDataChunk,
     TypeDataChunk,
-    get_attrs_formatted,
 )
 from yaw.utils import common_len_assert, format_long_num, parallel
 
@@ -59,7 +58,9 @@ class DataFrame(Sequence):
     pass
 
 
-class DataChunkReader(AbstractContextManager, Sized, Iterator[TypeDataChunk], HasAttrs):
+class DataChunkReader(
+    AbstractContextManager, Sized, Iterator[TypeDataChunk], HandlesDataChunk
+):
     """
     Base class for reading data in chunks from a data source.
 
@@ -153,7 +154,7 @@ class RandomReader(DataChunkReader):
         self, generator: RandomsBase, num_randoms: int, chunksize: int | None = None
     ) -> None:
         self.generator = generator
-        self._data_attrs = generator.copy_attrs()
+        self._chunk_info = generator.copy_chunk_info()
 
         self._num_records = num_randoms
         self.chunksize = chunksize or CHUNKSIZE
@@ -169,7 +170,7 @@ class RandomReader(DataChunkReader):
 
     def __repr__(self) -> str:
         source = type(self.generator).__name__
-        attrs = get_attrs_formatted(self._data_attrs)
+        attrs = self._chunk_info.format()
         return f"{type(self)}({source=}, {attrs})"
 
     def __enter__(self) -> Self:
@@ -244,7 +245,7 @@ class DataReader(DataChunkReader):
         self._columns = {
             attr: name for attr, name in zip(ATTR_ORDER, columns) if name is not None
         }
-        self._data_attrs = DataAttrs(
+        self._chunk_info = DataChunkInfo(
             has_weights=weight_name is not None,
             has_redshifts=redshift_name is not None,
             has_patch_ids=patch_name is not None,
@@ -374,7 +375,7 @@ class DataFrameReader(DataReader):
         )
 
     def __repr__(self) -> str:
-        attrs = get_attrs_formatted(self._data_attrs)
+        attrs = self._chunk_info.format()
         return f"{type(self)}({attrs})"
 
     def __enter__(self) -> Self:
@@ -398,7 +399,7 @@ class FileReader(DataReader):
 
     def __repr__(self) -> str:
         source = str(self.path)
-        attrs = get_attrs_formatted(self._data_attrs)
+        attrs = self._chunk_info.format()
         return f"{type(self)}({source=}, {attrs})"
 
     def __enter__(self) -> Self:

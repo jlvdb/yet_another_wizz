@@ -38,11 +38,10 @@ from yaw.catalog.trees import BinnedTrees, groupby
 from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.datachunk import (
     PATCH_ID_DTYPE,
-    DataAttrs,
     DataChunk,
-    HasAttrs,
+    DataChunkInfo,
+    HandlesDataChunk,
     check_patch_ids,
-    get_attrs_formatted,
 )
 from yaw.options import Closed
 from yaw.randoms import RandomsBase
@@ -377,7 +376,7 @@ def load_patches(
     return parallel.COMM.bcast(patches, root=0)
 
 
-class CatalogWriter(AbstractContextManager, HasAttrs):
+class CatalogWriter(AbstractContextManager, HandlesDataChunk):
     """
     A helper class that handles a stream of input catalog data and splits and
     writes it to patches.
@@ -390,8 +389,8 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
         overwrite:
             Whether to overwrite an existing catalog at the given cache
             location.
-        data_attributes:
-            An instance of :obj:`yaw.datachunk.DataAttrs` indicating which
+        chunk_info:
+            An instance of :obj:`yaw.datachunk.DataChunkInfo` indicating which
             optional data attributes are processed by the pipeline.
         buffersize:
             Optional, maximum number of records to store in the internal cache
@@ -413,7 +412,7 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
     """
 
     __slots__ = (
-        "_data_attrs",
+        "_chunk_info",
         "cache_directory",
         "buffersize",
         "writers",
@@ -423,11 +422,11 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
         self,
         cache_directory: Path | str,
         *,
-        data_attributes: DataAttrs,
+        chunk_info: DataChunkInfo,
         overwrite: bool = True,
         buffersize: int = -1,
     ) -> None:
-        self._data_attrs = data_attributes
+        self._chunk_info = chunk_info
         self.cache_directory = Path(cache_directory)
         cache_exists = self.cache_directory.exists()
 
@@ -453,7 +452,7 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
             f"num_patches={self.num_patches}",
             f"max_buffersize={self.buffersize * self.num_patches}",
         )
-        attrs = get_attrs_formatted(self._data_attrs)
+        attrs = self._chunk_info.format()
         return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_directory}"
 
     def __enter__(self) -> Self:
@@ -476,7 +475,7 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
         except KeyError:
             writer = PatchWriter(
                 get_patch_path_from_id(self.cache_directory, patch_id),
-                data_attributes=self.copy_attrs(),
+                chunk_info=self.copy_chunk_info(),
                 buffersize=self.buffersize,
             )
             self.writers[patch_id] = writer
@@ -566,7 +565,7 @@ def write_patches_unthreaded(
 
         with CatalogWriter(
             cache_directory=path,
-            data_attributes=reader.copy_attrs(),
+            chunk_info=reader.copy_chunk_info(),
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
@@ -647,7 +646,7 @@ if parallel.use_mpi():
     def writer_task(
         cache_directory: Path | str,
         *,
-        data_attributes: DataAttrs,
+        chunk_info: DataChunkInfo,
         overwrite: bool = True,
         buffersize: int = -1,
     ) -> None:
@@ -657,7 +656,7 @@ if parallel.use_mpi():
         recv = parallel.COMM.recv
         with CatalogWriter(
             cache_directory,
-            data_attributes=data_attributes,
+            chunk_info=chunk_info,
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
@@ -725,7 +724,7 @@ if parallel.use_mpi():
         if rank == worker_config.writer_rank:
             writer_task(
                 cache_directory=path,
-                data_attributes=reader.copy_attrs(),
+                chunk_info=reader.copy_chunk_info(),
                 overwrite=overwrite,
                 buffersize=buffersize,
             )
@@ -787,7 +786,7 @@ else:
 
         patch_queue: Queue[dict[int, TypeDataChunk] | EndOfQueue]
         cache_directory: Path | str
-        data_attributes: DataAttrs = field(kw_only=True)
+        chunk_info: DataChunkInfo = field(kw_only=True)
         overwrite: bool = field(default=True, kw_only=True)
         buffersize: int = field(default=-1, kw_only=True)
 
@@ -805,7 +804,7 @@ else:
             with CatalogWriter(
                 self.cache_directory,
                 overwrite=self.overwrite,
-                data_attributes=self.data_attributes,
+                chunk_info=self.chunk_info,
                 buffersize=self.buffersize,
             ) as writer:
                 while (patches := self.patch_queue.get()) is not EndOfQueue:
@@ -890,7 +889,7 @@ else:
             with WriterProcess(
                 patch_queue,
                 cache_directory=path,
-                data_attributes=reader.copy_attrs(),
+                chunk_info=reader.copy_chunk_info(),
                 overwrite=overwrite,
                 buffersize=buffersize,
             ):
@@ -1329,7 +1328,7 @@ class Catalog(Mapping[int, Patch]):
             f"num_records={sum(self.get_num_records())}",
         )
         patch = next(iter(self.values()))
-        attrs = get_attrs_formatted(patch._data_attrs)
+        attrs = patch._chunk_info.format()
         return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_directory}"
 
     def __len__(self) -> int:

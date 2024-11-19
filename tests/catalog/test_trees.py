@@ -256,10 +256,10 @@ class TestAngularTree:
 
 @fixture(name="test_patch_no_z")
 def fixture_test_patch_no_z(test_points, tmp_path):
-    attrs, data = DataChunk.create(test_points.ra, test_points.dec)
+    info, data = DataChunk.create(test_points.ra, test_points.dec)
 
     path = tmp_path / "patch_no_z"
-    writer = PatchWriter(path, data_attributes=attrs)
+    writer = PatchWriter(path, chunk_info=info)
     writer.process_chunk(data)
     writer.close()
 
@@ -268,14 +268,14 @@ def fixture_test_patch_no_z(test_points, tmp_path):
 
 @fixture(name="test_patch")
 def fixture_test_patch(test_points, tmp_path):
-    attrs, data = DataChunk.create(
+    info, data = DataChunk.create(
         test_points.ra,
         test_points.dec,
         redshifts=np.arange(len(test_points)) % 2 + 0.5,
     )
 
     path = tmp_path / "patch"
-    writer = PatchWriter(path, data_attributes=attrs)
+    writer = PatchWriter(path, chunk_info=info)
     writer.process_chunk(data)
     writer.close()
 
