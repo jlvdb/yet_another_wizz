@@ -173,6 +173,8 @@ class AngularTree(Sized):
             an instance of :obj:`~yaw.AngularCoordinates`.
         weights:
             Optional array of weights for each point.
+        kappa:
+            Optional array of kappa (or other scalar values) for each point.
 
     Keyword Args:
         leafsize:
@@ -183,19 +185,24 @@ class AngularTree(Sized):
             The number of data points stored in this tree.
         weights:
             The array of weights for the datapoints, default on 1.0.
+        kappa:
+            The array of kappa for the datapoints, if not supplied it is None.
         total:
             The total weight of points stored in the tree, defaults to number
             of points if no weights are provided.
+        total_kappa:
+            The total weighted kappa value of points stored in the tree; used for mean subtraction.
         tree:
             The underlying :obj:`scipy.spatial.KDTree`.
     """
 
-    __slots__ = ("num_records", "weights", "total", "tree")
+    __slots__ = ("num_records", "weights", "total", "tree", "kappa")
 
     def __init__(
         self,
         coords: AngularCoordinates,
         weights: NDArray | None = None,
+        kappa: NDArray | None = None,
         *,
         leafsize: int = 16,
     ) -> None:
@@ -211,6 +218,13 @@ class AngularTree(Sized):
         else:
             self.weights = np.asarray(weights).astype(np.float64, copy=False)
             self.total = float(self.weights.sum())
+            
+        if kappa is None:
+            self.kappa = None
+            self.total_kappa = 0
+        else:
+            self.kappa = np.asarray(kappa).astype(np.float64, copy=False)
+            self.total_kappa = float((self.kappa*self.weights).sum())
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
@@ -260,12 +274,23 @@ class AngularTree(Sized):
         ang_limits = parse_ang_limits(ang_min, ang_max)
         ang_bins = get_ang_bins(ang_limits, weight_scale, weight_res)
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
-
+        
+        # determine the weights that goes into the counts:
+        if self.kappa is None:
+            weight1 = self.weights
+        elif self.kappa is not None:
+            weight1 = self.weights * self.kappa
+            
+        if other.kappa is None:
+            weight2 = other.weights
+        elif other.kappa is not None:
+            weight2 = other.weights * other.kappa
+        
         try:
             counts = self.tree.count_neighbors(
                 other.tree,
                 r=AngularDistances(ang_bins).to_3d(),
-                weights=(self.weights, other.weights),
+                weights=(weight1, weight2),
                 cumulative=cumulative,
             ).astype(np.float64)
         except IndexError:
@@ -320,7 +345,8 @@ def build_trees(
     if binning is None:
         coords = DataChunk.get_coords(chunk)
         weights = DataChunk.getattr(chunk, "weights", None)
-        trees = AngularTree(coords, weights, leafsize=leafsize)
+        kappa = DataChunk.getattr(chunk, "kappa", None)
+        trees = AngularTree(coords, weights, kappa, leafsize=leafsize)
 
     else:
         binning = np.asarray(binning)
@@ -332,7 +358,8 @@ def build_trees(
             if 0 < i < len(binning):
                 coords = DataChunk.get_coords(bin_array)
                 weights = DataChunk.getattr(bin_array, "weights", None)
-                tree = AngularTree(coords, weights=weights, leafsize=leafsize)
+                kappa = DataChunk.getattr(chunk, "kappa", None)
+                tree = AngularTree(coords, weights=weights, kappa=kappa, leafsize=leafsize)
                 trees.append(tree)
 
     return trees
