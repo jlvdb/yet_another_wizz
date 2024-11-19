@@ -4,10 +4,36 @@ Change log
 Version 3.0.0
 -------------
 
-Complete rewrite.
+Implements out-of-memory reading of input data and parallel computation using
+the MPI standard.
 
-.. attention::
-    Missing content
+.. warning::
+    This version presents a major rework of the package, which is incompatible
+    with any version 2 code. The changes listed below are a summary of the most
+    important differences in the public API.
+
+.. rubric:: Added features
+
+- MPI & multiprocessing support
+- Increased performance
+- Reading input data in chunks, pre-processing in parallel
+- Better integration of random generators, added HealPix mask based randoms
+
+.. rubric:: Removed features
+
+- Docker image
+- Bootstrapping
+- ResamplingConfig
+- In-memory catalogs
+- Compatibility with command line client ``yaw_cli``.
+
+.. rubric:: API changes
+
+- ...
+
+.. note::
+    Data files produced by version 2 can still be read from version 3 (except
+    for cached catalogs).
 
 
 Version 2.5.8

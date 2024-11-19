@@ -91,39 +91,10 @@ html_context = {
 # -- Build custom files ------------------------------------------------------
 
 def write_changes(path):
-    version_key = "Version"
-    version_info = dict()
-
     with (PKG_ROOT / "CHANGELOG.rst").open() as f:
-        version = None
-
         lines = f.readlines()
-        for start, line in enumerate(lines):
-            if line.startswith(version_key):
-                break
-
-        for line in lines[start:]:
-            if line.startswith("---"):
-                continue
-
-            elif line.startswith(version_key):
-                _, version = line.strip().split()
-                version_info[version] = []
-
-            else:
-                version_info[version].append(line)
-
     with open(path, "w") as f:
-        f.write("Change log\n==========\n\n")
-
-        for i, (verion, info_lines) in enumerate(version_info.items()):
-            f.write(f".. dropdown:: Version {verion}\n")
-            f.write("    :class-title: h5\n")
-            if i == 0:
-                f.write("    :open:\n")
-
-            for line in info_lines:
-                f.write(f"    {line}")
+        f.writelines(lines)
 
 
 def write_readme(path):
