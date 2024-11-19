@@ -412,3 +412,10 @@ class Patch(HasAttrs):
         if not self.has_redshifts:
             return None
         return DataChunk.getattr(self.load_data(), "redshifts")
+    
+    @property
+    def kappa(self) -> NDArray | None:
+        """Kappa or ``None`` if there are no kappa."""
+        if not self.has_kappa:
+            return None
+        return DataChunk.getattr(self.load_data(), "kappa")
