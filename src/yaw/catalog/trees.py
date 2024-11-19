@@ -247,6 +247,7 @@ class AngularTree(Sized):
         *,
         weight_scale: float | None = None,
         weight_res: int = 50,
+        mode: str = "nn",
     ) -> NDArray[np.float64]:
         """
         Count the nubmer of neighbours with another tree.
@@ -267,6 +268,11 @@ class AngularTree(Sized):
             weight_res:
                 The number of angular bins to use to approximate the weighting
                 by separation.
+            mode: 
+                The mode for which the count is computed. mode="nn" means the counts
+                will be the sum of weights; mode="kn" or "nk" means the counts will be weights
+                for one tree, weights * kappa for the other. mode="kk" means both trees will
+                use kappa * weights.
 
         Returns:
             Pair counts between pairs of lower and upper angular limits.
@@ -276,21 +282,29 @@ class AngularTree(Sized):
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
         
         # determine the weights that goes into the counts:
-        if self.kappa is None:
-            weight1 = self.weights
-        elif self.kappa is not None:
-            weight1 = self.weights * self.kappa
-            
-        if other.kappa is None:
-            weight2 = other.weights
-        elif other.kappa is not None:
-            weight2 = other.weights * other.kappa
+        if mode == "nn":
+            count_weights = (self.weights, other.weights)
+        elif mode == "nk":
+            if other.kappa is not None:
+                count_weights = (self.weights, other.weights * other.kappa)
+            else:
+                raise ValueError("No kappa for the second tree.")
+        elif mode == "kn":
+            if self.kappa is not None:
+                count_weights = (self.weights * self.kappa, other.weights)
+            else:
+                raise ValueError("No kappa for the first tree.")
+        elif mode == "kk":
+            if (other.kappa is not None) and (self.kappa is not None):
+                count_weights = (self.weights * self.kappa, other.weights * other.kappa)
+            else:
+                raise ValueError("No kappa for both trees.")
         
         try:
             counts = self.tree.count_neighbors(
                 other.tree,
                 r=AngularDistances(ang_bins).to_3d(),
-                weights=(weight1, weight2),
+                weights=count_weights,
                 cumulative=cumulative,
             ).astype(np.float64)
         except IndexError:
