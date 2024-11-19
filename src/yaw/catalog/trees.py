@@ -14,7 +14,7 @@ as pickle file in the patch's cache directory.
 from __future__ import annotations
 
 import pickle
-from collections.abc import Iterable, Sized
+from collections.abc import Iterable
 from itertools import repeat
 from typing import TYPE_CHECKING
 
@@ -159,7 +159,7 @@ def get_counts_for_limits(
     return final_counts
 
 
-class AngularTree(Sized):
+class AngularTree:
     """
     A binary search tree for angular coordinates.
 
@@ -183,14 +183,14 @@ class AngularTree(Sized):
             The number of data points stored in this tree.
         weights:
             The array of weights for the datapoints, default on 1.0.
-        total:
-            The total weight of points stored in the tree, defaults to number
-            of points if no weights are provided.
+        sum_weights:
+            The sum of weights stored in the tree, defaults to number of points
+            if no weights are provided.
         tree:
             The underlying :obj:`scipy.spatial.KDTree`.
     """
 
-    __slots__ = ("num_records", "weights", "total", "tree")
+    __slots__ = ("num_records", "weights", "sum_weights", "tree")
 
     def __init__(
         self,
@@ -203,22 +203,19 @@ class AngularTree(Sized):
 
         if weights is None:
             self.weights = None
-            self.total = float(self.num_records)
+            self.sum_weights = float(self.num_records)
 
         elif len(weights) != self.num_records:
             raise ValueError("shape of 'coords' and 'weights' does not match")
 
         else:
             self.weights = np.asarray(weights).astype(np.float64, copy=False)
-            self.total = float(self.weights.sum())
+            self.sum_weights = float(self.weights.sum())
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(num_records={self.num_records})"
-
-    def __len__(self) -> int:
-        return self.num_records
 
     @property
     def data(self) -> NDArray:

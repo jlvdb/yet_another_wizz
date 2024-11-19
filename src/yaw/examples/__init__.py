@@ -17,7 +17,7 @@ __all__ = [
     "w_pp",
     "normalised_counts",
     "patched_count",
-    "patched_total",
+    "patched_sum_weights",
 ]
 
 
@@ -44,6 +44,6 @@ patched_count = normalised_counts.counts
 """Example data for patch-wise pair counts
 (:obj:`~yaw.correlation.paircounts.PatchedCount` instance, from :obj:`w_sp.dd.count`)"""
 
-patched_total = normalised_counts.totals
-"""Example data for patch-wise total number of objects
-(:obj:`~yaw.correlation.paircounts.PatchedTotal` instance, from :obj:`w_sp.dd.total`)"""
+patched_sum_weights = normalised_counts.sum_weights
+"""Example data for patch-wise sum of object weights
+(:obj:`~yaw.correlation.paircounts.PatchedSumWeights` instance, from :obj:`w_sp.dd.sum_weights`)"""
