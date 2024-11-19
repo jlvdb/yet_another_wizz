@@ -84,8 +84,8 @@ usually it is not necessary to interact with these sub-classes directly.
 .. autosummary::
     :toctree: autogen
 
-    config.scales.ScalesConfig
-    config.binning.BinningConfig
+    config.ScalesConfig
+    config.BinningConfig
 
 
 Correlation measurements
@@ -125,9 +125,9 @@ the normalisation factor for the pair counts):
 .. autosummary::
     :toctree: autogen
 
-    correlation.paircounts.NormalisedCounts
-    correlation.paircounts.PatchedCounts
-    correlation.paircounts.PatchedTotals
+    correlation.NormalisedCounts
+    correlation.PatchedCounts
+    correlation.PatchedSumWeights
 
 
 Data containers
