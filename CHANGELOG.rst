@@ -1,13 +1,113 @@
+.. _changes:
+
 Change log
 ==========
 
 Version 3.0.0
 -------------
 
-Complete rewrite.
+Implements out-of-memory reading of input data and parallel computation using
+the MPI standard.
 
-.. attention::
-    Missing content
+.. warning::
+    This version presents a major rework of the package, which is incompatible
+    with any version 2 code. The changes listed below are a summary of the most
+    important differences in the public API.
+
+
+.. note::
+    Data files produced by version 2 can still be read from version 3 (except
+    for cached catalogs).
+
+
+.. rubric:: Added features
+
+- Implemented parallel processing using the MPI standard to support running on
+  multi-node compute systems. This is optional and python ``multiprocessing``
+  remains the default approach to parallel processing.
+- Creating catalogs from large datasets by reading and processing input data
+  in chunks using a parallelsied pipeline. This removes one of the main memory
+  restriction of version 2 and allows processing arbitrarily large inputs.
+- Improved the performace by a factor of 3-5, depending on the task and
+  hardware.
+- Improved integration of random generators. Added a random generator that
+  generates uniform randoms within the constraints of a `HealPix` map. Catalogs
+  can be generated directly from the generator without creating an intermediate
+  input file.
+
+.. rubric:: Removed features
+
+- Catalogs can no longer be constructed in memory and instead always require a
+  cache directory (previously optional).
+- Bootstrap resampling has been removed permanently (previously not yet
+  implemented).
+- Removed the `treecorr` catalog and backend to compute correlations.
+- The external package `yet_another_wizz_cli`, which implements the command line
+  client ``yaw_cli``, is no longer supported. In a future version, a limited
+  subset of its features may be integrated directly into this package.
+- Removed the docker image.
+
+.. rubric:: Changes
+
+- In ``yaw.catalogs``:
+    - Removed the `treecorr` catalog and the ``NewCatalog`` factory class.
+    - There is only as single catalog class (:obj:`yaw.Catalog`) that is created
+      directly from its factory methods :meth:`~yaw.Catalog.from_file`,
+      :meth:`~yaw.Catalog.from_dataframe`, :meth:`~yaw.Catalog.from_random`.
+      The factory methods now require as first argument a path serving as the
+      cache directory.
+    - Most method arguments have been renamed slightly to be more consistent
+      throughout the package.
+    - The :obj:`~yaw.Catalog` how serves as a dictionary of
+      :obj:`~yaw.patch.Patch` es and most of its previous methods have been
+      removed.
+    - Removed the ``correlate()`` and ``true_redshifts()`` methods from
+      :obj:`~yaw.Catalog`. The latter is now implemented as a constructor for
+      :obj:`~yaw.HistData`.
+
+- In ``yaw.config``:
+    - Removed the ``BackendConfig`` and ``ResamplingConfig`` as both `treecorr`
+      catalogs and bootstrap resampling is no longer supported.
+    - Removed the ``backend`` attribute of :obj:`~yaw.Configuration`.
+    - Renamed the serialisation methods from ``to/from_yaml()`` to
+      ``to/from_file()``.
+    - In the :meth:`~yaw.Config.create` and :meth:`~yaw.Config.modify` methods,
+      renamed ``rbin_num`` to ``resolution``, ``zbin_num`` to ``num_bins``,
+      ``zbins`` to ``edges``, and ``thread_num`` to ``max_workers``. Removed
+      ``rbin_slop`` (no longer needed) and added ``closed``, which indicates
+      which side of the bin edges are closed intervals.
+
+- In ``yaw.correlation``:
+    - Removed the ``linkage`` argument from :func:`~yaw.autocorrelate` and
+      :func:`~yaw.crosscorrelate`. Added ``max_workers``, which overrides the
+      value given in the configuration.
+    - :func:`~yaw.autocorrelate` and :func:`~yaw.crosscorrelate` now always
+      return a list of :obj:`~yaw.CorrFunc` instances. In the previous version,
+      this was only the case if multiple scales where configured.
+    - Changed the internal structure of correlation function HDF5 files.
+    - Removed the attributes related to the redshift binning in
+      :obj:`~yaw.CorrFunc` and :obj:`~yaw.CorrData`. These can now accessed
+      through the ``binning`` attribute (replacing ``get_binning()``). Renamed
+      ``n_bins`` (``n_patches``) to ``num_bins`` (``num_patches``).
+    - Changed the ``get_data()``, ``get_error()``, ``get_covariance()``, and
+      ``get_correlation()`` methods of :obj:`~yaw.CorrData` to attributes called
+      ``data``, ``error``, ``covariance``, and ``correlation``.
+
+- In ``yaw.redshifts``:
+    - The changes to :obj:`~yaw.CorrData` listed above also apply to
+      :obj:`~yaw.RedshiftData` and :obj:`~yaw.HistData`.
+    - Removed the ``rebin()``, ``mean()``, and ``shift()`` methods from
+      :obj:`~yaw.RedshiftData` and :obj:`~yaw.HistData`.
+    - The constructor function :meth:`~yaw.RedshiftData.from_corrfuncs` no
+      longer accepts the ``*_est`` arguments or the ``config`` parameter. The
+      resampling always defaults to using the Davis-Peebles estimator or the
+      Landy-Szalay estimator if random-random pair counts are availble. This is
+      consistent with the previous default behaviour.
+    - Added a new constructor to :obj:`~yaw.HistData` to compute a redshift
+      histogram directly from a :obj:`~yaw.Catalog` instance.
+
+- Fully reimpleneted ``yaw.randoms`` and added a new `HealPix`-Map based
+  random generator.
 
 
 Version 2.5.8
