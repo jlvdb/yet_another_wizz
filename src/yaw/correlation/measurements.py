@@ -17,7 +17,11 @@ from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
 from yaw.correlation.corrfunc import CorrFunc
-from yaw.correlation.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
+from yaw.correlation.paircounts import (
+    NormalisedCounts,
+    PatchedCounts,
+    PatchedSumWeights,
+)
 from yaw.cosmology import separation_physical_to_angle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
@@ -340,7 +344,7 @@ class PatchLinkage:
                     counts = counts * 0.5  # autocorrelation pairs are counted twice
                 scale_counts[i].set_patch_pair(id1, id2, counts)
 
-        totals = PatchedTotals(binning, totals1, totals2, auto=auto)
+        totals = PatchedSumWeights(binning, totals1, totals2, auto=auto)
         return [NormalisedCounts(counts, totals) for counts in scale_counts]
 
     def count_pairs_optional(

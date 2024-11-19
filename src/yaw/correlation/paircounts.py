@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from yaw.utils.abc import TypeSliceIndex
 
 __all__ = [
-    "PatchedTotals",
+    "PatchedSumWeights",
     "PatchedCounts",
     "NormalisedCounts",
 ]
@@ -134,7 +134,7 @@ class BinwisePatchwiseArray(BinwiseData, PatchwiseData, HdfSerializable, Broadca
         return SampledData(self.binning, sum_patches, samples)
 
 
-class PatchedTotals(BinwisePatchwiseArray):
+class PatchedSumWeights(BinwisePatchwiseArray):
     """
     Stores the sum of weights in spatial patches from catalogs in a correlation
     measurement.
@@ -194,7 +194,7 @@ class PatchedTotals(BinwisePatchwiseArray):
         self.totals2 = totals2.astype(np.float64)
 
     @classmethod
-    def from_hdf(cls, source: Group) -> PatchedTotals:
+    def from_hdf(cls, source: Group) -> PatchedSumWeights:
         new = cls.__new__(cls)
         new.auto = source["auto"][()]
 
@@ -232,7 +232,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedTotals:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedSumWeights:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
@@ -240,7 +240,7 @@ class PatchedTotals(BinwisePatchwiseArray):
             binning, self.totals1[item], self.totals2[item], auto=self.auto
         )
 
-    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedTotals:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedSumWeights:
         if isinstance(item, int):
             item = [item]
         return type(self)(
@@ -484,10 +484,10 @@ class NormalisedCounts(BinwisePatchwiseArray):
 
     counts: PatchedCounts
     """Container of correlation pair counts."""
-    totals: PatchedTotals
+    totals: PatchedSumWeights
     """Container of sum of weights in patches of catalogs 1 and 2."""
 
-    def __init__(self, counts: PatchedCounts, totals: PatchedTotals) -> None:
+    def __init__(self, counts: PatchedCounts, totals: PatchedSumWeights) -> None:
         if counts.num_patches != totals.num_patches:
             raise ValueError("number of patches of 'count' and total' does not match")
         if counts.num_bins != totals.num_bins:
@@ -502,7 +502,7 @@ class NormalisedCounts(BinwisePatchwiseArray):
         counts = PatchedCounts.from_hdf(source[name])
 
         name = "total" if is_legacy_dataset(source) else "totals"
-        totals = PatchedTotals.from_hdf(source[name])
+        totals = PatchedSumWeights.from_hdf(source[name])
 
         return cls(counts=counts, totals=totals)
 
