@@ -10,13 +10,14 @@ held im memory, but loaded from a patch's cache directory on request.
 from __future__ import annotations
 
 import logging
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.datachunk import DataAttrs, DataChunk, HasAttrs, get_attrs_formatted
+from yaw.datachunk import DataChunk, DataChunkInfo, HandlesDataChunk
 from yaw.utils.abc import YamlSerialisable
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.datachunk import TypeDataChunk
 
@@ -50,7 +52,7 @@ class Metadata(YamlSerialisable):
     Args:
         num_records:
             Number of data points in the patch.
-        total:
+        sum_weights:
             Sum of point weights or same as :obj:`num_records`.
         center:
             Center point (mean) of all data points,
@@ -62,14 +64,14 @@ class Metadata(YamlSerialisable):
 
     __slots__ = (
         "num_records",
-        "total",
+        "sum_weights",
         "center",
         "radius",
     )
 
     num_records: int
     """Number of data points in the patch."""
-    total: float
+    sum_weights: float
     """Sum of point weights."""
     center: AngularCoordinates
     """Center point (mean) of all data points."""
@@ -80,19 +82,19 @@ class Metadata(YamlSerialisable):
         self,
         *,
         num_records: int,
-        total: float,
+        sum_weights: float,
         center: AngularCoordinates,
         radius: AngularDistances,
     ) -> None:
         self.num_records = num_records
-        self.total = total
+        self.sum_weights = sum_weights
         self.center = center
         self.radius = radius
 
     def __repr__(self) -> str:
         items = (
             f"num_records={self.num_records}",
-            f"total={self.total}",
+            f"sum_weights={self.sum_weights}",
             f"center={self.center.data[0]}",
             f"radius={self.radius.data[0]}",
         )
@@ -130,9 +132,9 @@ class Metadata(YamlSerialisable):
         new = super().__new__(cls)
         new.num_records = len(coords)
         if weights is None:
-            new.total = float(new.num_records)
+            new.sum_weights = float(new.num_records)
         else:
-            new.total = float(np.sum(weights))
+            new.sum_weights = float(np.sum(weights))
 
         if center is not None:
             if len(center) != 1:
@@ -153,13 +155,13 @@ class Metadata(YamlSerialisable):
     def to_dict(self) -> dict[str, Any]:
         return dict(
             num_records=int(self.num_records),
-            total=float(self.total),
+            sum_weights=float(self.sum_weights),
             center=self.center.tolist()[0],  # 2-dim by default
             radius=self.radius.tolist()[0],  # 1-dim by default
         )
 
 
-def read_patch_data(path: Path | str) -> tuple[DataAttrs, TypeDataChunk]:
+def read_patch_data(path: Path | str) -> tuple[DataChunkInfo, TypeDataChunk]:
     """
     Read the binary catalog data stored in cache of a patch.
 
@@ -169,14 +171,14 @@ def read_patch_data(path: Path | str) -> tuple[DataAttrs, TypeDataChunk]:
         ``redshifts``, where the latter two are optional.
     """
     with open(path, mode="rb") as f:
-        data_attrs = DataAttrs.from_bytes(f.read(1))
+        data_attrs = DataChunkInfo.from_bytes(f.read(1))
         dtype = np.dtype([(attr, "f8") for attr in data_attrs.get_list()])
         rawdata = np.fromfile(f, dtype=np.byte)
 
     return data_attrs, rawdata.view(dtype)
 
 
-class PatchWriter(HasAttrs):
+class PatchWriter(AbstractContextManager, HandlesDataChunk):
     """
     Incrementally writes catalog data for a single patch.
 
@@ -188,8 +190,8 @@ class PatchWriter(HasAttrs):
             Path to directory that serves as cache, must not exist.
 
     Keyword Args:
-        data_attributes:
-            An instance of :obj:`yaw.datachunk.DataAttrs` indicating which
+        chunk_info:
+            An instance of :obj:`yaw.datachunk.DataChunkInfo` indicating which
             optional data attributes are processed by the pipeline.
         buffersize:
             Optional, maximum number of records to store in the internal cache.
@@ -218,7 +220,7 @@ class PatchWriter(HasAttrs):
         self,
         cache_path: Path | str,
         *,
-        data_attributes: DataAttrs,
+        chunk_info: DataChunkInfo,
         buffersize: int = 65_536,
     ) -> None:
         self.buffersize = int(buffersize)
@@ -232,9 +234,9 @@ class PatchWriter(HasAttrs):
 
         self._file = None
         self.open()
-        header = data_attributes.to_bytes()
+        header = chunk_info.to_bytes()
         self._file.write(header)
-        self._data_attrs = data_attributes
+        self._chunk_info = chunk_info
 
     def __repr__(self) -> str:
         items = (
@@ -242,8 +244,14 @@ class PatchWriter(HasAttrs):
             f"cachesize={self.cachesize}",
             f"processed={self._num_processed}",
         )
-        attrs = get_attrs_formatted(self._data_attrs)
+        attrs = self._chunk_info.format()
         return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_path}"
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self.close()
 
     @property
     def data_path(self) -> Path:
@@ -303,7 +311,7 @@ class PatchWriter(HasAttrs):
             self.flush()
 
 
-class Patch(HasAttrs):
+class Patch(HandlesDataChunk):
     """
     A single spatial patch of catalog data.
 
@@ -325,7 +333,7 @@ class Patch(HasAttrs):
     moved.
     """
 
-    __slots__ = ("meta", "cache_path", "_data_attrs")
+    __slots__ = ("meta", "cache_path", "_chunk_info")
 
     meta: Metadata
     """Patch meta data; number of records stored in the patch, the sum of
@@ -344,10 +352,10 @@ class Patch(HasAttrs):
         try:
             self.meta = Metadata.from_file(meta_data_file)
             with self.data_path.open(mode="rb") as f:
-                self._data_attrs = DataAttrs.from_bytes(f.read(1))
+                self._chunk_info = DataChunkInfo.from_bytes(f.read(1))
 
         except FileNotFoundError:
-            self._data_attrs, data = read_patch_data(self.data_path)
+            self._chunk_info, data = read_patch_data(self.data_path)
             self.meta = Metadata.compute(
                 DataChunk.get_coords(data),
                 weights=DataChunk.getattr(data, "weights", None),
@@ -357,14 +365,14 @@ class Patch(HasAttrs):
 
     def __repr__(self) -> str:
         num = f"num_records={self.meta.num_records}"
-        attrs = get_attrs_formatted(self._data_attrs)
+        attrs = self._chunk_info.format()
         return f"{type(self).__name__}({num}, {attrs}) @ {self.cache_path}"
 
     def __getstate__(self) -> dict:
         return dict(
             cache_path=self.cache_path,
             meta=self.meta,
-            _data_attrs=self._data_attrs,
+            _chunk_info=self._chunk_info,
         )
 
     def __setstate__(self, state) -> None:

@@ -1,7 +1,6 @@
 """
-Implements the primary function to run the pair counting to measure the
-angular correlation amplitude between data catalogs, one for cross- and one for
-autocorrelation measurements.
+Implements the cross- and autocorrelation functions to run the pair counting to
+measure the angular correlation amplitude between data catalogs.
 """
 
 from __future__ import annotations
@@ -18,7 +17,11 @@ from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
 from yaw.correlation.corrfunc import CorrFunc
-from yaw.correlation.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
+from yaw.correlation.paircounts import (
+    NormalisedCounts,
+    PatchedCounts,
+    PatchedSumWeights,
+)
 from yaw.cosmology import separation_physical_to_angle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
@@ -57,8 +60,8 @@ class PatchPaircounts:
 
     id1: int
     id2: int
-    totals1: NDArray
-    totals2: NDArray
+    sum_weights1: NDArray
+    sum_weights2: NDArray
     counts: NDArray
 
 
@@ -84,8 +87,8 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     trees2 = iter(BinnedTrees(patch_pair.patch2))
 
     binned_counts = np.empty((config.scales.num_scales, num_bins))
-    totals1 = np.empty((num_bins,))
-    totals2 = np.empty((num_bins,))
+    sum_weights1 = np.empty((num_bins,))
+    sum_weights2 = np.empty((num_bins,))
 
     for i, (tree1, tree2) in enumerate(zip(trees1, trees2)):
         counts = tree1.count(
@@ -97,11 +100,11 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
         )
 
         binned_counts[:, i] = counts
-        totals1[i] = tree1.total
-        totals2[i] = tree2.total
+        sum_weights1[i] = tree1.sum_weights
+        sum_weights2[i] = tree2.sum_weights
 
     return PatchPaircounts(
-        patch_pair.id1, patch_pair.id2, totals1, totals2, binned_counts
+        patch_pair.id1, patch_pair.id2, sum_weights1, sum_weights2, binned_counts
     )
 
 
@@ -275,7 +278,7 @@ class PatchLinkage:
         self,
         catalog1: Catalog,
         catalog2: Catalog | None = None,
-    ) -> tuple[PatchPair]:
+    ) -> tuple[PatchPair, ...]:
         """Wrapper around ``iter_patch_id_pairs()`` that yields ``PatchPair``
         instances instead of a tuple of patch IDs."""
         auto = catalog2 is None
@@ -313,8 +316,8 @@ class PatchLinkage:
         binning = self.config.binning.binning
         num_bins = len(binning)
 
-        totals1 = np.zeros((num_bins, num_patches))
-        totals2 = np.zeros((num_bins, num_patches))
+        sum_weights1 = np.zeros((num_bins, num_patches))
+        sum_weights2 = np.zeros((num_bins, num_patches))
         scale_counts = [
             PatchedCounts.zeros(binning, num_patches, auto=auto)
             for _ in range(self.config.scales.num_scales)
@@ -333,16 +336,16 @@ class PatchLinkage:
             id1 = pair_counts.id1
             id2 = pair_counts.id2
 
-            totals1[:, id1] = pair_counts.totals1
-            totals2[:, id2] = pair_counts.totals2
+            sum_weights1[:, id1] = pair_counts.sum_weights1
+            sum_weights2[:, id2] = pair_counts.sum_weights2
 
             for i, counts in enumerate(pair_counts.counts):
                 if auto and id1 == id2:
                     counts = counts * 0.5  # autocorrelation pairs are counted twice
                 scale_counts[i].set_patch_pair(id1, id2, counts)
 
-        totals = PatchedTotals(binning, totals1, totals2, auto=auto)
-        return [NormalisedCounts(counts, totals) for counts in scale_counts]
+        sum_weights = PatchedSumWeights(binning, sum_weights1, sum_weights2, auto=auto)
+        return [NormalisedCounts(counts, sum_weights) for counts in scale_counts]
 
     def count_pairs_optional(
         self,

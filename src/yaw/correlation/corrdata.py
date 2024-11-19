@@ -1,7 +1,9 @@
 """
 Implements a container that stores a correlation function amplitude measurement
-in bins of redshift. Contains the redshift binning, correlation amplitudes,
-jackknife samples thereof, and a covariance estimate.
+in bins of redshift.
+
+Contains the redshift binning, correlation amplitudes, jackknife samples
+thereof, and a covariance estimate.
 """
 
 from __future__ import annotations
