@@ -1370,9 +1370,9 @@ class Catalog(Mapping[int, Patch]):
         """Get the number of records in each patches."""
         return tuple(patch.meta.num_records for patch in self.values())
 
-    def get_totals(self) -> tuple[float, ...]:
+    def get_sum_weights(self) -> tuple[float, ...]:
         """Get the sum of weights of the patches."""
-        return tuple(patch.meta.total for patch in self.values())
+        return tuple(patch.meta.sum_weights for patch in self.values())
 
     def get_centers(self) -> AngularCoordinates:
         """Get the center coordinates of the patches."""

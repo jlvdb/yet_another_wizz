@@ -10,6 +10,7 @@ held im memory, but loaded from a patch's cache directory on request.
 from __future__ import annotations
 
 import logging
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.datachunk import TypeDataChunk
 
@@ -50,7 +52,7 @@ class Metadata(YamlSerialisable):
     Args:
         num_records:
             Number of data points in the patch.
-        total:
+        sum_weights:
             Sum of point weights or same as :obj:`num_records`.
         center:
             Center point (mean) of all data points,
@@ -62,14 +64,14 @@ class Metadata(YamlSerialisable):
 
     __slots__ = (
         "num_records",
-        "total",
+        "sum_weights",
         "center",
         "radius",
     )
 
     num_records: int
     """Number of data points in the patch."""
-    total: float
+    sum_weights: float
     """Sum of point weights."""
     center: AngularCoordinates
     """Center point (mean) of all data points."""
@@ -80,19 +82,19 @@ class Metadata(YamlSerialisable):
         self,
         *,
         num_records: int,
-        total: float,
+        sum_weights: float,
         center: AngularCoordinates,
         radius: AngularDistances,
     ) -> None:
         self.num_records = num_records
-        self.total = total
+        self.sum_weights = sum_weights
         self.center = center
         self.radius = radius
 
     def __repr__(self) -> str:
         items = (
             f"num_records={self.num_records}",
-            f"total={self.total}",
+            f"sum_weights={self.sum_weights}",
             f"center={self.center.data[0]}",
             f"radius={self.radius.data[0]}",
         )
@@ -130,9 +132,9 @@ class Metadata(YamlSerialisable):
         new = super().__new__(cls)
         new.num_records = len(coords)
         if weights is None:
-            new.total = float(new.num_records)
+            new.sum_weights = float(new.num_records)
         else:
-            new.total = float(np.sum(weights))
+            new.sum_weights = float(np.sum(weights))
 
         if center is not None:
             if len(center) != 1:
@@ -153,7 +155,7 @@ class Metadata(YamlSerialisable):
     def to_dict(self) -> dict[str, Any]:
         return dict(
             num_records=int(self.num_records),
-            total=float(self.total),
+            sum_weights=float(self.sum_weights),
             center=self.center.tolist()[0],  # 2-dim by default
             radius=self.radius.tolist()[0],  # 1-dim by default
         )
@@ -176,7 +178,7 @@ def read_patch_data(path: Path | str) -> tuple[DataAttrs, TypeDataChunk]:
     return data_attrs, rawdata.view(dtype)
 
 
-class PatchWriter(HasAttrs):
+class PatchWriter(AbstractContextManager, HasAttrs):
     """
     Incrementally writes catalog data for a single patch.
 
@@ -244,6 +246,12 @@ class PatchWriter(HasAttrs):
         )
         attrs = get_attrs_formatted(self._data_attrs)
         return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_path}"
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args, **kwargs) -> None:
+        self.close()
 
     @property
     def data_path(self) -> Path:

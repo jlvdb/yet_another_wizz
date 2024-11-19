@@ -166,12 +166,12 @@ class TestAngularTree:
     def test_init(self, test_points):
         tree = trees.AngularTree(test_points)
         assert tree.weights is None
-        assert tree.total == float(len(tree))
+        assert tree.sum_weights == float(tree.num_records)
 
         weights = np.random.uniform(size=len(test_points))
         tree = trees.AngularTree(test_points, weights)
         assert_array_equal(tree.weights, weights)
-        assert tree.total == weights.sum()
+        assert tree.sum_weights == weights.sum()
 
         with raises(ValueError, match=".*shape.*"):
             trees.AngularTree(test_points, weights[1:])

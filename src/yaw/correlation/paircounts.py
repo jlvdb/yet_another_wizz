@@ -151,10 +151,10 @@ class PatchedSumWeights(BinwisePatchwiseArray):
     Args:
         binning:
             Redshift bins used when counting pairs between patches.
-        totals1:
+        sum_weights1:
             Sum of weights in patches of catalog 1, array with shape
             (:obj:`num_bins`, :obj:`num_patches`).
-        totals2:
+        sum_weights2:
             Sum of weights in patches of catalog 2, array with shape
             (:obj:`num_bins`, :obj:`num_patches`).
 
@@ -164,47 +164,54 @@ class PatchedSumWeights(BinwisePatchwiseArray):
             measurement.
     """
 
-    __slots__ = ("binning", "auto", "totals1", "totals2")
+    __slots__ = ("binning", "auto", "sum_weights1", "sum_weights2")
 
     binning: Binning
     """Accessor for the redshift :obj:`~yaw.Binning` attribute."""
-    totals1: NDArray
+    sum_weights1: NDArray
     """Sum of weights in patches of catalog 1, array with shape
     (:obj:`num_bins`, :obj:`num_patches`)."""
-    totals2: NDArray
+    sum_weights2: NDArray
     """Sum of weights in patches of catalog 2, array with shape
     (:obj:`num_bins`, :obj:`num_patches`)."""
     auto: bool
     """Whether the pair counts originate from an autocorrelation measurement."""
 
     def __init__(
-        self, binning: Binning, totals1: NDArray, totals2: NDArray, *, auto: bool
+        self,
+        binning: Binning,
+        sum_weights1: NDArray,
+        sum_weights2: NDArray,
+        *,
+        auto: bool,
     ) -> None:
         self.binning = binning
         self.auto = auto
 
-        if totals1.ndim != totals2.ndim != 2:
-            raise ValueError("'totals1/2' must be two-dimensional")
-        if totals1.shape != totals2.shape:
-            raise ValueError("'totals1' and 'totals2' must have the same shape")
-        if totals1.shape[0] != self.num_bins:
-            raise ValueError("first dimension of 'totals1/2' must match 'binning'")
+        if sum_weights1.ndim != sum_weights2.ndim != 2:
+            raise ValueError("'sum_weights1/2' must be two-dimensional")
+        if sum_weights1.shape != sum_weights2.shape:
+            raise ValueError(
+                "'sum_weights1' and 'sum_weights2' must have the same shape"
+            )
+        if sum_weights1.shape[0] != self.num_bins:
+            raise ValueError("first dimension of 'sum_weights1/2' must match 'binning'")
 
-        self.totals1 = totals1.astype(np.float64)
-        self.totals2 = totals2.astype(np.float64)
+        self.sum_weights1 = sum_weights1.astype(np.float64)
+        self.sum_weights2 = sum_weights2.astype(np.float64)
 
     @classmethod
     def from_hdf(cls, source: Group) -> PatchedSumWeights:
         new = cls.__new__(cls)
         new.auto = source["auto"][()]
 
-        new.totals1 = source["totals1"][:]
-        new.totals2 = source["totals2"][:]
         if is_legacy_dataset(source):
-            new.totals1 = np.transpose(new.totals1)
-            new.totals2 = np.transpose(new.totals2)
+            new.sum_weights1 = np.transpose(source["totals1"])
+            new.sum_weights2 = np.transpose(source["totals2"])
             new.binning = load_legacy_binning(source)
         else:
+            new.sum_weights1 = source["sum_weights1"][:]
+            new.sum_weights2 = source["sum_weights2"][:]
             new.binning = Binning.from_hdf(source["binning"])
 
         return new
@@ -214,12 +221,12 @@ class PatchedSumWeights(BinwisePatchwiseArray):
         self.binning.to_hdf(dest.create_group("binning"))
         dest.create_dataset("auto", data=self.auto)
 
-        dest.create_dataset("totals1", data=self.totals1, **HDF_COMPRESSION)
-        dest.create_dataset("totals2", data=self.totals2, **HDF_COMPRESSION)
+        dest.create_dataset("sum_weights1", data=self.sum_weights1, **HDF_COMPRESSION)
+        dest.create_dataset("sum_weights2", data=self.sum_weights2, **HDF_COMPRESSION)
 
     @property
     def num_patches(self) -> int:
-        return self.totals1.shape[1]
+        return self.sum_weights1.shape[1]
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, type(self)):
@@ -227,8 +234,8 @@ class PatchedSumWeights(BinwisePatchwiseArray):
 
         return (
             self.binning == other.binning
-            and np.array_equal(self.totals1, other.totals1)
-            and np.array_equal(self.totals2, other.totals2)
+            and np.array_equal(self.sum_weights1, other.sum_weights1)
+            and np.array_equal(self.sum_weights2, other.sum_weights2)
             and self.auto == other.auto
         )
 
@@ -237,14 +244,17 @@ class PatchedSumWeights(BinwisePatchwiseArray):
         if isinstance(item, int):
             item = [item]
         return type(self)(
-            binning, self.totals1[item], self.totals2[item], auto=self.auto
+            binning, self.sum_weights1[item], self.sum_weights2[item], auto=self.auto
         )
 
     def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedSumWeights:
         if isinstance(item, int):
             item = [item]
         return type(self)(
-            self.binning, self.totals1[:, item], self.totals2[:, item], auto=self.auto
+            self.binning,
+            self.sum_weights1[:, item],
+            self.sum_weights2[:, item],
+            auto=self.auto,
         )
 
     def get_array(self) -> NDArray:
@@ -260,7 +270,7 @@ class PatchedSumWeights(BinwisePatchwiseArray):
         Returns:
             Internal data represented as numpy array.
         """
-        array = np.einsum("bi,bj->bij", self.totals1, self.totals2)
+        array = np.einsum("bi,bj->bij", self.sum_weights1, self.sum_weights2)
 
         if self.auto:
             # for auto-correlation totals we need to set lower trinagle to zero
@@ -462,8 +472,8 @@ class NormalisedCounts(BinwisePatchwiseArray):
     correlation measurement.
 
     This class stores the raw pair counts (:obj:`counts`) and the product of the
-    sum of weights (:obj:`totals`) per redshift bin and combination of patch
-    pairs. The total of the normalised counts per redshift bin, including
+    sum of weights (:obj:`sum_weights`) per redshift bin and combination of
+    patch pairs. The total of the normalised counts per redshift bin, including
     jackknife samples thereof, can be obtained by calling
     :meth:`sample_patch_sum`. The method computes the sum of pair counts over
     all possible pairs of patches and normalises them by dividing them by the
@@ -476,35 +486,39 @@ class NormalisedCounts(BinwisePatchwiseArray):
     Args:
         counts:
             Container of correlation pair counts.
-        totals:
+        sum_weights:
             Container of sum of weights in patches of catalogs 1 and 2.
     """
 
-    __slots__ = ("counts", "totals")
+    __slots__ = ("counts", "sum_weights")
 
     counts: PatchedCounts
     """Container of correlation pair counts."""
-    totals: PatchedSumWeights
+    sum_weights: PatchedSumWeights
     """Container of sum of weights in patches of catalogs 1 and 2."""
 
-    def __init__(self, counts: PatchedCounts, totals: PatchedSumWeights) -> None:
-        if counts.num_patches != totals.num_patches:
-            raise ValueError("number of patches of 'count' and total' does not match")
-        if counts.num_bins != totals.num_bins:
-            raise ValueError("number of bins of 'count' and total' does not match")
+    def __init__(self, counts: PatchedCounts, sum_weights: PatchedSumWeights) -> None:
+        if counts.num_patches != sum_weights.num_patches:
+            raise ValueError(
+                "number of patches of 'count' and sum_weights' does not match"
+            )
+        if counts.num_bins != sum_weights.num_bins:
+            raise ValueError(
+                "number of bins of 'count' and sum_weights' does not match"
+            )
 
         self.counts = counts
-        self.totals = totals
+        self.sum_weights = sum_weights
 
     @classmethod
     def from_hdf(cls, source: Group) -> NormalisedCounts:
         name = "count" if is_legacy_dataset(source) else "counts"
         counts = PatchedCounts.from_hdf(source[name])
 
-        name = "total" if is_legacy_dataset(source) else "totals"
-        totals = PatchedSumWeights.from_hdf(source[name])
+        name = "total" if is_legacy_dataset(source) else "sum_weights"
+        sum_weights = PatchedSumWeights.from_hdf(source[name])
 
-        return cls(counts=counts, totals=totals)
+        return cls(counts=counts, sum_weights=sum_weights)
 
     def to_hdf(self, dest: Group) -> None:
         write_version_tag(dest)
@@ -512,8 +526,8 @@ class NormalisedCounts(BinwisePatchwiseArray):
         group = dest.create_group("counts")
         self.counts.to_hdf(group)
 
-        group = dest.create_group("totals")
-        self.totals.to_hdf(group)
+        group = dest.create_group("sum_weights")
+        self.sum_weights.to_hdf(group)
 
     @property
     def binning(self) -> Binning:
@@ -539,15 +553,15 @@ class NormalisedCounts(BinwisePatchwiseArray):
         if not isinstance(other, type(self)):
             return NotImplemented
 
-        return self.counts == other.counts and self.totals == other.totals
+        return self.counts == other.counts and self.sum_weights == other.sum_weights
 
     def __add__(self, other: Any) -> NormalisedCounts:
         if not isinstance(other, type(self)):
             return NotImplemented
 
-        if self.totals != other.totals:
-            raise ValueError("totals must be identical for operation")
-        return type(self)(self.counts + other.counts, self.totals)
+        if self.sum_weights != other.sum_weights:
+            raise ValueError("'sum_weights' must be identical for operation")
+        return type(self)(self.counts + other.counts, self.sum_weights)
 
     def __radd__(self, other: Any) -> NormalisedCounts:
         if np.isscalar(other) and other == 0:
@@ -556,17 +570,17 @@ class NormalisedCounts(BinwisePatchwiseArray):
         return self.__add__(other)
 
     def __mul__(self, other: Any) -> NormalisedCounts:
-        return type(self)(self.count * other, self.total)
+        return type(self)(self.count * other, self.sum_weights)
 
     def _make_bin_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
         counts = self.counts.bins[item]
-        totals = self.totals.bins[item]
-        return type(self)(counts, totals)
+        sum_weights = self.sum_weights.bins[item]
+        return type(self)(counts, sum_weights)
 
     def _make_patch_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
         counts = self.counts.patches[item]
-        totals = self.totals.patches[item]
-        return type(self)(counts, totals)
+        sum_weights = self.sum_weights.patches[item]
+        return type(self)(counts, sum_weights)
 
     def get_array(self) -> NDArray:
         """
@@ -583,13 +597,13 @@ class NormalisedCounts(BinwisePatchwiseArray):
             Internal data represented as numpy array.
         """
         counts = self.counts.get_array()
-        totals = self.totals.sample_patch_sum()
-        return counts / totals.data
+        sum_weights = self.sum_weights.sample_patch_sum()
+        return counts / sum_weights.data
 
     def sample_patch_sum(self) -> SampledData:
         counts = self.counts.sample_patch_sum()
-        totals = self.totals.sample_patch_sum()
+        sum_weights = self.sum_weights.sample_patch_sum()
 
-        data = counts.data / totals.data
-        samples = counts.samples / totals.samples
+        data = counts.data / sum_weights.data
+        samples = counts.samples / sum_weights.samples
         return SampledData(self.binning, data, samples)
