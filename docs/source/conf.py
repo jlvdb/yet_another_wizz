@@ -79,16 +79,15 @@ html_theme_options = {
     },
     "pygments_light_style": "xcode",
     "pygments_dark_style": "github-dark",
-    "announcement": f"<p>Version 3.0 released!</p>",
+    "announcement": "<p>Version 3.0 released, check the change logs before migrating.</p>",
 }
-html_sidebars = {
-    "**": ["sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
-}
+html_sidebars = {"**": ["sidebar-nav-bs.html", "sidebar-ethical-ads.html"]}
 html_context = {
     "default_mode": "auto",
 }
 
 # -- Build custom files ------------------------------------------------------
+
 
 def write_changes(path):
     with (PKG_ROOT / "CHANGELOG.rst").open() as f:
