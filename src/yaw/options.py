@@ -158,9 +158,9 @@ class Unit(StrEnum):
         arcsec:
             Angular separation in arcseconds.
         kpc_h:
-            Transverse comoving distance in kiloparsec (default).
+            Transverse comoving distance in kiloparsec, preseneted as ``kpc/h``.
         Mpc_h:
-            Transverse comoving distance in Megaparsec.
+            Transverse comoving distance in Megaparsec, preseneted as ``Mpc/h``.
 
     .. Note::
         Methods omitted here, all string methods should be inherited.

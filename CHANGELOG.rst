@@ -12,13 +12,11 @@ the MPI standard.
 .. warning::
     This version presents a major rework of the package, which is incompatible
     with any version 2 code. The changes listed below are a summary of the most
-    important differences in the public API.
-
+    important differences in the public API and not necessarily complete.
 
 .. note::
     Data files produced by version 2 can still be read from version 3 (except
     for cached catalogs).
-
 
 .. rubric:: Added features
 
@@ -109,7 +107,7 @@ the MPI standard.
     - Added a new constructor to :obj:`~yaw.HistData` to compute a redshift
       histogram directly from a :obj:`~yaw.Catalog` instance.
 
-- Fully reimpleneted ``yaw.randoms`` and added a new `HealPix`-Map based
+- Fully reimpleneted ``yaw.randoms`` and added a new `HealPix`-map based
   random generator.
 
 

@@ -6,10 +6,6 @@ API Reference
 This API reference manual details the primary functions and object in the
 `yet_another_wizz` python package ``yaw``.
 
-.. tip::
-    For more details on the internal package structure, refer to the
-    :ref:`developer notes<dev_notes>` below.
-
 .. figure:: /_static/flowchart.svg
     :figwidth: 80%
     :alt: API flowchart
@@ -206,15 +202,9 @@ values and are parsed automatically.
     :toctree: autogen
     :template: enum.rst
 
-    Closed
     BinMethodAuto
     BinMethod
+    Closed
     CovKind
     PlotStyle
-
------
-
-.. _dev_notes:
-
-Developer notes
-===============
+    Unit
