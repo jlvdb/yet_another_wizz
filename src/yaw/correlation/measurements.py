@@ -421,7 +421,7 @@ def autocorrelate(
 
     if parallel.on_root():
         logger.info(
-            "computing auto-correlation with DD, DR" + (", RR" if count_rr else "")
+            "computing auto-correlation from DD, DR" + (", RR" if count_rr else "")
         )
 
     links = PatchLinkage.from_catalogs(config, data, random)
@@ -519,7 +519,7 @@ def crosscorrelate(
 
     if parallel.on_root():
         logger.info(
-            "computing cross-correlation with DD"
+            "computing cross-correlation from DD"
             + (", DR" if count_dr else "")
             + (", RD" if count_rd else "")
             + (", RR" if count_dr and count_dr else "")
