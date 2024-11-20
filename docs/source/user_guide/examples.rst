@@ -132,6 +132,8 @@ correlation functions in 22 linearly spaced bins of redshift in a range of
     config = yaw.Configuration.create(
         rmin=500.0,  # can also be a list of lower scale limits
         rmax=1500.0, # can also be a list of upper scale limits
+        # unit="kpc"  # defaults to angular diameter distance, but angles and
+                      # comoving transverse distance are supported
         # rweight=None,     # if you want to weight pairs by scales
         # resolution=None,  # resolution of weights in no. of log-scale bins
         zmin=0.1,
@@ -244,7 +246,7 @@ however as three separate human-readable text files.
 Additionally, the redshift estimate can be plotted easily:
 
 .. code-block:: python
-    
+
     ncc.plot(
         # label=None,
         # ax=None,  # plot to specific matplotlib axis
