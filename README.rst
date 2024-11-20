@@ -9,8 +9,6 @@
 
 .. image:: https://img.shields.io/pypi/v/yet_another_wizz?logo=pypi&logoColor=blue
     :target: https://pypi.org/project/yet_another_wizz/
-.. image:: https://github.com/jlvdb/yet_another_wizz/actions/workflows/docker-publish.yml/badge.svg
-    :target: https://github.com/jlvdb/yet_another_wizz/actions/workflows/docker-publish.yml
 .. image:: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml/badge.svg
     :target: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml
 .. image:: https://readthedocs.org/projects/yet-another-wizz/badge/?version=latest
@@ -78,7 +76,7 @@ Usage
 For more information about how to use the python code, please refer to the usage
 examples in the official documentation.
 
-There is also a `plugin interface <https://github.com/LSSTDESC/rail_yaw>`_ 
+There is also a `plugin interface <https://github.com/LSSTDESC/rail_yaw>`_
 for the Redshift Assessment Infrastructure Layers
 (`RAIL <https://github.com/LSSTDESC/rail>`_) pipeline.
 
