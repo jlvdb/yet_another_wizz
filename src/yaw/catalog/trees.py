@@ -196,7 +196,7 @@ class AngularTree(Sized):
             The underlying :obj:`scipy.spatial.KDTree`.
     """
 
-    __slots__ = ("num_records", "weights", "total", "tree", "kappa")
+    __slots__ = ("num_records", "weights", "total", "tree", "kappa","total_kappa")
 
     def __init__(
         self,
@@ -224,7 +224,10 @@ class AngularTree(Sized):
             self.total_kappa = 0
         else:
             self.kappa = np.asarray(kappa).astype(np.float64, copy=False)
-            self.total_kappa = float((self.kappa*self.weights).sum())
+            if weights is None:
+                self.total_kappa = float((self.kappa).sum())
+            else:
+                self.total_kappa = float((self.kappa*self.weights).sum())
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
@@ -286,17 +289,32 @@ class AngularTree(Sized):
             count_weights = (self.weights, other.weights)
         elif mode == "nk":
             if other.kappa is not None:
-                count_weights = (self.weights, other.weights * other.kappa)
+                if other.weights is None:
+                    count_weights = (self.weights, other.kappa)
+                else:
+                    count_weights = (self.weights, other.weights * other.kappa)
             else:
                 raise ValueError("No kappa for the second tree.")
         elif mode == "kn":
             if self.kappa is not None:
-                count_weights = (self.weights * self.kappa, other.weights)
+                if self.weights is None:
+                    count_weights = (self.kappa, other.weights)
+                else:
+                    count_weights = (self.weights * self.kappa, other.weights)
             else:
                 raise ValueError("No kappa for the first tree.")
         elif mode == "kk":
             if (other.kappa is not None) and (self.kappa is not None):
-                count_weights = (self.weights * self.kappa, other.weights * other.kappa)
+                if self.weights is None:
+                    if other.weights is None: 
+                        count_weights = (self.kappa, other.kappa)
+                    else:
+                        count_weights = (self.kappa, other.weights * other.kappa)
+                else:
+                    if other.weights is None:
+                        count_weights = (self.weights * self.kappa, other.kappa)
+                    else:
+                        count_weights = (self.weights * self.kappa, other.weights * other.kappa)
             else:
                 raise ValueError("No kappa for both trees.")
         
@@ -372,7 +390,7 @@ def build_trees(
             if 0 < i < len(binning):
                 coords = DataChunk.get_coords(bin_array)
                 weights = DataChunk.getattr(bin_array, "weights", None)
-                kappa = DataChunk.getattr(chunk, "kappa", None)
+                kappa = DataChunk.getattr(bin_array, "kappa", None)
                 tree = AngularTree(coords, weights=weights, kappa=kappa, leafsize=leafsize)
                 trees.append(tree)
 

@@ -327,7 +327,8 @@ class PatchLinkage:
         count_iter = parallel.iter_unordered(
             process_patch_pair,
             patch_pairs,
-            func_args=(self.config,mode=mode),
+            func_args=(self.config,),
+            func_kwargs=dict(mode=mode),
             max_workers=max_workers,
         )
         if progress:
