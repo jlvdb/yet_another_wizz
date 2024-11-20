@@ -15,7 +15,7 @@ from timeit import default_timer
 from typing import TYPE_CHECKING, TypeVar
 
 from yaw._version import __version__
-from yaw.utils import format_time
+from yaw.utils.misc import format_time
 from yaw.utils.parallel import get_size, on_root, use_mpi
 
 if TYPE_CHECKING:
