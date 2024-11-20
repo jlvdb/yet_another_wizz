@@ -1,224 +1,317 @@
+"""
+Implements a class that stores the configuration redshift bins used to split the
+catalogs when measuring angular correlations.
+"""
+
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import numpy as np
+from yaw.binning import Binning
+from yaw.config.base import BaseConfig, ConfigError, Immutable, Parameter, ParamSpec
+from yaw.cosmology import RedshiftBinningFactory, TypeCosmology
+from yaw.options import BinMethod, Closed, NotSet, get_options
 
-from yaw.config import DEFAULT, OPTIONS
-from yaw.config.abc import BaseConfig
-from yaw.config.utils import ConfigError
-from yaw.core.cosmology import BinFactory, TypeCosmology
-from yaw.core.docs import Parameter
-from yaw.core.math import array_equal
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from typing import Any
 
-if TYPE_CHECKING:  # pragma: no cover
     from numpy.typing import NDArray
 
-__all__ = ["BinningConfig"]
+__all__ = [
+    "BinningConfig",
+]
 
 
-@dataclass(frozen=True)
-class BinningConfig(BaseConfig):
-    """TODO"""
+class BinningConfig(BaseConfig, Immutable):
+    """
+    Configuration of the redshift binning for correlation function measurements.
 
-    zbins: NDArray[np.float64] = field(
-        metadata=Parameter(
-            type=float,
-            nargs="*",
-            help="list of custom redshift bin edges, if method is set to 'manual'",
-        )
-    )
-    """Edges of redshift bins."""
-    method: str = field(
-        default=DEFAULT.Binning.method,
-        metadata=Parameter(
-            type=str,
-            choices=OPTIONS.binning,
-            help="redshift binning method, 'logspace' means equal size in log(1+z)",
-            default_text="(default: %(default)s)",
-        ),
-    )
-    """Method used to create redshift binning (defaults to 'manual' if `zbins`
-    are provided), see :obj:`~yaw.config.options.Options.binning` for options."""
-    zmin: float = field(
-        init=False,
-        metadata=Parameter(
-            type=float,
-            help="lower redshift limit",
-            default_text="(default: %(default)s)",
-        ),
-    )
-    """Lowest redshift bin edge."""
-    zmax: float = field(
-        init=False,
-        metadata=Parameter(
-            type=float,
-            help="upper redshift limit",
-            default_text="(default: %(default)s)",
-        ),
-    )
-    """Highest redshift bin edge."""
-    zbin_num: int = field(
-        default=DEFAULT.Binning.zbin_num,
-        init=False,
-        metadata=Parameter(
-            type=int,
-            help="number of redshift bins",
-            default_text="(default: %(default)s)",
-        ),
-    )
-    """Number of redshift bins."""
+    Correlations are measured in bins of redshift, which determines the
+    redshift-resolution of the clustering redshift estimate. This configuration
+    class offers three automatic methods to generate these bins between a
+    minimum and maximum redshift:
 
-    def __post_init__(self) -> None:
-        if len(self.zbins) < 2:
-            raise ConfigError("'zbins' must have at least two edges")
-        object.__setattr__(self, "zbins", np.asarray(self.zbins))
-        BinFactory.check(self.zbins)
-        object.__setattr__(self, "zmin", float(self.zbins[0]))
-        object.__setattr__(self, "zmax", float(self.zbins[-1]))
-        object.__setattr__(self, "zbin_num", len(self.zbins) - 1)
+    - ``linear`` (default): bin edges spaced linearly in redshift :math:`z`,
+    - ``comoving``: bin edges spaced linearly in comoving distance
+      :math:`\\chi(z)`, and
+    - ``logspace``: bin edges spaced linearly in :math:`1+\\ln(z)`.
 
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, self.__class__):
-            return False
-        if self.method != other.method or not array_equal(self.zbins, other.zbins):
-            return False
-        return True
+    Alternatively, custom bin edges may be provided.
 
-    def __repr__(self) -> str:
-        name = self.__class__.__name__
-        zbin_num = self.zbin_num
-        z = f"{self.zmin:.3f}...{self.zmax:.3f}"
-        method = self.method
-        return f"{name}({zbin_num=}, {z=}, {method=})"
+    .. note::
+        The preferred way to create a new configuration instance is using the
+        :meth:`create()` constructor.
+
+        All configuration objects are immutable. To modify an existing
+        configuration, create a new instance with updated values by using the
+        :meth:`modify()` method. The bin edges are recomputed when necessary.
+    """
+
+    binning: Binning
+    """Container for the redshift bins."""
+    method: BinMethod
+    """Method used to generate the bin edges, must be either of ``linear``,
+    ``comoving``, ``logspace``, or ``custom``."""
+
+    def __init__(
+        self,
+        binning: Binning,
+        method: BinMethod | str = BinMethod.linear,
+    ) -> None:
+        if not isinstance(binning, Binning):
+            raise TypeError(f"'binning' must be of type '{type(binning)}'")
+        object.__setattr__(self, "binning", binning)
+        object.__setattr__(self, "method", BinMethod(method))
 
     @property
-    def is_manual(self) -> bool:
-        """Whether the redshift bins are set manually."""
-        return self.method == "manual"
+    def edges(self) -> NDArray:
+        """Array of redshift bin edges."""
+        return self.binning.edges
 
-    @classmethod
-    def create(
-        cls,
-        *,
-        zbins: NDArray[np.float64] | None = None,
-        zmin: float | None = None,
-        zmax: float | None = None,
-        zbin_num: int = DEFAULT.Binning.zbin_num,
-        method: str = DEFAULT.Binning.method,
-        cosmology: TypeCosmology | str | None = None,
-    ) -> BinningConfig:
-        """Create a new redshift binning configuration.
+    @property
+    def zmin(self) -> float:
+        """Lowest redshift bin edge."""
+        return float(self.binning.edges[0])
 
-        If redshift bins (``zbins``) are provided, ``method`` is set to
-        ``"manual"`` and the bins edges are used. If ``zmin`` and ``zmax`` are
-        provided, instead generates a specified number of bins between this
-        lower and upper redshift limit. The spacing of the bins depends the
-        generation method, the default is a linear spacing.
+    @property
+    def zmax(self) -> float:
+        """Highest redshift bin edge."""
+        return float(self.binning.edges[-1])
 
-        .. Note::
+    @property
+    def num_bins(self) -> int:
+        """Number of redshift bins."""
+        return len(self.binning)
 
-            The ``cosmology`` parameter is only used when generating binnings
-            that require cosmological distance computations.
+    @property
+    def closed(self) -> Closed:
+        """String indicating if the bin edges are closed on the ``left`` or the
+        ``right`` side."""
+        return self.binning.closed
 
-        Args:
-            zbins (:obj:`NDArray[np.float64]`):
-                Monotonically increasing redshift bin edges, including the upper
-                edge (ignored if ``zmin`` and ``zmax`` are provided).
-            zmin (:obj:`float`):
-                Minimum redshift, lowest redshift edge.
-            zmax (:obj:`float`):
-                Maximum redshift, highest redshift edge.
-            zbin_num (:obj:`int`, optional):
-                Number of redshift bins to generate.
-            method (:obj:`str`, optional):
-                Method used to create redshift binning, for a list of valid
-                options and their description see
-                :obj:`~yaw.config.options.Options.binning`.
-            cosmology (:obj:`astropy.cosmology.FLRW`, :obj:`~yaw.core.cosmology.CustomCosmology`, optional):
-                Cosmological model used for distance calculations. For a custom
-                model, refer to :mod:`yaw.core.cosmology`.
-
-        Returns:
-            :obj:`BinningConfig`
-        """
-        auto_args_set = (zmin is not None, zmax is not None)
-        manual_args_set = (zbins is not None,)
-        if not all(manual_args_set) and not all(auto_args_set):
-            raise ConfigError("either 'zbins' or 'zmin' and 'zmax' are required")
-
-        elif all(auto_args_set):  # generate zbins
-            if all(manual_args_set):
-                warnings.warn(
-                    "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
-                )
-            if not isinstance(method, str):
-                raise ValueError("'method' must a string")
-            zbins = BinFactory(zmin, zmax, zbin_num, cosmology).get(method)
-
-        else:  # use provided zbins
-            method = "manual"
-
-        return cls(zbins=zbins, method=method)
-
-    def modify(
-        self,
-        zbins: NDArray[np.float64] | None = DEFAULT.NotSet,
-        zmin: float | None = DEFAULT.NotSet,
-        zmax: float | None = DEFAULT.NotSet,
-        zbin_num: int = DEFAULT.NotSet,
-        method: str = DEFAULT.NotSet,
-        cosmology: TypeCosmology | str | None = None,
-    ) -> BinningConfig:
-        """Create a copy of the current configuration with updated parameter
-        values.
-
-        The method arguments are identical to :meth:`create`. Values that should
-        not be modified are by default represented by the special value
-        :obj:`~yaw.config.default.NotSet`.
-
-        .. Note::
-
-            The ``cosmology`` parameter is only used when generating binnings
-            that require cosmological distance computations.
-        """
-        if zbins is not DEFAULT.NotSet:
-            kwargs = dict(zbins=zbins)
-        else:
-            inputs = dict(zmin=zmin, zmax=zmax, zbin_num=zbin_num, method=method)
-            mods = {k: v for k, v in inputs.items() if v is not DEFAULT.NotSet}
-            if self.is_manual:  # use every input as parameter
-                kwargs = mods
-            else:  # keep the existing parameters and update with inputs
-                kwargs = self.to_dict()
-                kwargs.update(mods)
-        return self.__class__.create(**kwargs, cosmology=cosmology)
-
-    def to_dict(self) -> dict[str, Any]:
-        if self.is_manual:
-            return dict(method=self.method, zbins=self.zbins.tolist())
-        else:
-            return dict(
-                zmin=self.zmin,
-                zmax=self.zmax,
-                zbin_num=self.zbin_num,
-                method=self.method,
-            )
+    @property
+    def is_custom(self) -> bool:
+        """Whether the bin edges are provided by the user."""
+        return self.method == "custom"
 
     @classmethod
     def from_dict(
         cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
     ) -> BinningConfig:
-        """Create a class instance from a dictionary representation of the
-        minimally required data.
+        """
+        Restore the class instance from a python dictionary.
 
         Args:
-            the_dict (:obj:`dict`):
-                Dictionary containing the data.
-            cosmology (:obj:`astropy.cosmology.FLRW`, :obj:`~yaw.core.cosmology.CustomCosmology`, optional):
-                Cosmological model used for distance calculations. For a custom
-                model, refer to :mod:`yaw.core.cosmology`.
+            the_dict:
+                Dictionary containing all required data attributes to restore
+                the instance, see also :meth:`to_dict()`.
+            cosmology:
+                Optional, cosmological model to use for distance computations.
+
+        Returns:
+            Restored class instance.
+
+        .. caution::
+            This cosmology object is not stored with this instance, but should
+            be managed by the top level :obj:`~yaw.Configuration` class.
         """
+        if the_dict["method"] == "custom":
+            edges = the_dict.pop("edges")
+            closed = the_dict.pop("closed")
+            binning = Binning(edges, closed=closed)
+            return cls(binning, **the_dict)
+
         return cls.create(**the_dict, cosmology=cosmology)
+
+    def to_dict(self) -> dict[str, Any]:
+        if self.is_custom:
+            the_dict = dict(edges=self.binning.edges)
+
+        else:
+            the_dict = dict(
+                zmin=self.zmin,
+                zmax=self.zmax,
+                num_bins=self.num_bins,
+            )
+
+        the_dict["method"] = str(self.method)
+        the_dict["closed"] = str(self.closed)
+        return the_dict
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, type(self)):
+            return False
+
+        return self.method == other.method and self.binning == other.binning
+
+    @classmethod
+    def get_paramspec(cls) -> ParamSpec:
+        params = [
+            Parameter(
+                name="zmin",
+                help="Lowest redshift bin edge to generate.",
+                type=float,
+            ),
+            Parameter(
+                name="zmax",
+                help="Highest redshift bin edge to generate.",
+                type=float,
+            ),
+            Parameter(
+                name="num_bins",
+                help="Number of redshift bins to generate.",
+                type=int,
+                default=30,
+            ),
+            Parameter(
+                name="method",
+                help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
+                type=str,
+                choices=get_options(Closed),
+                default=str(BinMethod.linear),
+            ),
+            Parameter(
+                name="edges",
+                help="Use these custom bin edges instead of generating them.",
+                type=float,
+                is_sequence=True,
+                default=None,
+            ),
+            Parameter(
+                name="closed",
+                help="String indicating if the bin edges are closed on the ``left`` or the ``right`` side.",
+                type=str,
+                choices=get_options(Closed),
+                default=str(Closed.right),
+            ),
+        ]
+        return ParamSpec(params)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        zmin: float | None = None,
+        zmax: float | None = None,
+        num_bins: int = 30,
+        method: BinMethod | str = BinMethod.linear,
+        edges: Iterable[float] | None = None,
+        closed: Closed | str = Closed.right,
+        cosmology: TypeCosmology | None = None,
+    ) -> BinningConfig:
+        """
+        Create a new instance with the given parameters.
+
+        Keyword Args:
+            zmin:
+                Lowest redshift bin edge to generate.
+            zmax:
+                Highest redshift bin edge to generate.
+            num_bins:
+                Number of redshift bins to generate.
+            method:
+                Method used to generate the bin edges, must be either of
+                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+            edges:
+                Use these custom bin edges instead of generating them.
+            closed:
+                String indicating if the bin edges are closed on the ``left`` or
+                the ``right`` side.
+            cosmology:
+                Optional, cosmological model to use for distance computations.
+
+        Returns:
+            New configuration instance.
+
+        .. note::
+            All function parameters are optional, but either ``zmin`` and
+            ``zmax`` (generate bin edges), or ``edges`` (custom bin edges) must
+            be provided.
+
+        .. caution::
+            This cosmology object is not stored with this instance, but should
+            be managed by the top level :obj:`~yaw.Configuration` class.
+        """
+        auto_args_set = (zmin is not None, zmax is not None)
+        custom_args_set = (edges is not None,)
+        if not all(custom_args_set) and not all(auto_args_set):
+            raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
+
+        closed = Closed(closed)
+
+        if all(auto_args_set):  # generate bin edges
+            if all(custom_args_set):
+                warnings.warn(
+                    "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
+                )
+            method = BinMethod(method)
+            bin_func = RedshiftBinningFactory(cosmology).get_method(method)
+            binning = bin_func(zmin, zmax, num_bins, closed=closed)
+
+        else:  # use provided bin edges
+            method = BinMethod.custom
+            binning = Binning(edges, closed=closed)
+
+        return cls(binning, method=method)
+
+    def modify(
+        self,
+        *,
+        zmin: float | NotSet = NotSet,
+        zmax: float | NotSet = NotSet,
+        num_bins: int | NotSet = NotSet,
+        method: BinMethod | str | NotSet = NotSet,
+        edges: Iterable[float] | NotSet = NotSet,
+        closed: Closed | str | NotSet = NotSet,
+        cosmology: TypeCosmology | None | NotSet = NotSet,
+    ) -> BinningConfig:
+        """
+        Create a new configuration instance with updated parameter values.
+
+        Parameter values are only updated if they are provided as inputs to this
+        function, otherwise they are retained from the original instance.
+
+        Keyword Args:
+            zmin:
+                Lowest redshift bin edge to generate.
+            zmax:
+                Highest redshift bin edge to generate.
+            num_bins:
+                Number of redshift bins to generate.
+            method:
+                Method used to generate the bin edges, must be either of
+                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+            edges:
+                Use these custom bin edges instead of generating them.
+            closed:
+                String indicating if the bin edges are closed on the ``left`` or
+                the ``right`` side.
+            cosmology:
+                Optional, cosmological model to use for distance computations.
+
+        Returns:
+            New instance with updated redshift bins.
+
+        .. caution::
+            This cosmology object is not stored with this instance, but should
+            be managed by the top level :obj:`~yaw.Configuration` class.
+        """
+        if edges is NotSet:
+            if method == "custom":
+                raise ConfigError("'method' is 'custom' but no bin edges provided")
+            the_dict = dict()
+            the_dict["zmin"] = self.zmin if zmin is NotSet else zmin
+            the_dict["zmax"] = self.zmax if zmax is NotSet else zmax
+            the_dict["num_bins"] = self.num_bins if num_bins is NotSet else num_bins
+            the_dict["method"] = self.method if method is NotSet else BinMethod(method)
+
+        else:
+            the_dict = dict(edges=edges)
+            the_dict["method"] = BinMethod.custom
+
+        the_dict["method"] = str(the_dict["method"])
+        the_dict["closed"] = str(self.closed if closed is NotSet else Closed(closed))
+
+        return type(self).from_dict(the_dict, cosmology=cosmology)

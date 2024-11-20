@@ -7,3 +7,5 @@ exclude_lines =
     pass
     # Have to re-enable the standard pragma
     pragma: no cover
+    # this is never visited by coverage
+    if TYPE_CHECKING:

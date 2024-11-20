@@ -1,24 +1,29 @@
-"""This module implements the computation of correlation functions with
-:func:`crosscorrelate` and :func:`autocorrelate` from input data catalogues, see
-:mod:`yaw.catalogs`.
+"""
+Implements all code related to computing and expressing correlation functions
+from a set of input data and random catalogs.
 
-These measurement methods return the main class, the correlation function
-:obj:`CorrFunc` container. It holds the normalised pair counts (in
-:obj:`~paircounts.NormalisedCounts` containers) computed within each spatial
-patch and bins of redshift. The actual correlation function values and its
-uncertainty (from resampling the spatial patches) can be computed using the
-:meth:`CorrFunc.sample()`, which returns a :obj:`CorrData` container.
-
-For the conversion of the correlation functions to a redshift estimate refer to
-the :mod:`yaw.redshifts` module.
+The main functions, autocorrelate and crosscorrelate, compute the correlation
+functions stored as a set of pair counts, wrapped in a CorrFunc container.
+The latter can be used to evaluate the pair counts with a correlation estimator
+to obtain the actual measurement of the correlation function, expressed by a
+CorrData object.
 """
 
-from yaw.correlation.corrfuncs import (
-    CorrData,
-    CorrFunc,
-    add_corrfuncs,
-    autocorrelate,
-    crosscorrelate,
+from yaw.correlation.corrdata import CorrData
+from yaw.correlation.corrfunc import CorrFunc
+from yaw.correlation.measurements import autocorrelate, crosscorrelate
+from yaw.correlation.paircounts import (
+    NormalisedCounts,
+    PatchedCounts,
+    PatchedSumWeights,
 )
 
-__all__ = ["CorrData", "CorrFunc", "add_corrfuncs", "autocorrelate", "crosscorrelate"]
+__all__ = [
+    "CorrData",
+    "CorrFunc",
+    "NormalisedCounts",
+    "PatchedCounts",
+    "PatchedSumWeights",
+    "autocorrelate",
+    "crosscorrelate",
+]

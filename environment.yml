@@ -1,0 +1,10 @@
+name: yaw
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - mpi4py
+  - openmpi
+  - pip
+  - pip:
+      - .

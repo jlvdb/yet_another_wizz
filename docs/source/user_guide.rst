@@ -3,11 +3,15 @@
 User guide
 ==========
 
-This guide provides an overview about the project. It explains the installation,
-features and main concepts, and gives an introduction to using the command line
-interface  ``yaw_cli``
-(`separate installation required <https://github.com/jlvdb/yet_another_wizz_cli>`_)
-and the underlying ``yaw`` :ref:`python package<api>` with examples.
+This user guide provides installation instructions, an overview of the features,
+some core concepts of the code, as well as usage examples.
+
+.. attention::
+    The ``yaw_cli`` commandline tool (installed through the
+    ``yet_another_wizz_cli`` package) is deprecated starting with version 3.0.
+
+    It may be reimplemented in a future release of `yet_another_wizz` with a
+    limited feature set.
 
 
 .. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
@@ -22,7 +26,5 @@ and the underlying ``yaw`` :ref:`python package<api>` with examples.
 
         user_guide/getting_started
         user_guide/features
-        user_guide/examples
-        user_guide/cmd
-        user_guide/api
         user_guide/concepts
+        user_guide/examples

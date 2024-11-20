@@ -6,19 +6,19 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-import os
+from pathlib import Path
 
-try:
-    try:  # user has installed the package
-        import yaw
-    except ImportError:  # try local package location
-        import sys
+PKG_ROOT = Path("../../").resolve()
 
-        sys.path.insert(0, os.path.abspath("../../src"))
-        import yaw
-except ImportError as e:
-    if "core._math" in e.args[0]:
-        raise RuntimeError("yet_another_wizz must be compiled") from e
+try:  # user has installed the package
+    import yaw
+except ImportError:  # try local package location
+    import sys
+
+    sys.path.insert(0, str(PKG_ROOT / "src"))
+
+    import yaw
+
 
 project = "yet_another_wizz"
 copyright = "2023, Jan Luca van den Busch"
@@ -45,8 +45,13 @@ templates_path = ["_templates"]
 exclude_patterns = []
 
 autodoc_inherit_docstrings = True
+autodoc_typehints = "signature"
 autosummary_generate = True
-autoclass_content = "both"
+autoclass_content = "class"
+autodoc_default_options = {
+    "special-members": "__call__",
+    "show-inheritance": True,
+}
 
 copybutton_prompt_text = r">>> |\.\.\. |\$ "
 copybutton_prompt_is_regexp = True
@@ -56,14 +61,13 @@ copybutton_line_continuation_character = "\\"
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-pypi = "https://pypi.org/project/yet_another_wizz"
 html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 html_favicon = "_static/icon.ico"
 html_theme_options = {
     "github_url": "https://github.com/jlvdb/yet_another_wizz",
-    "collapse_navigation": True,
+    "collapse_navigation": False,
     "navigation_depth": 3,
     "show_nav_level": 3,
     "show_toc_level": 3,
@@ -73,96 +77,49 @@ html_theme_options = {
         "image_light": "_static/logo-light.svg",
         "image_dark": "_static/logo-dark.svg",
     },
-    "pygment_light_style": "xcode",
-    "pygment_dark_style": "github-dark",
-    "announcement": f"<p>Now available on <a href='{pypi}/'>PyPI</a>!</p>",
+    "pygments_light_style": "xcode",
+    "pygments_dark_style": "github-dark",
+    "announcement": "<p>Version 3.0 released, check the change logs before migrating.</p>",
 }
-html_sidebars = {
-    "**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]
-}
+html_sidebars = {"**": ["sidebar-nav-bs.html", "sidebar-ethical-ads.html"]}
 html_context = {
     "default_mode": "auto",
 }
 
 # -- Build custom files ------------------------------------------------------
 
-# generate a changelog file with dropdown sections
-ver_strs = []
-ver_texts = []
-ver_text = []
-with open("../../CHANGELOG.rst") as f:
-    for line in f.readlines():
-        if line.startswith("Version"):
-            if len(ver_strs) > 0:
-                ver_texts.append(ver_text)
-            ver_strs.append(line.strip().split()[1])
-            ver_text = []
-        elif len(ver_strs) > 0 and not line.startswith("---"):
-            ver_text.append(line)
-    else:
-        ver_texts.append(ver_text)
-with open("changes.rst", "w") as f:
-    f.write("Change log\n==========\n\n")
-    for i, (ver_str, ver_text) in enumerate(zip(ver_strs, ver_texts)):
-        f.write(f".. dropdown:: Version {ver_str}\n")
-        f.write("    :class-title: h5\n")
-        if i == 0:
-            f.write("    :open:\n")
-        for line in ver_text:
-            f.write(f"    {line}")
 
-path = "user_guide/README.rst"
-if not os.path.exists(path):
-    print(f"generating '{path}'")
-    with open(f"../../{os.path.basename(path)}") as r:
-        with open(path, "w") as f:
-            header = True
-            for line in r.readlines():
-                if header:
-                    if line.startswith("*"):
-                        header = False
-                        f.write(line)
-                else:
-                    f.write(line)
-
-path = "user_guide/cmd/default_setup.yaml"
-if not os.path.exists(path):
-    print(f"generating '{path}'")
-    from yaw_cli.pipeline.default_setup import gen_default
-
+def write_changes(path):
+    with (PKG_ROOT / "CHANGELOG.rst").open() as f:
+        lines = f.readlines()
     with open(path, "w") as f:
-        f.write(gen_default(78))
+        f.writelines(lines)
 
-for sub in (
-    "",
-    "init",
-    "cross",
-    "auto",
-    "ztrue",
-    "cache",
-    "merge",
-    "zcc",
-    "plot",
-    "run",
-):
-    path = f"user_guide/cmd/yaw_help_{sub}.txt"
-    if not os.path.exists(path):
-        print(f"generating '{path}'")
-        os.system(f"yaw_cli {sub} --help > {path}")
 
-path = "api/default.py"
-if not os.path.exists(path):
+def write_readme(path):
+    path = Path(path).resolve()
+    path.parent.mkdir(exist_ok=True)
+
     print(f"generating '{path}'")
-with open("../../src/yaw/config/default.py") as f:
-    outlines = []
-    header_over = False
-    start = False
-    for line in f.readlines():
-        if line.startswith("# docs"):
-            header_over = True
-            continue
-        if header_over:
-            outlines.append(line)
-text = "".join(outlines)
-with open(path, "w") as f:
-    f.write(text.lstrip("\n"))
+    with (
+        (PKG_ROOT / "README.rst").open() as source,
+        path.open("w") as f,
+    ):
+        lines = source.readlines()
+
+        for i, line in enumerate(lines):
+            if "end header" in line:
+                start = i + 1
+                break
+        else:
+            raise ValueError("missing 'end header' comment")
+
+        f.write("..\n")
+        f.write("    This is a copy of /README.rst with its header stripped.\n")
+        f.write("\n")
+
+        f.writelines(lines[start:])
+
+
+write_readme("user_guide/README.rst")
+write_changes("changes.rst")
