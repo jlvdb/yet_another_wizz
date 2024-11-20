@@ -34,6 +34,9 @@ the MPI standard.
   generates uniform randoms within the constraints of a `HealPix` map. Catalogs
   can be generated directly from the generator without creating an intermediate
   input file.
+- Added support for units when specifying correlation scales. Scales may now
+  also be angles (radian, degrees, arcmin/sec) or comoving distances (kpc/h,
+  Mpc/h).
 
 .. rubric:: Removed features
 
