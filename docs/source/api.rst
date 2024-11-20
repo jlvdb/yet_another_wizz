@@ -6,10 +6,6 @@ API Reference
 This API reference manual details the primary functions and object in the
 `yet_another_wizz` python package ``yaw``.
 
-.. tip::
-    For more details on the internal package structure, refer to the
-    :ref:`developer notes<dev_notes>` below.
-
 .. figure:: /_static/flowchart.svg
     :figwidth: 80%
     :alt: API flowchart
@@ -163,6 +159,16 @@ Utilities
 
 .. currentmodule:: yaw
 
+Most `yet_another_wizz` code produces detailed log messages. These can be
+filtered and collected easily on standard output or in a log file using the
+following utility function:
+
+.. autosummary::
+    :toctree: autogen
+
+    utils.get_logger
+
+
 There are two utility classes in `yet_another_wizz` that are used to handle
 angular coordinates and distance computations in angular and 3-dimensional
 Euclidean coordintes:
@@ -196,15 +202,9 @@ values and are parsed automatically.
     :toctree: autogen
     :template: enum.rst
 
-    Closed
     BinMethodAuto
     BinMethod
+    Closed
     CovKind
     PlotStyle
-
------
-
-.. _dev_notes:
-
-Developer notes
-===============
+    Unit

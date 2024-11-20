@@ -22,7 +22,6 @@ from yaw.correlation.paircounts import (
     PatchedCounts,
     PatchedSumWeights,
 )
-from yaw.cosmology import separation_physical_to_angle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
@@ -69,19 +68,13 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     """
     Compute the correlation pair counts for a pair of patches.
 
-    - Convert physical scales to angles at all given redshift bin centers.
+    - Convert correlation scales to angles at all given redshift bin centers.
     - Load the precomputed tree for the given patches.
     - Store the sum of weights for both trees in each redshift bin.
     - Iterate bin-trees and store the pair counts per redshift bin and scale.
     """
     zmids = config.binning.binning.mids
     num_bins = len(zmids)
-    angle_min = separation_physical_to_angle(
-        config.scales.rmin, zmids, cosmology=config.cosmology
-    )
-    angle_max = separation_physical_to_angle(
-        config.scales.rmax, zmids, cosmology=config.cosmology
-    )
 
     trees1 = iter(BinnedTrees(patch_pair.patch1))
     trees2 = iter(BinnedTrees(patch_pair.patch2))
@@ -91,10 +84,13 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
     sum_weights2 = np.empty((num_bins,))
 
     for i, (tree1, tree2) in enumerate(zip(trees1, trees2)):
+        ang_min, ang_max = config.scales.scales.get_angle_radian(
+            zmids[i], cosmology=config.cosmology
+        )
         counts = tree1.count(
             tree2,
-            angle_min[i],
-            angle_max[i],
+            ang_min,
+            ang_max,
             weight_scale=config.scales.rweight,
             weight_res=config.scales.resolution,
         )
@@ -142,13 +138,10 @@ def get_max_angle(
     center or a lower bound of ``redshift_limit``.
     """
     min_redshift = max(config.binning.zmin, redshift_limit)
-
-    phys_scales = config.scales.rmax
-    angles = separation_physical_to_angle(
-        phys_scales, min_redshift, cosmology=config.cosmology
+    _, ang_max = config.scales.scales.get_angle_radian(
+        min_redshift, cosmology=config.cosmology
     )
-
-    return AngularDistances(angles.max())
+    return AngularDistances(ang_max.max())
 
 
 class PatchLinkage:

@@ -598,7 +598,7 @@ class NormalisedCounts(BinwisePatchwiseArray):
         """
         counts = self.counts.get_array()
         sum_weights = self.sum_weights.sample_patch_sum()
-        return counts / sum_weights.data
+        return counts / sum_weights.data[:, np.newaxis, np.newaxis]
 
     def sample_patch_sum(self) -> SampledData:
         counts = self.counts.sample_patch_sum()

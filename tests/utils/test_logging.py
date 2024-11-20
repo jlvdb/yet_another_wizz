@@ -43,7 +43,7 @@ def send_logs(log_msg):
 
 
 @mark.parametrize("pretty", [False, True])
-def test_get_default_logger(caplog, pretty):
+def test_get_logger(caplog, pretty):
     caplog.set_level(DEBUG, logger="yaw")
     n_logs = 0
     log_msg = "test msg"
@@ -51,9 +51,9 @@ def test_get_default_logger(caplog, pretty):
     logger_filtered = getLogger("any.module")
     logger_yaw = getLogger("yaw.test")
 
-    logger = logging.get_default_logger("debug", pretty=pretty)
+    logger = logging.get_logger("debug", pretty=pretty)
     logger.level == DEBUG
-    n_logs += 2 - int(pretty)
+    n_logs += 1
     assert len(caplog.records) == n_logs
 
     logger_filtered.debug(log_msg)
