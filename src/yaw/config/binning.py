@@ -262,7 +262,7 @@ class BinningConfig(BaseConfig, Immutable):
         method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
-        cosmology: TypeCosmology | str | None = None,
+        cosmology: TypeCosmology | None = None,
     ) -> BinningConfig:
         """
         Create a new instance with the given parameters.
@@ -328,7 +328,7 @@ class BinningConfig(BaseConfig, Immutable):
         method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | NotSet = NotSet,
         closed: Closed | str | NotSet = NotSet,
-        cosmology: TypeCosmology | str | None | NotSet = NotSet,
+        cosmology: TypeCosmology | None | NotSet = NotSet,
     ) -> BinningConfig:
         """
         Create a new configuration instance with updated parameter values.

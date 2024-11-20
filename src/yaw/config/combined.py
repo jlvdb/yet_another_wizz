@@ -292,6 +292,8 @@ class Configuration(BaseConfig, Immutable):
             ``zmax`` (generate bin edges), or ``edges`` (custom bin edges) must
             be provided.
         """
+        cosmology = parse_cosmology(cosmology)
+
         scales = ScalesConfig.create(
             rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
         )
@@ -305,8 +307,6 @@ class Configuration(BaseConfig, Immutable):
             closed=closed,
             cosmology=cosmology,
         )
-
-        cosmology = parse_cosmology(cosmology)
 
         return cls(
             scales=scales, binning=binning, cosmology=cosmology, max_workers=max_workers
