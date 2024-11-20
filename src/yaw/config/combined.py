@@ -20,7 +20,7 @@ from yaw.cosmology import (
     cosmology_is_equal,
     get_default_cosmology,
 )
-from yaw.options import BinMethod, Closed, NotSet
+from yaw.options import BinMethod, Closed, NotSet, Unit
 from yaw.utils import parallel
 
 if TYPE_CHECKING:
@@ -235,6 +235,7 @@ class Configuration(BaseConfig, Immutable):
         # ScalesConfig
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
+        unit: Unit = Unit.kpc,
         rweight: float | None = None,
         resolution: int | None = None,
         # BinningConfig
@@ -258,6 +259,9 @@ class Configuration(BaseConfig, Immutable):
             rmax:
                 Single or multiple upper scale limits in kpc (angular diameter
                 distance).
+            unit:
+                String describing the angular, physical, or comoving unit of
+                correlation scales (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.
@@ -293,7 +297,7 @@ class Configuration(BaseConfig, Immutable):
             be provided.
         """
         scales = ScalesConfig.create(
-            rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
+            rmin=rmin, rmax=rmax, unit=unit, rweight=rweight, resolution=resolution
         )
 
         binning = BinningConfig.create(
@@ -318,6 +322,7 @@ class Configuration(BaseConfig, Immutable):
         # ScalesConfig
         rmin: Iterable[float] | float | NotSet = NotSet,
         rmax: Iterable[float] | float | NotSet = NotSet,
+        unit: Unit | NotSet = NotSet,
         rweight: float | None | NotSet = NotSet,
         resolution: int | None | NotSet = NotSet,
         # BinningConfig
@@ -344,6 +349,9 @@ class Configuration(BaseConfig, Immutable):
             rmax:
                 Single or multiple upper scale limits in kpc (angular diameter
                 distance).
+            unit:
+                String describing the angular, physical, or comoving unit of
+                correlation scales (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.
@@ -374,7 +382,7 @@ class Configuration(BaseConfig, Immutable):
             New instance with updated parameter values.
         """
         scales = self.scales.modify(
-            rmin=rmin, rmax=rmax, rweight=rweight, resolution=resolution
+            rmin=rmin, rmax=rmax, unit=unit, rweight=rweight, resolution=resolution
         )
 
         binning = self.binning.modify(
