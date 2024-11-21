@@ -503,8 +503,9 @@ def autocorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
+    DD_weights = links.count_pairs(data, mode="nn", **kwargs)
     DD = links.count_pairs(data, mode="kk", **kwargs)
-    return DD
+    return DD, DD_weights
 
 
 def crosscorrelate(
@@ -689,5 +690,5 @@ def crosscorrelate_scalar(
     DD = links.count_pairs(reference, unknown, mode="kn", **kwargs)
     DR = links.count_pairs_optional(reference, unk_rand, mode="kn", **kwargs)
     
-    return DD - DR
+    return DD, DR
 
