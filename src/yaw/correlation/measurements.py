@@ -682,5 +682,9 @@ def crosscorrelate_scalar(
         )
     DD = links.count_pairs(reference, unknown, mode="kn", **kwargs)
     DR = links.count_pairs_optional(reference, unk_rand, mode="kn", **kwargs)
+    
+    # total weights:
+    DD_weights = links.count_pairs(reference, unknown, mode="nn", **kwargs)
+    DR_weights = links.count_pairs_optional(reference, unk_rand, mode="nn", **kwargs)
 
-    return DD, DR
+    return DD, DR, DD_weights, DR_weights
