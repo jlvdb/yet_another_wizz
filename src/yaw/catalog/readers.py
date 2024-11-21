@@ -22,7 +22,13 @@ import pyarrow as pa
 from astropy.io import fits
 from pyarrow import ArrowException, Table, parquet
 
-from yaw.datachunk import ATTR_ORDER, DataAttrs, DataChunk, HasAttrs, TypeDataChunk
+from yaw.datachunk import (
+    ATTR_ORDER,
+    DataChunk,
+    DataChunkInfo,
+    HandlesDataChunk,
+    TypeDataChunk,
+)
 from yaw.utils import common_len_assert, format_long_num, parallel
 
 if TYPE_CHECKING:
@@ -30,6 +36,15 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from yaw.randoms import RandomsBase
+
+__all__ = [
+    "DataFrameReader",
+    "FitsReader",
+    "HDFReader",
+    "ParquetReader",
+    "RandomReader",
+    "new_filereader",
+]
 
 CHUNKSIZE = 16_777_216
 """Default chunk size to use, optimised for parallel performance."""
@@ -43,7 +58,9 @@ class DataFrame(Sequence):
     pass
 
 
-class DataChunkReader(AbstractContextManager, Sized, Iterator[TypeDataChunk], HasAttrs):
+class DataChunkReader(
+    AbstractContextManager, Sized, Iterator[TypeDataChunk], HandlesDataChunk
+):
     """
     Base class for reading data in chunks from a data source.
 
@@ -137,7 +154,7 @@ class RandomReader(DataChunkReader):
         self, generator: RandomsBase, num_randoms: int, chunksize: int | None = None
     ) -> None:
         self.generator = generator
-        self._data_attrs = generator.copy_attrs()
+        self._chunk_info = generator.copy_chunk_info()
 
         self._num_records = num_randoms
         self.chunksize = chunksize or CHUNKSIZE
@@ -150,6 +167,11 @@ class RandomReader(DataChunkReader):
                 format_long_num(num_randoms),
                 len(self),
             )
+
+    def __repr__(self) -> str:
+        source = type(self.generator).__name__
+        attrs = self._chunk_info.format()
+        return f"{type(self)}({source=}, {attrs})"
 
     def __enter__(self) -> Self:
         return self
@@ -225,7 +247,7 @@ class DataReader(DataChunkReader):
         self._columns = {
             attr: name for attr, name in zip(ATTR_ORDER, columns) if name is not None
         }
-        self._data_attrs = DataAttrs(
+        self._chunk_info = DataChunkInfo(
             has_weights=weight_name is not None,
             has_redshifts=redshift_name is not None,
             has_patch_ids=patch_name is not None,
@@ -359,6 +381,10 @@ class DataFrameReader(DataReader):
             degrees=degrees,
         )
 
+    def __repr__(self) -> str:
+        attrs = self._chunk_info.format()
+        return f"{type(self)}({attrs})"
+
     def __enter__(self) -> Self:
         return self
 
@@ -376,6 +402,13 @@ class DataFrameReader(DataReader):
 
 
 class FileReader(DataReader):
+    path: Path
+
+    def __repr__(self) -> str:
+        source = str(self.path)
+        attrs = self._chunk_info.format()
+        return f"{type(self)}({source=}, {attrs})"
+
     def __enter__(self) -> Self:
         return self
 
@@ -468,6 +501,7 @@ class FitsReader(FileReader):
         degrees: bool = True,
         hdu: int = 1,
     ) -> None:
+        self.path = Path(path)
         self._num_records = None
         if parallel.on_root():
             self._file = fits.open(str(path))
@@ -543,6 +577,7 @@ class HDFReader(FileReader):
         degrees: bool = True,
         **kwargs,
     ) -> None:
+        self.path = Path(path)
         self._num_records = None
         if parallel.on_root():
             self._file = h5py.File(str(path), mode="r")
@@ -618,6 +653,7 @@ class ParquetReader(FileReader):
         degrees: bool = True,
         **kwargs,
     ) -> None:
+        self.path = Path(path)
         self._num_records = None
         if parallel.on_root():
             self._file = parquet.ParquetFile(str(path))

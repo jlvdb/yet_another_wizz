@@ -4,7 +4,7 @@ import numpy as np
 from numpy.testing import assert_array_equal
 from pytest import mark
 
-from yaw import utils
+from yaw.utils import misc
 
 
 def test_groupby():
@@ -13,7 +13,7 @@ def test_groupby():
     n_tile = 5
     array = np.tile(items, n_tile)
 
-    for item, (key, data) in zip(items, utils.groupby(array, array)):
+    for item, (key, data) in zip(items, misc.groupby(array, array)):
         assert item == key
         assert_array_equal(data, np.full(n_tile, item))
 
@@ -30,7 +30,7 @@ def test_groupby():
     ],
 )
 def test_format_long_num(value, expect):
-    assert utils.format_long_num(value) == expect
+    assert misc.format_long_num(value) == expect
 
 
 @mark.parametrize(
@@ -43,7 +43,7 @@ def test_format_long_num(value, expect):
     ],
 )
 def test_format_time(value, expect):
-    assert utils.format_time(value) == expect
+    assert misc.format_time(value) == expect
 
 
 @mark.parametrize(
@@ -59,4 +59,4 @@ def test_format_time(value, expect):
     ],
 )
 def test_format_float_fixed_width(value, width, expect):
-    assert utils.format_float_fixed_width(value, width) == expect
+    assert misc.format_float_fixed_width(value, width) == expect

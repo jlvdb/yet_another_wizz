@@ -15,19 +15,19 @@ from timeit import default_timer
 from typing import TYPE_CHECKING, TypeVar
 
 from yaw._version import __version__
-from yaw.utils import format_time
+from yaw.utils.misc import format_time
 from yaw.utils.parallel import get_size, on_root, use_mpi
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from io import TextIOBase
-    from logging import Logger
+    from logging import Handler, Logger
 
 T = TypeVar("T")
 
 __all__ = [
     "Indicator",
-    "get_default_logger",
+    "get_logger",
 ]
 
 INDICATOR_PREFIX = ""
@@ -191,28 +191,27 @@ class OnlyYAWFilter(Filter):
         return record.name.startswith("yaw")
 
 
-def emit_yaw_message(file: TextIOBase, msg: str, prefix: str = "YAW | ") -> None:
-    """Print a message in a format that matches the ``CustomFormatter``."""
-    file.write(f"{Colors.blu}{prefix}{msg}{Colors.rst}\n")
-    file.flush()
+def get_log_formatter() -> Formatter:
+    """Create a plain logging formatter with time stamps."""
+    return Formatter("%(asctime)s - %(levelname)s - %(name)s > %(message)s")
 
 
-def logger_init_messages(
-    logger: Logger,
-    *,
-    pretty: bool,
-    file: TextIOBase,
-) -> None:
-    """
-    Log (or print if ``pretty=True``) a welcome message that shows the current
-    code version and the parallelism environment (MPI or multiprocessing).
-    """
-    welcome_msg = f"yet_another_wizz v{__version__}"
-    if pretty:
-        emit_yaw_message(file, welcome_msg)
-    else:
-        logger.info(welcome_msg)
+def get_pretty_formatter() -> Formatter:
+    """Setup environment to log messages formatted in colours to stdout."""
+    set_indicator_prefix("    |-> ")
+    return CustomFormatter()
 
+
+def configure_handler(handler: Handler, *, pretty: bool, level: int) -> None:
+    """Setup a log handler for the use with yet_another_wizz."""
+    handler.setFormatter(get_pretty_formatter() if pretty else get_log_formatter())
+    handler.setLevel(level)
+    handler.addFilter(OnlyYAWFilter())
+
+
+def emit_parallel_mode_log(logger: Logger) -> None:
+    """Emit a log message informing about the parallel mode the code is running
+    in."""
     if use_mpi():
         environment = "MPI"
     else:
@@ -220,35 +219,68 @@ def logger_init_messages(
     logger.info("running in %s environment with %d workers", environment, get_size())
 
 
-def get_default_logger(
+def emit_welcome(file: TextIOBase) -> None:
+    """Print the code version as welcome message in a format that matches the
+    ``CustomFormatter``."""
+    welcome_msg = f"YAW | yet_another_wizz v{__version__}"
+    file.write(f"{Colors.blu}{welcome_msg}{Colors.rst}\n")
+    file.flush()
+
+
+def get_logger(
     level: str = "info",
     *,
-    pretty: bool = False,
+    stdout: bool = True,
+    file: str | None = None,
+    pretty: bool = True,
     capture_warnings: bool = True,
-    file: TextIOBase = sys.stdout,
-    show_welcome: bool = True,
 ) -> Logger:
     """
-    Create a new root level logger for `yet_another_wizz` specific log messages
-    and display a welcome message. By default, records are written to `stdout`.
+    Create a new root level logger for `yet_another_wizz`.
+
+    Filter log messages according to the level verbosity and filter messages not
+    related to `yet_another_wizz`. By default, records are written to `stdout`,
+    but logs can be directed to a file instead (or both).
+
+    Args:
+        level:
+            The lowest log level to emit (``error``, ``warning``, ``info``, or
+            ``debug``), defaults to ``info``.
+
+    Keyword Args:
+        stdout:
+            Whether to print colour coded log messages to the standard output
+            (the default).
+        file:
+            Optional file path to which standard log messages, including time
+            stamp are written.
+        pretty:
+            Whether to print color coded log messages (the default) to standard
+            output or plain log messages with time stamps.
+        capture_warnings:
+            Whether to capture warnings and emit them as log messages with level
+            ``warning``.
+
+    Returns:
+        The fully configured logger instance.
     """
     level_code = getattr(logging, level.upper())
+    handlers = []
 
-    if pretty:
-        formatter = CustomFormatter()
-        set_indicator_prefix("    |-> ")
-    else:
-        formatter = Formatter("%(asctime)s - %(levelname)s - %(name)s > %(message)s")
+    if stdout:
+        emit_welcome(sys.stdout)
+        handler = logging.StreamHandler(sys.stdout)
+        configure_handler(handler, pretty=pretty, level=level_code)
+        handlers.append(handler)
 
-    handler = logging.StreamHandler(file)
-    handler.setFormatter(formatter)
-    handler.setLevel(level_code)
-    handler.addFilter(OnlyYAWFilter())
+    if file is not None:
+        handler = logging.FileHandler(file)
+        configure_handler(handler, pretty=False, level=level_code)
+        handlers.append(handler)
 
-    logging.basicConfig(level=level_code, handlers=[handler])
+    logging.basicConfig(level=level_code, handlers=handlers)
     logging.captureWarnings(capture_warnings)
     logger = logging.getLogger("yaw")
 
-    if show_welcome and on_root():
-        logger_init_messages(logger, pretty=pretty, file=file)
+    emit_parallel_mode_log(logger)
     return logger

@@ -14,14 +14,14 @@ as pickle file in the patch's cache directory.
 from __future__ import annotations
 
 import pickle
-from collections.abc import Iterable, Sized
+from collections.abc import Iterable
 from itertools import repeat
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.spatial import KDTree
 
-from yaw.binning import parse_binning
+from yaw.binning import Binning
 from yaw.coordinates import AngularDistances
 from yaw.datachunk import DataChunk
 from yaw.options import Closed
@@ -159,7 +159,7 @@ def get_counts_for_limits(
     return final_counts
 
 
-class AngularTree(Sized):
+class AngularTree:
     """
     A binary search tree for angular coordinates.
 
@@ -187,16 +187,23 @@ class AngularTree(Sized):
             The array of weights for the datapoints, default on 1.0.
         kappa:
             The array of kappa for the datapoints, if not supplied it is None.
-        total:
-            The total weight of points stored in the tree, defaults to number
-            of points if no weights are provided.
+        sum_weights:
+            The sum of weights stored in the tree, defaults to number of points
+            if no weights are provided.
         total_kappa:
             The total weighted kappa value of points stored in the tree; used for mean subtraction.
         tree:
             The underlying :obj:`scipy.spatial.KDTree`.
     """
 
-    __slots__ = ("num_records", "weights", "total", "tree", "kappa","total_kappa")
+    __slots__ = (
+        "num_records",
+        "weights",
+        "sum_weights",
+        "tree",
+        "kappa",
+        "total_kappa",
+    )
 
     def __init__(
         self,
@@ -210,15 +217,15 @@ class AngularTree(Sized):
 
         if weights is None:
             self.weights = None
-            self.total = float(self.num_records)
+            self.sum_weights = float(self.num_records)
 
         elif len(weights) != self.num_records:
             raise ValueError("shape of 'coords' and 'weights' does not match")
 
         else:
             self.weights = np.asarray(weights).astype(np.float64, copy=False)
-            self.total = float(self.weights.sum())
-            
+            self.sum_weights = float(self.weights.sum())
+
         if kappa is None:
             self.kappa = None
             self.total_kappa = 0
@@ -227,15 +234,12 @@ class AngularTree(Sized):
             if weights is None:
                 self.total_kappa = float((self.kappa).sum())
             else:
-                self.total_kappa = float((self.kappa*self.weights).sum())
+                self.total_kappa = float((self.kappa * self.weights).sum())
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(num_records={self.num_records})"
-
-    def __len__(self) -> int:
-        return self.num_records
 
     @property
     def data(self) -> NDArray:
@@ -271,7 +275,7 @@ class AngularTree(Sized):
             weight_res:
                 The number of angular bins to use to approximate the weighting
                 by separation.
-            mode: 
+            mode:
                 The mode for which the count is computed. mode="nn" means the counts
                 will be the sum of weights; mode="kn" or "nk" means the counts will be weights
                 for one tree, weights * kappa for the other. mode="kk" means both trees will
@@ -283,7 +287,7 @@ class AngularTree(Sized):
         ang_limits = parse_ang_limits(ang_min, ang_max)
         ang_bins = get_ang_bins(ang_limits, weight_scale, weight_res)
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
-        
+
         # determine the weights that goes into the counts:
         if mode == "nn":
             count_weights = (self.weights, other.weights)
@@ -306,7 +310,7 @@ class AngularTree(Sized):
         elif mode == "kk":
             if (other.kappa is not None) and (self.kappa is not None):
                 if self.weights is None:
-                    if other.weights is None: 
+                    if other.weights is None:
                         count_weights = (self.kappa, other.kappa)
                     else:
                         count_weights = (self.kappa, other.weights * other.kappa)
@@ -314,10 +318,13 @@ class AngularTree(Sized):
                     if other.weights is None:
                         count_weights = (self.weights * self.kappa, other.kappa)
                     else:
-                        count_weights = (self.weights * self.kappa, other.weights * other.kappa)
+                        count_weights = (
+                            self.weights * self.kappa,
+                            other.weights * other.kappa,
+                        )
             else:
                 raise ValueError("No kappa for both trees.")
-        
+
         try:
             counts = self.tree.count_neighbors(
                 other.tree,
@@ -338,11 +345,10 @@ class AngularTree(Sized):
 
 def build_trees(
     patch: Patch,
-    binning: NDArray | None,
+    binning: Binning | None,
     *,
-    closed: Closed,
     leafsize: int,
-) -> AngularTree | tuple[AngularTree]:
+) -> AngularTree | tuple[AngularTree, ...]:
     """
     Build a (set of) trees from the data of a patch.
 
@@ -353,12 +359,10 @@ def build_trees(
         patch:
             The catalog patch from which the tree(s) are constructed.
         binning:
-            The optional redshift bin edges to use for binning the patch data.
+            The redshift :obj:`~yaw.Binning` to apply when building the tree(s),
+            otherwise ``None``.
 
     Keyword Args:
-        closed:
-            Whether the intervals of the bin edges are closed on the ``left`` or
-            ``right`` side.
         leafsize:
             The number of points stored in the leaf nodes of the tree.
 
@@ -381,17 +385,20 @@ def build_trees(
         trees = AngularTree(coords, weights, kappa, leafsize=leafsize)
 
     else:
-        binning = np.asarray(binning)
         redshifts = DataChunk.getattr(chunk, "redshifts", None)
-        bin_idx = np.digitize(redshifts, binning, right=(closed == Closed.right))
+        bin_idx = np.digitize(
+            redshifts, binning.edges, right=(binning.closed == Closed.right)
+        )
 
         trees = []
         for i, bin_array in groupby(bin_idx, chunk):
-            if 0 < i < len(binning):
+            if 0 < i <= len(binning):
                 coords = DataChunk.get_coords(bin_array)
                 weights = DataChunk.getattr(bin_array, "weights", None)
                 kappa = DataChunk.getattr(bin_array, "kappa", None)
-                tree = AngularTree(coords, weights=weights, kappa=kappa, leafsize=leafsize)
+                tree = AngularTree(
+                    coords, weights=weights, kappa=kappa, leafsize=leafsize
+                )
                 trees.append(tree)
 
     return trees
@@ -441,16 +448,18 @@ class BinnedTrees(Iterable[AngularTree]):
         if not self.binning_file.exists():
             raise FileNotFoundError(f"no trees found for patch at '{self.cache_path}'")
 
-        binning = np.fromfile(self.binning_file)
-        self.binning = None if len(binning) == 0 else binning
+        with self.binning_file.open(mode="rb") as f:
+            closed_left = int.from_bytes(f.read(1), byteorder="big")
+            closed = Closed.left if bool(closed_left) else Closed.right
+            edges = np.fromfile(f)
+        self.binning = None if len(edges) == 0 else Binning(edges, closed=closed)
 
     @classmethod
     def build(
         cls,
         patch: Patch,
-        binning: NDArray | None = None,
+        binning: Binning | None,
         *,
-        closed: Closed | str = Closed.right,
         leafsize: int = 16,
         force: bool = False,
     ) -> BinnedTrees:
@@ -465,13 +474,10 @@ class BinnedTrees(Iterable[AngularTree]):
             patch:
                 Patch which provides the input data and the cache directory.
             binning:
-                Optional, must be an array of redshift bin edges or ``None`` to
-                not perform any binning.
+                The redshift :obj:`~yaw.Binning` to apply when building the
+                tree(s), otherwise ``None``.
 
         Keyword Args:
-            closed:
-                Whether the intervals of the bin edges are closed on the
-                ``left`` or ``right`` side.
             leafsize:
                 The number of points stored in the leaf nodes of the tree.
             force:
@@ -485,9 +491,6 @@ class BinnedTrees(Iterable[AngularTree]):
             ValueError:
                 If bin edges are provided but patch has not redshifts attached.
         """
-        binning = parse_binning(binning, optional=True)
-        closed = Closed(closed)
-
         try:
             assert not force
             new = cls(patch)  # trees exists, load the associated binning
@@ -499,17 +502,25 @@ class BinnedTrees(Iterable[AngularTree]):
             new.binning = binning
 
             with new.trees_file.open(mode="wb") as f:
-                trees = build_trees(patch, binning, closed=closed, leafsize=leafsize)
+                trees = build_trees(patch, binning, leafsize=leafsize)
                 pickle.dump(trees, f)
 
             if binning is None:
-                binning = np.empty(0)  # zero bytes in binary representation
-            binning.tofile(new.binning_file)
+                edges = np.empty(0)  # zero bytes in binary representation
+                closed_left = True  # does not matter here
+            else:
+                edges = binning.edges
+                closed_left = binning.closed == Closed.left
+
+            with new.binning_file.open(mode="wb") as f:
+                byte = int(closed_left).to_bytes(1, byteorder="big")
+                f.write(byte)
+                edges.tofile(f)
 
         return new
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(num_bins={self.num_bins}) @ {self.cache_path}"
+        return f"{type(self).__name__}(binning={self.binning}) @ {self.cache_path}"
 
     @property
     def cache_path(self) -> Path:
@@ -530,7 +541,7 @@ class BinnedTrees(Iterable[AngularTree]):
     def num_bins(self) -> int | None:
         """Number of redshift bins used for the trees or ``None``."""
         try:
-            return len(self.binning) - 1
+            return len(self.binning)
         except TypeError:
             return None
 
@@ -544,13 +555,13 @@ class BinnedTrees(Iterable[AngularTree]):
         if self.binning is None and binning is None:
             return True
 
-        elif np.array_equal(self.binning, binning):
+        elif self.binning == binning:
             return True
 
         return False
 
     @property
-    def trees(self) -> AngularTree | tuple[AngularTree]:
+    def trees(self) -> AngularTree | tuple[AngularTree, ...]:
         """
         Load and obtain the pickled, cached binary trees.
 

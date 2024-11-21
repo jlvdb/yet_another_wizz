@@ -17,6 +17,7 @@ __all__ = [
     "CovKind",
     "NotSet",
     "PlotStyle",
+    "Unit",
 ]
 
 
@@ -137,6 +138,45 @@ class PlotStyle(StrEnum):
     point = auto()
     line = auto()
     step = auto()
+
+
+class Unit(StrEnum):
+    """
+    Possible values for parameter ``unit``.
+
+    Attributes:
+        kpc:
+            Transverse angular diameter distance in kiloparsec (default).
+        Mpc:
+            Transverse angular diameter distance in Megaparsec.
+        rad:
+            Angular separation in radian.
+        deg:
+            Angular separation in degrees.
+        arcmin:
+            Angular separation in arcminutes.
+        arcsec:
+            Angular separation in arcseconds.
+        kpc_h:
+            Transverse comoving distance in kiloparsec, preseneted as ``kpc/h``.
+        Mpc_h:
+            Transverse comoving distance in Megaparsec, preseneted as ``Mpc/h``.
+
+    .. Note::
+        Methods omitted here, all string methods should be inherited.
+    """
+
+    # transverse angular diameter distance
+    kpc = auto()
+    Mpc = auto()
+    # angular separation
+    rad = auto()
+    deg = auto()
+    arcmin = auto()
+    arcsec = auto()
+    # transverse comoving distance
+    kpc_h = "kpc/h"
+    Mpc_h = "Mpc/h"
 
 
 def get_options(enum: StrEnum) -> tuple[str, ...]:

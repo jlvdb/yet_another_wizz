@@ -17,7 +17,7 @@ help:
 clean:
 	echo "removing automatically generated files"
 	rm -f source/changes.rst
-	rm -rf source/api/autogen
+	rm -rf source/autogen
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 # Catch-all target: route all unknown targets to Sphinx using the new

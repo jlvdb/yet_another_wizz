@@ -1,7 +1,6 @@
 """
-Implements the primary function to run the pair counting to measure the
-angular correlation amplitude between data catalogs, one for cross- and one for
-autocorrelation measurements.
+Implements the cross- and autocorrelation functions to run the pair counting to
+measure the angular correlation amplitude between data catalogs.
 """
 
 from __future__ import annotations
@@ -18,8 +17,11 @@ from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
 from yaw.correlation.corrfunc import CorrFunc
-from yaw.correlation.paircounts import NormalisedCounts, PatchedCounts, PatchedTotals
-from yaw.cosmology import separation_physical_to_angle
+from yaw.correlation.paircounts import (
+    NormalisedCounts,
+    PatchedCounts,
+    PatchedSumWeights,
+)
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
@@ -32,7 +34,6 @@ if TYPE_CHECKING:
     from yaw.config import Configuration
 
 __all__ = [
-    "PatchLinkage",
     "autocorrelate",
     "crosscorrelate",
 ]
@@ -58,53 +59,51 @@ class PatchPaircounts:
 
     id1: int
     id2: int
-    totals1: NDArray
-    totals2: NDArray
+    sum_weights1: NDArray
+    sum_weights2: NDArray
     counts: NDArray
 
 
-def process_patch_pair(patch_pair: PatchPair, config: Configuration,
-                      mode: str = "nn") -> PatchPaircounts:
+def process_patch_pair(
+    patch_pair: PatchPair, config: Configuration, mode: str = "nn"
+) -> PatchPaircounts:
     """
     Compute the correlation pair counts for a pair of patches.
 
-    - Convert physical scales to angles at all given redshift bin centers.
+    - Convert correlation scales to angles at all given redshift bin centers.
     - Load the precomputed tree for the given patches.
     - Store the sum of weights for both trees in each redshift bin.
     - Iterate bin-trees and store the pair counts per redshift bin and scale.
     """
     zmids = config.binning.binning.mids
     num_bins = len(zmids)
-    angle_min = separation_physical_to_angle(
-        config.scales.rmin, zmids, cosmology=config.cosmology
-    )
-    angle_max = separation_physical_to_angle(
-        config.scales.rmax, zmids, cosmology=config.cosmology
-    )
 
     trees1 = iter(BinnedTrees(patch_pair.patch1))
     trees2 = iter(BinnedTrees(patch_pair.patch2))
 
     binned_counts = np.empty((config.scales.num_scales, num_bins))
-    totals1 = np.empty((num_bins,))
-    totals2 = np.empty((num_bins,))
+    sum_weights1 = np.empty((num_bins,))
+    sum_weights2 = np.empty((num_bins,))
 
     for i, (tree1, tree2) in enumerate(zip(trees1, trees2)):
+        ang_min, ang_max = config.scales.scales.get_angle_radian(
+            zmids[i], cosmology=config.cosmology
+        )
         counts = tree1.count(
             tree2,
-            angle_min[i],
-            angle_max[i],
+            ang_min,
+            ang_max,
             weight_scale=config.scales.rweight,
             weight_res=config.scales.resolution,
             mode=mode,
         )
 
         binned_counts[:, i] = counts
-        totals1[i] = tree1.total
-        totals2[i] = tree2.total
+        sum_weights1[i] = tree1.sum_weights
+        sum_weights2[i] = tree2.sum_weights
 
     return PatchPaircounts(
-        patch_pair.id1, patch_pair.id2, totals1, totals2, binned_counts
+        patch_pair.id1, patch_pair.id2, sum_weights1, sum_weights2, binned_counts
     )
 
 
@@ -142,13 +141,10 @@ def get_max_angle(
     center or a lower bound of ``redshift_limit``.
     """
     min_redshift = max(config.binning.zmin, redshift_limit)
-
-    phys_scales = config.scales.rmax
-    angles = separation_physical_to_angle(
-        phys_scales, min_redshift, cosmology=config.cosmology
+    _, ang_max = config.scales.scales.get_angle_radian(
+        min_redshift, cosmology=config.cosmology
     )
-
-    return AngularDistances(angles.max())
+    return AngularDistances(ang_max.max())
 
 
 class PatchLinkage:
@@ -278,7 +274,7 @@ class PatchLinkage:
         self,
         catalog1: Catalog,
         catalog2: Catalog | None = None,
-    ) -> tuple[PatchPair]:
+    ) -> tuple[PatchPair, ...]:
         """Wrapper around ``iter_patch_id_pairs()`` that yields ``PatchPair``
         instances instead of a tuple of patch IDs."""
         auto = catalog2 is None
@@ -317,8 +313,8 @@ class PatchLinkage:
         binning = self.config.binning.binning
         num_bins = len(binning)
 
-        totals1 = np.zeros((num_bins, num_patches))
-        totals2 = np.zeros((num_bins, num_patches))
+        sum_weights1 = np.zeros((num_bins, num_patches))
+        sum_weights2 = np.zeros((num_bins, num_patches))
         scale_counts = [
             PatchedCounts.zeros(binning, num_patches, auto=auto)
             for _ in range(self.config.scales.num_scales)
@@ -338,16 +334,16 @@ class PatchLinkage:
             id1 = pair_counts.id1
             id2 = pair_counts.id2
 
-            totals1[:, id1] = pair_counts.totals1
-            totals2[:, id2] = pair_counts.totals2
+            sum_weights1[:, id1] = pair_counts.sum_weights1
+            sum_weights2[:, id2] = pair_counts.sum_weights2
 
             for i, counts in enumerate(pair_counts.counts):
                 if auto and id1 == id2:
                     counts = counts * 0.5  # autocorrelation pairs are counted twice
                 scale_counts[i].set_patch_pair(id1, id2, counts)
 
-        totals = PatchedTotals(binning, totals1, totals2, auto=auto)
-        return [NormalisedCounts(counts, totals) for counts in scale_counts]
+        sum_weights = PatchedSumWeights(binning, sum_weights1, sum_weights2, auto=auto)
+        return [NormalisedCounts(counts, sum_weights) for counts in scale_counts]
 
     def count_pairs_optional(
         self,
@@ -432,7 +428,7 @@ def autocorrelate(
 
     if parallel.on_root():
         logger.info(
-            "computing auto-correlation with DD, DR" + (", RR" if count_rr else "")
+            "computing auto-correlation from DD, DR" + (", RR" if count_rr else "")
         )
 
     links = PatchLinkage.from_catalogs(config, data, random)
@@ -492,9 +488,7 @@ def autocorrelate_scalar(
     data.build_trees(edges, closed=closed, **kwargs)
 
     if parallel.on_root():
-        logger.info(
-            "computing auto-correlation with DD"
-        )
+        logger.info("computing auto-correlation with DD")
 
     links = PatchLinkage.from_catalogs(config, data)
     if parallel.on_root():
@@ -589,7 +583,7 @@ def crosscorrelate(
 
     if parallel.on_root():
         logger.info(
-            "computing cross-correlation with DD"
+            "computing cross-correlation from DD"
             + (", DR" if count_dr else "")
             + (", RD" if count_rd else "")
             + (", RR" if count_dr and count_dr else "")
@@ -630,10 +624,10 @@ def crosscorrelate_scalar(
     used to weight the pair counts accordingly.
 
     .. note::
-        The unknown sample randoms are optional. If supplied, the correlation 
+        The unknown sample randoms are optional. If supplied, the correlation
         will be NK - RK; otherwise, NK will be returned, with the mean k
         subtracted over the footprint.
-        
+
     Args:
         config:
             :obj:`~yaw.Configuration` defining the redshift binning and
@@ -669,15 +663,14 @@ def crosscorrelate_scalar(
     reference.build_trees(edges, closed=closed, **kwargs)
 
     unknown.build_trees(None, **kwargs)
-    
+
     if count_dr:
         unk_rand.build_trees(None, **kwargs)
         randoms.append(unk_rand)
 
     if parallel.on_root():
         logger.info(
-            "computing cross-correlation with DD"
-            + (", DR" if count_dr else "")
+            "computing cross-correlation with DD" + (", DR" if count_dr else "")
         )
 
     links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
@@ -689,6 +682,5 @@ def crosscorrelate_scalar(
         )
     DD = links.count_pairs(reference, unknown, mode="kn", **kwargs)
     DR = links.count_pairs_optional(reference, unk_rand, mode="kn", **kwargs)
-    
-    return DD, DR
 
+    return DD, DR

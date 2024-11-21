@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import ABC
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, NewType
 
 import numpy as np
@@ -32,6 +32,13 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 TypeDataChunk = NewType("TypeDataChunk", NDArray)
 
+__all__ = [
+    "ATTR_ORDER",
+    "DataChunkInfo",
+    "DataChunk",
+]
+
+
 PATCH_ID_DTYPE = "i2"
 """Default data type for patch IDs, larger integer type will likely result in
 memory issues with covariance matrix."""
@@ -41,7 +48,7 @@ ATTR_ORDER = ("ra", "dec", "weights", "redshifts", "patch_ids", "kappa")
 
 
 @dataclass
-class DataAttrs:
+class DataChunkInfo:
     """
     Helper class to specify which of the (optional) data chunk attributes are
     available.
@@ -64,7 +71,7 @@ class DataAttrs:
     has_kappa: bool = field(default=False)
 
     @classmethod
-    def from_bytes(cls, info_bytes: bytes) -> DataAttrs:
+    def from_bytes(cls, info_bytes: bytes) -> DataChunkInfo:
         """
         Restore a class instance from a single byte of bit flags.
 
@@ -108,37 +115,44 @@ class DataAttrs:
         attrs.extend(attr for attr in ATTR_ORDER[2:] if getattr(self, f"has_{attr}"))
         return attrs
 
+    def format(self, *, skip_patch_ids: bool = True) -> str:
+        """Helper function to format the boolean attribute flags."""
+        values = asdict(self).copy()
+        if skip_patch_ids:
+            values.pop("has_patch_ids", None)
+        return ", ".join(f"{attr}={value}" for attr, value in values.items())
 
-class HasAttrs(ABC):
+
+class HandlesDataChunk(ABC):
     """
     Base class of objects that create or process data chunks.
     """
 
-    _data_attrs: DataAttrs
+    _chunk_info: DataChunkInfo
 
     @property
     def has_weights(self) -> bool:
         """Whether this data source provides weights."""
-        return self._data_attrs.has_weights
+        return self._chunk_info.has_weights
 
     @property
     def has_redshifts(self) -> bool:
         """Whether this data source provides redshifts."""
-        return self._data_attrs.has_redshifts
+        return self._chunk_info.has_redshifts
 
     @property
     def has_patch_ids(self) -> bool:
         """Whether this data source provides patch IDs."""
-        return self._data_attrs.has_patch_ids
-    
+        return self._chunk_info.has_patch_ids
+
     @property
     def has_kappa(self) -> bool:
         """Whether this data source provides kappa (or any scalar values)."""
-        return self._data_attrs.has_kappa
+        return self._chunk_info.has_kappa
 
-    def copy_attrs(self) -> DataAttrs:
+    def copy_chunk_info(self) -> DataChunkInfo:
         """Copy the data attribute information."""
-        return deepcopy(self._data_attrs)
+        return deepcopy(self._chunk_info)
 
 
 def get_array_dtype(column_names: Iterable[str]) -> DTypeLike:
@@ -188,7 +202,7 @@ class DataChunk:
         kappa: NDArray | None = None,
         degrees: bool = True,
         chkfinite: bool = True,
-    ) -> tuple[DataAttrs, TypeDataChunk]:
+    ) -> tuple[DataChunkInfo, TypeDataChunk]:
         """
         Create a new numpy array holding a chunk of data.
 
@@ -228,7 +242,7 @@ class DataChunk:
         inputs = {
             attr: value for attr, value in zip(ATTR_ORDER, values) if value is not None
         }
-        data_attrs = DataAttrs(
+        data_attrs = DataChunkInfo(
             has_weights=weights is not None,
             has_redshifts=redshifts is not None,
             has_patch_ids=patch_ids is not None,

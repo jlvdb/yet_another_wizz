@@ -21,6 +21,12 @@ if TYPE_CHECKING:
     T = TypeVar("T")
     TypeBaseConfig = TypeVar("TypeBaseConfig", bound="BaseConfig")
 
+__all__ = [
+    "ConfigError",
+    "Parameter",
+    "ParamSpec",
+]
+
 
 class ConfigError(Exception):
     pass
@@ -43,7 +49,7 @@ class Parameter:
     type: type
     is_sequence: bool = field(default=False)
     default: Any = field(default=NotSet)
-    choices: tuple[Any] = field(default=NotSet)
+    choices: tuple[Any, ...] = field(default=NotSet)
 
     def to_dict(self) -> dict[str, Any]:  # NOTE: used by RAIL wrapper
         return {key: val for key, val in asdict(self).items() if val is not NotSet}

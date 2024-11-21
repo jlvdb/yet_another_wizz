@@ -1,7 +1,9 @@
 """
 Implements a container that stores a correlation function amplitude measurement
-in bins of redshift. Contains the redshift binning, correlation amplitudes,
-jackknife samples thereof, and a covariance estimate.
+in bins of redshift.
+
+Contains the redshift binning, correlation amplitudes, jackknife samples
+thereof, and a covariance estimate.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CorrData",
+    "SampledData",
 ]
 
 PRECISION = 10
@@ -186,9 +189,8 @@ class SampledData(BinwiseData):
 
     def __repr__(self) -> str:
         items = (
-            f"num_samples={self.num_samples}",
-            f"num_bins={self.num_bins}",
             f"binning={self.binning}",
+            f"num_samples={self.num_samples}",
         )
         return f"{type(self).__name__}({', '.join(items)})"
 

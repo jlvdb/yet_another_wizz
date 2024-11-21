@@ -4,10 +4,11 @@ import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_equal
 from pytest import fixture, mark, raises
 
+from yaw.binning import Binning
 from yaw.catalog import trees
-from yaw.coordinates import AngularCoordinates
 from yaw.catalog.patch import Patch, PatchWriter
 from yaw.catalog.readers import DataChunk
+from yaw.coordinates import AngularCoordinates
 
 
 @mark.parametrize(
@@ -165,12 +166,12 @@ class TestAngularTree:
     def test_init(self, test_points):
         tree = trees.AngularTree(test_points)
         assert tree.weights is None
-        assert tree.total == float(len(tree))
+        assert tree.sum_weights == float(tree.num_records)
 
         weights = np.random.uniform(size=len(test_points))
         tree = trees.AngularTree(test_points, weights)
         assert_array_equal(tree.weights, weights)
-        assert tree.total == weights.sum()
+        assert tree.sum_weights == weights.sum()
 
         with raises(ValueError, match=".*shape.*"):
             trees.AngularTree(test_points, weights[1:])
@@ -255,10 +256,10 @@ class TestAngularTree:
 
 @fixture(name="test_patch_no_z")
 def fixture_test_patch_no_z(test_points, tmp_path):
-    data = DataChunk.create(test_points.ra, test_points.dec)
+    info, data = DataChunk.create(test_points.ra, test_points.dec)
 
     path = tmp_path / "patch_no_z"
-    writer = PatchWriter(path, has_weights=False, has_redshifts=False)
+    writer = PatchWriter(path, chunk_info=info)
     writer.process_chunk(data)
     writer.close()
 
@@ -267,14 +268,14 @@ def fixture_test_patch_no_z(test_points, tmp_path):
 
 @fixture(name="test_patch")
 def fixture_test_patch(test_points, tmp_path):
-    data = DataChunk.create(
+    info, data = DataChunk.create(
         test_points.ra,
         test_points.dec,
         redshifts=np.arange(len(test_points)) % 2 + 0.5,
     )
 
     path = tmp_path / "patch"
-    writer = PatchWriter(path, has_weights=False, has_redshifts=True)
+    writer = PatchWriter(path, chunk_info=info)
     writer.process_chunk(data)
     writer.close()
 
@@ -283,7 +284,7 @@ def fixture_test_patch(test_points, tmp_path):
 
 class TestBinnedTrees:
     def test_init_unbinned(self, test_patch_no_z):
-        tree = trees.BinnedTrees.build(test_patch_no_z)
+        tree = trees.BinnedTrees.build(test_patch_no_z, None)
         repr(tree)
 
         assert tree.binning is None
@@ -296,23 +297,24 @@ class TestBinnedTrees:
         assert_array_equal(next(iterator).data, tree.trees.data)
 
     def test_reload(self, test_patch):
-        trees.BinnedTrees.build(test_patch)
-        trees.BinnedTrees.build(test_patch)
+        trees.BinnedTrees.build(test_patch, None)
+        trees.BinnedTrees.build(test_patch, None)
         trees.BinnedTrees(test_patch)
 
     def test_init_binned(self, test_patch, test_patch_no_z):
-        binning = [0.0, 1.0, 2.0]
+        binning = Binning([0.0, 1.0, 2.0], closed="left")
         with raises(ValueError, match=".*no 'redshifts'.*"):
             trees.BinnedTrees.build(test_patch_no_z, binning)
 
         tree = trees.BinnedTrees.build(test_patch, binning)
         repr(tree)
 
-        assert_array_equal(tree.binning, binning)
+        assert_array_equal(tree.binning.edges, binning.edges)
+        assert tree.binning.closed == binning.closed
         assert tree.binning_equal(binning)
         assert not tree.binning_equal(binning[1:])
         assert tree.is_binned()
-        assert tree.num_bins is len(binning) - 1
+        assert tree.num_bins is len(binning)
 
         iterator = iter(tree)
         assert_array_equal(next(iterator).data, tree.trees[0].data)

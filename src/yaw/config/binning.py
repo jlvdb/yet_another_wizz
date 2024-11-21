@@ -8,79 +8,20 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING
 
-import astropy.cosmology
-import numpy as np
-from astropy import units
-
 from yaw.binning import Binning
 from yaw.config.base import BaseConfig, ConfigError, Immutable, Parameter, ParamSpec
-from yaw.cosmology import TypeCosmology, get_default_cosmology
-from yaw.options import BinMethod, BinMethodAuto, Closed, NotSet, get_options
+from yaw.cosmology import RedshiftBinningFactory, TypeCosmology
+from yaw.options import BinMethod, Closed, NotSet, get_options
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Iterable
     from typing import Any
 
     from numpy.typing import NDArray
 
-
-class RedshiftBinningFactory:
-    """Simple factory class to create redshift binnings. Takes an optional
-    cosmology as input for distance conversions."""
-
-    def __init__(self, cosmology: TypeCosmology | None = None) -> None:
-        self.cosmology = cosmology or get_default_cosmology()
-
-    def linear(
-        self,
-        min: float,
-        max: float,
-        num_bins: int,
-        *,
-        closed: Closed | str = Closed.right,
-    ) -> Binning:
-        """Creates a linear redshift binning between a min and max redshift."""
-        edges = np.linspace(min, max, num_bins + 1)
-        return Binning(edges, closed=closed)
-
-    def comoving(
-        self,
-        min: float,
-        max: float,
-        num_bins: int,
-        *,
-        closed: Closed | str = Closed.right,
-    ) -> Binning:
-        """Creates a binning linear in comoving distance between a min and max
-        redshift."""
-        comov_min, comov_cmax = self.cosmology.comoving_distance([min, max])
-        comov_edges = np.linspace(comov_min, comov_cmax, num_bins + 1)
-        if not isinstance(comov_edges, units.Quantity):
-            comov_edges = comov_edges * units.Mpc
-
-        edges = astropy.cosmology.z_at_value(
-            self.cosmology.comoving_distance, comov_edges
-        )
-        return Binning(edges.value, closed=closed)
-
-    def logspace(
-        self,
-        min: float,
-        max: float,
-        num_bins: int,
-        *,
-        closed: Closed | str = Closed.right,
-    ) -> Binning:
-        """Creates a binning linear in 1+ln(z) between a min and max redshift."""
-        log_min, log_max = np.log([1.0 + min, 1.0 + max])
-        edges = np.logspace(log_min, log_max, num_bins + 1, base=np.e) - 1.0
-        return Binning(edges, closed=closed)
-
-    def get_method(
-        self, method: BinMethodAuto | str = BinMethodAuto.linear
-    ) -> Callable[..., Binning]:
-        """Use a string identifier to select the desired factory method."""
-        return getattr(self, BinMethodAuto(method))
+__all__ = [
+    "BinningConfig",
+]
 
 
 class BinningConfig(BaseConfig, Immutable):
@@ -229,7 +170,7 @@ class BinningConfig(BaseConfig, Immutable):
                 help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
                 type=str,
                 choices=get_options(Closed),
-                default=BinMethod.linear,
+                default=str(BinMethod.linear),
             ),
             Parameter(
                 name="edges",
@@ -258,7 +199,7 @@ class BinningConfig(BaseConfig, Immutable):
         method: BinMethod | str = BinMethod.linear,
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
-        cosmology: TypeCosmology | str | None = None,
+        cosmology: TypeCosmology | None = None,
     ) -> BinningConfig:
         """
         Create a new instance with the given parameters.
@@ -324,7 +265,7 @@ class BinningConfig(BaseConfig, Immutable):
         method: BinMethod | str | NotSet = NotSet,
         edges: Iterable[float] | NotSet = NotSet,
         closed: Closed | str | NotSet = NotSet,
-        cosmology: TypeCosmology | str | None | NotSet = NotSet,
+        cosmology: TypeCosmology | None | NotSet = NotSet,
     ) -> BinningConfig:
         """
         Create a new configuration instance with updated parameter values.

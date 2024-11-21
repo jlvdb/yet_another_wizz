@@ -26,7 +26,7 @@ import numpy as np
 import treecorr
 from scipy.cluster import vq
 
-from yaw.binning import parse_binning
+from yaw.binning import Binning
 from yaw.catalog.patch import Patch, PatchWriter
 from yaw.catalog.readers import (
     DataChunkReader,
@@ -38,9 +38,9 @@ from yaw.catalog.trees import BinnedTrees, groupby
 from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.datachunk import (
     PATCH_ID_DTYPE,
-    DataAttrs,
     DataChunk,
-    HasAttrs,
+    DataChunkInfo,
+    HandlesDataChunk,
     check_patch_ids,
 )
 from yaw.options import Closed
@@ -57,6 +57,14 @@ if TYPE_CHECKING:
 
     from yaw.catalog.readers import DataFrame
     from yaw.datachunk import TypeDataChunk, TypePatchIDs
+
+__all__ = [
+    "Catalog",
+    "create_patch_centers",
+    "assign_patch_centers",
+    "load_patches",
+    "write_patches",
+]
 
 
 PATCH_NAME_TEMPLATE = "patch_{:d}"
@@ -368,7 +376,7 @@ def load_patches(
     return parallel.COMM.bcast(patches, root=0)
 
 
-class CatalogWriter(AbstractContextManager, HasAttrs):
+class CatalogWriter(AbstractContextManager, HandlesDataChunk):
     """
     A helper class that handles a stream of input catalog data and splits and
     writes it to patches.
@@ -381,8 +389,8 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
         overwrite:
             Whether to overwrite an existing catalog at the given cache
             location.
-        data_attributes:
-            An instance of :obj:`yaw.datachunk.DataAttrs` indicating which
+        chunk_info:
+            An instance of :obj:`yaw.datachunk.DataChunkInfo` indicating which
             optional data attributes are processed by the pipeline.
         buffersize:
             Optional, maximum number of records to store in the internal cache
@@ -404,7 +412,7 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
     """
 
     __slots__ = (
-        "_data_attrs",
+        "_chunk_info",
         "cache_directory",
         "buffersize",
         "writers",
@@ -414,11 +422,11 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
         self,
         cache_directory: Path | str,
         *,
-        data_attributes: DataAttrs,
+        chunk_info: DataChunkInfo,
         overwrite: bool = True,
         buffersize: int = -1,
     ) -> None:
-        self._data_attrs = data_attributes
+        self._chunk_info = chunk_info
         self.cache_directory = Path(cache_directory)
         cache_exists = self.cache_directory.exists()
 
@@ -442,11 +450,10 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
     def __repr__(self) -> str:
         items = (
             f"num_patches={self.num_patches}",
-            f"has_weights={self.has_weights}",
-            f"has_redshifts={self.has_redshifts}",
             f"max_buffersize={self.buffersize * self.num_patches}",
         )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
+        attrs = self._chunk_info.format()
+        return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_directory}"
 
     def __enter__(self) -> Self:
         return self
@@ -468,7 +475,7 @@ class CatalogWriter(AbstractContextManager, HasAttrs):
         except KeyError:
             writer = PatchWriter(
                 get_patch_path_from_id(self.cache_directory, patch_id),
-                data_attributes=self.copy_attrs(),
+                chunk_info=self.copy_chunk_info(),
                 buffersize=self.buffersize,
             )
             self.writers[patch_id] = writer
@@ -558,7 +565,7 @@ def write_patches_unthreaded(
 
         with CatalogWriter(
             cache_directory=path,
-            data_attributes=reader.copy_attrs(),
+            chunk_info=reader.copy_chunk_info(),
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
@@ -639,7 +646,7 @@ if parallel.use_mpi():
     def writer_task(
         cache_directory: Path | str,
         *,
-        data_attributes: DataAttrs,
+        chunk_info: DataChunkInfo,
         overwrite: bool = True,
         buffersize: int = -1,
     ) -> None:
@@ -649,7 +656,7 @@ if parallel.use_mpi():
         recv = parallel.COMM.recv
         with CatalogWriter(
             cache_directory,
-            data_attributes=data_attributes,
+            chunk_info=chunk_info,
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
@@ -717,7 +724,7 @@ if parallel.use_mpi():
         if rank == worker_config.writer_rank:
             writer_task(
                 cache_directory=path,
-                data_attributes=reader.copy_attrs(),
+                chunk_info=reader.copy_chunk_info(),
                 overwrite=overwrite,
                 buffersize=buffersize,
             )
@@ -779,7 +786,7 @@ else:
 
         patch_queue: Queue[dict[int, TypeDataChunk] | EndOfQueue]
         cache_directory: Path | str
-        data_attributes: DataAttrs = field(kw_only=True)
+        chunk_info: DataChunkInfo = field(kw_only=True)
         overwrite: bool = field(default=True, kw_only=True)
         buffersize: int = field(default=-1, kw_only=True)
 
@@ -797,7 +804,7 @@ else:
             with CatalogWriter(
                 self.cache_directory,
                 overwrite=self.overwrite,
-                data_attributes=self.data_attributes,
+                chunk_info=self.chunk_info,
                 buffersize=self.buffersize,
             ) as writer:
                 while (patches := self.patch_queue.get()) is not EndOfQueue:
@@ -882,7 +889,7 @@ else:
             with WriterProcess(
                 patch_queue,
                 cache_directory=path,
-                data_attributes=reader.copy_attrs(),
+                chunk_info=reader.copy_chunk_info(),
                 overwrite=overwrite,
                 buffersize=buffersize,
             ):
@@ -1326,11 +1333,11 @@ class Catalog(Mapping[int, Patch]):
     def __repr__(self) -> str:
         items = (
             f"num_patches={self.num_patches}",
-            f"total={sum(self.get_totals())}",
-            f"has_weights={self.has_weights}",
-            f"has_redshifts={self.has_redshifts}",
+            f"num_records={sum(self.get_num_records())}",
         )
-        return f"{type(self).__name__}({', '.join(items)}) @ {self.cache_directory}"
+        patch = next(iter(self.values()))
+        attrs = patch._chunk_info.format()
+        return f"{type(self).__name__}({', '.join(items)}, {attrs}) @ {self.cache_directory}"
 
     def __len__(self) -> int:
         return len(self._patches)
@@ -1366,13 +1373,13 @@ class Catalog(Mapping[int, Patch]):
             return False
         raise InconsistentPatchesError("'redshifts' not consistent")
 
-    def get_num_records(self) -> tuple[int]:
+    def get_num_records(self) -> tuple[int, ...]:
         """Get the number of records in each patches."""
         return tuple(patch.meta.num_records for patch in self.values())
 
-    def get_totals(self) -> tuple[float]:
+    def get_sum_weights(self) -> tuple[float, ...]:
         """Get the sum of weights of the patches."""
-        return tuple(patch.meta.total for patch in self.values())
+        return tuple(patch.meta.sum_weights for patch in self.values())
 
     def get_centers(self) -> AngularCoordinates:
         """Get the center coordinates of the patches."""
@@ -1419,20 +1426,20 @@ class Catalog(Mapping[int, Patch]):
                 Limit the  number of parallel workers for this operation (all by
                 default). Takes precedence over the value in the configuration.
         """
-        binning = parse_binning(binning, optional=True)
-        closed = Closed(closed)  # parse early for error checks
+        if binning is not None:
+            binning = Binning(binning, closed=closed)
 
         if parallel.on_root():
             logger.debug(
                 "building patch-wise trees (%s)",
-                "unbinned" if binning is None else f"using {len(binning) - 1} bins",
+                "unbinned" if binning is None else f"using {len(binning)} bins",
             )
 
         patch_tree_iter = parallel.iter_unordered(
             BinnedTrees.build,
             self.values(),
             func_args=(binning,),
-            func_kwargs=dict(closed=str(closed), leafsize=leafsize, force=force),
+            func_kwargs=dict(leafsize=leafsize, force=force),
             max_workers=max_workers,
         )
         if progress:
