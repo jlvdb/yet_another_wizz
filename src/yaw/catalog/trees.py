@@ -220,11 +220,11 @@ class AngularTree:
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
     @classmethod
-    def empty(cls) -> AngularTree:
+    def empty(cls, *, has_weights: bool) -> AngularTree:
         """Special constructor for a tree that does not contain data."""
         new = cls.__new__(cls)
         new.num_records = 0
-        new.weights = np.empty(0)
+        new.weights = np.empty(0) if has_weights else None
         new.sum_weights = 0.0
         new.tree = None
         return new
@@ -350,9 +350,8 @@ def build_trees(
                 trees[i] = AngularTree(coords, weights=weights, leafsize=leafsize)
 
         # fill in dummy trees for bins that contain no data
-        trees = tuple(
-            trees.get(i + 1, AngularTree.empty()) for i in range(len(binning))
-        )
+        empty_tree = AngularTree.empty(has_weights=weights is not None)
+        trees = tuple(trees.get(i + 1, empty_tree) for i in range(len(binning)))
 
     return trees
 
