@@ -167,6 +167,9 @@ class AngularTree:
     and angular distances are computed as the corresponding chord distance
     between points.
 
+    To construct a dummy-tree without any data, use the special :meth:`empty`
+    constructor.
+
     Args:
         coords:
             Angular coordinates of points from which the tree is build, must be
@@ -193,7 +196,8 @@ class AngularTree:
         total_kappa:
             The total weighted kappa value of points stored in the tree; used for mean subtraction.
         tree:
-            The underlying :obj:`scipy.spatial.KDTree`.
+            The underlying :obj:`scipy.spatial.KDTree`, may be ``None`` if the
+            tree does not contain any data.
     """
 
     __slots__ = (
@@ -204,6 +208,7 @@ class AngularTree:
         "kappa",
         "total_kappa",
     )
+    tree: KDTree | None
 
     def __init__(
         self,
@@ -238,12 +243,26 @@ class AngularTree:
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
+    @classmethod
+    def empty(cls, *, has_weights: bool, has_kappa: bool) -> AngularTree:
+        """Special constructor for a tree that does not contain data."""
+        new = cls.__new__(cls)
+        new.num_records = 0
+        new.weights = np.empty(0) if has_weights else None
+        new.sum_weights = 0.0
+        new.kappa = np.empty(0) if has_kappa else None
+        new.total_kappa = 0.0
+        new.tree = None
+        return new
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(num_records={self.num_records})"
 
     @property
     def data(self) -> NDArray:
         """Accessor for internally stored data in Euclidean coordinates."""
+        if self.tree is None:
+            return np.empty((0, 3))
         return self.tree.data
 
     def count(
@@ -287,6 +306,9 @@ class AngularTree:
         ang_limits = parse_ang_limits(ang_min, ang_max)
         ang_bins = get_ang_bins(ang_limits, weight_scale, weight_res)
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
+
+        if self.tree is None or other.tree is None:
+            return np.zeros(len(ang_limits))
 
         # determine the weights that goes into the counts:
         if mode == "nn":
@@ -390,16 +412,22 @@ def build_trees(
             redshifts, binning.edges, right=(binning.closed == Closed.right)
         )
 
-        trees = []
+        trees = {}
         for i, bin_array in groupby(bin_idx, chunk):
             if 0 < i <= len(binning):
                 coords = DataChunk.get_coords(bin_array)
                 weights = DataChunk.getattr(bin_array, "weights", None)
                 kappa = DataChunk.getattr(bin_array, "kappa", None)
-                tree = AngularTree(
+                trees[i] = AngularTree(
                     coords, weights=weights, kappa=kappa, leafsize=leafsize
                 )
-                trees.append(tree)
+
+        # fill in dummy trees for bins that contain no data
+        empty_tree = AngularTree.empty(
+            has_weights=weights is not None,
+            has_kappa=kappa is not None,
+        )
+        trees = tuple(trees.get(i + 1, empty_tree) for i in range(len(binning)))
 
     return trees
 
