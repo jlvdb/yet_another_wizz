@@ -413,8 +413,8 @@ def autocorrelate(
         logger.info("building trees for 2 catalogs")
     kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
 
-    edges = config.binning.binning.edges
-    closed = config.binning.binning.closed
+    edges = config.binning.edges
+    closed = config.binning.closed
 
     data.build_trees(edges, closed=closed, **kwargs)
     random.build_trees(edges, closed=closed, **kwargs)
@@ -503,8 +503,8 @@ def crosscorrelate(
         logger.info("building trees for %d catalogs", 2 + count_dr + count_rd)
     kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
 
-    edges = config.binning.binning.edges
-    closed = config.binning.binning.closed
+    edges = config.binning.edges
+    closed = config.binning.closed
     randoms = []
 
     reference.build_trees(edges, closed=closed, **kwargs)

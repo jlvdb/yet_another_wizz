@@ -167,6 +167,9 @@ class AngularTree:
     and angular distances are computed as the corresponding chord distance
     between points.
 
+    To construct a dummy-tree without any data, use the special :meth:`empty`
+    constructor.
+
     Args:
         coords:
             Angular coordinates of points from which the tree is build, must be
@@ -187,10 +190,12 @@ class AngularTree:
             The sum of weights stored in the tree, defaults to number of points
             if no weights are provided.
         tree:
-            The underlying :obj:`scipy.spatial.KDTree`.
+            The underlying :obj:`scipy.spatial.KDTree`, may be ``None`` if the
+            tree does not contain any data.
     """
 
     __slots__ = ("num_records", "weights", "sum_weights", "tree")
+    tree: KDTree | None
 
     def __init__(
         self,
@@ -214,12 +219,24 @@ class AngularTree:
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
+    @classmethod
+    def empty(cls) -> AngularTree:
+        """Special constructor for a tree that does not contain data."""
+        new = cls.__new__(cls)
+        new.num_records = 0
+        new.weights = np.empty(0)
+        new.sum_weights = 0.0
+        new.tree = None
+        return new
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(num_records={self.num_records})"
 
     @property
     def data(self) -> NDArray:
         """Accessor for internally stored data in Euclidean coordinates."""
+        if self.tree is None:
+            return np.empty((0, 3))
         return self.tree.data
 
     def count(
@@ -257,6 +274,9 @@ class AngularTree:
         ang_limits = parse_ang_limits(ang_min, ang_max)
         ang_bins = get_ang_bins(ang_limits, weight_scale, weight_res)
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
+
+        if self.tree is None or other.tree is None:
+            return np.zeros(len(ang_limits))
 
         try:
             counts = self.tree.count_neighbors(
@@ -322,13 +342,17 @@ def build_trees(
             redshifts, binning.edges, right=(binning.closed == Closed.right)
         )
 
-        trees = []
+        trees = {}
         for i, bin_array in groupby(bin_idx, chunk):
             if 0 < i <= len(binning):
                 coords = DataChunk.get_coords(bin_array)
                 weights = DataChunk.getattr(bin_array, "weights", None)
-                tree = AngularTree(coords, weights=weights, leafsize=leafsize)
-                trees.append(tree)
+                trees[i] = AngularTree(coords, weights=weights, leafsize=leafsize)
+
+        # fill in dummy trees for bins that contain no data
+        trees = tuple(
+            trees.get(i + 1, AngularTree.empty()) for i in range(len(binning))
+        )
 
     return trees
 
