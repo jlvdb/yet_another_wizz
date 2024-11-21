@@ -335,6 +335,42 @@ class RedshiftData(CorrData):
         unk_data = unk_corr.sample() if unk_corr else None
 
         return cls.from_corrdata(cross_data, ref_data, unk_data)
+    
+    
+    @classmethod
+    def from_corrfuncs_scalar(
+        cls,
+        cross_corr: CorrFunc_scalar,
+        ref_corr: CorrFunc_scalar | None = None,
+    ) -> RedshiftData:
+        """
+        Compute a redshift estimate from a set of cross- and autocorrelation
+        pair counts.
+
+        Computes the correlation functions from the input pair counts and calls
+        :meth:`from_corrdata()`.
+
+        Args:
+            cross_corr:
+                The cross-correlation function pair counts (:math:`w_{sp}`),
+                must be a :obj:`~yaw.CorrFunc` instance.
+
+        Keyword Args:
+            ref_corr:
+                Optional autocorrelation function pair counts of the reference
+                sample (:math:`w_{ss}`), must be a :obj:`~yaw.CorrFunc`
+                instance.
+
+        Returns:
+            The redshift estimate as :obj:`~yaw.RedshiftData`.
+        """
+        if ref_corr is not None:
+            cross_corr.is_compatible(ref_corr, require=True)
+
+        cross_data = cross_corr.sample()
+        ref_data = ref_corr.sample() if ref_corr else None
+
+        return cls.from_corrdata(cross_data, ref_data, None)
 
     @property
     def _description_data(self) -> str:

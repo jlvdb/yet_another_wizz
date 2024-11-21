@@ -451,7 +451,7 @@ def autocorrelate_scalar(
     *,
     progress: bool = False,
     max_workers: int | None = None,
-) -> list[CorrFunc]:
+) -> list[CorrFunc_scalar]:
     """
     Measure the angular autocorrelation amplitude of a scalar field.
 
@@ -499,7 +499,7 @@ def autocorrelate_scalar(
         )
     DD_weights = links.count_pairs(data, mode="nn", **kwargs)
     DD = links.count_pairs(data, mode="kk", **kwargs)
-    return DD, DD_weights
+    return [CorrFunc_scalar(dd, dd_weights, None, None) for dd, dd_weights in zip(DD, DD_weights)]
 
 
 def crosscorrelate(
@@ -612,7 +612,7 @@ def crosscorrelate_scalar(
     unk_rand: Catalog | None = None,
     progress: bool = False,
     max_workers: int | None = None,
-) -> list[CorrFunc]:
+) -> list[CorrFunc_scalar]:
     """
     Measure the angular cross-correlation amplitude between two object catalogs,
     with one of the catalogue being the scalar field.
@@ -687,4 +687,4 @@ def crosscorrelate_scalar(
     DD_weights = links.count_pairs(reference, unknown, mode="nn", **kwargs)
     DR_weights = links.count_pairs_optional(reference, unk_rand, mode="nn", **kwargs)
 
-    return DD, DR, DD_weights, DR_weights
+    return [CorrFunc_scalar(dd, dd_weights, dr, dr_weights) for dd, dd_weights, dr, dr_weights in zip(DD, DD_weights, DR, DR_weights)]
