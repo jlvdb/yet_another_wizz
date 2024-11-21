@@ -3,6 +3,13 @@
 Change log
 ==========
 
+Version 3.0.1
+-------------
+
+Fixed a bug that resulted in skipping empty redshift bins when building trees
+and computing binned correlations.
+
+
 Version 3.0.0
 -------------
 
