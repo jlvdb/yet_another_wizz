@@ -3,6 +3,13 @@
 Change log
 ==========
 
+Version 3.0.2
+-------------
+
+- Updated the example data in ``yaw.examples`` to the latest data layout.
+- Improvements to documentation.
+
+
 Version 3.0.1
 -------------
 
