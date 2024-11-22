@@ -69,8 +69,8 @@ def cov_from_samples(
             Whether the each row represents an observable. Determines the
             concatenation for multiple input sample sets.
         kind:
-            Determines the kind of covariance computed, can be either of
-            ``full`` (default), ``diag``, or ``var`` (main diagonal only).
+            Determines the kind of covariance computed, see
+            :obj:`~yaw.optoins.CovKind` for valid options.
     """
     kind = CovKind(kind)
 

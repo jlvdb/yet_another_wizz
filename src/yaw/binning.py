@@ -74,8 +74,8 @@ class Binning(HdfSerializable):
     edges: NDArray
     """Array containing the edges of all bins, including the rightmost edge."""
     closed: Closed
-    """Indicating which side of the bin edges is a closed interval, either
-    ``left`` or ``right``."""
+    """Indicating which side of the bin edges is a closed interval, see
+    :obj:`~yaw.options.Closed` for valid options."""
 
     def __init__(self, edges: ArrayLike, closed: Closed | str = Closed.right) -> None:
         self.edges = parse_binning(edges)

@@ -52,8 +52,8 @@ class BinningConfig(BaseConfig, Immutable):
     binning: Binning
     """Container for the redshift bins."""
     method: BinMethod
-    """Method used to generate the bin edges, must be either of ``linear``,
-    ``comoving``, ``logspace``, or ``custom``."""
+    """Method used to generate the bin edges, see :obj:`~yaw.options.BinMethod`
+    for valid options."""
 
     def __init__(
         self,
@@ -87,8 +87,8 @@ class BinningConfig(BaseConfig, Immutable):
 
     @property
     def closed(self) -> Closed:
-        """String indicating if the bin edges are closed on the ``left`` or the
-        ``right`` side."""
+        """Indicating which side of the bin edges is a closed interval, see
+        :obj:`~yaw.options.Closed` for valid options."""
         return self.binning.closed
 
     @property
@@ -169,7 +169,7 @@ class BinningConfig(BaseConfig, Immutable):
                 name="method",
                 help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
                 type=str,
-                choices=get_options(Closed),
+                choices=get_options(BinMethod),
                 default=str(BinMethod.linear),
             ),
             Parameter(
@@ -212,13 +212,13 @@ class BinningConfig(BaseConfig, Immutable):
             num_bins:
                 Number of redshift bins to generate.
             method:
-                Method used to generate the bin edges, must be either of
-                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+                Method used to generate the bin edges, see
+                :obj:`~yaw.options.BinMethod` for valid options.
             edges:
                 Use these custom bin edges instead of generating them.
             closed:
-                String indicating if the bin edges are closed on the ``left`` or
-                the ``right`` side.
+                Indicating which side of the bin edges is a closed interval, see
+                :obj:`~yaw.options.Closed` for valid options.
             cosmology:
                 Optional, cosmological model to use for distance computations.
 
@@ -281,13 +281,13 @@ class BinningConfig(BaseConfig, Immutable):
             num_bins:
                 Number of redshift bins to generate.
             method:
-                Method used to generate the bin edges, must be either of
-                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+                Method used to generate the bin edges, see
+                :obj:`~yaw.options.BinMethod` for valid options.
             edges:
                 Use these custom bin edges instead of generating them.
             closed:
-                String indicating if the bin edges are closed on the ``left`` or
-                the ``right`` side.
+                Indicating which side of the bin edges is a closed interval, see
+                :obj:`~yaw.options.Closed` for valid options.
             cosmology:
                 Optional, cosmological model to use for distance computations.
 

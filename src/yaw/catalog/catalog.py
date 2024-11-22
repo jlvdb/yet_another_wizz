@@ -1406,8 +1406,8 @@ class Catalog(Mapping[int, Patch]):
 
         Keyword Args:
             closed:
-                Whether the bin edges are closed on the ``left`` or ``right``
-                side.
+                Indicating which side of the bin edges is a closed interval, see
+                :obj:`~yaw.options.Closed` for valid options.
             leafsize:
                 Leafsize when building trees.
             force:
