@@ -4,7 +4,7 @@ importing the module.
 
 >>> from yaw import examples  # reads the data sets from disk
 >>> examples.w_sp
-CorrFunc(counts=dd|dr, auto=False, num_bins=30, num_patches=64)
+CorrFunc(counts=dd|dr|rd|rr, auto=False, binning=30 bins @ (0.100...1.200], num_patches=64)
 """
 
 from pathlib import Path
@@ -23,7 +23,7 @@ __all__ = [
 
 _path = Path(__file__).parent
 
-w_sp = CorrFunc.from_file(_path / "cross_1.hdf")
+w_sp = CorrFunc.from_file(_path / "cross.hdf")
 """Example data from a crosscorrelation measurement
 (:obj:`~yaw.CorrFunc` instance)."""
 
@@ -31,7 +31,7 @@ w_ss = CorrFunc.from_file(_path / "auto_reference.hdf")
 """Example data from a reference sample autocorrelation measurement
 (:obj:`~yaw.CorrFunc` instance)."""
 
-w_pp = CorrFunc.from_file(_path / "auto_unknown_1.hdf")
+w_pp = CorrFunc.from_file(_path / "auto_unknown.hdf")
 """Example data from a unknown sample autocorrelation measurement
 (:obj:`~yaw.CorrFunc` instance)."""
 
