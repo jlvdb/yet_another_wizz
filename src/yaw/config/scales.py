@@ -173,7 +173,8 @@ class ScalesConfig(BaseConfig, Immutable):
                 Single or multiple upper scale limits in given unit of scales.
             unit:
                 String describing the angular, physical, or comoving unit of
-                correlation scales (default: kpc).
+                correlation scales, see :obj:`~yaw.options.Unit` for valid
+                options (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.
@@ -210,7 +211,8 @@ class ScalesConfig(BaseConfig, Immutable):
                 Single or multiple upper scale limits in given unit of scales.
             unit:
                 String describing the angular, physical, or comoving unit of
-                correlation scales (default: kpc).
+                correlation scales, see :obj:`~yaw.options.Unit` for valid
+                options (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.

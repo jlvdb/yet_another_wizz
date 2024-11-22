@@ -181,7 +181,8 @@ def new_scales(
     Keyword Args:
         unit:
             String describing the angular, physical, or comoving unit of
-            correlation scales (default: kpc).
+            correlation scales, see :obj:`~yaw.options.Unit` for valid options
+            (default: kpc).
     """
     unit = Unit(unit)
 
