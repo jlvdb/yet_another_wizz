@@ -18,5 +18,5 @@ catalog data:
     unknown_path = "path/to/unk_data.{fits,pqt,hdf5}"
 
 .. Note::
-    To access the `yet_another_wizz` log messages (for debugging or progrees),
-    check the logging_ example.
+    To access the `yet_another_wizz` log messages (e.g. for debugging), check
+    the :ref:`logging<logging>` example.
