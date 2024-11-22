@@ -29,5 +29,6 @@ This API reference manual details the primary functions and object in the
         api/config
         api/correlation
         api/redshifts
+        api/cosmo_coords
         api/utils
         api/options
