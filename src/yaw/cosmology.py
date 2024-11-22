@@ -36,13 +36,17 @@ __all__ = [
 
 
 class CustomCosmology(ABC):
-    """Meta-class that defines interface for custom cosmologies that are
-    compatible with `yet_another_wizz` code."""
+    """
+    Meta-class that defines the interface for custom cosmologies.
+
+    Custom cosmology must either be an `astropy` cosmological model or must be
+    a subclass of this meta-class to be compatible with `yet_another_wizz`.
+    """
 
     @abstractmethod
     def comoving_distance(self, z: ArrayLike) -> ArrayLike:
         """
-        Compute the comoving distance.
+        Compute the comoving distance at the given redshift.
 
         Args:
             z:
@@ -57,7 +61,7 @@ class CustomCosmology(ABC):
     @abstractmethod
     def angular_diameter_distance(self, z: ArrayLike) -> ArrayLike:
         """
-        Compute the angular diameter distance.
+        Compute the angular diameter distance at the given redshift.
 
         Args:
             z:
@@ -91,6 +95,12 @@ def cosmology_is_equal(cosmo1: TypeCosmology, cosmo2: TypeCosmology) -> bool:
 
 
 def get_default_cosmology() -> FLRW:
+    """
+    Returns the default Planck 2015 cosmology.
+
+    Parameters are from Planck Collaboration (2016) Paper XIII, Table 4
+    (TT, TE, EE + lowP + lensing + ext)
+    """
     return Planck15
 
 

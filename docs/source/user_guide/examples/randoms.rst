@@ -9,6 +9,7 @@ weights, if desired. For example:
 
 .. code-block:: python
 
+    import yaw
     from yaw.randoms import BoxRandoms
 
     generator = BoxRandoms(
@@ -30,6 +31,21 @@ weights, if desired. For example:
         # overwrite=False,
         progress=True,  # shows a progress bar, default: False
     )
+
+To inspect the distribution, we need some additional code:
+
+.. code-block:: python
+
+    import numpy as np
+    from matplotlib import pyplot as plt
+
+    # need to iterate over patches and load coordinates manually
+    coords = yaw.AngularCoordinates.from_coords(
+        patch.coords for patch in cat.values()
+    )
+    plt.hist2d(coords.ra, np.sin(coords.dec), bins=90)
+    plt.xlabel(r"$\alpha$")
+    plt.ylabel(r"$\sin{\delta}$")
 
 
 .. figure:: /_static/rand_density.png
