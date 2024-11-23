@@ -25,4 +25,4 @@ jobs:
           pip install -U .[test]
 
       - name: Run tests on ${{ matrix.python-version }}
-        run: python -m pytest -v
+        run: python -m pytest tests -v
