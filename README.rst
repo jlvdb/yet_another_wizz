@@ -9,6 +9,8 @@
 
 .. image:: https://img.shields.io/pypi/v/yet_another_wizz?logo=pypi&logoColor=blue
     :target: https://pypi.org/project/yet_another_wizz/
+.. image:: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-smoke-tests.yml/badge.svg
+    :target: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-smoke-tests.yml
 .. image:: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml/badge.svg
     :target: https://github.com/jlvdb/yet_another_wizz/actions/workflows/run-tests.yml
 .. image:: https://readthedocs.org/projects/yet-another-wizz/badge/?version=latest
