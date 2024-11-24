@@ -22,8 +22,9 @@ dependencies = [
     "pyarrow",
     "pyyaml",
     "scipy",
+    "StrEnum",  # enum.StrEnum python 3.11+ only
     "treecorr>=4.3",
-    "typing-extensions",  # for Self, as long as python 3.10 is supported
+    "typing-extensions",  # typing.Self python 3.11+ only
 ]
 
 [build-system]
@@ -40,24 +41,27 @@ plot = [
 mpi = [
     "mpi4py",
 ]
+healpix = [
+    "healpy",
+]
 docs = [
     "sphinx",
     "sphinx-design",
     "sphinx-copybutton",
     "pydata-sphinx-theme",
-    # note that yaw_cli is currently necessary to generate the joint docs
-]
-test = [
-    "yet_another_wizz[plot]",
-    "coverage",
-    "pytest",
-    "pytest-cov",
 ]
 style = [
     "black",
     "isort",
     "flake8",
     "pre-commit",
+]
+test = [
+    "yet_another_wizz[plot]",
+    "yet_another_wizz[healpy]",
+    "coverage",
+    "pytest",
+    "pytest-cov",
 ]
 dev = [
     "yet_another_wizz[docs]",
@@ -70,7 +74,9 @@ dev = [
 yaw = "yaw.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = [
+    "src",
+]
 
 [tool.setuptools.package-data]
 yaw = [
@@ -87,6 +93,7 @@ testpaths = [
 addopts = [
     "--cov=yaw",
     "--cov-report=xml",
+    "--cov-report=term",
 ]
 
 [tool.isort]

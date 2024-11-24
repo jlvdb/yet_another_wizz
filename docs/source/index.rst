@@ -1,5 +1,6 @@
 .. title:: Documentation of yet_another_wizz
 
+
 .. grid::
     :gutter: 2 3 4 4
     :margin: 0 auto auto auto
@@ -10,7 +11,7 @@
         :class-body: lead
         :img-top: /_static/title.svg
 
-        *yet_another_wizz* is an open source python package to efficiently
+        `yet_another_wizz` is an open source python package to efficiently
         compute cross-correlation redshifts, also known as clustering redshifts.
 
     .. grid-item::
@@ -22,7 +23,7 @@
             :class-title: h5
 
             .. toctree::
-                :maxdepth: 3
+                :maxdepth: 2
 
                 user_guide
                 api
@@ -46,7 +47,7 @@
 
         :octicon:`rocket;3em`
 
-        Usage examples
+        Usage example
 
     .. grid-item-card:: The thorough
         :columns: 6

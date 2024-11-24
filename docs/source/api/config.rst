@@ -1,26 +1,24 @@
-yaw.config
-==========
+Configuration
+-------------
 
-.. automodule:: yaw.config
+.. currentmodule:: yaw
 
-
-.. rubric:: Submodules
-
-.. toctree::
-    :maxdepth: 1
-
-    config.default
-    config.options
-
-
-.. rubric:: Classes
+There is one central class that manages all configuration parameters for the
+correlation measurements. These include the correlation scales, pair weighting,
+and redshift binning for the reference catalog:
 
 .. autosummary::
-    :toctree: config
-    :template: custom-class-template.rst
+    :toctree: autogen
 
     Configuration
-    ScalesConfig
-    BinningConfig
-    BackendConfig
-    ResamplingConfig
+
+
+The configuration above is organised hierarchically. The main configuration
+separates the scale and binning configuration into two sub-classes, however
+usually it is not necessary to interact with these sub-classes directly.
+
+.. autosummary::
+    :toctree: autogen
+
+    config.ScalesConfig
+    config.BinningConfig

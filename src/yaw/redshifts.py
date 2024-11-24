@@ -1,3 +1,15 @@
+"""
+Implements two primary classes to store estimates of redshift distributions.
+
+HistData is a tool to measure a redshift distribution histogram from a catalog
+with redshift data. Stores histogram counts, jackknife samples (from spatial
+patches) and a covariance matrix, similar to yaw.CorrData.
+
+RedshiftData is a container for the final clustering redshift estimate. Can be
+constructed directly from cross- and optional autocorrelation functions. Similar
+to yaw.CorrData, but normalises all data by the width of the redshift bins.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -7,17 +19,18 @@ import numpy as np
 import scipy.optimize
 
 from yaw.config import Configuration
-from yaw.corrfunc import CorrData
+from yaw.correlation.corrfunc import CorrData
+from yaw.options import PlotStyle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+    from yaw.binning import Binning
     from yaw.catalog import Catalog, Patch
     from yaw.config import BinningConfig
-    from yaw.containers import Binning
-    from yaw.corrfunc import CorrFunc, Tcorr
+    from yaw.correlation.corrfunc import CorrFunc, TypeCorrData
 
 __all__ = [
     "HistData",
@@ -28,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 
 def _redshift_histogram(patch: Patch, binning: Binning) -> NDArray:
+    """Worker function that computes a redshift histgram from a given patch and
+    binning."""
     redshifts = patch.redshifts
     # numpy histogram uses the bin edges as closed intervals on both sides
     if binning.closed == "right":
@@ -42,6 +57,11 @@ def _redshift_histogram(patch: Patch, binning: Binning) -> NDArray:
 
 
 def resample_jackknife(observations: NDArray, patch_rows: bool = True) -> NDArray:
+    """
+    Compute jackknife samples from an array of histogram counts with shape
+    (``num_bins``, ``num_patches``) per patch and redshift and the
+    corresponding bin edges.
+    """
     if not patch_rows:
         observations = observations.T
     num_patches = observations.shape[0]
@@ -54,6 +74,26 @@ def resample_jackknife(observations: NDArray, patch_rows: bool = True) -> NDArra
 
 
 class HistData(CorrData):
+    """
+    Container for a redshift histogram.
+
+    Implements convenience methods to compute a redshift histogram from a
+    :obj:`~yaw.Catalog`, with jackknife samples constructed from the catalogs
+    spatial patches. There are methods to estimate the standard error,
+    covariance and correlation matrix, normalisation of the pair counts.
+    Provides plotting methods and additionally implements ``len()``,
+    comparison with the ``==`` operator and addition with ``+``/``-``.
+
+    Args:
+        binning:
+            The redshift :obj:`~yaw.Binning` used to compute the histogram.
+        data:
+            Array containing the bin counts in each of the redshift bin.
+        samples:
+            2-dim array containing jackknife samples of the histogram counts,
+            expected to have shape (:obj:`num_samples`, :obj:`num_bins`).
+    """
+
     __slots__ = ("binning", "data", "samples")
 
     @classmethod
@@ -64,6 +104,22 @@ class HistData(CorrData):
         progress: bool = False,
         max_workers: int | None = None,
     ) -> HistData:
+        """
+        Compute a redshift histogram from a data catalog.
+
+        Args:
+            catalog:
+                Data :obj:`~yaw.Catalog` with attached redshift data.
+            config:
+                :obj:`~yaw.Configuration` defining the redshift binning.
+
+        Keyword Args:
+            progress:
+                Show a progress on the terminal (disabled by default).
+            max_workers:
+                Limit the  number of parallel workers for this operation (all by
+                default). Takes precedence over the value in the configuration.
+        """
         if parallel.on_root():
             logger.info("computing redshift histogram")
 
@@ -93,22 +149,34 @@ class HistData(CorrData):
 
     @property
     def _description_data(self) -> str:
+        """Descriptive comment for header of .dat file."""
         n = "normalised " if self.density else " "
         return f"n(z) {n}histogram with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
+        """Descriptive comment for header of .smp file."""
         n = "normalised " if self.density else " "
         return f"{self.num_samples} n(z) {n}histogram jackknife samples"
 
     @property
     def _description_covariance(self) -> str:
+        """Descriptive comment for header of .cov file."""
         n = "normalised " if self.density else " "
         return f"n(z) {n}histogram covariance matrix ({self.num_bins}x{self.num_bins})"
 
-    _default_style = "step"
+    _default_plot_style = PlotStyle.step
 
     def normalised(self, *args, **kwargs) -> HistData:
+        """
+        Normalises the redshift histogram to a probability density.
+
+        Any function arguments are discarded.
+
+        Returns:
+            A new instance with a normalisation factor applied to the counts and
+            jackknife samples.
+        """
         if parallel.on_root():
             logger.debug("normalising %s", type(self).__name__)
 
@@ -126,6 +194,24 @@ class HistData(CorrData):
 
 
 class RedshiftData(CorrData):
+    """
+    Container for a clustering redshift estimate.
+
+    Implements conveniences methods to estimate the standard error, covariance
+    and correlation matrix, normalisation, and plotting methods. Additionally
+    implements ``len()``, comparison with the ``==`` operator and addition with
+    ``+``/``-``.
+
+    Args:
+        binning:
+            The redshift :obj:`~yaw.Binning` applied to the data.
+        data:
+            Array containing the values in each of the `N` redshift bin.
+        samples:
+            2-dim array containing `M` jackknife samples of the data, expected
+            to have shape (:obj:`num_samples`, :obj:`num_bins`).
+    """
+
     __slots__ = ("binning", "data", "samples")
 
     @classmethod
@@ -135,6 +221,35 @@ class RedshiftData(CorrData):
         ref_data: CorrData | None = None,
         unk_data: CorrData | None = None,
     ) -> RedshiftData:
+        """
+        Compute a redshift estimate from a set of cross- and autocorrelation
+        functions.
+
+        Computes the clustering redshift estimate with optional correction for
+        galaxy sample biases:
+
+        .. math::
+            n(z) = \\frac{w_{sp}(z)}{\\sqrt{\\Delta z^2 \\, w_{ss}(z) \\, w_{pp}(z)}}
+
+        Args:
+            cross_data:
+                The cross-correlation function amplitude (:math:`w_{sp}`), must
+                be a :obj:`~yaw.CorrData` instance.
+
+        Keyword Args:
+            ref_data:
+                Optional autocorrelation function amplitude of the reference
+                sample (:math:`w_{ss}`), must be a :obj:`~yaw.CorrData`
+                nstance.
+            unk_data:
+                Optional autocorrelation function amplitude of the unknown
+                sample (:math:`w_{pp}`), must be a :obj:`~yaw.CorrData`
+                instance.
+                Typically unknown quantity.
+
+        Returns:
+            The redshift estimate as :obj:`~yaw.RedshiftData`.
+        """
         if parallel.on_root():
             logger.debug(
                 "computing clustering redshifts from correlation function samples"
@@ -185,6 +300,31 @@ class RedshiftData(CorrData):
         ref_corr: CorrFunc | None = None,
         unk_corr: CorrFunc | None = None,
     ) -> RedshiftData:
+        """
+        Compute a redshift estimate from a set of cross- and autocorrelation
+        pair counts.
+
+        Computes the correlation functions from the input pair counts and calls
+        :meth:`from_corrdata()`.
+
+        Args:
+            cross_corr:
+                The cross-correlation function pair counts (:math:`w_{sp}`),
+                must be a :obj:`~yaw.CorrFunc` instance.
+
+        Keyword Args:
+            ref_corr:
+                Optional autocorrelation function pair counts of the reference
+                sample (:math:`w_{ss}`), must be a :obj:`~yaw.CorrFunc`
+                instance.
+            unk_corr:
+                Optional autocorrelation function pair counts of the unknown
+                sample (:math:`w_{pp}`), must be a :obj:`~yaw.CorrFunc`
+                instance. Typically an unknown quantity.
+
+        Returns:
+            The redshift estimate as :obj:`~yaw.RedshiftData`.
+        """
         if ref_corr is not None:
             cross_corr.is_compatible(ref_corr, require=True)
         if unk_corr is not None:
@@ -198,19 +338,45 @@ class RedshiftData(CorrData):
 
     @property
     def _description_data(self) -> str:
+        """Descriptive comment for header of .dat file."""
         return "n(z) estimate with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
+        """Descriptive comment for header of .smp file."""
         return f"{self.num_samples} n(z) jackknife samples"
 
     @property
     def _description_covariance(self) -> str:
+        """Descriptive comment for header of .cov file."""
         return f"n(z) estimate covariance matrix ({self.num_bins}x{self.num_bins})"
 
-    _default_style = "point"
+    _default_plot_style = PlotStyle.point
 
-    def normalised(self, target: Tcorr | None = None) -> RedshiftData:
+    def normalised(self, target: TypeCorrData | None = None) -> RedshiftData:
+        """
+        Attempts to normalise the redshift estimate to a probability density.
+
+        By default rescales data and jackknife samples by computing a
+        normalisation factor obtained from integrating the data over the
+        redshift range of the binning. Alternatively, the normalisation may be
+        optained by fitting to another data container to achieve a relative
+        normalisation.
+
+        .. warning::
+            Both approaches are inaccuarte due to noise fluctions (in particular
+            negative correlation amplitudes).
+
+        Keyword Args:
+            target:
+                Optional, when provided used as reference to fit the
+                normalisation factor, must be a subclass of
+                :obj:`~yaw.CorrData`.
+
+        Returns:
+            A new instance with a normalisation factor applied to the data and
+            jackknife samples.
+        """
         if parallel.on_root():
             msg = "normalising %s"
             if target is not None:

@@ -1,34 +1,34 @@
 .. _api:
 
-API reference
+API Reference
 =============
 
-This is a documentation of the most important parts of the *yet_another_wizz*
-(``yaw``) python API. For a more general introduction with examples refer to the
-:ref:`user guide<guide>`. The flowchart below roughly indicates the rough
-relationship between the most import data containers.
+This API reference manual details the primary functions and object in the
+`yet_another_wizz` python package ``yaw``.
 
-A recommended entry point to the API reference are the :mod:`yaw.correlation`
-and :mod:`yaw.catalogs` module.
+.. figure:: /_static/flowchart.svg
+    :figwidth: 80%
+    :alt: API flowchart
+
+    Example flowchart indicating the relationship between the most important
+    public classes and functions in `yet_another_wizz` used for redshift
+    estimation.
 
 
-.. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Expand table of contents
+.. dropdown:: :octicon:`list-ordered;1.5em` ‎ ‎ ‎ Table of contents
+    :open:
     :margin: 0
     :color: muted
     :class-title: h5
 
     .. toctree::
-        :maxdepth: 2
+        :glob:
+        :maxdepth: 1
 
-        api/catalogs
+        api/catalog
         api/config
-        api/core
         api/correlation
-        api/examples
-        api/randoms
         api/redshifts
-
-
-.. image:: _static/flowchart.svg
-    :width: 800
-    :alt: API flowchart
+        api/cosmo_coords
+        api/utils
+        api/options
