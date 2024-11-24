@@ -90,8 +90,8 @@ when installing the sparate command-line client `yet_another_wizz_cli`. This
 tool is deprecated as of version 3.0 but maybe be integrated directly into
 `yet_another_wizz` in a future release.
 
-For bug reports or requesting new features, please use the github issue page:
-https://github.com/jlvdb/yet_another_wizz/issues
+For bug reports or requesting new features, please use the repository's
+`GitHub issues page <https://github.com/jlvdb/yet_another_wizz/issues>`_.
 
 
 Maintainers
