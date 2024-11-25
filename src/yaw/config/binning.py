@@ -127,7 +127,7 @@ class BinningConfig(BaseConfig, Immutable):
 
     def to_dict(self) -> dict[str, Any]:
         if self.is_custom:
-            the_dict = dict(edges=self.binning.edges)
+            the_dict = dict(edges=self.binning.edges.tolist())
 
         else:
             the_dict = dict(
