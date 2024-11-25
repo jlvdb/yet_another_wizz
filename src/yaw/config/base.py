@@ -79,6 +79,10 @@ class ParamSpec(Mapping[str, Parameter]):
     def __contains__(self, item) -> bool:
         return item in self._params
 
+    def add_param(self, param: Parameter) -> None:
+        """Extend the parameter collection by another parameter."""
+        self._params[param.name] = param
+
 
 class BaseConfig(YamlSerialisable):
     """

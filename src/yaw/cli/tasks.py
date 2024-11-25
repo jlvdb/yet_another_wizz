@@ -26,13 +26,22 @@ if TYPE_CHECKING:
 
 
 class Task(ABC):
+    _tasks = {}
     name: str
     inputs: tuple[Task, ...]
     optionals: tuple[Task, ...]
 
     def __init_subclass__(cls):
         cls.name = cls.__name__.replace("Task", "").lower()
+        cls._tasks[cls.name] = cls
         return super().__init_subclass__()
+
+    @classmethod
+    def get(cls, name: str) -> TypeTask:
+        try:
+            return cls._tasks[name]
+        except KeyError as err:
+            raise ValueError(f"no tasked with name '{name}'") from err
 
     def __new__(cls: type[TypeTask]) -> TypeTask:
         new = super().__new__(cls)
@@ -87,7 +96,22 @@ class CacheRefTask(Task):
     optionals = ()
 
     def _run(self) -> None:
-        raise NotImplementedError
+        data_conf = self.project.setup.data
+        for conf in (data_conf.reference.data, data_conf.reference.rand):
+            yaw.Catalog.from_file(
+                cache_directory=...,
+                path=conf.filepath,
+                ra_name=conf.ra,
+                dec_name=conf.dec,
+                weight_name=conf.weight,
+                redshift_name=conf.redshift,
+                patch_centers=self.project.setup.patch_centers,
+                patch_name=conf.patches,
+                patch_num=data_conf.num_patches,
+                overwrite=True,
+                progress=self.project.setup.progress,
+                max_workers=self.project.setup.config.max_workers,
+            )
 
 
 class CacheUnkTask(Task):
@@ -95,7 +119,23 @@ class CacheUnkTask(Task):
     optionals = ()
 
     def _run(self) -> None:
-        raise NotImplementedError
+        data_conf = self.project.setup.data
+        for idx in data_conf.get_bin_indices():
+            for conf in (data_conf.unknown.data, data_conf.unknown.rand):
+                yaw.Catalog.from_file(
+                    cache_directory=...,
+                    path=conf.filepath[idx],
+                    ra_name=conf.ra,
+                    dec_name=conf.dec,
+                    weight_name=conf.weight,
+                    redshift_name=conf.redshift,
+                    patch_centers=self.project.setup.patch_centers,
+                    patch_name=conf.patches,
+                    patch_num=data_conf.num_patches,
+                    overwrite=True,
+                    progress=self.project.setup.progress,
+                    max_workers=self.project.setup.config.max_workers,
+                )
 
 
 class AutoRefTask(Task):
@@ -108,6 +148,8 @@ class AutoRefTask(Task):
             self.project.setup.config,
             data,
             random,
+            progress=self.project.progress,
+            max_workers=self.project.setup.config.max_workers,
         )
         path = self.project.paircounts.auto_ref.path
         corr.to_file(path)
@@ -124,6 +166,8 @@ class AutoUnkTask(Task):
                 self.project.setup.config,
                 data,
                 random,
+                progress=self.project.progress,
+                max_workers=self.project.setup.config.max_workers,
             )
             path = self.project.paircounts.auto_unk[idx].path
             corr.to_file(path)
@@ -137,12 +181,14 @@ class CrossTask(Task):
         ref_data, ref_rand = self.project.cache.reference.load()
         for idx, handle in self.project.cache.unknown.items():
             unk_data, unk_rand = handle.load()
-            corr, *_ = yaw.crosscorrelate(
+            (corr,) = yaw.crosscorrelate(
                 self.project.setup.config,
                 ref_data,
                 unk_data,
                 ref_rand=ref_rand,
                 unk_rand=unk_rand,
+                progress=self.project.progress,
+                max_workers=self.project.setup.config.max_workers,
             )
             path = self.project.paircounts.cross[idx].path
             corr.to_file(path)

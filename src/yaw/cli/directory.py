@@ -109,16 +109,16 @@ class ProjectDirectory:
 
     @property
     def cache(self) -> CacheDirectory:
-        return CacheDirectory(self.path / "cache")
+        return CacheDirectory(self.path / "cache", self.indices)
 
     @property
     def paircounts(self) -> PaircountsDirectory:
-        return PaircountsDirectory(self.path / "paircounts")
+        return PaircountsDirectory(self.path / "paircounts", self.indices)
 
     @property
     def estimate(self) -> EstimateDirectory:
-        return EstimateDirectory(self.path / "estimate")
+        return EstimateDirectory(self.path / "estimate", self.indices)
 
     @property
     def true(self) -> TrueDirectory:
-        return TrueDirectory(self.path / "true")
+        return TrueDirectory(self.path / "true", self.indices)
