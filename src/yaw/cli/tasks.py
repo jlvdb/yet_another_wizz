@@ -104,7 +104,7 @@ class AutoRefTask(Task):
 
     def _run(self) -> None:
         data, random = self.project.cache.reference.load()
-        corr, *_ = yaw.autocorrelate(
+        (corr,) = yaw.autocorrelate(
             self.project.setup.config,
             data,
             random,
@@ -120,7 +120,7 @@ class AutoUnkTask(Task):
     def _run(self) -> None:
         for idx, handle in self.project.cache.unknown.items():
             data, random = handle.load()
-            corr, *_ = yaw.autocorrelate(
+            (corr,) = yaw.autocorrelate(
                 self.project.setup.config,
                 data,
                 random,
