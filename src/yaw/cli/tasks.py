@@ -118,7 +118,8 @@ class AutoUnkTask(Task):
     optionals = ()
 
     def _run(self) -> None:
-        for idx, (data, random) in self.project.cache.unknown.load():
+        for idx, handle in self.project.cache.unknown.items():
+            data, random = handle.load()
             corr, *_ = yaw.autocorrelate(
                 self.project.setup.config,
                 data,
@@ -134,7 +135,8 @@ class CrossTask(Task):
 
     def _run(self) -> None:
         ref_data, ref_rand = self.project.cache.reference.load()
-        for idx, (unk_data, unk_rand) in self.project.cache.unknown.load():
+        for idx, handle in self.project.cache.unknown.items():
+            unk_data, unk_rand = handle.load()
             corr, *_ = yaw.crosscorrelate(
                 self.project.setup.config,
                 ref_data,
@@ -161,8 +163,9 @@ class EstimateTask(Task):
         else:
             auto_ref = None
 
-        for idx, cross in paircounts.cross.load():
-            auto_pairs = paircounts.auto_ref[idx]
+        for idx, handle in paircounts.cross.items():
+            cross = handle.load()
+            auto_pairs = paircounts.auto_unk[idx]
             if auto_pairs.exists():
                 auto_unk = auto_pairs.load().sample()
                 path = estimate.auto_unk[idx].template

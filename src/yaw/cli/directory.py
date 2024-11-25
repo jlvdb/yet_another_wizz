@@ -10,7 +10,7 @@ from yaw.cli.handles import (
     CorrFuncHandle,
     HistDataHandle,
     RedshiftDataHandle,
-    TomographyHandle,
+    TomographyWrapper,
 )
 from yaw.cli.setup import Setup
 
@@ -32,30 +32,32 @@ class CacheDirectory(Directory):
         return CacheHandle(self.path / "reference")
 
     @property
-    def unknown(self) -> TomographyHandle:
-        return TomographyHandle(CacheHandle, self.path / "unknown_?", self.indices)
+    def unknown(self) -> TomographyWrapper[CacheHandle]:
+        return TomographyWrapper(CacheHandle, self.path / "unknown_?", self.indices)
 
 
 class PaircountsDirectory(Directory):
     @property
-    def cross(self) -> TomographyHandle:
-        return TomographyHandle(CorrFuncHandle, self.path / "cross_?.hdf", self.indices)
+    def cross(self) -> TomographyWrapper[CorrFuncHandle]:
+        return TomographyWrapper(
+            CorrFuncHandle, self.path / "cross_?.hdf", self.indices
+        )
 
     @property
     def auto_ref(self) -> CorrFuncHandle:
         return CorrFuncHandle(self.path / "auto_ref.hdf")
 
     @property
-    def auto_unk(self) -> TomographyHandle:
-        return TomographyHandle(
+    def auto_unk(self) -> TomographyWrapper[CorrFuncHandle]:
+        return TomographyWrapper(
             CorrFuncHandle, self.path / "auto_unk_?.hdf", self.indices
         )
 
 
 class EstimateDirectory(Directory):
     @property
-    def nz_est(self) -> TomographyHandle:
-        return TomographyHandle(
+    def nz_est(self) -> TomographyWrapper[RedshiftDataHandle]:
+        return TomographyWrapper(
             RedshiftDataHandle, self.path / "nz_est_?", self.indices
         )
 
@@ -64,8 +66,8 @@ class EstimateDirectory(Directory):
         return CorrDataHandle(self.path / "auto_ref")
 
     @property
-    def auto_unk(self) -> TomographyHandle:
-        return TomographyHandle(CorrDataHandle, self.path / "auto_unk_?", self.indices)
+    def auto_unk(self) -> TomographyWrapper[CorrDataHandle]:
+        return TomographyWrapper(CorrDataHandle, self.path / "auto_unk_?", self.indices)
 
 
 class TrueDirectory(Directory):
@@ -74,8 +76,8 @@ class TrueDirectory(Directory):
         return HistDataHandle(self.path / "reference")
 
     @property
-    def unknown(self) -> TomographyHandle:
-        return TomographyHandle(HistDataHandle, self.path / "nz_true_?", self.indices)
+    def unknown(self) -> TomographyWrapper[HistDataHandle]:
+        return TomographyWrapper(HistDataHandle, self.path / "nz_true_?", self.indices)
 
 
 class ProjectDirectory:

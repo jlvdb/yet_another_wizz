@@ -79,7 +79,7 @@ class HistDataHandle(MultiFileHandle):
         return HistData.from_files(self.template)
 
 
-class TomographyHandle(Handle, Mapping[int, T]):
+class TomographyWrapper(Mapping[int, T]):
     def __init__(
         self, handle_type: type[T], template: Path | str, indices: Iterable[int]
     ) -> None:
@@ -111,7 +111,3 @@ class TomographyHandle(Handle, Mapping[int, T]):
 
     def exists(self) -> bool:
         return all(handle.exists() for handle in self.handles.values())
-
-    def load(self) -> Iterator[tuple[int, T]]:
-        for idx, handle in self.items():
-            yield idx, handle.load()
