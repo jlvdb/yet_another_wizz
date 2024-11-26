@@ -17,7 +17,12 @@ class Pipeline:
     config: ProjectConfig
 
     def __init__(self, tasks):
-        self.tasks: list[Task] = set(Task.get(name)(...) for name in tasks)
+        tasks_ = []
+        for name, compl in tasks:
+            task = Task.get(name)(...)
+            task._completed = compl
+            tasks_.append(task)
+        self.tasks: set[Task] = set(tasks_)
         self._connect_inputs()
 
     def _connect_inputs(self) -> None:
@@ -63,9 +68,12 @@ def remove_duplicates(tasks: Iterable[Task]) -> deque[Task]:
     return uniques
 
 
-def build_queue(tasks: set[Task]) -> deque[Task]:
+def build_queue(tasks: set[Task], incl_complete: bool = False) -> deque[Task]:
     chains = [build_chain(end) for end in find_chain_ends(tasks)]
-    return remove_duplicates(itertools.chain(*chains))
+    queue = remove_duplicates(itertools.chain(*chains))
+    if incl_complete:
+        return queue
+    return deque(task for task in queue if not task.completed())
 
 
 def format_queue(queue: deque[Task]) -> str:
@@ -76,28 +84,19 @@ def format_queue(queue: deque[Task]) -> str:
 
 
 if __name__ == "__main__":
-    from timeit import default_timer
-
     proj = Pipeline(
         [
-            "true",
-            "cross",
-            "autoref",
-            "estimate",
-            "cacheref",
-            "cacheunk",
-            "estimate",
-            "estimate",
-            "plot",
-        ]
+            ("true", False),
+            ("cross", True),
+            ("autoref", True),
+            ("estimate", False),
+            ("cacheref", False),
+            ("cacheunk", False),
+            ("estimate", False),
+            ("estimate", False),
+            ("plot", False),
+        ],
     )
 
-    N = 10000
-    start = default_timer()
-    for _ in range(N):
-        queue = build_queue(proj.tasks)
-    duration = default_timer() - start
-    print(f"built queue in {duration / N * 1e6:.3f} μs")
-    print()
-
+    print(format_queue(build_queue(proj.tasks, incl_complete=True)))
     print(format_queue(build_queue(proj.tasks)))
