@@ -102,7 +102,8 @@ class ScalesConfig(BaseConfig, Immutable):
 
     def to_dict(self) -> dict[str, Any]:
         attrs = ("rmin", "rmax", "unit", "rweight", "resolution")
-        return {attr: getattr(self, attr) for attr in attrs}
+        the_dict = {attr: getattr(self, attr) for attr in attrs}
+        return {attr: value for attr, value in the_dict.items() if value is not None}
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
