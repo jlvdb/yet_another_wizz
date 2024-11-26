@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Generic, TypeVar, Union
 import h5py
 import yaml
 
+from yaw.utils.misc import write_yaml
+
 if TYPE_CHECKING:
     from typing import Any
 
@@ -101,7 +103,7 @@ class YamlSerialisable(Serialisable):
                 serialise into, see also :meth:`from_file()`.
         """
         with Path(path).open(mode="w") as f:
-            yaml.safe_dump(self.to_dict(), f)
+            write_yaml(self.to_dict(), f, indent=4, section=False)
 
 
 class HdfSerializable(ABC):

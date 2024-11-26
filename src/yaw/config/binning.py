@@ -126,17 +126,28 @@ class BinningConfig(BaseConfig, Immutable):
         return cls.create(**the_dict, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
-        if self.is_custom:
-            the_dict = dict(edges=self.binning.edges.tolist())
+        the_dict = dict(method=str(self.method))
 
-        else:
-            the_dict = dict(
-                zmin=self.zmin,
-                zmax=self.zmax,
-                num_bins=self.num_bins,
+        if self.is_custom:
+            the_dict.update(
+                dict(
+                    zmin=None,
+                    zmax=None,
+                    num_bins=None,
+                    edges=self.binning.edges.tolist(),
+                )
             )
 
-        the_dict["method"] = str(self.method)
+        else:
+            the_dict.update(
+                dict(
+                    zmin=self.zmin,
+                    zmax=self.zmax,
+                    num_bins=self.num_bins,
+                    edges=None,
+                )
+            )
+
         the_dict["closed"] = str(self.closed)
         return the_dict
 
