@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class Task(ABC):
-    _tasks = {}
+    _tasks: dict[str, type[Task]] = {}
     name: str
     inputs: tuple[Task, ...]
     optionals: tuple[Task, ...]
@@ -36,13 +36,6 @@ class Task(ABC):
         cls._tasks[cls.name] = cls
         return super().__init_subclass__()
 
-    @classmethod
-    def get(cls, name: str) -> TypeTask:
-        try:
-            return cls._tasks[name]
-        except KeyError as err:
-            raise ValueError(f"no tasked with name '{name}'") from err
-
     def __new__(cls: type[TypeTask]) -> TypeTask:
         new = super().__new__(cls)
         new._inputs = {task: NotSet for task in cls.inputs}
@@ -51,6 +44,13 @@ class Task(ABC):
 
     def __init__(self, project: ProjectDirectory) -> None:
         self.project = project
+
+    @classmethod
+    def get(cls: type[TypeTask], name: str) -> type[TypeTask]:
+        try:
+            return cls._tasks[name]
+        except KeyError as err:
+            raise ValueError(f"no tasked with name '{name}'") from err
 
     def connect_input(self, task: Task) -> bool:
         if type(task) in self.inputs:
@@ -96,7 +96,7 @@ class CacheRefTask(Task):
     optionals = ()
 
     def _run(self) -> None:
-        data_conf = self.project.setup.data
+        data_conf = self.project.config.data
         for conf in (data_conf.reference.data, data_conf.reference.rand):
             yaw.Catalog.from_file(
                 cache_directory=...,
@@ -105,12 +105,12 @@ class CacheRefTask(Task):
                 dec_name=conf.dec,
                 weight_name=conf.weight,
                 redshift_name=conf.redshift,
-                patch_centers=self.project.setup.patch_centers,
+                patch_centers=self.project.config.patch_centers,
                 patch_name=conf.patches,
                 patch_num=data_conf.num_patches,
                 overwrite=True,
-                progress=self.project.setup.progress,
-                max_workers=self.project.setup.config.max_workers,
+                progress=self.project.config.progress,
+                max_workers=self.project.config.config.max_workers,
             )
 
 
@@ -119,7 +119,7 @@ class CacheUnkTask(Task):
     optionals = ()
 
     def _run(self) -> None:
-        data_conf = self.project.setup.data
+        data_conf = self.project.config.data
         for idx in data_conf.get_bin_indices():
             for conf in (data_conf.unknown.data, data_conf.unknown.rand):
                 yaw.Catalog.from_file(
@@ -129,12 +129,12 @@ class CacheUnkTask(Task):
                     dec_name=conf.dec,
                     weight_name=conf.weight,
                     redshift_name=conf.redshift,
-                    patch_centers=self.project.setup.patch_centers,
+                    patch_centers=self.project.config.patch_centers,
                     patch_name=conf.patches,
                     patch_num=data_conf.num_patches,
                     overwrite=True,
-                    progress=self.project.setup.progress,
-                    max_workers=self.project.setup.config.max_workers,
+                    progress=self.project.config.progress,
+                    max_workers=self.project.config.config.max_workers,
                 )
 
 
@@ -145,11 +145,11 @@ class AutoRefTask(Task):
     def _run(self) -> None:
         data, random = self.project.cache.reference.load()
         (corr,) = yaw.autocorrelate(
-            self.project.setup.config,
+            self.project.config.config,
             data,
             random,
             progress=self.project.progress,
-            max_workers=self.project.setup.config.max_workers,
+            max_workers=self.project.config.config.max_workers,
         )
         path = self.project.paircounts.auto_ref.path
         corr.to_file(path)
@@ -163,11 +163,11 @@ class AutoUnkTask(Task):
         for idx, handle in self.project.cache.unknown.items():
             data, random = handle.load()
             (corr,) = yaw.autocorrelate(
-                self.project.setup.config,
+                self.project.config.config,
                 data,
                 random,
                 progress=self.project.progress,
-                max_workers=self.project.setup.config.max_workers,
+                max_workers=self.project.config.config.max_workers,
             )
             path = self.project.paircounts.auto_unk[idx].path
             corr.to_file(path)
@@ -182,13 +182,13 @@ class CrossTask(Task):
         for idx, handle in self.project.cache.unknown.items():
             unk_data, unk_rand = handle.load()
             (corr,) = yaw.crosscorrelate(
-                self.project.setup.config,
+                self.project.config.config,
                 ref_data,
                 unk_data,
                 ref_rand=ref_rand,
                 unk_rand=unk_rand,
                 progress=self.project.progress,
-                max_workers=self.project.setup.config.max_workers,
+                max_workers=self.project.config.config.max_workers,
             )
             path = self.project.paircounts.cross[idx].path
             corr.to_file(path)
