@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
 from yaw import Catalog, CorrData, CorrFunc, HistData, RedshiftData
+from yaw.catalog.catalog import PATCH_INFO_FILE
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -28,11 +29,6 @@ class Handle(ABC):
         pass
 
 
-class CacheHandle(Handle):
-    def load(self) -> tuple[Catalog, Catalog | None]:
-        raise NotImplementedError
-
-
 class SingleFileHandle(Handle):
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
@@ -42,6 +38,14 @@ class SingleFileHandle(Handle):
 
     def exists(self) -> bool:
         return self.path.exists()
+
+
+class CatalogHandle(SingleFileHandle):
+    def exists(self) -> bool:
+        return (self.path / PATCH_INFO_FILE).exists()
+
+    def load(self) -> Catalog:
+        return Catalog(self.path)
 
 
 class CorrFuncHandle(SingleFileHandle):
@@ -77,6 +81,27 @@ class RedshiftDataHandle(MultiFileHandle):
 class HistDataHandle(MultiFileHandle):
     def load(self) -> HistData:
         return HistData.from_files(self.template)
+
+
+class CacheHandle(Handle):
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.path})"
+
+    def exists(self) -> bool:
+        return CacheHandle(self.path / "data").exists()
+
+    def load(self) -> tuple[Catalog, Catalog | None]:
+        data = CacheHandle(self.path / "data").load()
+
+        if CacheHandle(self.path / "rand").exists():
+            rand = CacheHandle(self.path / "rand").load()
+        else:
+            rand = None
+
+        return data, rand
 
 
 class TomographyWrapper(Mapping[int, T]):
