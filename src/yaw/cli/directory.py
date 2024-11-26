@@ -4,7 +4,6 @@ from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING
 
-from yaw.cli.config import ProjectConfig
 from yaw.cli.handles import (
     CacheHandle,
     CorrDataHandle,
@@ -81,7 +80,6 @@ class TrueDirectory(Directory):
 
 
 class ProjectDirectory:
-    config: ProjectConfig
 
     def __init__(
         self,

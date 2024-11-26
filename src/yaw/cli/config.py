@@ -5,11 +5,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yaw import Configuration
+from yaw._version import __version_tuple__
+from yaw.cli.tasks import Task
 from yaw.config.base import ConfigError
+from yaw.utils import write_yaml
 from yaw.utils.abc import Serialisable, YamlSerialisable
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
     from typing import Any
 
 
@@ -29,21 +32,21 @@ class ColumnsConfig:
     patches: str | None = field(default=None)
 
     def __post_init__(self) -> None:
-        for attr, value in asdict(self):
-            if not isinstance(value, str):
+        for attr, value in asdict(self).items():
+            if value is not None and not isinstance(value, str):
                 raise ConfigError(f"column name for '{attr}' must be a string")
 
 
 class CatPairConfig(Serialisable):
     def __init__(
         self,
-        *,
         path_data: Path | str,
         path_rand: Path | str | None = None,
+        *,
         ra: str,
         dec: str,
+        redshift: str | None,
         weight: str | None = None,
-        redshift: str | None = None,
         patches: str | None = None,
     ) -> None:
         self.columns = ColumnsConfig(ra, dec, weight, redshift, patches)
@@ -59,9 +62,11 @@ class CatPairConfig(Serialisable):
         return super().from_dict(the_dict)
 
     def to_dict(self) -> dict[str, Any]:
-        the_dict = dict(data=str(self.path_data))
+        the_dict = dict(path_data=str(self.path_data))
+
         if self.path_rand is not None:
-            the_dict["rand"] = str(self.path_rand)
+            the_dict["path_rand"] = str(self.path_rand)
+
         the_dict.update(asdict(self.columns))
         return the_dict
 
@@ -73,13 +78,13 @@ class ReferenceCatConfig(CatPairConfig):
 class UnknownCatConfig(Serialisable):
     def __init__(
         self,
-        *,
         path_data: Mapping[int, Path | str],
         path_rand: Mapping[int, Path | str] | None = None,
+        *,
         ra: str,
         dec: str,
-        weight: str | None = None,
         redshift: str | None = None,
+        weight: str | None = None,
         patches: str | None = None,
     ) -> None:
         self.columns = ColumnsConfig(ra, dec, weight, redshift, patches)
@@ -113,9 +118,15 @@ class UnknownCatConfig(Serialisable):
         return super().from_dict(the_dict)
 
     def to_dict(self) -> dict[str, Any]:
-        the_dict = dict(data={idx: str(path) for idx, path in self.path_data.items()})
+        the_dict = dict(
+            path_data={idx: str(path) for idx, path in self.path_data.items()}
+        )
+
         if self.path_rand is not None:
-            the_dict["rand"] = {idx: str(path) for idx, path in self.path_rand.items()}
+            the_dict["path_rand"] = {
+                idx: str(path) for idx, path in self.path_rand.items()
+            }
+
         the_dict.update(asdict(self.columns))
         return the_dict
 
@@ -131,14 +142,18 @@ class InputConfig(YamlSerialisable):
     ) -> None:
         self.reference = reference
         self.unknown = unknown
-        self.num_patches = int(num_patches)
+        self.num_patches = None if num_patches is None else int(num_patches)
         self.cache_path = None if cache_path is None else Path(cache_path)
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
+        the_dict = the_dict.copy()
+        reference = the_dict.pop("reference")
+        unknown = the_dict.pop("unknown")
+
         return cls(
-            reference=ReferenceCatConfig.from_dict(the_dict.pop("reference")),
-            unknown=UnknownCatConfig.from_dict(the_dict.pop("unknown")),
+            ReferenceCatConfig.from_dict(reference),
+            UnknownCatConfig.from_dict(unknown),
             **the_dict,
         )
 
@@ -150,44 +165,49 @@ class InputConfig(YamlSerialisable):
             cache_path=None if self.cache_path is None else str(self.cache_path),
         )
 
-    def get_bin_indices() -> tuple[int]:
-        raise NotImplementedError
+
+class TaskConfig:
+    def __init__(self, task_names: Iterable[str]) -> None:
+        self._tasks = tuple(Task.get(name) for name in task_names)
+
+    def get(self) -> list[type[Task]]:
+        return list(self._tasks)
+
+    def to_list(self) -> list[str]:
+        return [task.name for task in self._tasks]
 
 
-"""
-class TaskConfig(YamlSerialisable):
-    def __init__(self):
-        super().__init__()
-
-    def __init__(self, tasks: Iterable[Task]):
-        self.tasks = list(tasks)
-        self._connect_inputs()
-
-    def _connect_inputs(self) -> None:
-        for task in self.tasks:
-            for input_task in self.tasks:
-                if input_task == task:
-                    continue
-                task.connect_input(input_task)
-
-            task.check_inputs()
-"""
-
-
+@dataclass
 class ProjectConfig(YamlSerialisable):
-    config: Configuration
-    data: InputConfig
-    tasks: ...
+    correlation: Configuration
+    inputs: InputConfig
+    tasks: TaskConfig
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
+        the_dict = the_dict.copy()
+        correlation = the_dict.pop("correlation")
+        inputs = the_dict.pop("inputs")
+        tasks = the_dict.pop("tasks")
+        for key in the_dict:
+            raise ConfigError(f"unexpected configuration section '{key}'")
+
         return cls(
-            config=Configuration.from_dict(the_dict.pop("config")),
-            data=InputConfig.from_dict(the_dict.pop("data")),
+            correlation=Configuration.from_dict(correlation),
+            inputs=InputConfig.from_dict(inputs),
+            tasks=TaskConfig(tasks),
         )
 
     def to_dict(self):
         return dict(
-            config=self.config.to_dict(),
-            data=self.data.to_dict(),
+            correlation=self.correlation.to_dict(),
+            inputs=self.inputs.to_dict(),
+            tasks=self.tasks.to_list(),
         )
+
+    def to_file(self, path: Path | str) -> None:
+        version = ".".join(str(v) for v in __version_tuple__[:3])
+        header = f"yaw_cli v{version} configuration"
+
+        with Path(path).open(mode="w") as f:
+            write_yaml(self.to_dict(), f, header_lines=[header], indent=4)
