@@ -85,23 +85,21 @@ class HistDataHandle(MultiFileHandle):
 
 class CacheHandle(Handle):
     def __init__(self, path: Path | str) -> None:
-        self.path = Path(path)
+        self.data = CatalogHandle(self.path / "data")
+        self.rand = CatalogHandle(self.path / "data")
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.path})"
 
     def exists(self) -> bool:
-        return CacheHandle(self.path / "data").exists()
+        return self.data.exists()
 
     def load(self) -> tuple[Catalog, Catalog | None]:
-        data = CacheHandle(self.path / "data").load()
-
-        if CacheHandle(self.path / "rand").exists():
-            rand = CacheHandle(self.path / "rand").load()
+        data = self.data.load()
+        if self.rand.exists():
+            return data, self.rand.load()
         else:
-            rand = None
-
-        return data, rand
+            return data, None
 
 
 class TomographyWrapper(Mapping[int, T]):

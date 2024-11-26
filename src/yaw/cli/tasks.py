@@ -96,21 +96,21 @@ class CacheRefTask(Task):
     optionals = ()
 
     def _run(self) -> None:
-        data_conf = self.project.config.data
-        for conf in (data_conf.reference.data, data_conf.reference.rand):
+        cache = self.project.cache.reference
+        for path in (cache.data.path, cache.rand.path):
             yaw.Catalog.from_file(
                 cache_directory=...,
-                path=conf.filepath,
-                ra_name=conf.ra,
-                dec_name=conf.dec,
-                weight_name=conf.weight,
-                redshift_name=conf.redshift,
-                patch_centers=self.project.config.patch_centers,
-                patch_name=conf.patches,
-                patch_num=data_conf.num_patches,
+                path=path,
+                ra_name=...,
+                dec_name=...,
+                weight_name=...,
+                redshift_name=...,
+                patch_centers=...,
+                patch_name=...,
+                patch_num=...,
                 overwrite=True,
-                progress=self.project.config.progress,
-                max_workers=self.project.config.config.max_workers,
+                progress=...,
+                max_workers=...,
             )
 
 
@@ -119,22 +119,22 @@ class CacheUnkTask(Task):
     optionals = ()
 
     def _run(self) -> None:
-        data_conf = self.project.config.data
-        for idx in data_conf.get_bin_indices():
-            for conf in (data_conf.unknown.data, data_conf.unknown.rand):
+        for idx in self.project.indices:
+            cache = self.project.cache.unknown[idx]
+            for path in (cache.data.path, cache.rand.path):
                 yaw.Catalog.from_file(
                     cache_directory=...,
-                    path=conf.filepath[idx],
-                    ra_name=conf.ra,
-                    dec_name=conf.dec,
-                    weight_name=conf.weight,
-                    redshift_name=conf.redshift,
-                    patch_centers=self.project.config.patch_centers,
-                    patch_name=conf.patches,
-                    patch_num=data_conf.num_patches,
+                    path=path,
+                    ra_name=...,
+                    dec_name=...,
+                    weight_name=...,
+                    redshift_name=...,
+                    patch_centers=...,
+                    patch_name=...,
+                    patch_num=...,
                     overwrite=True,
-                    progress=self.project.config.progress,
-                    max_workers=self.project.config.config.max_workers,
+                    progress=...,
+                    max_workers=...,
                 )
 
 
@@ -145,11 +145,11 @@ class AutoRefTask(Task):
     def _run(self) -> None:
         data, random = self.project.cache.reference.load()
         (corr,) = yaw.autocorrelate(
-            self.project.config.config,
+            self.project.correlation.config,
             data,
             random,
             progress=self.project.progress,
-            max_workers=self.project.config.config.max_workers,
+            max_workers=self.project.correlation.config.max_workers,
         )
         path = self.project.paircounts.auto_ref.path
         corr.to_file(path)
@@ -163,11 +163,11 @@ class AutoUnkTask(Task):
         for idx, handle in self.project.cache.unknown.items():
             data, random = handle.load()
             (corr,) = yaw.autocorrelate(
-                self.project.config.config,
+                self.project.correlation.config,
                 data,
                 random,
                 progress=self.project.progress,
-                max_workers=self.project.config.config.max_workers,
+                max_workers=self.project.correlation.config.max_workers,
             )
             path = self.project.paircounts.auto_unk[idx].path
             corr.to_file(path)
@@ -182,13 +182,13 @@ class CrossTask(Task):
         for idx, handle in self.project.cache.unknown.items():
             unk_data, unk_rand = handle.load()
             (corr,) = yaw.crosscorrelate(
-                self.project.config.config,
+                self.project.correlation.config,
                 ref_data,
                 unk_data,
                 ref_rand=ref_rand,
                 unk_rand=unk_rand,
                 progress=self.project.progress,
-                max_workers=self.project.config.config.max_workers,
+                max_workers=self.project.correlation.config.max_workers,
             )
             path = self.project.paircounts.cross[idx].path
             corr.to_file(path)
