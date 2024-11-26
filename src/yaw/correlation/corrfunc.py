@@ -309,7 +309,7 @@ def scalar_correlation(
     *, dd: NDArray, dd_weights: NDArray, dr: NDArray | None = None, dr_weights: NDArray | None = None
 ) -> NDArray:
     """Scalar field estimator with optional DR pair counts."""
-    if rd is None:
+    if dr is None:
         return dd/dd_weights
     else:
         return dd/dd_weights - dr/dr_weights    

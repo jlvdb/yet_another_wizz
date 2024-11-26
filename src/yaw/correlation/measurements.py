@@ -16,7 +16,7 @@ import numpy as np
 from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
-from yaw.correlation.corrfunc import CorrFunc
+from yaw.correlation.corrfunc import CorrFunc, CorrFunc_scalar
 from yaw.correlation.paircounts import (
     NormalisedCounts,
     PatchedCounts,
