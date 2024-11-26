@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import itertools
+from collections import deque
 from typing import TYPE_CHECKING
 
+from yaw.cli.tasks import Task
+
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from yaw.cli.config import ProjectConfig
 
 
@@ -11,7 +17,7 @@ class Pipeline:
     config: ProjectConfig
 
     def __init__(self, tasks):
-        self.tasks = list(tasks)
+        self.tasks: list[Task] = set(Task.get(name)(...) for name in tasks)
         self._connect_inputs()
 
     def _connect_inputs(self) -> None:
@@ -23,8 +29,65 @@ class Pipeline:
 
             task.check_inputs()
 
-    def run(self) -> None:
-        self.config.tasks.get_tasks()
-        while len(self.config.task) > 0:
-            task = self.tasks.pop()
-            task.execute()
+
+def has_child(task: Task, candidates: set[Task]) -> bool:
+    for candidate in candidates:
+        if task in candidate.inputs | candidate.optionals:
+            return True
+    return False
+
+
+def find_chain_ends(tasks: set[Task]) -> set[Task]:
+    ends = set()
+    for task in tasks:
+        if not has_child(task, tasks):
+            ends.add(task)
+    return ends
+
+
+def build_chain(current: Task, chain: deque[Task] | None = None) -> deque[Task]:
+    if chain is None:
+        chain = deque()
+
+    for parent in current.inputs | current.optionals:
+        if parent in chain:
+            chain.remove(parent)
+        chain.appendleft(parent)
+        chain = build_chain(parent, chain)
+    return chain
+
+
+def remove_duplicates(tasks: Iterable[Task]) -> deque[Task]:
+    seen = set()
+    uniques = deque()
+    for task in tasks:
+        if task not in seen:
+            uniques.append(task)
+            seen.add(task)
+    return uniques
+
+
+def build_queue(tasks: set[Task]) -> list[deque[Task]]:
+    chains = []
+    for end in find_chain_ends(tasks):
+        chain = build_chain(end)
+        chain.append(end)
+        chains.append(chain)
+
+    return remove_duplicates(itertools.chain(*chains))
+
+
+if __name__ == "__main__":
+    from timeit import default_timer
+
+    proj = Pipeline(["true", "cross", "autoref", "cacheref", "cacheunk", "estimate"])
+
+    N = 10000
+    start = default_timer()
+    for _ in range(N):
+        queue = build_queue(proj.tasks)
+    duration = default_timer() - start
+    print(f"built queue in {duration / N * 1e6:.3f} μs")
+    print()
+
+    print(" -> ".join(task.name for task in queue))

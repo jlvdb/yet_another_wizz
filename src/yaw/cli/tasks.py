@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import yaw
 from yaw.cli.directory import ProjectDirectory
-from yaw.options import NotSet
+from yaw.config.base import ConfigError
 
 if TYPE_CHECKING:
     from typing import TypeVar
@@ -28,22 +28,18 @@ if TYPE_CHECKING:
 class Task(ABC):
     _tasks: dict[str, type[Task]] = {}
     name: str
-    inputs: tuple[Task, ...]
-    optionals: tuple[Task, ...]
+    _inputs: set[type[Task]]
+    _optionals: set[type[Task]]
 
     def __init_subclass__(cls):
         cls.name = cls.__name__.replace("Task", "").lower()
         cls._tasks[cls.name] = cls
         return super().__init_subclass__()
 
-    def __new__(cls: type[TypeTask]) -> TypeTask:
-        new = super().__new__(cls)
-        new._inputs = {task: NotSet for task in cls.inputs}
-        new._optionals = {task: NotSet for task in cls.optionals}
-        return new
-
     def __init__(self, project: ProjectDirectory) -> None:
-        self.project = project
+        self.inputs: set[Task] = set()
+        self.optionals: set[Task] = set()
+        self._completed = False
 
     @classmethod
     def get(cls: type[TypeTask], name: str) -> type[TypeTask]:
@@ -53,49 +49,39 @@ class Task(ABC):
             raise ValueError(f"no tasked with name '{name}'") from err
 
     def connect_input(self, task: Task) -> bool:
-        if type(task) in self.inputs:
-            self._inputs[type(task)] = task
+        if type(task) in self._inputs:
+            self.inputs.add(task)
             return True
 
-        if type(task) in self.optionals:
-            self._optionals[type(task)] = task
+        if type(task) in self._optionals:
+            self.optionals.add(task)
             return True
 
         return False
 
     def check_inputs(self) -> None:
-        for task, inst in self._inputs.items():
-            if inst is NotSet:
-                raise ValueError(f"missing input '{task.name}' for task '{self.name}'")
+        expect = set(t.name for t in self._inputs)
+        have = set(t.name for t in self.inputs)
+        for name in expect - have:
+            raise ConfigError(f"missing input '{name}' for task '{self.name}'")
 
     def completed(self) -> bool:
+        return self._completed
         return all(handle.exists() for handle in self.outputs)
 
-    def execute(self) -> None:
-        if self.completed():
-            return
-
-        self.check_inputs()
-        for parent in self._inputs.values():
-            parent.execute()
-
-        for parent in self._optionals.values():
-            if parent is not NotSet:
-                parent.execute()
-
-        self._run()
-
     @abstractmethod
-    def _run(self) -> None:
+    def run(self) -> None:
         print(f"running {self.name}")
         self._completed = True
 
 
 class CacheRefTask(Task):
-    inputs = ()
-    optionals = ()
+    _inputs = ()
+    _optionals = ()
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         cache = self.project.cache.reference
         for path in (cache.data.path, cache.rand.path):
             yaw.Catalog.from_file(
@@ -115,10 +101,12 @@ class CacheRefTask(Task):
 
 
 class CacheUnkTask(Task):
-    inputs = ()
-    optionals = ()
+    _inputs = ()
+    _optionals = ()
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         for idx in self.project.indices:
             cache = self.project.cache.unknown[idx]
             for path in (cache.data.path, cache.rand.path):
@@ -139,10 +127,12 @@ class CacheUnkTask(Task):
 
 
 class AutoRefTask(Task):
-    inputs = (CacheRefTask,)
-    optionals = ()
+    _inputs = (CacheRefTask,)
+    _optionals = ()
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         data, random = self.project.cache.reference.load()
         (corr,) = yaw.autocorrelate(
             self.project.correlation.config,
@@ -156,10 +146,12 @@ class AutoRefTask(Task):
 
 
 class AutoUnkTask(Task):
-    inputs = (CacheUnkTask,)
-    optionals = ()
+    _inputs = (CacheUnkTask,)
+    _optionals = ()
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         for idx, handle in self.project.cache.unknown.items():
             data, random = handle.load()
             (corr,) = yaw.autocorrelate(
@@ -174,10 +166,12 @@ class AutoUnkTask(Task):
 
 
 class CrossTask(Task):
-    inputs = (CacheRefTask, CacheUnkTask)
-    optionals = ()
+    _inputs = (CacheRefTask, CacheUnkTask)
+    _optionals = ()
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         ref_data, ref_rand = self.project.cache.reference.load()
         for idx, handle in self.project.cache.unknown.items():
             unk_data, unk_rand = handle.load()
@@ -195,10 +189,12 @@ class CrossTask(Task):
 
 
 class EstimateTask(Task):
-    inputs = (CrossTask,)
-    optionals = (AutoRefTask, AutoUnkTask)
+    _inputs = (CrossTask,)
+    _optionals = (AutoRefTask, AutoUnkTask)
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         paircounts = self.project.paircounts
         estimate = self.project.estimate
 
@@ -225,16 +221,20 @@ class EstimateTask(Task):
 
 
 class TrueTask(Task):
-    inputs = (CacheUnkTask,)
-    optionals = ()
+    _inputs = (CacheUnkTask,)
+    _optionals = ()
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         raise NotImplementedError
 
 
 class PlotTask(Task):
-    inputs = (EstimateTask,)
-    optionals = (TrueTask,)
+    _inputs = (EstimateTask,)
+    _optionals = (TrueTask,)
 
-    def _run(self) -> None:
+    def run(self) -> None:
+        super().run()
+
         raise NotImplementedError
