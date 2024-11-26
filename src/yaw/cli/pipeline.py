@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import itertools
-from collections import deque
+from collections import Counter, deque
 from typing import TYPE_CHECKING
 
 from yaw.cli.tasks import Task
@@ -63,15 +63,34 @@ def remove_duplicates(tasks: Iterable[Task]) -> deque[Task]:
     return uniques
 
 
-def build_queue(tasks: set[Task]) -> list[deque[Task]]:
+def build_queue(tasks: set[Task]) -> deque[Task]:
     chains = [build_chain(end) for end in find_chain_ends(tasks)]
     return remove_duplicates(itertools.chain(*chains))
+
+
+def format_queue(queue: deque[Task]) -> str:
+    tasks = Counter(task.name for task in queue)
+    return " -> ".join(
+        name if count == 1 else f"{name}[{count}]" for name, count in tasks.items()
+    )
 
 
 if __name__ == "__main__":
     from timeit import default_timer
 
-    proj = Pipeline(["true", "cross", "autoref", "cacheref", "cacheunk", "estimate"])
+    proj = Pipeline(
+        [
+            "true",
+            "cross",
+            "autoref",
+            "estimate",
+            "cacheref",
+            "cacheunk",
+            "estimate",
+            "estimate",
+            "plot",
+        ]
+    )
 
     N = 10000
     start = default_timer()
@@ -81,4 +100,4 @@ if __name__ == "__main__":
     print(f"built queue in {duration / N * 1e6:.3f} μs")
     print()
 
-    print(" -> ".join(task.name for task in queue))
+    print(format_queue(build_queue(proj.tasks)))
