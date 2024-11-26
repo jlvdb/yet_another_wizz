@@ -40,79 +40,90 @@ def path_exists(path: str) -> Path:
     return filepath
 
 
-def create_parser() -> ArgumentParser:
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="yet_another_wizz: modular clustering redshift pipeline.\n\n"
-        "Batch processing tasks with a given configuration from a setup file.",
-        epilog="Thank you for using yet_another_wizz. Please consider citing "
-        "'A&A 642, A200 (2020)' when publishing results obtained with this code.",
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"yet_another_wizz v{__version__}"
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="count",
-        default=0,
-        help="show info-level log messages on terminal, repeat to show "
-        "debug-level messages",
-    )
-    parser.add_argument(
-        "--progress",
-        action="store_true",
-        help="show a progress bar for long-running tasks",
-    )
+class NameSpace:
+    verbose: int
+    progress: bool
+    wdir: Path
+    setup: Path
+    config_from: Path | None
+    cache_path: Path | None
+    threads: int | None
 
-    parser.add_argument(
-        "wdir",
-        metavar="<path>",
-        type=path_absolute,
-        help="project directory, must not exist",
-    )
+    @classmethod
+    def create_parser(cls) -> ArgumentParser:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            description="yet_another_wizz: modular clustering redshift pipeline.\n\n"
+            "Batch processing tasks from configuration file.",
+            epilog="Thank you for using yet_another_wizz. Please consider citing "
+            "'A&A 642, A200 (2020)' when publishing results obtained from this code.",
+        )
+        parser.add_argument(
+            "--version", action="version", version=f"yet_another_wizz v{__version__}"
+        )
+        parser.add_argument(
+            "-v",
+            "--verbose",
+            action="count",
+            default=0,
+            help="show info-level log messages on terminal, repeat to show "
+            "debug-level messages",
+        )
+        parser.add_argument(
+            "--progress",
+            action="store_true",
+            help="show a progress bar for long-running tasks",
+        )
 
-    group_setup = parser.add_argument_group(
-        title="setup configuration",
-        description="select a setup file to run with optional modifcations",
-    )
-    group_setup.add_argument(
-        "-d",
-        "--dump",
-        action=DumpConfigAction,
-        const="default",
-        nargs=0,
-        help="dump an empty setup file with default values to the terminal",
-    )
-    group_setup.add_argument(
-        "-s",
-        "--setup",
-        required=True,
-        type=path_exists,
-        metavar="<file>",
-        help="setup YAML file with configuration, input files and task list",
-    )
-    group_setup.add_argument(
-        "--config-from",
-        type=path_exists,
-        metavar="<file>",
-        help="load the 'configuration' section from this setup file",
-    )
-    group_setup.add_argument(
-        "--cache-path",
-        metavar="<path>",
-        type=path_absolute,
-        help="replace the 'data.cachepath' value in the setup file",
-    )
-    group_setup.add_argument(
-        "--threads",
-        type=int,
-        metavar="<int>",
-        help="number of threads to use (default: from configuration)",
-    )
+        parser.add_argument(
+            "wdir",
+            metavar="<path>",
+            type=path_absolute,
+            help="project directory, must not exist",
+        )
 
-    return parser
+        group_setup = parser.add_argument_group(
+            title="setup configuration",
+            description="select a setup file to run with optional modifcations",
+        )
+        group_setup.add_argument(
+            "-d",
+            "--dump",
+            action=DumpConfigAction,
+            const="default",
+            nargs=0,
+            help="dump an empty setup file with default values to the terminal",
+        )
+        group_setup.add_argument(
+            "-s",
+            "--setup",
+            required=True,
+            type=path_exists,
+            metavar="<file>",
+            help="setup YAML file with configuration, input files and task list",
+        )
+        group_setup.add_argument(
+            "--config-from",
+            type=path_exists,
+            metavar="<file>",
+            help="load the 'configuration' section from this setup file",
+        )
+        group_setup.add_argument(
+            "--cache-path",
+            metavar="<path>",
+            type=path_absolute,
+            help="replace the 'data.cachepath' value in the setup file",
+        )
+        group_setup.add_argument(
+            "--threads",
+            type=int,
+            metavar="<int>",
+            help="number of threads to use (default: from configuration)",
+        )
+
+        return parser
 
 
 def main():
-    create_parser().parse_args()
+    # args =
+    NameSpace.create_parser().parse_args(namespace=NameSpace)

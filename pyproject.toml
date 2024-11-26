@@ -71,7 +71,7 @@ dev = [
 ]
 
 [project.scripts]
-yaw = "yaw.cli:main"
+yaw_cli = "yaw.cli:main"
 
 [tool.setuptools.packages.find]
 where = [
