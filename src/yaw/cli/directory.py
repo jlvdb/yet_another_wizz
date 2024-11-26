@@ -4,6 +4,7 @@ from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING
 
+from yaw.cli.config import ProjectConfig
 from yaw.cli.handles import (
     CacheHandle,
     CorrDataHandle,
@@ -12,7 +13,6 @@ from yaw.cli.handles import (
     RedshiftDataHandle,
     TomographyWrapper,
 )
-from yaw.cli.setup import Setup
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -81,7 +81,7 @@ class TrueDirectory(Directory):
 
 
 class ProjectDirectory:
-    setup: Setup
+    config: ProjectConfig
 
     def __init__(
         self,
@@ -96,7 +96,7 @@ class ProjectDirectory:
         if self.path.exists():
             if not overwrite:
                 raise FileExistsError(f"project directory exists: {self.path}")
-            elif overwrite and not self.setup_path.exists():
+            elif overwrite and not self.config_path.exists():
                 raise FileExistsError(
                     f"can only overwrite valid cache directories: {self.path}"
                 )
@@ -104,8 +104,8 @@ class ProjectDirectory:
         self.path.mkdir(exist_ok=True)
 
     @property
-    def setup_path(self) -> Path:
-        return self.path / "setup.yml"
+    def config_path(self) -> Path:
+        return self.path / "config.yml"
 
     @property
     def cache(self) -> CacheDirectory:
