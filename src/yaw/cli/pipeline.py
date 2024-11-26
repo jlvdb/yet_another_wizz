@@ -38,22 +38,18 @@ def has_child(task: Task, candidates: set[Task]) -> bool:
 
 
 def find_chain_ends(tasks: set[Task]) -> set[Task]:
-    ends = set()
-    for task in tasks:
-        if not has_child(task, tasks):
-            ends.add(task)
-    return ends
+    return {task for task in tasks if not has_child(task, tasks)}
 
 
-def build_chain(current: Task, chain: deque[Task] | None = None) -> deque[Task]:
-    if chain is None:
-        chain = deque()
+def build_chain(end: Task, chain: deque[Task] | None = None) -> deque[Task]:
+    chain = chain or deque((end,))
 
-    for parent in current.inputs | current.optionals:
+    for parent in end.inputs | end.optionals:
         if parent in chain:
             chain.remove(parent)
         chain.appendleft(parent)
         chain = build_chain(parent, chain)
+
     return chain
 
 
@@ -68,12 +64,7 @@ def remove_duplicates(tasks: Iterable[Task]) -> deque[Task]:
 
 
 def build_queue(tasks: set[Task]) -> list[deque[Task]]:
-    chains = []
-    for end in find_chain_ends(tasks):
-        chain = build_chain(end)
-        chain.append(end)
-        chains.append(chain)
-
+    chains = [build_chain(end) for end in find_chain_ends(tasks)]
     return remove_duplicates(itertools.chain(*chains))
 
 
