@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import yaml
 
@@ -11,9 +10,6 @@ from yaw.cli.directory import ProjectDirectory
 from yaw.cli.tasks import TaskList
 from yaw.cli.utils import print_message
 from yaw.utils import write_yaml
-
-if TYPE_CHECKING:
-    from typing_extensions import Self
 
 
 class LockFile:
@@ -37,13 +33,6 @@ class LockFile:
 
     def release(self) -> None:
         self.path.unlink()
-
-    def __enter__(self) -> Self:
-        self.acquire()
-        return self
-
-    def __exit__(self, *args, **kwargs) -> None:
-        self.release()
 
 
 def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
@@ -73,6 +62,9 @@ class Pipeline:
     def __init__(
         self, directory: ProjectDirectory, config: ProjectConfig, tasks: TaskList
     ) -> None:
+        print_message(
+            f"using project directory: {directory.path}", colored=False, bold=False
+        )
         self.directory = directory
         self.config = config
         self.tasks = tasks
@@ -81,6 +73,7 @@ class Pipeline:
 
     @classmethod
     def create(cls, wdir: Path | str, setup_file: Path | str) -> Pipeline:
+        print_message(f"reading configuration: {setup_file}", colored=True, bold=False)
         config, tasks = read_config(setup_file)
         directory = ProjectDirectory(wdir, config.get_bin_indices(), overwrite=True)
         write_config(directory.config_path, config, tasks)
@@ -90,13 +83,17 @@ class Pipeline:
         NotImplemented
 
     def run(self) -> None:
-        print_message(f"scheduled tasks: {self.tasks}", colored=False, bold=False)
+        print_message(f"running tasks: {self.tasks}", colored=False, bold=False)
 
         while self.tasks:
             task = self.tasks.pop()
             print_message(f"running '{task.name}'", colored=True, bold=True)
-            with LockFile(self.directory.lock_path, task.name):
-                task.run(self.directory, self.config)
+
+            lock = LockFile(self.directory.lock_path, task.name)
+            task.run(self.directory, self.config)
+            lock.release()
+
+        print_message("done", colored=True, bold=True)
 
     def drop_cache(self) -> None:
         raise NotImplementedError
