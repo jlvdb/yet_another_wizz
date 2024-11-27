@@ -23,8 +23,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
-    from typing import Any, Callable, Literal, TypeVar
+    from collections.abc import Callable, Iterable, Iterator
+    from typing import Any, Literal, TypeVar
 
     from mpi4py.MPI import Comm
     from numpy.typing import NDArray

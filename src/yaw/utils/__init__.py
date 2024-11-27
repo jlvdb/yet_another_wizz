@@ -13,7 +13,9 @@ from yaw.utils.misc import (
     groupby,
     is_legacy_dataset,
     load_version_tag,
+    transform_matches,
     write_version_tag,
+    write_yaml,
 )
 
 __all__ = [
@@ -26,5 +28,7 @@ __all__ = [
     "groupby",
     "is_legacy_dataset",
     "load_version_tag",
+    "transform_matches",
     "write_version_tag",
+    "write_yaml",
 ]
