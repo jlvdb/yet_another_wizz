@@ -11,7 +11,7 @@ import numpy as np
 import yaml
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sized
+    from collections.abc import Callable, Iterable, Sized
     from io import TextIOBase
     from typing import Any, Generator
 
@@ -28,7 +28,7 @@ __all__ = [
     "format_float_fixed_width",
     "format_long_num",
     "format_time",
-    "replace_matches",
+    "transform_matches",
     "write_yaml",
 ]
 
@@ -129,12 +129,16 @@ def format_time(elapsed: float) -> str:
     return f"{minutes:.0f}m{seconds:05.2f}s"
 
 
-def replace_matches(string: str, regex: str, substitute: str) -> str:
-    """Replace matches in a regex search with a substitute string."""
-    for i, match in enumerate(re.finditer(regex, string)):
-        offset = len(substitute) * i
-        start = match.start() + offset
-        string = string[:start] + substitute + string[start:]
+def transform_matches(string: str, regex: str, transform: Callable[[str], str]) -> str:
+    """Transforms matches in a regex search to replaces the original."""
+    for match_info in re.finditer(regex, string):
+        offset = len(string) - len(match_info.string)
+        start = match_info.start() + offset
+        end = match_info.end() + offset
+
+        matched = match_info[0]
+        string = string[:start] + transform(matched) + string[end:]
+
     return string
 
 
@@ -182,10 +186,11 @@ def write_yaml(
     string = header + string
 
     # replace items (- ...) with indented items (  - ...)
-    string = replace_matches(string, r"[\t ]*- ", (" " * indent))
+    indent_str = " " * indent
+    string = transform_matches(string, r"[\t ]*- ", lambda match: indent_str + match)
 
     # insert empty line before a line without indentation
     if section:
-        string = replace_matches(string, r"\n\w", "\n")
+        string = transform_matches(string, r"\n\w", lambda match: "\n" + match)
 
     file.write(string)

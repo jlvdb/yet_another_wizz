@@ -1,13 +1,13 @@
 """
 Network of task connections (#=: required, |-: optional):
 
-CacheRef === AutoRef ---+
-    #                   |
-    #==== Cross === Estimate === Plot
-    #                   |         |
-CacheUnk --- AutoUnk ---+         |
-    #                             |
-    #== True ---------------------+
+cache_ref === auto_ref --+---------+
+     #                   |         |
+     #==== cross === estimate --- plot
+     #                   |        |  |
+cache_unk === auto_unk --+--------+  |
+     #                               |
+     #=== hist ----------------------+
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import yaw
 from yaw.config.base import ConfigError
+from yaw.utils import transform_matches
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -29,13 +30,22 @@ if TYPE_CHECKING:
 
 
 class Task(ABC):
-    _tasks: dict[str, type[Task]] = {}
     name: str
+    _tasks: dict[str, type[Task]] = {}
     _inputs: set[type[Task]]
     _optionals: set[type[Task]]
 
     def __init_subclass__(cls):
-        cls.name = cls.__name__.replace("Task", "").lower()
+        # implicit naming conventions are nasty, but here we go
+        if not cls.__name__.endswith("Task"):
+            raise NameError("name of sublasses of 'Task' must contain 'Task'")
+        name = cls.__name__.replace("Task", "")
+
+        # transform name: MyNew -> my_new
+        cls.name = transform_matches(
+            name, regex=r"[A-Z]", transform=lambda match: "_" + match.lower()
+        ).lstrip("_")
+
         cls._tasks[cls.name] = cls
         return super().__init_subclass__()
 
@@ -79,8 +89,8 @@ class Task(ABC):
 
 
 class CacheRefTask(Task):
-    _inputs = ()
-    _optionals = ()
+    _inputs = set()
+    _optionals = set()
 
     def run(self) -> None:
         super().run()
@@ -104,8 +114,8 @@ class CacheRefTask(Task):
 
 
 class CacheUnkTask(Task):
-    _inputs = ()
-    _optionals = ()
+    _inputs = set()
+    _optionals = set()
 
     def run(self) -> None:
         super().run()
@@ -130,8 +140,10 @@ class CacheUnkTask(Task):
 
 
 class AutoRefTask(Task):
-    _inputs = (CacheRefTask,)
-    _optionals = ()
+    _inputs = {
+        CacheRefTask,
+    }
+    _optionals = set()
 
     def run(self) -> None:
         super().run()
@@ -149,8 +161,10 @@ class AutoRefTask(Task):
 
 
 class AutoUnkTask(Task):
-    _inputs = (CacheUnkTask,)
-    _optionals = ()
+    _inputs = {
+        CacheUnkTask,
+    }
+    _optionals = set()
 
     def run(self) -> None:
         super().run()
@@ -168,9 +182,9 @@ class AutoUnkTask(Task):
             corr.to_file(path)
 
 
-class CrossTask(Task):
-    _inputs = (CacheRefTask, CacheUnkTask)
-    _optionals = ()
+class CrossCorrTask(Task):
+    _inputs = {CacheRefTask, CacheUnkTask}
+    _optionals = set()
 
     def run(self) -> None:
         super().run()
@@ -192,8 +206,10 @@ class CrossTask(Task):
 
 
 class EstimateTask(Task):
-    _inputs = (CrossTask,)
-    _optionals = (AutoRefTask, AutoUnkTask)
+    _inputs = {
+        CrossCorrTask,
+    }
+    _optionals = {AutoRefTask, AutoUnkTask}
 
     def run(self) -> None:
         super().run()
@@ -223,9 +239,11 @@ class EstimateTask(Task):
             ncc.to_files(path)
 
 
-class TrueTask(Task):
-    _inputs = (CacheUnkTask,)
-    _optionals = ()
+class HistTask(Task):
+    _inputs = {
+        CacheUnkTask,
+    }
+    _optionals = set()
 
     def run(self) -> None:
         super().run()
@@ -234,10 +252,11 @@ class TrueTask(Task):
 
 
 class PlotTask(Task):
-    _inputs = (EstimateTask,)
-    _optionals = (TrueTask,)
+    _inputs = set()
+    _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
 
     def run(self) -> None:
+        # NOTE: there may be nothing to do
         super().run()
 
         raise NotImplementedError
@@ -346,12 +365,12 @@ class TaskList(Container, Sized):
 
 if __name__ == "__main__":
     task_list = [
-        "true",
-        "cross",
-        "autoref",
+        "hist",
+        "cross_corr",
+        "auto_ref",
         "estimate",
-        "cacheref",
-        "cacheunk",
+        "cache_ref",
+        "cache_unk",
         "estimate",
         "estimate",
         "plot",
