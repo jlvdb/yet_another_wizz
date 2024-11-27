@@ -22,7 +22,7 @@ jobs:
               /\|/ && in_block == 0 { in_block = 1; print; next } # Print the first | and skip
               /\|/ && in_block == 1 { in_block = 0; next }        # Skip the second |
               in_block == 0 { print }                             # Print lines outside the block
-          ' README.rst > README.rst
+          ' README.rst > tmp && mv tmp README.rst
 
       - name: Set up Python
         uses: actions/setup-python@v5
