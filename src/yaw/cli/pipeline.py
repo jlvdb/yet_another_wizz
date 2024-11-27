@@ -9,6 +9,7 @@ from yaw._version import __version_tuple__
 from yaw.cli.config import ProjectConfig
 from yaw.cli.directory import ProjectDirectory
 from yaw.cli.tasks import TaskList
+from yaw.cli.utils import print_message
 from yaw.utils import write_yaml
 
 if TYPE_CHECKING:
@@ -89,10 +90,11 @@ class Pipeline:
         NotImplemented
 
     def run(self) -> None:
-        print(f"scheduled tasks: {self.tasks}")
+        print_message(f"scheduled tasks: {self.tasks}", colored=False, bold=False)
 
         while self.tasks:
             task = self.tasks.pop()
+            print_message(f"running '{task.name}'", colored=True, bold=True)
             with LockFile(self.directory.lock_path, task.name):
                 task.run(self.directory, self.config)
 
