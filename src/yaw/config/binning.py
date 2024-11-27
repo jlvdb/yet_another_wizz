@@ -117,7 +117,12 @@ class BinningConfig(BaseConfig, Immutable):
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
-        if the_dict["method"] == "custom":
+        is_custom = (
+            the_dict.get("method", "") == BinMethod.custom
+            or the_dict.get("edges", None) is not None
+        )
+
+        if is_custom:
             edges = the_dict.pop("edges")
             closed = the_dict.pop("closed")
             binning = Binning(edges, closed=closed)
@@ -126,17 +131,28 @@ class BinningConfig(BaseConfig, Immutable):
         return cls.create(**the_dict, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
-        if self.is_custom:
-            the_dict = dict(edges=self.binning.edges.tolist())
+        the_dict = dict(method=str(self.method))
 
-        else:
-            the_dict = dict(
-                zmin=self.zmin,
-                zmax=self.zmax,
-                num_bins=self.num_bins,
+        if self.is_custom:
+            the_dict.update(
+                dict(
+                    zmin=None,
+                    zmax=None,
+                    num_bins=None,
+                    edges=self.binning.edges.tolist(),
+                )
             )
 
-        the_dict["method"] = str(self.method)
+        else:
+            the_dict.update(
+                dict(
+                    zmin=self.zmin,
+                    zmax=self.zmax,
+                    num_bins=self.num_bins,
+                    edges=None,
+                )
+            )
+
         the_dict["closed"] = str(self.closed)
         return the_dict
 
