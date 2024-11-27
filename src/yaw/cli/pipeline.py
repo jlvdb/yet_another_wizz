@@ -3,12 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from yaw.cli.tasks import Task
+import yaml
+
+from yaw._version import __version_tuple__
+from yaw.cli.config import ProjectConfig
+from yaw.cli.directory import ProjectDirectory
+from yaw.cli.tasks import TaskList
+from yaw.utils import write_yaml
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-
-    from yaw.cli.config import ProjectConfig
 
 
 class LockFile:
@@ -41,26 +45,57 @@ class LockFile:
         self.release()
 
 
+def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
+    with open(setup_file) as f:
+        config_dict = yaml.safe_load(f)
+        task_list = config_dict.pop("tasks")
+
+    config = ProjectConfig.from_dict(config_dict)
+    tasks = TaskList.from_list(task_list)
+    return config, tasks
+
+
+def write_config(
+    setup_file: Path | str, config: ProjectConfig, tasks: TaskList
+) -> None:
+    version = ".".join(str(v) for v in __version_tuple__[:3])
+    header = f"yaw_cli v{version} configuration"
+
+    config_dict = config.to_dict()
+    config_dict["tasks"] = tasks.to_list()
+
+    with open(setup_file, mode="w") as f:
+        write_yaml(config_dict, f, header_lines=[header], indent=4)
+
+
 class Pipeline:
-    progress: bool
-    config: ProjectConfig
+    def __init__(
+        self, directory: ProjectDirectory, config: ProjectConfig, tasks: TaskList
+    ) -> None:
+        self.directory = directory
+        self.config = config
+        self.tasks = tasks
+        self.tasks.schedule()
 
-    def __init__(self, tasks):
-        tasks_ = []
-        for name, compl in tasks:
-            task = Task.get(name)(...)
-            task._completed = compl
-            tasks_.append(task)
-        self.tasks: set[Task] = set(tasks_)
-        self._connect_inputs()
+    @classmethod
+    def create(cls, wdir: Path | str, setup_file: Path | str) -> Pipeline:
+        config, tasks = read_config(setup_file)
+        directory = ProjectDirectory(wdir, config.get_bin_indices(), overwrite=True)
+        write_config(directory.config_path, config, tasks)
+        return cls(directory, config, tasks)
 
-    def _connect_inputs(self) -> None:
-        for task in self.tasks:
-            for input_task in self.tasks:
-                if input_task == task:
-                    continue
-                task.connect_input(input_task)
+    def run(self) -> None:
+        print(f"scheduled tasks: {self.tasks}")
 
-            task.check_inputs()
+        while self.tasks:
+            task = self.tasks.pop()
+            with LockFile(self.directory.lock_path, task.name):
+                task.run()
 
-    def drop_cache(self) -> None: ...
+    def drop_cache(self) -> None:
+        raise NotImplementedError
+
+
+if __name__ == "__main__":
+    pipe = Pipeline.create("project", "project.yml")
+    pipe.run()

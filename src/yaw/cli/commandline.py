@@ -11,20 +11,9 @@ if TYPE_CHECKING:
 
 
 class DumpConfigAction(argparse.Action):
-    def __init__(
-        self, option_strings, dest, nargs=0, const="default", required=False, help=None
-    ) -> None:
-        super().__init__(
-            option_strings=option_strings,
-            dest=dest,
-            nargs=0,
-            const=const,
-            required=required,
-            help=help,
-        )
-
-    def __call__(self, parser, namespace, values, option_string):
-        raise NotImplementedError
+    def __call__(self, parser, *args, **kwargs):
+        print("have a cookie")
+        parser.exit()
 
 
 def path_absolute(path: str) -> Path:

@@ -99,7 +99,6 @@ class TrueDirectory(Directory):
 
 
 class ProjectDirectory:
-
     def __init__(
         self,
         path: Path | str,
@@ -122,11 +121,11 @@ class ProjectDirectory:
 
     @property
     def config_path(self) -> Path:
-        return self.path / "project.yml"
+        return self.path / "pipeline.yml"
 
     @property
     def log_path(self) -> Path:
-        return self.path / "project.log"
+        return self.path / "pipeline.log"
 
     @property
     def lock_path(self) -> Path:

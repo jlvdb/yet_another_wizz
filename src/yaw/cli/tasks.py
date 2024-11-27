@@ -52,7 +52,6 @@ class Task(ABC):
     def __init__(self) -> None:
         self.inputs: set[Task] = set()
         self.optionals: set[Task] = set()
-        self._completed = False
 
     @classmethod
     def get(cls: type[TypeTask], name: str) -> type[TypeTask]:
@@ -79,13 +78,11 @@ class Task(ABC):
             raise ConfigError(f"missing input '{name}' for task '{self.name}'")
 
     def completed(self) -> bool:
-        return self._completed
         return all(handle.exists() for handle in self.outputs)
 
     @abstractmethod
     def run(self) -> None:
-        print(f"running {self.name}")
-        self._completed = True
+        pass
 
 
 class CacheRefTask(Task):
@@ -93,7 +90,7 @@ class CacheRefTask(Task):
     _optionals = set()
 
     def run(self) -> None:
-        super().run()
+        raise NotImplementedError
 
         cache = self.project.cache.reference
         for path in (cache.data.path, cache.rand.path):
@@ -118,7 +115,7 @@ class CacheUnkTask(Task):
     _optionals = set()
 
     def run(self) -> None:
-        super().run()
+        raise NotImplementedError
 
         for idx in self.project.indices:
             cache = self.project.cache.unknown[idx]
@@ -144,7 +141,7 @@ class AutoRefTask(Task):
     _optionals = set()
 
     def run(self) -> None:
-        super().run()
+        raise NotImplementedError
 
         data, random = self.project.cache.reference.load()
         (corr,) = yaw.autocorrelate(
@@ -163,7 +160,7 @@ class AutoUnkTask(Task):
     _optionals = set()
 
     def run(self) -> None:
-        super().run()
+        raise NotImplementedError
 
         for idx, handle in self.project.cache.unknown.items():
             data, random = handle.load()
@@ -183,7 +180,7 @@ class CrossCorrTask(Task):
     _optionals = set()
 
     def run(self) -> None:
-        super().run()
+        raise NotImplementedError
 
         ref_data, ref_rand = self.project.cache.reference.load()
         for idx, handle in self.project.cache.unknown.items():
@@ -206,7 +203,7 @@ class EstimateTask(Task):
     _optionals = {AutoRefTask, AutoUnkTask}
 
     def run(self) -> None:
-        super().run()
+        raise NotImplementedError
 
         paircounts = self.project.paircounts
         estimate = self.project.estimate
@@ -238,8 +235,6 @@ class HistTask(Task):
     _optionals = set()
 
     def run(self) -> None:
-        super().run()
-
         raise NotImplementedError
 
 
@@ -248,9 +243,6 @@ class PlotTask(Task):
     _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
 
     def run(self) -> None:
-        # NOTE: there may be nothing to do
-        super().run()
-
         raise NotImplementedError
 
 
@@ -309,11 +301,12 @@ class TaskList(Container, Sized):
 
     @classmethod
     def from_list(cls, task_names: Iterable[str]) -> TaskList:
+
         tasks = [Task.get(name) for name in task_names]
         return cls(task() for task in tasks)
 
     def to_list(self) -> list[str]:
-        return [task.name for task in self._history]
+        return [task.name for task in self._schedule(resume=False)]
 
     def __len__(self) -> int:
         return len(self._queue)
@@ -336,43 +329,22 @@ class TaskList(Container, Sized):
 
             task.check_inputs()
 
+    def _schedule(self, *, resume: bool = False) -> deque[Task]:
+        chains = [build_chain(end) for end in find_chain_ends(self._tasks)]
+        queue = remove_duplicates(itertools.chain(*chains))
+        if resume:
+            return deque(task for task in queue if not task.completed())
+        return queue
+
     def clear(self) -> None:
         self._queue = deque()
         self._history = list()
 
     def schedule(self, resume: bool = False) -> None:
         self.clear()
-
-        chains = [build_chain(end) for end in find_chain_ends(self._tasks)]
-        queue = remove_duplicates(itertools.chain(*chains))
-        if resume:
-            queue = deque(task for task in queue if not task.completed())
-        self._queue = queue
+        self._queue = self._schedule(resume=resume)
 
     def pop(self) -> Task:
         task = self._queue.popleft()
         self._history.append(task)
         return task
-
-
-if __name__ == "__main__":
-    task_list = [
-        "hist",
-        "cross_corr",
-        "auto_ref",
-        "estimate",
-        "cache_ref",
-        "cache_unk",
-        "estimate",
-        "estimate",
-        "plot",
-    ]
-    tasks = TaskList.from_list(task_list)
-    tasks.schedule()
-
-    print(tasks)
-    while tasks:
-        tasks.pop()
-        print(tasks)
-
-    print(tasks.to_list())

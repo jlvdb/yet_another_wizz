@@ -5,10 +5,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yaw import Configuration
-from yaw._version import __version_tuple__
 from yaw.config.base import ConfigError
-from yaw.utils import write_yaml
-from yaw.utils.abc import Serialisable, YamlSerialisable
+from yaw.utils.abc import Serialisable
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -130,7 +128,7 @@ class UnknownCatConfig(Serialisable):
         return the_dict
 
 
-class InputConfig(YamlSerialisable):
+class InputConfig(Serialisable):
     def __init__(
         self,
         reference: ReferenceCatConfig,
@@ -166,7 +164,7 @@ class InputConfig(YamlSerialisable):
 
 
 @dataclass
-class ProjectConfig(YamlSerialisable):
+class ProjectConfig(Serialisable):
     correlation: Configuration
     inputs: InputConfig
 
@@ -187,12 +185,7 @@ class ProjectConfig(YamlSerialisable):
         return dict(
             correlation=self.correlation.to_dict(),
             inputs=self.inputs.to_dict(),
-            tasks=self.tasks.to_list(),
         )
 
-    def to_file(self, path: Path | str) -> None:
-        version = ".".join(str(v) for v in __version_tuple__[:3])
-        header = f"yaw_cli v{version} configuration"
-
-        with Path(path).open(mode="w") as f:
-            write_yaml(self.to_dict(), f, header_lines=[header], indent=4)
+    def get_bin_indices(self) -> list[int]:
+        return sorted(self.inputs.unknown.path_data.keys())
