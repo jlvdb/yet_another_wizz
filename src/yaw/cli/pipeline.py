@@ -76,6 +76,7 @@ class Pipeline:
         self.config = config
         self.tasks = tasks
         self.tasks.schedule()
+        self._validate()
 
     @classmethod
     def create(cls, wdir: Path | str, setup_file: Path | str) -> Pipeline:
@@ -84,13 +85,16 @@ class Pipeline:
         write_config(directory.config_path, config, tasks)
         return cls(directory, config, tasks)
 
+    def _validate(self) -> None:
+        NotImplemented
+
     def run(self) -> None:
         print(f"scheduled tasks: {self.tasks}")
 
         while self.tasks:
             task = self.tasks.pop()
             with LockFile(self.directory.lock_path, task.name):
-                task.run()
+                task.run(self.directory, self.config)
 
     def drop_cache(self) -> None:
         raise NotImplementedError

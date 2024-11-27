@@ -85,6 +85,7 @@ class HistDataHandle(MultiFileHandle):
 
 class CacheHandle(Handle):
     def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
         self.data = CatalogHandle(self.path / "data")
         self.rand = CatalogHandle(self.path / "data")
 
@@ -114,10 +115,10 @@ class TomographyWrapper(Mapping[int, T]):
         if "?" not in self.template:
             raise ValueError("'template' must contain '?' as placeholder for indices")
 
-        self._handles: dict[int, T]
+        self._handles: dict[int, T] = {}
         for idx in indices:
             source = self.template.replace("?", str(idx))
-            self.handles[idx] = self.type(source)
+            self._handles[idx] = self.type(source)
 
     def __repr__(self) -> str:
         handles = ", ".join(repr(handle) for handle in self.values())
@@ -133,4 +134,4 @@ class TomographyWrapper(Mapping[int, T]):
         yield from self._handles
 
     def exists(self) -> bool:
-        return all(handle.exists() for handle in self.handles.values())
+        return all(handle.exists() for handle in self._handles.values())

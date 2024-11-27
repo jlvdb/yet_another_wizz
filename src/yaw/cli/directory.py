@@ -49,7 +49,7 @@ class CacheDirectory(Directory):
 
     def set_patch_centers(self, centers: AngularCoordinates) -> None:
         if self.patch_center_file.exists():
-            raise ValueError("overwriting existing patch centers not permitted")
+            raise RuntimeError("overwriting existing patch centers not permitted")
         with self.patch_center_file.open(mode="wb") as f:
             np.save(f, centers.data)
 

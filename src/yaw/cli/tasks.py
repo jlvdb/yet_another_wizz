@@ -26,6 +26,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Any, TypeVar
 
+    from yaw.cli.config import CatPairConfig, ProjectConfig
+    from yaw.cli.directory import CacheDirectory, ProjectDirectory
+    from yaw.cli.handles import CacheHandle, CorrFuncHandle
+    from yaw.config import Configuration
+
     TypeTask = TypeVar("TypeTask", bound="Task")
 
 
@@ -81,153 +86,158 @@ class Task(ABC):
         return all(handle.exists() for handle in self.outputs)
 
     @abstractmethod
-    def run(self) -> None:
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         pass
+
+
+def create_catalog(
+    global_cache: CacheDirectory,
+    cache_handle: CacheHandle,
+    inputs: CatPairConfig,
+    num_patches: int | None,
+) -> None:
+    columns = inputs.columns
+    paths = {
+        cache_handle.rand.path: inputs.path_rand,
+        cache_handle.data.path: inputs.path_data,
+    }
+
+    for cache_path, input_path in paths.items():
+        if input_path is None:
+            continue
+
+        cat = yaw.Catalog.from_file(
+            cache_directory=cache_path,
+            path=input_path,
+            ra_name=columns.ra,
+            dec_name=columns.ra,
+            weight_name=columns.weight,
+            redshift_name=columns.redshift,
+            patch_centers=global_cache.get_patch_centers(),
+            patch_name=columns.patches,
+            patch_num=num_patches,
+            # overwrite=...,
+            # progress=...,
+            # max_workers=...,
+        )
+        try:
+            global_cache.set_patch_centers(cat.get_centers())
+        except RuntimeError:
+            pass
 
 
 class CacheRefTask(Task):
     _inputs = set()
     _optionals = set()
 
-    def run(self) -> None:
-        raise NotImplementedError
-
-        cache = self.project.cache.reference
-        for path in (cache.data.path, cache.rand.path):
-            yaw.Catalog.from_file(
-                cache_directory=...,
-                path=path,
-                ra_name=...,
-                dec_name=...,
-                weight_name=...,
-                redshift_name=...,
-                patch_centers=...,
-                patch_name=...,
-                patch_num=...,
-                overwrite=...,
-                progress=...,
-                max_workers=...,
-            )
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        create_catalog(
+            global_cache=directory.cache,
+            cache_handle=directory.cache.reference,
+            inputs=config.inputs.reference,
+            num_patches=config.inputs.num_patches,
+        )
 
 
 class CacheUnkTask(Task):
     _inputs = set()
     _optionals = set()
 
-    def run(self) -> None:
-        raise NotImplementedError
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        for idx, unk_config in config.inputs.unknown.iter_bins():
+            create_catalog(
+                global_cache=directory.cache,
+                cache_handle=directory.cache.unknown[idx],
+                inputs=unk_config,
+                num_patches=config.inputs.num_patches,
+            )
 
-        for idx in self.project.indices:
-            cache = self.project.cache.unknown[idx]
-            for path in (cache.data.path, cache.rand.path):
-                yaw.Catalog.from_file(
-                    cache_directory=...,
-                    path=path,
-                    ra_name=...,
-                    dec_name=...,
-                    weight_name=...,
-                    redshift_name=...,
-                    patch_centers=...,
-                    patch_name=...,
-                    patch_num=...,
-                    overwrite=...,
-                    progress=...,
-                    max_workers=...,
-                )
+
+def run_autocorr(
+    cache_handle: CacheHandle,
+    corrfunc_handle: CorrFuncHandle,
+    config: Configuration,
+) -> None:
+    data, rand = cache_handle.load()
+    (corr,) = yaw.autocorrelate(
+        config,
+        data,
+        rand,
+        # progress=...,
+        # max_workers=...,
+    )
+    corr.to_file(corrfunc_handle.path)
 
 
 class AutoRefTask(Task):
     _inputs = {CacheRefTask}
     _optionals = set()
 
-    def run(self) -> None:
-        raise NotImplementedError
-
-        data, random = self.project.cache.reference.load()
-        (corr,) = yaw.autocorrelate(
-            self.project.correlation.config,
-            data,
-            random,
-            progress=self.project.progress,
-            max_workers=self.project.correlation.config.max_workers,
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        run_autocorr(
+            cache_handle=directory.cache.reference,
+            corrfunc_handle=directory.paircounts.auto_ref,
+            config=config.correlation,
         )
-        path = self.project.paircounts.auto_ref.path
-        corr.to_file(path)
 
 
 class AutoUnkTask(Task):
     _inputs = {CacheUnkTask}
     _optionals = set()
 
-    def run(self) -> None:
-        raise NotImplementedError
-
-        for idx, handle in self.project.cache.unknown.items():
-            data, random = handle.load()
-            (corr,) = yaw.autocorrelate(
-                self.project.correlation.config,
-                data,
-                random,
-                progress=self.project.progress,
-                max_workers=self.project.correlation.config.max_workers,
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        for idx, handle in directory.cache.unknown.items():
+            run_autocorr(
+                cache_handle=handle,
+                corrfunc_handle=directory.paircounts.auto_unk[idx],
+                config=config.correlation,
             )
-            path = self.project.paircounts.auto_unk[idx].path
-            corr.to_file(path)
 
 
 class CrossCorrTask(Task):
     _inputs = {CacheRefTask, CacheUnkTask}
     _optionals = set()
 
-    def run(self) -> None:
-        raise NotImplementedError
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        ref_data, ref_rand = directory.cache.reference.load()
 
-        ref_data, ref_rand = self.project.cache.reference.load()
-        for idx, handle in self.project.cache.unknown.items():
+        for idx, handle in directory.cache.unknown.items():
             unk_data, unk_rand = handle.load()
+
             (corr,) = yaw.crosscorrelate(
-                self.project.correlation.config,
+                config.correlation,
                 ref_data,
                 unk_data,
                 ref_rand=ref_rand,
                 unk_rand=unk_rand,
-                progress=self.project.progress,
-                max_workers=self.project.correlation.config.max_workers,
+                # progress=...,
+                # max_workers=...,
             )
-            path = self.project.paircounts.cross[idx].path
-            corr.to_file(path)
+            corr.to_file(directory.paircounts.cross[idx].path)
 
 
 class EstimateTask(Task):
     _inputs = {CrossCorrTask}
     _optionals = {AutoRefTask, AutoUnkTask}
 
-    def run(self) -> None:
-        raise NotImplementedError
-
-        paircounts = self.project.paircounts
-        estimate = self.project.estimate
-
-        if paircounts.auto_ref.exists():
-            auto_ref = paircounts.auto_ref.load().sample()
-            path = estimate.auto_ref.template
-            auto_ref.to_files(path)
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        if directory.paircounts.auto_ref.exists():
+            auto_ref = directory.paircounts.auto_ref.load().sample()
+            auto_ref.to_files(directory.estimate.auto_ref.template)
         else:
             auto_ref = None
 
-        for idx, handle in paircounts.cross.items():
-            cross = handle.load()
-            auto_pairs = paircounts.auto_unk[idx]
-            if auto_pairs.exists():
-                auto_unk = auto_pairs.load().sample()
-                path = estimate.auto_unk[idx].template
-                auto_unk.to_files(path)
+        for idx, cross_handle in directory.paircounts.cross.items():
+            auto_handle = directory.paircounts.auto_unk[idx]
+            if auto_handle.exists():
+                auto_unk = auto_handle.load().sample()
+                auto_unk.to_files(directory.estimate.auto_unk[idx].template)
             else:
                 auto_unk = None
 
-            ncc = yaw.RedshiftData.from_corrdata(cross.sample(), auto_ref, auto_unk)
-            path = estimate[idx].template
-            ncc.to_files(path)
+            cross = cross_handle.load().sample()
+            ncc = yaw.RedshiftData.from_corrdata(cross, auto_ref, auto_unk)
+            ncc.to_files(directory.estimate[idx].template)
 
 
 class HistTask(Task):
