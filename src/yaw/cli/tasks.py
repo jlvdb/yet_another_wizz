@@ -130,7 +130,7 @@ def create_catalog(
             pass
 
 
-class CacheRefTask(Task):
+class LoadRefTask(Task):
     _inputs = set()
     _optionals = set()
 
@@ -143,7 +143,7 @@ class CacheRefTask(Task):
         )
 
 
-class CacheUnkTask(Task):
+class LoadUnkTask(Task):
     _inputs = set()
     _optionals = set()
 
@@ -175,7 +175,7 @@ def run_autocorr(
 
 
 class AutoRefTask(Task):
-    _inputs = {CacheRefTask}
+    _inputs = {LoadRefTask}
     _optionals = set()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
@@ -187,7 +187,7 @@ class AutoRefTask(Task):
 
 
 class AutoUnkTask(Task):
-    _inputs = {CacheUnkTask}
+    _inputs = {LoadUnkTask}
     _optionals = set()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
@@ -201,7 +201,7 @@ class AutoUnkTask(Task):
 
 
 class CrossCorrTask(Task):
-    _inputs = {CacheRefTask, CacheUnkTask}
+    _inputs = {LoadRefTask, LoadUnkTask}
     _optionals = set()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
@@ -249,7 +249,7 @@ class EstimateTask(Task):
 
 
 class HistTask(Task):
-    _inputs = {CacheUnkTask}
+    _inputs = {LoadUnkTask}
     _optionals = set()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
