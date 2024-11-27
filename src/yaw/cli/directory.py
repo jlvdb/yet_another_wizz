@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING
@@ -98,26 +99,63 @@ class TrueDirectory(Directory):
         return TomographyWrapper(HistDataHandle, self.path / "nz_true_?", self.indices)
 
 
+class PlotDirectory(Directory):
+    @property
+    def auto_ref_path(self) -> Path:
+        return self.path / "auto_ref.png"
+
+    @property
+    def auto_unk_path(self) -> Path:
+        return self.path / "auto_unk.png"
+
+    @property
+    def redshifts_path(self) -> Path:
+        return self.path / "redshifts.png"
+
+
 class ProjectDirectory:
     def __init__(
         self,
         path: Path | str,
         bin_indices: Iterable[int],
+    ) -> None:
+        self.path = Path(path)
+        if not self.path.exists():
+            raise FileNotFoundError(f"project directory does not exist: {self.path}")
+        if not self.indicator_path.exists():
+            raise FileNotFoundError(f"not a valie project directory: {self.path}")
+
+        self.indices = list(bin_indices)
+
+    @classmethod
+    def create(
+        cls,
+        path: Path | str,
+        bin_indices: Iterable[int],
         *,
         overwrite: bool = False,
     ) -> None:
-        self.indices = list(bin_indices)
+        new = cls.__new__(cls)  # need cls.indicator_path
+        new.path = Path(path)
 
-        self.path = Path(path)
-        if self.path.exists():
+        if new.path.exists():
             if not overwrite:
-                raise FileExistsError(f"project directory exists: {self.path}")
-            elif overwrite and not self.config_path.exists():
+                raise FileExistsError(f"project directory exists: {path}")
+            elif not new.indicator_path.exists():
                 raise FileExistsError(
-                    f"can only overwrite valid cache directories: {self.path}"
+                    f"can only overwrite valid cache directories: {path}"
                 )
-            rmtree(self.path)
-        self.path.mkdir(exist_ok=True)
+            rmtree(path)
+        new.path.mkdir()
+
+        with open(new.indicator_path, "w") as f:
+            f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+        return cls(path, bin_indices)
+
+    @property
+    def indicator_path(self) -> Path:
+        return self.path / ".project_info"
 
     @property
     def config_path(self) -> Path:
@@ -146,3 +184,7 @@ class ProjectDirectory:
     @property
     def true(self) -> TrueDirectory:
         return TrueDirectory(self.path / "true", self.indices)
+
+    @property
+    def plot(self) -> PlotDirectory:
+        return PlotDirectory(self.path / "plots", self.indices)

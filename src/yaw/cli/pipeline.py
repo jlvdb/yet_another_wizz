@@ -72,10 +72,19 @@ class Pipeline:
         self._validate()
 
     @classmethod
-    def create(cls, wdir: Path | str, setup_file: Path | str) -> Pipeline:
+    def create(
+        cls, wdir: Path | str, setup_file: Path | str, *, overwrite: bool = True
+    ) -> Pipeline:
+
         print_message(f"reading configuration: {setup_file}", colored=True, bold=False)
         config, tasks = read_config(setup_file)
-        directory = ProjectDirectory(wdir, config.get_bin_indices(), overwrite=True)
+        indices = config.get_bin_indices()
+
+        if Path(wdir).exists() and not overwrite:
+            directory = ProjectDirectory(wdir, indices)
+        else:
+            directory = ProjectDirectory.create(wdir, indices, overwrite=overwrite)
+
         write_config(directory.config_path, config, tasks)
         return cls(directory, config, tasks)
 
