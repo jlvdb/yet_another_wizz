@@ -97,12 +97,16 @@ class CacheHandle(Handle):
     def exists(self) -> bool:
         return self.data.exists()
 
+    def load_data(self) -> Catalog:
+        return self.data.load()
+
+    def load_rand(self) -> Catalog | None:
+        if not self.rand.exists():
+            return None
+        return self.rand.load()
+
     def load(self) -> tuple[Catalog, Catalog | None]:
-        data = self.data.load()
-        if self.rand.exists():
-            return data, self.rand.load()
-        else:
-            return data, None
+        return self.load_data(), self.load_rand()
 
 
 class TomographyWrapper(Mapping[int, T]):
