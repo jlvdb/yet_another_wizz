@@ -117,7 +117,12 @@ class BinningConfig(BaseConfig, Immutable):
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
-        if the_dict["method"] == "custom":
+        is_custom = (
+            the_dict.get("method", "") == BinMethod.custom
+            or the_dict.get("edges", None) is not None
+        )
+
+        if is_custom:
             edges = the_dict.pop("edges")
             closed = the_dict.pop("closed")
             binning = Binning(edges, closed=closed)
