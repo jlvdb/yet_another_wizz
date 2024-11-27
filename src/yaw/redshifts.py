@@ -150,20 +150,17 @@ class HistData(CorrData):
     @property
     def _description_data(self) -> str:
         """Descriptive comment for header of .dat file."""
-        n = "normalised " if self.density else " "
-        return f"n(z) {n}histogram with symmetric 68% percentile confidence"
+        return "n(z) histogram with symmetric 68% percentile confidence"
 
     @property
     def _description_samples(self) -> str:
         """Descriptive comment for header of .smp file."""
-        n = "normalised " if self.density else " "
-        return f"{self.num_samples} n(z) {n}histogram jackknife samples"
+        return f"{self.num_samples} n(z) histogram jackknife samples"
 
     @property
     def _description_covariance(self) -> str:
         """Descriptive comment for header of .cov file."""
-        n = "normalised " if self.density else " "
-        return f"n(z) {n}histogram covariance matrix ({self.num_bins}x{self.num_bins})"
+        return f"n(z) histogram covariance matrix ({self.num_bins}x{self.num_bins})"
 
     _default_plot_style = PlotStyle.step
 
@@ -393,7 +390,7 @@ class RedshiftData(CorrData):
 
             popt, _ = scipy.optimize.curve_fit(
                 lambda _, norm: y_from[mask] / norm,
-                xdata=target.mids[mask],
+                xdata=target.binning.mids[mask],
                 ydata=y_target[mask],
                 p0=[1.0],
                 sigma=1 / y_target[mask],  # usually works better for noisy data
