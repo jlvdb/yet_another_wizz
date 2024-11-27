@@ -4,6 +4,9 @@ from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING
 
+import numpy as np
+
+from yaw import AngularCoordinates
 from yaw.cli.handles import (
     CacheHandle,
     CorrDataHandle,
@@ -27,12 +30,28 @@ class Directory:
 
 class CacheDirectory(Directory):
     @property
+    def patch_center_file(self) -> Path:
+        return self.path / "patch_centers.npy"
+
+    @property
     def reference(self) -> CacheHandle:
         return CacheHandle(self.path / "reference")
 
     @property
     def unknown(self) -> TomographyWrapper[CacheHandle]:
         return TomographyWrapper(CacheHandle, self.path / "unknown_?", self.indices)
+
+    def get_patch_centers(self) -> AngularCoordinates | None:
+        if not self.patch_center_file.exists():
+            return None
+        data = np.load(self.patch_center_file)
+        return AngularCoordinates(data)
+
+    def set_patch_centers(self, centers: AngularCoordinates) -> None:
+        if self.patch_center_file.exists():
+            raise ValueError("overwriting existing patch centers not permitted")
+        with self.patch_center_file.open(mode="wb") as f:
+            np.save(f, centers.data)
 
 
 class PaircountsDirectory(Directory):
@@ -103,7 +122,15 @@ class ProjectDirectory:
 
     @property
     def config_path(self) -> Path:
-        return self.path / "config.yml"
+        return self.path / "project.yml"
+
+    @property
+    def log_path(self) -> Path:
+        return self.path / "project.log"
+
+    @property
+    def lock_path(self) -> Path:
+        return self.path / ".tasklock"
 
     @property
     def cache(self) -> CacheDirectory:
