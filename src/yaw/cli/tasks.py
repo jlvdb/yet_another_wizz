@@ -7,7 +7,7 @@ cache_ref === auto_ref --+---------+
      #                   |        |  |
 cache_unk === auto_unk --+--------+  |
      #                               |
-     #=== hist ----------------------+   # TODO: should hist depend on ref?
+     #=== hist ----------------------+
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from collections.abc import Container, Sized
 from typing import TYPE_CHECKING
 
 import yaw
-from yaw.cli.utils import print_message
+from yaw.cli.utils import make_redshift_fig, print_message
 from yaw.config.base import ConfigError
 from yaw.utils import transform_matches
 
@@ -58,6 +58,9 @@ class Task(ABC):
     def __init__(self) -> None:
         self.inputs: set[Task] = set()
         self.optionals: set[Task] = set()
+
+    def __hash__(self):
+        return hash(self.__class__)
 
     @classmethod
     def get(cls: type[TypeTask], name: str) -> type[TypeTask]:
@@ -246,18 +249,10 @@ class EstimateTask(Task):
 
 
 class HistTask(Task):
-    _inputs = {CacheRefTask, CacheUnkTask}
+    _inputs = {CacheUnkTask}
     _optionals = set()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
-        hist = yaw.HistData.from_catalog(
-            directory.cache.reference.load_data(),
-            config.correlation,
-            # progress=...,
-            # max_workers=...,
-        )
-        hist.to_files(directory.true.reference.template)
-
         for idx, handle in directory.cache.unknown.items():
             print_message(f"processing bin {idx}", colored=True, bold=False)
             hist = yaw.HistData.from_catalog(
@@ -274,7 +269,41 @@ class PlotTask(Task):
     _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
-        raise NotImplementedError
+        indices = config.get_bin_indices()
+        num_bins = len(indices)
+
+        auto_ref_exists = directory.estimate.auto_ref.exists()
+        auto_unk_exists = directory.estimate.auto_unk.exists()
+        nz_est_exists = directory.estimate.nz_est.exists()
+        hist_exists = directory.true.unknown.exists()
+
+        if auto_ref_exists:
+            fig = make_redshift_fig(1, "$w_{\rm ss}$")
+            directory.estimate.auto_ref.load().plot(ax=fig.axes[0], indicate_zero=True)
+            fig.savefig(directory.plot.auto_ref_path)
+
+        if auto_unk_exists:
+            fig = make_redshift_fig(num_bins, "$w_{\rm pp}$")
+            for ax, auto_unk in zip(fig.axes, directory.estimate.auto_unk.values()):
+                auto_unk.load().plot(ax=ax, indicate_zero=True)
+            fig.savefig(directory.plot.auto_unk_path)
+
+        if nz_est_exists or hist_exists:
+            fig = make_redshift_fig(num_bins, "Density estimate")
+            for ax, idx in zip(fig.axes, indices):
+                if nz_est_exists:
+                    nz_est = directory.estimate.nz_est[idx].load()
+
+                if hist_exists:
+                    hist = directory.true.unknown[idx].load().normalised()
+                    if nz_est_exists:
+                        nz_est = nz_est.normalised(hist)
+
+                if hist_exists:
+                    hist.plot(ax=ax, indicate_zero=True)
+                if nz_est_exists:
+                    nz_est.plot(ax=ax, indicate_zero=True)
+            fig.savefig(directory.plot.redshifts_path)
 
 
 def has_child(task: Task, candidates: set[Task]) -> bool:
