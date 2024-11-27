@@ -3,6 +3,14 @@
 Change log
 ==========
 
+Version 3.0.3
+-------------
+- Fixed bugs in the serialisation of ``BinningConfig``, ``ScalesConfig``, and
+  ``HistData``.
+- Fixed a bug when normalising ``RedshiftData`` relative to another dataset.
+- Implemented custom YAML formatting for better readability.
+
+
 Version 3.0.2
 -------------
 
