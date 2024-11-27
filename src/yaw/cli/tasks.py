@@ -110,7 +110,7 @@ def create_catalog(
             cache_directory=cache_path,
             path=input_path,
             ra_name=columns.ra,
-            dec_name=columns.ra,
+            dec_name=columns.dec,
             weight_name=columns.weight,
             redshift_name=columns.redshift,
             patch_centers=global_cache.get_patch_centers(),

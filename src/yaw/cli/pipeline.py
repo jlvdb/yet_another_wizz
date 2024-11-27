@@ -101,5 +101,9 @@ class Pipeline:
 
 
 if __name__ == "__main__":
+    from yaw.utils import get_logger
+
+    get_logger("debug")
+
     pipe = Pipeline.create("project", "project.yml")
     pipe.run()

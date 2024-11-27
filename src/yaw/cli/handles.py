@@ -86,8 +86,10 @@ class HistDataHandle(MultiFileHandle):
 class CacheHandle(Handle):
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
+        self.path.mkdir(exist_ok=True)
+
         self.data = CatalogHandle(self.path / "data")
-        self.rand = CatalogHandle(self.path / "data")
+        self.rand = CatalogHandle(self.path / "rand")
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.path})"
