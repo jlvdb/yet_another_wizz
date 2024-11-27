@@ -140,9 +140,7 @@ class CacheUnkTask(Task):
 
 
 class AutoRefTask(Task):
-    _inputs = {
-        CacheRefTask,
-    }
+    _inputs = {CacheRefTask}
     _optionals = set()
 
     def run(self) -> None:
@@ -161,9 +159,7 @@ class AutoRefTask(Task):
 
 
 class AutoUnkTask(Task):
-    _inputs = {
-        CacheUnkTask,
-    }
+    _inputs = {CacheUnkTask}
     _optionals = set()
 
     def run(self) -> None:
@@ -206,9 +202,7 @@ class CrossCorrTask(Task):
 
 
 class EstimateTask(Task):
-    _inputs = {
-        CrossCorrTask,
-    }
+    _inputs = {CrossCorrTask}
     _optionals = {AutoRefTask, AutoUnkTask}
 
     def run(self) -> None:
@@ -240,9 +234,7 @@ class EstimateTask(Task):
 
 
 class HistTask(Task):
-    _inputs = {
-        CacheUnkTask,
-    }
+    _inputs = {CacheUnkTask}
     _optionals = set()
 
     def run(self) -> None:
