@@ -90,6 +90,7 @@ class Pipeline:
             print_message(f"running '{task.name}'", colored=True, bold=True)
 
             lock = LockFile(self.directory.lock_path, task.name)
+            lock.acquire()
             task.run(self.directory, self.config)
             lock.release()
 
