@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING
 
 from yaw import Configuration
 from yaw._version import __version_tuple__
-from yaw.cli.tasks import Task
 from yaw.config.base import ConfigError
 from yaw.utils import write_yaml
 from yaw.utils.abc import Serialisable, YamlSerialisable
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping
+    from collections.abc import Iterator, Mapping
     from typing import Any
 
 
@@ -166,36 +165,22 @@ class InputConfig(YamlSerialisable):
         )
 
 
-class TaskConfig:
-    def __init__(self, task_names: Iterable[str]) -> None:
-        self._tasks = tuple(Task.get(name) for name in task_names)
-
-    def get(self) -> list[type[Task]]:
-        return list(self._tasks)
-
-    def to_list(self) -> list[str]:
-        return [task.name for task in self._tasks]
-
-
 @dataclass
 class ProjectConfig(YamlSerialisable):
     correlation: Configuration
     inputs: InputConfig
-    tasks: TaskConfig
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
         the_dict = the_dict.copy()
         correlation = the_dict.pop("correlation")
         inputs = the_dict.pop("inputs")
-        tasks = the_dict.pop("tasks")
         for key in the_dict:
             raise ConfigError(f"unexpected configuration section '{key}'")
 
         return cls(
             correlation=Configuration.from_dict(correlation),
             inputs=InputConfig.from_dict(inputs),
-            tasks=TaskConfig(tasks),
         )
 
     def to_dict(self):

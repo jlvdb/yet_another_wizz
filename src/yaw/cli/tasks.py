@@ -12,15 +12,18 @@ CacheUnk --- AutoUnk ---+         |
 
 from __future__ import annotations
 
+import itertools
 from abc import ABC, abstractmethod
+from collections import Counter, deque
+from collections.abc import Container, Sized
 from typing import TYPE_CHECKING
 
 import yaw
-from yaw.cli.directory import ProjectDirectory
 from yaw.config.base import ConfigError
 
 if TYPE_CHECKING:
-    from typing import TypeVar
+    from collections.abc import Iterable
+    from typing import Any, TypeVar
 
     TypeTask = TypeVar("TypeTask", bound="Task")
 
@@ -36,7 +39,7 @@ class Task(ABC):
         cls._tasks[cls.name] = cls
         return super().__init_subclass__()
 
-    def __init__(self, project: ProjectDirectory) -> None:
+    def __init__(self) -> None:
         self.inputs: set[Task] = set()
         self.optionals: set[Task] = set()
         self._completed = False
@@ -94,7 +97,7 @@ class CacheRefTask(Task):
                 patch_centers=...,
                 patch_name=...,
                 patch_num=...,
-                overwrite=True,
+                overwrite=...,
                 progress=...,
                 max_workers=...,
             )
@@ -120,7 +123,7 @@ class CacheUnkTask(Task):
                     patch_centers=...,
                     patch_name=...,
                     patch_num=...,
-                    overwrite=True,
+                    overwrite=...,
                     progress=...,
                     max_workers=...,
                 )
@@ -238,3 +241,127 @@ class PlotTask(Task):
         super().run()
 
         raise NotImplementedError
+
+
+def has_child(task: Task, candidates: set[Task]) -> bool:
+    for candidate in candidates:
+        if task in candidate.inputs | candidate.optionals:
+            return True
+    return False
+
+
+def find_chain_ends(tasks: set[Task]) -> set[Task]:
+    return {task for task in tasks if not has_child(task, tasks)}
+
+
+def move_to_front(queue: deque, item: Any) -> None:
+    queue.remove(item)
+    queue.appendleft(item)
+
+
+def build_chain(end: Task, chain: deque[Task] | None = None) -> deque[Task]:
+    chain = chain or deque((end,))
+
+    for parent in end.inputs | end.optionals:
+        while parent in chain:
+            chain.remove(parent)
+
+        similar_tasks = tuple(task for task in chain if task.name == parent.name)
+        for task in similar_tasks:
+            move_to_front(chain, task)
+
+        chain.appendleft(parent)
+        chain = build_chain(parent, chain)
+
+    return chain
+
+
+def remove_duplicates(tasks: Iterable[Task]) -> deque[Task]:
+    seen = set()
+    uniques = deque()
+    for task in tasks:
+        if task not in seen:
+            uniques.append(task)
+            seen.add(task)
+    return uniques
+
+
+class TaskList(Container, Sized):
+    _tasks: set[Task]
+    _queue: deque[Task]
+    _history: list[Task]
+
+    def __init__(self, tasks: Iterable[Task]) -> None:
+        self.clear()
+        self._tasks = set(tasks)
+        self._link_tasks()
+
+    @classmethod
+    def from_list(cls, task_names: Iterable[str]) -> TaskList:
+        tasks = [Task.get(name) for name in task_names]
+        return cls(task() for task in tasks)
+
+    def to_list(self) -> list[str]:
+        return [task.name for task in self._history]
+
+    def __len__(self) -> int:
+        return len(self._queue)
+
+    def __contains__(self, task: Task) -> bool:
+        return task in self._queue
+
+    def __str__(self) -> str:
+        tasks = Counter(task.name for task in self._queue)
+        return " -> ".join(
+            name if count == 1 else f"{name}[{count}]" for name, count in tasks.items()
+        )
+
+    def _link_tasks(self) -> None:
+        for task in self._tasks:
+            for candidate in self._tasks:
+                if candidate == task:
+                    continue
+                task.connect_input(candidate)
+
+            task.check_inputs()
+
+    def clear(self) -> None:
+        self._queue = deque()
+        self._history = list()
+
+    def schedule(self, resume: bool = False) -> None:
+        self.clear()
+
+        chains = [build_chain(end) for end in find_chain_ends(self._tasks)]
+        queue = remove_duplicates(itertools.chain(*chains))
+        if resume:
+            queue = deque(task for task in queue if not task.completed())
+        self._queue = queue
+
+    def pop(self) -> Task:
+        task = self._queue.popleft()
+        self._history.append(task)
+        return task
+
+
+if __name__ == "__main__":
+    task_list = [
+        "true",
+        "cross",
+        "autoref",
+        "estimate",
+        "cacheref",
+        "cacheunk",
+        "estimate",
+        "estimate",
+        "plot",
+    ]
+    tasks = TaskList.from_list(task_list)
+    tasks.schedule()
+
+    print(tasks)
+    while tasks:
+        tasks.pop()
+        print(tasks)
+
+    print(tasks.to_list())
