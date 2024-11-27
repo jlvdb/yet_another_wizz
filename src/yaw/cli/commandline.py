@@ -47,6 +47,8 @@ class NameSpace:
     setup: Path
     config_from: Path | None
     cache_path: Path | None
+    drop: bool
+    overwrite: bool
     threads: int | None
 
     @classmethod
@@ -113,6 +115,16 @@ class NameSpace:
             metavar="<path>",
             type=path_absolute,
             help="replace the 'data.cachepath' value in the setup file",
+        )
+        group_setup.add_argument(
+            "--drop",
+            action="store_true",
+            help="automatically drop the cache after successful completion",
+        )
+        group_setup.add_argument(
+            "--overwrite",
+            action="store_true",
+            help="automatically overwrite an existing project",
         )
         group_setup.add_argument(
             "--threads",
