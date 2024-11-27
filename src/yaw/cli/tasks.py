@@ -7,7 +7,7 @@ cache_ref === auto_ref --+---------+
      #                   |        |  |
 cache_unk === auto_unk --+--------+  |
      #                               |
-     #=== hist ----------------------+
+     #=== hist ----------------------+   # TODO: should hist depend on ref?
 """
 
 from __future__ import annotations
@@ -246,18 +246,34 @@ class EstimateTask(Task):
 
 
 class HistTask(Task):
-    _inputs = {CacheUnkTask}
+    _inputs = {CacheRefTask, CacheUnkTask}
     _optionals = set()
 
-    def run(self) -> None:
-        raise NotImplementedError
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        hist = yaw.HistData.from_catalog(
+            directory.cache.reference.load_data(),
+            config.correlation,
+            # progress=...,
+            # max_workers=...,
+        )
+        hist.to_files(directory.true.reference.template)
+
+        for idx, handle in directory.cache.unknown.items():
+            print_message(f"processing bin {idx}", colored=True, bold=False)
+            hist = yaw.HistData.from_catalog(
+                handle.load_data(),
+                config.correlation,
+                # progress=...,
+                # max_workers=...,
+            )
+            hist.to_files(directory.true.unknown[idx].template)
 
 
 class PlotTask(Task):
     _inputs = set()
     _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
 
-    def run(self) -> None:
+    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         raise NotImplementedError
 
 
