@@ -34,6 +34,9 @@ INDICATOR_PREFIX = ""
 """Globabl variable that inserts a prefix when showing the ``Indicator``
 progress bar."""
 
+LOGGER_NAME = "yaw"
+"""Name of the logger used by `yet_another_wizz`."""
+
 
 def set_indicator_prefix(prefix: str) -> None:
     """Set the global ``INDICATOR_PREFIX`` to a specific value."""
@@ -278,9 +281,9 @@ def get_logger(
         configure_handler(handler, pretty=False, level=level_code)
         handlers.append(handler)
 
-    logging.basicConfig(level=level_code, handlers=handlers)
+    logging.basicConfig(level=logging.DEBUG, handlers=handlers)
     logging.captureWarnings(capture_warnings)
-    logger = logging.getLogger("yaw")
+    logger = logging.getLogger(LOGGER_NAME)
 
     emit_parallel_mode_log(logger)
     return logger

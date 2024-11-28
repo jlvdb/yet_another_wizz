@@ -35,7 +35,7 @@ __all__ = [
 ]
 
 
-logger = logging.getLogger("yaw.correlation")
+logger = logging.getLogger(__name__)
 
 
 class EstimatorError(Exception):

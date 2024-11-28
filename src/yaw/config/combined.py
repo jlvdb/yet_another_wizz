@@ -32,7 +32,7 @@ __all__ = [
     "Configuration",
 ]
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("yaw.config")  # instead of "yaw.config.combined"
 
 
 def cosmology_to_yaml(cosmology: TypeCosmology) -> str:

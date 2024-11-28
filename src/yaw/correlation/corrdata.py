@@ -45,7 +45,7 @@ __all__ = [
 PRECISION = 10
 """The precision of floats when encoding as ASCII."""
 
-logger = logging.getLogger("yaw.correlation")
+logger = logging.getLogger(__name__)
 
 
 def cov_from_samples(
