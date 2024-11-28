@@ -85,7 +85,7 @@ class Pipeline:
         self.tasks.schedule(self.directory, resume=resume)
         self._validate()
 
-        self.resume = resume
+        self._resume = resume
         self.progress = progress
 
     @classmethod
@@ -148,7 +148,7 @@ class Pipeline:
 
     def run(self) -> None:
         if len(self.tasks) > 0:
-            msg = "resuming" if self.resume else "running"
+            msg = "resuming" if self._resume else "running"
             msg = msg + f" tasks: {self.tasks}"
             print_message(msg, colored=False, bold=False)
         else:
@@ -160,7 +160,7 @@ class Pipeline:
 
             lock = LockFile(self.directory.lock_path, task.name)
             try:
-                lock.acquire(resume=self.resume)
+                lock.acquire(resume=self._resume)
             except FileExistsError:
                 msg = (
                     "previous pipeline finished unexpectedly or another "

@@ -138,9 +138,23 @@ class NameSpace:
 
 
 def main():
+    from yaw.cli.pipeline import Pipeline
     from yaw.utils import get_logger
 
-    # args =
-    NameSpace.create_parser().parse_args(namespace=NameSpace)
+    args = NameSpace.create_parser().parse_args(namespace=NameSpace)
 
-    get_logger("debug")
+    level = {0: "warn", 1: "info", 2: "debug"}
+    get_logger(level.get(args.verbose))
+
+    pipeline = Pipeline.create(
+        args.wdir,
+        args.setup,
+        cache_path=args.cache_path,
+        max_workers=args.workers,
+        overwrite=args.overwrite,
+        resume=args.resume,
+        progress=args.progress,
+    )
+    pipeline.run()
+    if args.drop:
+        pipeline.drop_cache()
