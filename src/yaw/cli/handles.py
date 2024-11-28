@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from glob import glob
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
@@ -63,7 +64,7 @@ class MultiFileHandle(Handle):
         return f"{type(self).__name__}({self.template}.*)"
 
     def exists(self) -> bool:
-        for _ in self.template.glob():
+        for _ in glob(f"{self.template}.*"):
             return True
         return False
 
