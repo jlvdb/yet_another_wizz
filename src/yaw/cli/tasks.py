@@ -19,7 +19,7 @@ from collections.abc import Container, Sized
 from typing import TYPE_CHECKING
 
 import yaw
-from yaw.cli.utils import WrappedFigure, print_message
+from yaw.cli.utils import WrappedFigure, bin_iter_progress, print_message
 from yaw.config.base import ConfigError
 from yaw.utils import transform_matches
 
@@ -178,8 +178,7 @@ class LoadUnkTask(Task):
         *,
         progress: bool = False,
     ) -> None:
-        for idx, unk_config in config.inputs.unknown.iter_bins():
-            print_message(f"processing bin {idx}", colored=True, bold=False)
+        for idx, unk_config in bin_iter_progress(config.inputs.unknown.iter_bins()):
             create_catalog(
                 global_cache=directory.cache,
                 cache_handle=directory.cache.unknown[idx],
@@ -244,8 +243,7 @@ class AutoUnkTask(Task):
         *,
         progress: bool = False,
     ) -> None:
-        for idx, handle in directory.cache.unknown.items():
-            print_message(f"processing bin {idx}", colored=True, bold=False)
+        for idx, handle in bin_iter_progress(directory.cache.unknown.items()):
             run_autocorr(
                 cache_handle=handle,
                 corrfunc_handle=directory.paircounts.auto_unk[idx],
@@ -270,8 +268,7 @@ class CrossCorrTask(Task):
     ) -> None:
         ref_data, ref_rand = directory.cache.reference.load()
 
-        for idx, handle in directory.cache.unknown.items():
-            print_message(f"processing bin {idx}", colored=True, bold=False)
+        for idx, handle in bin_iter_progress(directory.cache.unknown.items()):
             unk_data, unk_rand = handle.load()
 
             (corr,) = yaw.crosscorrelate(
@@ -310,8 +307,7 @@ class EstimateTask(Task):
         else:
             auto_ref = None
 
-        for idx, cross_handle in directory.paircounts.cross.items():
-            print_message(f"processing bin {idx}", colored=True, bold=False)
+        for idx, cross_handle in bin_iter_progress(directory.paircounts.cross.items()):
             auto_handle = directory.paircounts.auto_unk[idx]
             if auto_handle.exists():
                 auto_unk = auto_handle.load().sample()
@@ -338,8 +334,7 @@ class HistTask(Task):
         *,
         progress: bool = False,
     ) -> None:
-        for idx, handle in directory.cache.unknown.items():
-            print_message(f"processing bin {idx}", colored=True, bold=False)
+        for idx, handle in bin_iter_progress(directory.cache.unknown.items()):
             hist = yaw.HistData.from_catalog(
                 handle.load_data(),
                 config.correlation,

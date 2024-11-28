@@ -8,9 +8,13 @@ from yaw.utils.logging import term_supports_color
 from yaw.utils.plotting import check_plotting_enabled
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
     from pathlib import Path
+    from typing import TypeVar
 
     from typing_extensions import Self
+
+    T = TypeVar("T")
 
 SUPPORTS_COLOR = term_supports_color()
 
@@ -95,3 +99,15 @@ class WrappedFigure:
 
     def __exit__(self, *args, **kwargs) -> None:
         self.finalise()
+
+
+def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
+    try:
+        N = len(iterable)
+    except TypeError:
+        iterable = tuple(iterable)
+        N = len(iterable)
+
+    for i, item in enumerate(iterable, 1):
+        print_message(f"processing bin {i} / {N}", colored=True, bold=False)
+        yield item
