@@ -165,8 +165,10 @@ class LoadRefTask(Task):
 
 
 class LoadUnkTask(Task):
+    # has no inputs, but we want to enforce LoadRefTask to be run first if
+    # possible to determine patch centers
     _inputs = set()
-    _optionals = set()
+    _optionals = {LoadRefTask}
 
     def completed(self, directory) -> bool:
         return directory.cache.unknown.exists()
