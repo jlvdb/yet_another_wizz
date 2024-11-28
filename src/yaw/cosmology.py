@@ -217,7 +217,7 @@ class AngularScales(Scales):
 
         if self.unit == Unit.arcsec:
             scales = scales / 3600.0
-        elif self.unit == Unit.arcsec:
+        elif self.unit == Unit.arcmin:
             scales = scales / 60.0
         return np.deg2rad(scales)
 
