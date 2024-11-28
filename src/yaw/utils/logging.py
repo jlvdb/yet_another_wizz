@@ -245,6 +245,9 @@ def get_logger(
     related to `yet_another_wizz`. By default, records are written to `stdout`,
     but logs can be directed to a file instead (or both).
 
+    .. Note::
+        The logger adds an exception hook to log uncaught exceptions.
+
     Args:
         level:
             The lowest log level to emit (``error``, ``warning``, ``info``, or
@@ -267,6 +270,16 @@ def get_logger(
     Returns:
         The fully configured logger instance.
     """
+
+    def log_uncaught_exceptions(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            msg = "user interrupt"
+        else:
+            msg = exc_value
+        logger.critical(msg, exc_info=(exc_type, exc_value, exc_traceback))
+        # proceed with the original exception handling
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
     level_code = getattr(logging, level.upper())
     handlers = []
 
@@ -284,6 +297,7 @@ def get_logger(
     logging.basicConfig(level=logging.DEBUG, handlers=handlers)
     logging.captureWarnings(capture_warnings)
     logger = logging.getLogger(LOGGER_NAME)
+    sys.excepthook = log_uncaught_exceptions
 
     emit_parallel_mode_log(logger)
     return logger
