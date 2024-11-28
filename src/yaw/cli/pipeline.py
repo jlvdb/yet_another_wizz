@@ -24,8 +24,8 @@ class LockFile:
         with self.path.open() as f:
             return f.read()
 
-    def acquire(self) -> None:
-        if self.path.exists():
+    def acquire(self, *, resume: bool = False) -> None:
+        if self.path.exists() and not resume:
             raise FileExistsError(f"lock file already exists: {self.path}")
 
         with self.path.open(mode="w") as f:
@@ -72,9 +72,12 @@ class Pipeline:
         )
         self.directory = directory
         self.config = config
+
         self.tasks = tasks
         self.tasks.schedule(self.directory, resume=resume)
         self._validate()
+
+        self.resume = resume
 
     @classmethod
     def create(
@@ -111,8 +114,17 @@ class Pipeline:
             print_message(f"running '{task.name}'", colored=True, bold=True)
 
             lock = LockFile(self.directory.lock_path, task.name)
-            lock.acquire()
+            try:
+                lock.acquire(resume=self.resume)
+            except FileExistsError:
+                msg = (
+                    "previous pipeline finished unexpectedly or another "
+                    "pipeline is already runnig; run with 'resume' option"
+                )
+                raise RuntimeError(msg)
+
             task.run(self.directory, self.config)
+
             lock.release()
 
         print_message("done", colored=True, bold=True)
