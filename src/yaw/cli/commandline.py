@@ -40,6 +40,7 @@ class NameSpace:
     overwrite: bool
     resume: bool
     verbose: int
+    quiet: int
     progress: bool
 
     @classmethod
@@ -105,9 +106,13 @@ class NameSpace:
         config_group.add_argument(
             "-v",
             "--verbose",
-            action="count",
-            default=0,
-            help="show info-level log messages on terminal, repeat argument for debug-level",
+            action="store_true",
+            help="increase the log level from the default 'info' to 'debug'",
+        )
+        config_group.add_argument(
+            "--quiet",
+            action="store_true",
+            help="disable all terminal output, but still log to project directory",
         )
         config_group.add_argument(
             "--progress",
@@ -143,8 +148,11 @@ def main():
 
     args = NameSpace.create_parser().parse_args(namespace=NameSpace)
 
-    level = {0: "warn", 1: "info", 2: "debug"}
-    get_logger(level.get(args.verbose))
+    if args.quiet:
+        get_logger(stdout=False)
+        args.progress = False
+    else:
+        get_logger("debug" if args.verbose else "info")
 
     pipeline = Pipeline.create(
         args.wdir,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 import string
 from pathlib import Path
@@ -10,9 +11,11 @@ import yaml
 from yaw._version import __version_tuple__
 from yaw.cli.config import ProjectConfig
 from yaw.cli.directory import ProjectDirectory
+from yaw.cli.logging import init_file_logging
 from yaw.cli.tasks import TaskList
-from yaw.cli.utils import print_message
 from yaw.utils import write_yaml
+
+logger = logging.getLogger("yaw.cli.pipeline")
 
 
 class LockFile:
@@ -73,9 +76,8 @@ class Pipeline:
         resume: bool = False,
         progress: bool = True,
     ) -> None:
-        print_message(
-            f"using project directory: {directory.path}", colored=False, bold=False
-        )
+        logger.info(f"using project directory: {directory.path}")
+
         self.directory = directory
         self.config = config
         self._update_cache_path(cache_path)
@@ -100,7 +102,6 @@ class Pipeline:
         resume: bool = False,
         progress: bool = True,
     ) -> Pipeline:
-        print_message(f"reading configuration: {setup_file}", colored=True, bold=False)
         config, tasks = read_config(setup_file)
         bin_indices = config.get_bin_indices()
 
@@ -110,6 +111,9 @@ class Pipeline:
             directory = ProjectDirectory.create(
                 project_path, bin_indices, overwrite=overwrite
             )
+
+        init_file_logging(directory.log_path)
+        logger.info(f"using configuration from: {setup_file}")
 
         write_config(directory.config_path, config, tasks)
         return cls(
@@ -131,9 +135,7 @@ class Pipeline:
         root_path = Path(root_path)
         cache_name = "yaw_cache_" + "".join(random.choices(string.hexdigits, k=8))
         cache_path = (root_path / cache_name).resolve()
-        print_message(
-            f"using external cache directory: {cache_path}", colored=False, bold=False
-        )
+        logger.info(f"using external cache directory: {cache_path}")
 
         self.directory.link_cache(cache_path)
         cache_path.mkdir(exist_ok=True)
@@ -150,13 +152,13 @@ class Pipeline:
         if len(self.tasks) > 0:
             msg = "resuming" if self._resume else "running"
             msg = msg + f" tasks: {self.tasks}"
-            print_message(msg, colored=False, bold=False)
+            logger.info(msg)
         else:
-            print_message("nothing to do", colored=False, bold=False)
+            logger.warning("nothing to do")
 
         while self.tasks:
             task = self.tasks.pop()
-            print_message(f"running '{task.name}'", colored=True, bold=True)
+            logger.client(f"running '{task.name}'")
 
             lock = LockFile(self.directory.lock_path, task.name)
             try:
@@ -172,10 +174,10 @@ class Pipeline:
 
             lock.release()
 
-        print_message("done", colored=True, bold=True)
+        logger.client("done")
 
     def drop_cache(self) -> None:
-        print_message("dropping cache directory", colored=True, bold=True)
+        logger.client("dropping cache directory")
 
         if not self.directory.cache.path.exists():
             return

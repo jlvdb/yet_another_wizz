@@ -1,39 +1,14 @@
 from __future__ import annotations
 
 import math
-import sys
 from typing import TYPE_CHECKING
 
-from yaw.utils.logging import term_supports_color
 from yaw.utils.plotting import check_plotting_enabled
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
     from pathlib import Path
-    from typing import TypeVar
 
     from typing_extensions import Self
-
-    T = TypeVar("T")
-
-SUPPORTS_COLOR = term_supports_color()
-
-
-def print_message(msg: str, *, colored: bool, bold: bool) -> None:
-    """Print a message that matches the YAW pretty logging style."""
-    if SUPPORTS_COLOR:
-        color_code = 34 if colored else 37
-        style_code = 1 if bold else 0
-        color = f"\033[{style_code};{color_code}m"
-        reset = "\033[0m"
-    else:
-        color = ""
-        reset = ""
-
-    prefix = "CLI | "
-    message = f"{color}{prefix}{msg}{reset}\n"
-    sys.stdout.write(message)
-    sys.stdout.flush()
 
 
 @check_plotting_enabled
@@ -99,15 +74,3 @@ class WrappedFigure:
 
     def __exit__(self, *args, **kwargs) -> None:
         self.finalise()
-
-
-def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
-    try:
-        N = len(iterable)
-    except TypeError:
-        iterable = tuple(iterable)
-        N = len(iterable)
-
-    for i, item in enumerate(iterable, 1):
-        print_message(f"processing bin {i} / {N}", colored=True, bold=False)
-        yield item

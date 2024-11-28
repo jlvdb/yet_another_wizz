@@ -13,18 +13,19 @@ cache_unk === auto_unk --+--------+  |
 from __future__ import annotations
 
 import itertools
+import logging
 from abc import ABC, abstractmethod
 from collections import Counter, deque
 from collections.abc import Container, Sized
 from typing import TYPE_CHECKING
 
 import yaw
-from yaw.cli.utils import WrappedFigure, bin_iter_progress, print_message
+from yaw.cli.plotting import WrappedFigure
 from yaw.config.base import ConfigError
 from yaw.utils import transform_matches
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
     from typing import Any, TypeVar
 
     from yaw.cli.config import CatPairConfig, ProjectConfig
@@ -33,6 +34,21 @@ if TYPE_CHECKING:
     from yaw.config import Configuration
 
     TypeTask = TypeVar("TypeTask", bound="Task")
+    T = TypeVar("T")
+
+logger = logging.getLogger("yaw.cli.tasks")
+
+
+def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
+    try:
+        N = len(iterable)
+    except TypeError:
+        iterable = tuple(iterable)
+        N = len(iterable)
+
+    for i, item in enumerate(iterable, 1):
+        logger.info(f"processing bin {i} / {N}")
+        yield item
 
 
 class Task(ABC):
@@ -375,7 +391,7 @@ class PlotTask(Task):
         hist_exists = directory.true.unknown.exists()
 
         if not (auto_ref_exists | auto_unk_exists | nz_est_exists | hist_exists):
-            print_message("no data to plot", colored=False, bold=True)
+            logger.warning("no data to plot")
 
         if auto_ref_exists:
             ylabel = r"$w_{\rm ss}$"
