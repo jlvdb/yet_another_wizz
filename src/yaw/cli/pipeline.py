@@ -60,7 +60,12 @@ def write_config(
 
 class Pipeline:
     def __init__(
-        self, directory: ProjectDirectory, config: ProjectConfig, tasks: TaskList
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        tasks: TaskList,
+        *,
+        resume: bool = False,
     ) -> None:
         print_message(
             f"using project directory: {directory.path}", colored=False, bold=False
@@ -68,25 +73,29 @@ class Pipeline:
         self.directory = directory
         self.config = config
         self.tasks = tasks
-        self.tasks.schedule()
+        self.tasks.schedule(resume=resume)
         self._validate()
 
     @classmethod
     def create(
-        cls, wdir: Path | str, setup_file: Path | str, *, overwrite: bool = True
+        cls,
+        wdir: Path | str,
+        setup_file: Path | str,
+        *,
+        overwrite: bool = False,
+        resume: bool = False,
     ) -> Pipeline:
-
         print_message(f"reading configuration: {setup_file}", colored=True, bold=False)
         config, tasks = read_config(setup_file)
         indices = config.get_bin_indices()
 
         if Path(wdir).exists() and not overwrite:
-            directory = ProjectDirectory(wdir, indices)
+            directory = ProjectDirectory(wdir)
         else:
             directory = ProjectDirectory.create(wdir, indices, overwrite=overwrite)
 
         write_config(directory.config_path, config, tasks)
-        return cls(directory, config, tasks)
+        return cls(directory, config, tasks, resume=resume)
 
     def _validate(self) -> None:
         NotImplemented
@@ -114,5 +123,6 @@ if __name__ == "__main__":
 
     get_logger("debug")
 
-    pipe = Pipeline.create("project", "project.yml")
-    pipe.run()
+    pipe = Pipeline.create("project", "project.yml", resume=True)
+    print(pipe.tasks)
+    # pipe.run()

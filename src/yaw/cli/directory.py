@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING
@@ -114,18 +113,15 @@ class PlotDirectory(Directory):
 
 
 class ProjectDirectory:
-    def __init__(
-        self,
-        path: Path | str,
-        bin_indices: Iterable[int],
-    ) -> None:
+    def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         if not self.path.exists():
             raise FileNotFoundError(f"project directory does not exist: {self.path}")
-        if not self.indicator_path.exists():
-            raise FileNotFoundError(f"not a valie project directory: {self.path}")
 
-        self.indices = list(bin_indices)
+        if not self.indicator_path.exists():
+            raise FileNotFoundError(f"not a valid project directory: {self.path}")
+        with self.indicator_path.open(mode="rb") as f:
+            self.indices: list[int] = np.load(f).tolist()
 
     @classmethod
     def create(
@@ -140,18 +136,17 @@ class ProjectDirectory:
 
         if new.path.exists():
             if not overwrite:
-                raise FileExistsError(f"project directory exists: {path}")
+                raise FileExistsError(f"project directory already exists: {path}")
             elif not new.indicator_path.exists():
-                raise FileExistsError(
-                    f"can only overwrite valid cache directories: {path}"
-                )
+                msg = f"not a valid project directory, cannot overwrite: {path}"
+                raise FileExistsError(msg)
             rmtree(path)
         new.path.mkdir()
 
-        with open(new.indicator_path, "w") as f:
-            f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        with open(new.indicator_path, mode="wb") as f:
+            np.save(f, np.asarray(bin_indices, dtype="i8"))
 
-        return cls(path, bin_indices)
+        return cls(path)
 
     @property
     def indicator_path(self) -> Path:
