@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from yaw import Configuration
 from yaw.config.base import ConfigError
-from yaw.utils.abc import Serialisable
+from yaw.utils.abc import Serialisable, YamlSerialisable
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -128,7 +128,7 @@ class UnknownCatConfig(Serialisable):
         return the_dict
 
 
-class InputConfig(Serialisable):
+class InputConfig(YamlSerialisable):
     def __init__(
         self,
         reference: ReferenceCatConfig,
@@ -164,7 +164,7 @@ class InputConfig(Serialisable):
 
 
 @dataclass
-class ProjectConfig(Serialisable):
+class ProjectConfig(YamlSerialisable):
     correlation: Configuration
     inputs: InputConfig
 
@@ -173,8 +173,6 @@ class ProjectConfig(Serialisable):
         the_dict = the_dict.copy()
         correlation = the_dict.pop("correlation")
         inputs = the_dict.pop("inputs")
-        for key in the_dict:
-            raise ConfigError(f"unexpected configuration section '{key}'")
 
         return cls(
             correlation=Configuration.from_dict(correlation),
