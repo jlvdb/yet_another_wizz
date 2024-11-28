@@ -138,5 +138,9 @@ class NameSpace:
 
 
 def main():
+    from yaw.utils import get_logger
+
     # args =
     NameSpace.create_parser().parse_args(namespace=NameSpace)
+
+    get_logger("debug")

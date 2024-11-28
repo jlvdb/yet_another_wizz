@@ -25,7 +25,8 @@ class Directory:
         self.indices = list(bin_indices)
 
         self.path = Path(path)
-        self.path.mkdir(exist_ok=True)
+        if not self.path.is_symlink():
+            self.path.mkdir(exist_ok=True)
 
 
 class CacheDirectory(Directory):
@@ -165,8 +166,18 @@ class ProjectDirectory:
         return self.path / ".tasklock"
 
     @property
+    def _cache_path(self) -> Path:
+        return self.path / "cache"
+
+    @property
     def cache(self) -> CacheDirectory:
-        return CacheDirectory(self.path / "cache", self.indices)
+        return CacheDirectory(self._cache_path, self.indices)
+
+    def cache_exists(self) -> bool:
+        return self._cache_path.exists()
+
+    def link_cache(self, target: Path | str) -> None:
+        self._cache_path.symlink_to(target)
 
     @property
     def paircounts(self) -> PaircountsDirectory:
