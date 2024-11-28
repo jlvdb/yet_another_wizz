@@ -73,7 +73,7 @@ class Pipeline:
         self.directory = directory
         self.config = config
         self.tasks = tasks
-        self.tasks.schedule(resume=resume)
+        self.tasks.schedule(self.directory, resume=resume)
         self._validate()
 
     @classmethod
@@ -101,7 +101,10 @@ class Pipeline:
         NotImplemented
 
     def run(self) -> None:
-        print_message(f"running tasks: {self.tasks}", colored=False, bold=False)
+        if len(self.tasks) > 0:
+            print_message(f"running tasks: {self.tasks}", colored=False, bold=False)
+        else:
+            print_message("nothing to do", colored=False, bold=False)
 
         while self.tasks:
             task = self.tasks.pop()
@@ -124,5 +127,4 @@ if __name__ == "__main__":
     get_logger("debug")
 
     pipe = Pipeline.create("project", "project.yml", resume=True)
-    print(pipe.tasks)
-    # pipe.run()
+    pipe.run()

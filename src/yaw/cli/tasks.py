@@ -86,8 +86,9 @@ class Task(ABC):
         for name in expect - have:
             raise ConfigError(f"missing input '{name}' for task '{self.name}'")
 
-    def completed(self) -> bool:
-        return all(handle.exists() for handle in self.outputs)
+    @abstractmethod
+    def completed(self, directory: ProjectDirectory) -> bool:
+        pass
 
     @abstractmethod
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
@@ -134,6 +135,9 @@ class LoadRefTask(Task):
     _inputs = set()
     _optionals = set()
 
+    def completed(self, directory) -> bool:
+        return directory.cache.reference.exists()
+
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         create_catalog(
             global_cache=directory.cache,
@@ -146,6 +150,9 @@ class LoadRefTask(Task):
 class LoadUnkTask(Task):
     _inputs = set()
     _optionals = set()
+
+    def completed(self, directory) -> bool:
+        return directory.cache.unknown.exists()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         for idx, unk_config in config.inputs.unknown.iter_bins():
@@ -178,6 +185,9 @@ class AutoRefTask(Task):
     _inputs = {LoadRefTask}
     _optionals = set()
 
+    def completed(self, directory) -> bool:
+        return directory.paircounts.auto_ref.exists()
+
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         run_autocorr(
             cache_handle=directory.cache.reference,
@@ -189,6 +199,9 @@ class AutoRefTask(Task):
 class AutoUnkTask(Task):
     _inputs = {LoadUnkTask}
     _optionals = set()
+
+    def completed(self, directory) -> bool:
+        return directory.paircounts.auto_unk.exists()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         for idx, handle in directory.cache.unknown.items():
@@ -203,6 +216,9 @@ class AutoUnkTask(Task):
 class CrossCorrTask(Task):
     _inputs = {LoadRefTask, LoadUnkTask}
     _optionals = set()
+
+    def completed(self, directory) -> bool:
+        return directory.paircounts.cross.exists()
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         ref_data, ref_rand = directory.cache.reference.load()
@@ -226,6 +242,13 @@ class CrossCorrTask(Task):
 class EstimateTask(Task):
     _inputs = {CrossCorrTask}
     _optionals = {AutoRefTask, AutoUnkTask}
+
+    def completed(self, directory) -> bool:
+        return (
+            directory.estimate.auto_ref.exists()
+            | directory.estimate.auto_unk.exists()
+            | directory.estimate.nz_est.exists()
+        )
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         if directory.paircounts.auto_ref.exists():
@@ -252,6 +275,9 @@ class HistTask(Task):
     _inputs = {LoadUnkTask}
     _optionals = set()
 
+    def completed(self, directory) -> bool:
+        return directory.true.unknown.exists()
+
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         for idx, handle in directory.cache.unknown.items():
             print_message(f"processing bin {idx}", colored=True, bold=False)
@@ -268,6 +294,14 @@ class PlotTask(Task):
     _inputs = set()
     _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
 
+    def completed(self, directory) -> bool:
+        if len(self.optionals) == 0:
+            return True  # nothing to do
+
+        for _ in directory.plot.path.iterdir():
+            return True
+        return False
+
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
         plot_dir = directory.plot
         indices = config.get_bin_indices()
@@ -277,6 +311,9 @@ class PlotTask(Task):
         auto_unk_exists = directory.estimate.auto_unk.exists()
         nz_est_exists = directory.estimate.nz_est.exists()
         hist_exists = directory.true.unknown.exists()
+
+        if not (auto_ref_exists | auto_unk_exists | nz_est_exists | hist_exists):
+            print_message("no data to plot", colored=False, bold=True)
 
         if auto_ref_exists:
             ylabel = r"$w_{\rm ss}$"
@@ -375,7 +412,7 @@ class TaskList(Container, Sized):
         return cls(task() for task in tasks)
 
     def to_list(self) -> list[str]:
-        return [task.name for task in self._schedule(resume=False)]
+        return [task.name for task in self._schedule()]
 
     def __len__(self) -> int:
         return len(self._queue)
@@ -398,20 +435,24 @@ class TaskList(Container, Sized):
 
             task.check_inputs()
 
-    def _schedule(self, *, resume: bool = False) -> deque[Task]:
+    def _schedule(self, directory: ProjectDirectory | None = None) -> deque[Task]:
         chains = [build_chain(end) for end in find_chain_ends(self._tasks)]
         queue = remove_duplicates(itertools.chain(*chains))
-        if resume:
-            return deque(task for task in queue if not task.completed())
+        if directory is not None:  # check for completed tasks
+            return deque(task for task in queue if not task.completed(directory))
         return queue
 
     def clear(self) -> None:
         self._queue = deque()
         self._history = list()
 
-    def schedule(self, resume: bool = False) -> None:
+    def schedule(self, directory: ProjectDirectory, *, resume: bool = False) -> None:
         self.clear()
-        self._queue = self._schedule(resume=resume)
+        if resume:
+            args = (directory,)
+        else:
+            args = ()
+        self._queue = self._schedule(*args)
 
     def pop(self) -> Task:
         task = self._queue.popleft()
