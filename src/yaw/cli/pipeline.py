@@ -66,6 +66,7 @@ class Pipeline:
         tasks: TaskList,
         *,
         resume: bool = False,
+        progress: bool = True,
     ) -> None:
         print_message(
             f"using project directory: {directory.path}", colored=False, bold=False
@@ -78,6 +79,7 @@ class Pipeline:
         self._validate()
 
         self.resume = resume
+        self.progress = progress
 
     @classmethod
     def create(
@@ -87,6 +89,7 @@ class Pipeline:
         *,
         overwrite: bool = False,
         resume: bool = False,
+        progress: bool = True,
     ) -> Pipeline:
         print_message(f"reading configuration: {setup_file}", colored=True, bold=False)
         config, tasks = read_config(setup_file)
@@ -98,14 +101,16 @@ class Pipeline:
             directory = ProjectDirectory.create(wdir, indices, overwrite=overwrite)
 
         write_config(directory.config_path, config, tasks)
-        return cls(directory, config, tasks, resume=resume)
+        return cls(directory, config, tasks, resume=resume, progress=progress)
 
     def _validate(self) -> None:
         NotImplemented
 
     def run(self) -> None:
         if len(self.tasks) > 0:
-            print_message(f"running tasks: {self.tasks}", colored=False, bold=False)
+            msg = "resuming" if self.resume else "running"
+            msg = msg + f" tasks: {self.tasks}"
+            print_message(msg, colored=False, bold=False)
         else:
             print_message("nothing to do", colored=False, bold=False)
 
@@ -123,7 +128,7 @@ class Pipeline:
                 )
                 raise RuntimeError(msg)
 
-            task.run(self.directory, self.config)
+            task.run(self.directory, self.config, progress=self.progress)
 
             lock.release()
 

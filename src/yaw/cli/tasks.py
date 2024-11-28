@@ -91,7 +91,13 @@ class Task(ABC):
         pass
 
     @abstractmethod
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         pass
 
 
@@ -100,6 +106,9 @@ def create_catalog(
     cache_handle: CacheHandle,
     inputs: CatPairConfig,
     num_patches: int | None,
+    *,
+    progress: bool = False,
+    max_workers: int | None = None,
 ) -> None:
     columns = inputs.columns
     paths = {
@@ -121,9 +130,9 @@ def create_catalog(
             patch_centers=global_cache.get_patch_centers(),
             patch_name=columns.patches,
             patch_num=num_patches,
-            # overwrite=...,
-            # progress=...,
-            # max_workers=...,
+            overwrite=True,
+            progress=progress,
+            max_workers=max_workers,
         )
         try:
             global_cache.set_patch_centers(cat.get_centers())
@@ -138,12 +147,20 @@ class LoadRefTask(Task):
     def completed(self, directory) -> bool:
         return directory.cache.reference.exists()
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         create_catalog(
             global_cache=directory.cache,
             cache_handle=directory.cache.reference,
             inputs=config.inputs.reference,
             num_patches=config.inputs.num_patches,
+            progress=progress,
+            max_workers=config.correlation.max_workers,
         )
 
 
@@ -154,7 +171,13 @@ class LoadUnkTask(Task):
     def completed(self, directory) -> bool:
         return directory.cache.unknown.exists()
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         for idx, unk_config in config.inputs.unknown.iter_bins():
             print_message(f"processing bin {idx}", colored=True, bold=False)
             create_catalog(
@@ -162,6 +185,8 @@ class LoadUnkTask(Task):
                 cache_handle=directory.cache.unknown[idx],
                 inputs=unk_config,
                 num_patches=config.inputs.num_patches,
+                progress=progress,
+                max_workers=config.correlation.max_workers,
             )
 
 
@@ -169,14 +194,16 @@ def run_autocorr(
     cache_handle: CacheHandle,
     corrfunc_handle: CorrFuncHandle,
     config: Configuration,
+    *,
+    progress: bool = False,
 ) -> None:
     data, rand = cache_handle.load()
     (corr,) = yaw.autocorrelate(
         config,
         data,
         rand,
-        # progress=...,
-        # max_workers=...,
+        progress=progress,
+        max_workers=config.max_workers,
     )
     corr.to_file(corrfunc_handle.path)
 
@@ -188,11 +215,18 @@ class AutoRefTask(Task):
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_ref.exists()
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         run_autocorr(
             cache_handle=directory.cache.reference,
             corrfunc_handle=directory.paircounts.auto_ref,
             config=config.correlation,
+            progress=progress,
         )
 
 
@@ -203,13 +237,20 @@ class AutoUnkTask(Task):
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_unk.exists()
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         for idx, handle in directory.cache.unknown.items():
             print_message(f"processing bin {idx}", colored=True, bold=False)
             run_autocorr(
                 cache_handle=handle,
                 corrfunc_handle=directory.paircounts.auto_unk[idx],
                 config=config.correlation,
+                progress=progress,
             )
 
 
@@ -220,7 +261,13 @@ class CrossCorrTask(Task):
     def completed(self, directory) -> bool:
         return directory.paircounts.cross.exists()
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         ref_data, ref_rand = directory.cache.reference.load()
 
         for idx, handle in directory.cache.unknown.items():
@@ -233,8 +280,8 @@ class CrossCorrTask(Task):
                 unk_data,
                 ref_rand=ref_rand,
                 unk_rand=unk_rand,
-                # progress=...,
-                # max_workers=...,
+                progress=progress,
+                max_workers=config.correlation.max_workers,
             )
             corr.to_file(directory.paircounts.cross[idx].path)
 
@@ -250,7 +297,13 @@ class EstimateTask(Task):
             | directory.estimate.nz_est.exists()
         )
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         if directory.paircounts.auto_ref.exists():
             auto_ref = directory.paircounts.auto_ref.load().sample()
             auto_ref.to_files(directory.estimate.auto_ref.template)
@@ -278,14 +331,20 @@ class HistTask(Task):
     def completed(self, directory) -> bool:
         return directory.true.unknown.exists()
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         for idx, handle in directory.cache.unknown.items():
             print_message(f"processing bin {idx}", colored=True, bold=False)
             hist = yaw.HistData.from_catalog(
                 handle.load_data(),
                 config.correlation,
-                # progress=...,
-                # max_workers=...,
+                progress=progress,
+                max_workers=config.correlation.max_workers,
             )
             hist.to_files(directory.true.unknown[idx].template)
 
@@ -302,7 +361,13 @@ class PlotTask(Task):
             return True
         return False
 
-    def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+    def run(
+        self,
+        directory: ProjectDirectory,
+        config: ProjectConfig,
+        *,
+        progress: bool = False,
+    ) -> None:
         plot_dir = directory.plot
         indices = config.get_bin_indices()
         num_bins = len(indices)
