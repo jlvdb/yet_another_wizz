@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import random
+import string
 from pathlib import Path
+from shutil import rmtree
 
 import yaml
 
@@ -65,6 +68,8 @@ class Pipeline:
         config: ProjectConfig,
         tasks: TaskList,
         *,
+        cache_path: Path | str | None = None,
+        max_workers: int | None = None,
         resume: bool = False,
         progress: bool = True,
     ) -> None:
@@ -73,6 +78,8 @@ class Pipeline:
         )
         self.directory = directory
         self.config = config
+        self._update_cache_path(cache_path)
+        self._update_max_workers(max_workers)
 
         self.tasks = tasks
         self.tasks.schedule(self.directory, resume=resume)
@@ -84,24 +91,57 @@ class Pipeline:
     @classmethod
     def create(
         cls,
-        wdir: Path | str,
+        project_path: Path | str,
         setup_file: Path | str,
         *,
+        cache_path: Path | str | None = None,
+        max_workers: int | None = None,
         overwrite: bool = False,
         resume: bool = False,
         progress: bool = True,
     ) -> Pipeline:
         print_message(f"reading configuration: {setup_file}", colored=True, bold=False)
         config, tasks = read_config(setup_file)
-        indices = config.get_bin_indices()
+        bin_indices = config.get_bin_indices()
 
-        if Path(wdir).exists() and not overwrite:
-            directory = ProjectDirectory(wdir)
+        if Path(project_path).exists() and not overwrite:
+            directory = ProjectDirectory(project_path)
         else:
-            directory = ProjectDirectory.create(wdir, indices, overwrite=overwrite)
+            directory = ProjectDirectory.create(
+                project_path, bin_indices, overwrite=overwrite
+            )
 
         write_config(directory.config_path, config, tasks)
-        return cls(directory, config, tasks, resume=resume, progress=progress)
+        return cls(
+            directory,
+            config,
+            tasks,
+            resume=resume,
+            progress=progress,
+            cache_path=cache_path,
+            max_workers=max_workers,
+        )
+
+    def _update_cache_path(self, root_path: Path | str | None) -> None:
+        if root_path is None:
+            return
+        if self.directory.cache_exists():
+            raise FileExistsError("cannot update existing cache directory")
+
+        root_path = Path(root_path)
+        cache_name = "yaw_cache_" + "".join(random.choices(string.hexdigits, k=8))
+        cache_path = (root_path / cache_name).resolve()
+        print_message(
+            f"using external cache directory: {cache_path}", colored=False, bold=False
+        )
+
+        self.directory.link_cache(cache_path)
+        cache_path.mkdir(exist_ok=True)
+
+    def _update_max_workers(self, max_workers: int | None) -> None:
+        self.config.correlation = self.config.correlation.modify(
+            max_workers=max_workers
+        )
 
     def _validate(self) -> None:
         NotImplemented
@@ -135,13 +175,14 @@ class Pipeline:
         print_message("done", colored=True, bold=True)
 
     def drop_cache(self) -> None:
-        raise NotImplementedError
+        print_message("dropping cache directory", colored=True, bold=True)
 
+        if not self.directory.cache.path.exists():
+            return
 
-if __name__ == "__main__":
-    from yaw.utils import get_logger
+        if self.directory.cache.path.is_symlink():
+            rmtree(self.directory.cache.path.resolve())
+            self.directory.cache.path.unlink()
 
-    get_logger("debug")
-
-    pipe = Pipeline.create("project", "project.yml", resume=True)
-    pipe.run()
+        else:
+            rmtree(self.directory.cache.path)
