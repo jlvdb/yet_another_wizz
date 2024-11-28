@@ -19,7 +19,7 @@ from collections.abc import Container, Sized
 from typing import TYPE_CHECKING
 
 import yaw
-from yaw.cli.utils import make_redshift_fig, print_message
+from yaw.cli.utils import WrappedFigure, print_message
 from yaw.config.base import ConfigError
 from yaw.utils import transform_matches
 
@@ -269,6 +269,7 @@ class PlotTask(Task):
     _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
 
     def run(self, directory: ProjectDirectory, config: ProjectConfig) -> None:
+        plot_dir = directory.plot
         indices = config.get_bin_indices()
         num_bins = len(indices)
 
@@ -278,32 +279,40 @@ class PlotTask(Task):
         hist_exists = directory.true.unknown.exists()
 
         if auto_ref_exists:
-            fig = make_redshift_fig(1, "$w_{\rm ss}$")
-            directory.estimate.auto_ref.load().plot(ax=fig.axes[0], indicate_zero=True)
-            fig.savefig(directory.plot.auto_ref_path)
+            ylabel = r"$w_{\rm ss}$"
+            with WrappedFigure(plot_dir.auto_ref_path, 1, ylabel) as fig:
+                auto_ref = directory.estimate.auto_ref
+                auto_ref.load().plot(ax=fig.axes[0], indicate_zero=True)
 
         if auto_unk_exists:
-            fig = make_redshift_fig(num_bins, "$w_{\rm pp}$")
-            for ax, auto_unk in zip(fig.axes, directory.estimate.auto_unk.values()):
-                auto_unk.load().plot(ax=ax, indicate_zero=True)
-            fig.savefig(directory.plot.auto_unk_path)
+            ylabel = r"$w_{\rm pp}$"
+            with WrappedFigure(plot_dir.auto_unk_path, num_bins, ylabel) as fig:
+                for ax, auto_unk in zip(fig.axes, directory.estimate.auto_unk.values()):
+                    auto_unk.load().plot(ax=ax, indicate_zero=True)
 
         if nz_est_exists or hist_exists:
-            fig = make_redshift_fig(num_bins, "Density estimate")
-            for ax, idx in zip(fig.axes, indices):
-                if nz_est_exists:
-                    nz_est = directory.estimate.nz_est[idx].load()
+            ylabel = r"Density estimate"
+            with WrappedFigure(plot_dir.redshifts_path, num_bins, ylabel) as fig:
+                for ax, idx in zip(fig.axes, indices):
+                    is_last_bin = idx == indices[-1]
 
-                if hist_exists:
-                    hist = directory.true.unknown[idx].load().normalised()
                     if nz_est_exists:
-                        nz_est = nz_est.normalised(hist)
+                        nz_est = directory.estimate.nz_est[idx].load()
 
-                if hist_exists:
-                    hist.plot(ax=ax, indicate_zero=True)
-                if nz_est_exists:
-                    nz_est.plot(ax=ax, indicate_zero=True)
-            fig.savefig(directory.plot.redshifts_path)
+                    if hist_exists:
+                        hist = directory.true.unknown[idx].load().normalised()
+                        if nz_est_exists:
+                            nz_est = nz_est.normalised(hist)
+
+                    if hist_exists:
+                        label = "Histogram" if is_last_bin else None
+                        hist.plot(ax=ax, indicate_zero=True, label=label)
+                    if nz_est_exists:
+                        label = "CC $p(z)$" if is_last_bin else None
+                        nz_est.plot(ax=ax, indicate_zero=True, label=label)
+
+                    if is_last_bin:
+                        ax.legend()
 
 
 def has_child(task: Task, candidates: set[Task]) -> bool:
