@@ -284,7 +284,7 @@ class DataChunk:
         dtype = {name: dtype for name, (dtype, offset) in chunk.dtype.fields.items()}
         dtype.pop(field)
 
-        new_chunk = np.array(len(chunk), dtype=np.dtype(dtype))
+        new_chunk = np.empty(len(chunk), dtype=list(dtype.items()))
         for name in dtype:
             new_chunk[name] = chunk[name]
         return new_chunk, popped_values
