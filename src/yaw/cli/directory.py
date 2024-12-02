@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING
@@ -18,6 +19,8 @@ from yaw.cli.handles import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+logger = logging.getLogger("yaw.cli.pipeline")
 
 
 class Directory:
@@ -141,6 +144,7 @@ class ProjectDirectory:
             elif not new.indicator_path.exists():
                 msg = f"not a valid project directory, cannot overwrite: {path}"
                 raise FileExistsError(msg)
+            logger.debug("preparing project directory")
             rmtree(path)
         new.path.mkdir()
 

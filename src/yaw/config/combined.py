@@ -217,8 +217,10 @@ class Configuration(BaseConfig, Immutable):
         )
 
     @classmethod
-    def get_paramspec(cls) -> ParamSpec:
+    def get_paramspec(cls, name: str | None = None) -> ParamSpec:
         params = [
+            ScalesConfig.get_paramspec("scales"),
+            BinningConfig.get_paramspec("binning"),
             Parameter(
                 name="cosmology",
                 help="Optional cosmological model to use for distance computations.",
@@ -226,7 +228,9 @@ class Configuration(BaseConfig, Immutable):
                 default=default_cosmology,
             ),
         ]
-        return ParamSpec(params)
+        return ParamSpec(
+            name or cls.__name__, params, help="Combined yet_another_wizz configuration"
+        )
 
     @classmethod
     def create(

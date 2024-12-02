@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yaw import Configuration
-from yaw.config.base import ConfigError
+from yaw.config.base import ConfigError, HasParamSpec, Parameter, ParamSpec
 from yaw.utils.abc import Serialisable, YamlSerialisable
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ def new_path_checked(path: Path | str) -> Path:
 
 
 @dataclass
-class ColumnsConfig:
+class ColumnsConfig(HasParamSpec):
     ra: str
     dec: str
     weight: str | None = field(default=None)
@@ -33,8 +33,42 @@ class ColumnsConfig:
             if value is not None and not isinstance(value, str):
                 raise ConfigError(f"column name for '{attr}' must be a string")
 
+    @classmethod
+    def get_paramspec(cls, name: str | None = None):
+        params = [
+            Parameter(
+                name="ra",
+                help="Single or multiple lower scale limits in given unit (required).",
+                type=str,
+            ),
+            Parameter(
+                name="dec",
+                help="Single or multiple upper scale limits in given unit (required).",
+                type=str,
+            ),
+            Parameter(
+                name="weight",
+                help="The unit of the lower and upper scale limits.",
+                type=str,
+                default=None,
+            ),
+            Parameter(
+                name="redshift",
+                help="Optional power-law exponent used to weight pairs by their separation.",
+                type=str,
+                default=None,
+            ),
+            Parameter(
+                name="patches",
+                help="Optional number of radial logarithmic bin used to approximate the weighting by separation.",
+                type=str,
+                default=None,
+            ),
+        ]
+        return ParamSpec(name or cls.__name__, params, help="Input file column names")
 
-class CatPairConfig(Serialisable):
+
+class CatPairConfig(HasParamSpec, Serialisable):
     def __init__(
         self,
         path_data: Path | str,
@@ -69,7 +103,15 @@ class CatPairConfig(Serialisable):
 
 
 class ReferenceCatConfig(CatPairConfig):
-    pass
+    @classmethod
+    def get_paramspec(cls, name: str | None = None):
+        params = [
+            # ... paths
+        ]
+        params.extend(ColumnsConfig.get_paramspec().values())
+        return ParamSpec(
+            name or cls.__name__, params, help="Reference catalog specification"
+        )
 
 
 class UnknownCatConfig(Serialisable):
@@ -127,8 +169,18 @@ class UnknownCatConfig(Serialisable):
         the_dict.update(asdict(self.columns))
         return the_dict
 
+    @classmethod
+    def get_paramspec(cls, name: str | None = None):
+        params = [
+            # ... paths
+        ]
+        params.extend(ColumnsConfig.get_paramspec().values())
+        return ParamSpec(
+            name or cls.__name__, params, help="Unknown catalog(s) specification"
+        )
 
-class InputConfig(YamlSerialisable):
+
+class InputConfig(HasParamSpec, YamlSerialisable):
     def __init__(
         self,
         reference: ReferenceCatConfig,
@@ -161,6 +213,26 @@ class InputConfig(YamlSerialisable):
             num_patches=self.num_patches,
             cache_path=None if self.cache_path is None else str(self.cache_path),
         )
+
+    @classmethod
+    def get_paramspec(cls, name: str | None = None):
+        params = [
+            ReferenceCatConfig.get_paramspec("reference"),
+            UnknownCatConfig.get_paramspec("unknown"),
+            Parameter(
+                name="num_patches",
+                help="Number of spatial patches to generate (overriden by ...).",
+                type=int,
+                default=None,
+            ),
+            Parameter(
+                name="cache_path",
+                help="Optional external cache path to use.",
+                type=str,
+                default=None,
+            ),
+        ]
+        return ParamSpec(name or cls.__name__, params, help="Input data specification")
 
 
 @dataclass

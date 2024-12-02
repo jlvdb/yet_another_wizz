@@ -118,30 +118,30 @@ class ScalesConfig(BaseConfig, Immutable):
         )
 
     @classmethod
-    def get_paramspec(cls) -> ParamSpec:
+    def get_paramspec(cls, name: str | None = None) -> ParamSpec:
         params = [
             Parameter(
                 name="rmin",
-                help="Single or multiple lower scale limits in given unit of scales.",
+                help="Single or multiple lower scale limits in given unit (required).",
                 type=float,
                 is_sequence=True,
             ),
             Parameter(
                 name="rmax",
-                help="Single or multiple upper scale limits in given unit of scales.",
+                help="Single or multiple upper scale limits in given unit (required).",
                 type=float,
                 is_sequence=True,
             ),
             Parameter(
                 name="unit",
-                help="String describing the angular, physical, or comoving unit of correlation scales.",
+                help="The unit of the lower and upper scale limits.",
                 type=str,
                 choices=get_options(Unit),
                 default=str(Unit.kpc),
             ),
             Parameter(
                 name="rweight",
-                help="Optional power-law exponent :math:`\\alpha` used to weight pairs by their separation.",
+                help="Optional power-law exponent used to weight pairs by their separation.",
                 type=float,
                 default=None,
             ),
@@ -152,7 +152,9 @@ class ScalesConfig(BaseConfig, Immutable):
                 default=None,
             ),
         ]
-        return ParamSpec(params)
+        return ParamSpec(
+            name or cls.__name__, params, help="Correlation scales configuration"
+        )
 
     @classmethod
     def create(

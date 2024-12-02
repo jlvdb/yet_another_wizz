@@ -163,16 +163,16 @@ class BinningConfig(BaseConfig, Immutable):
         return self.method == other.method and self.binning == other.binning
 
     @classmethod
-    def get_paramspec(cls) -> ParamSpec:
+    def get_paramspec(cls, name: str | None = None) -> ParamSpec:
         params = [
             Parameter(
                 name="zmin",
-                help="Lowest redshift bin edge to generate.",
+                help="Lowest redshift bin edge to generate (required without explicit edges).",
                 type=float,
             ),
             Parameter(
                 name="zmax",
-                help="Highest redshift bin edge to generate.",
+                help="Highest redshift bin edge to generate (required without explicit edges).",
                 type=float,
             ),
             Parameter(
@@ -183,7 +183,7 @@ class BinningConfig(BaseConfig, Immutable):
             ),
             Parameter(
                 name="method",
-                help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
+                help="Method used to generate the bin edges.",
                 type=str,
                 choices=get_options(BinMethod),
                 default=str(BinMethod.linear),
@@ -197,13 +197,15 @@ class BinningConfig(BaseConfig, Immutable):
             ),
             Parameter(
                 name="closed",
-                help="String indicating if the bin edges are closed on the ``left`` or the ``right`` side.",
+                help="String indicating the side of the bin intervals that are closed.",
                 type=str,
                 choices=get_options(Closed),
                 default=str(Closed.right),
             ),
         ]
-        return ParamSpec(params)
+        return ParamSpec(
+            name or cls.__name__, params, help="Redshift binning configuration"
+        )
 
     @classmethod
     def create(
