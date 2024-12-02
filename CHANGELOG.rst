@@ -3,8 +3,16 @@
 Change log
 ==========
 
+Version 3.0.4
+-------------
+
+Fixed a bug when converting scales from arcminutes to radian in correlation
+measurements.
+
+
 Version 3.0.3
 -------------
+
 - Fixed bugs in the serialisation of ``BinningConfig``, ``ScalesConfig``, and
   ``HistData``.
 - Fixed a bug when normalising ``RedshiftData`` relative to another dataset.
