@@ -223,6 +223,12 @@ class PatchWriter(AbstractContextManager, HandlesDataChunk):
         chunk_info: DataChunkInfo,
         buffersize: int = 65_536,
     ) -> None:
+        if chunk_info.has_patch_ids:
+            raise ValueError(
+                "'patch_ids' field must stripped before writing patch data"
+            )
+        self._chunk_info = chunk_info
+
         self.buffersize = int(buffersize)
         self._shards = []
         self._num_processed = 0
@@ -232,11 +238,10 @@ class PatchWriter(AbstractContextManager, HandlesDataChunk):
             raise FileExistsError(f"directory already exists: {self.cache_path}")
         self.cache_path.mkdir(parents=True)
 
+        header = chunk_info.to_bytes()
         self._file = None
         self.open()
-        header = chunk_info.to_bytes()
         self._file.write(header)
-        self._chunk_info = chunk_info
 
     def __repr__(self) -> str:
         items = (
@@ -303,7 +308,9 @@ class PatchWriter(AbstractContextManager, HandlesDataChunk):
                 Numpy array with data records as described above.
         """
         if DataChunk.hasattr(data, "patch_ids"):
-            raise ValueError("'patch_ids' field must stripped before writing data")
+            raise ValueError(
+                "'patch_ids' field must stripped before writing patch data"
+            )
 
         self._shards.append(data)
 

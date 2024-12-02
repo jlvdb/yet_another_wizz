@@ -140,9 +140,12 @@ class HandlesDataChunk(ABC):
         """Whether this data source provides patch IDs."""
         return self._chunk_info.has_patch_ids
 
-    def copy_chunk_info(self) -> DataChunkInfo:
+    def copy_chunk_info(self, *, drop_patch_ids: bool = False) -> DataChunkInfo:
         """Copy the data attribute information."""
-        return deepcopy(self._chunk_info)
+        copy = deepcopy(self._chunk_info)
+        if drop_patch_ids:
+            copy.has_patch_ids = False
+        return copy
 
 
 def get_array_dtype(column_names: Iterable[str]) -> DTypeLike:
