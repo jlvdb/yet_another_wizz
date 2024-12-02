@@ -3,6 +3,13 @@
 Change log
 ==========
 
+Version 3.0.5
+-------------
+
+- Fixed a bug that prevented reading catalogs from memory correctly.
+- Fixed the handling of user-provided patch IDs when creating new catalogs.
+
+
 Version 3.0.4
 -------------
 
