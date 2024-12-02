@@ -3,6 +3,12 @@
 Change log
 ==========
 
+Version 3.0.6
+-------------
+
+Added new generator method `.generate_dataframe()`.
+
+
 Version 3.0.5
 -------------
 
