@@ -84,6 +84,10 @@ class EstimateDirectory(Directory):
         )
 
     @property
+    def cross(self) -> TomographyWrapper[CorrDataHandle]:
+        return TomographyWrapper(CorrDataHandle, self.path / "cross_?", self.indices)
+
+    @property
     def auto_ref(self) -> CorrDataHandle:
         return CorrDataHandle(self.path / "auto_ref")
 

@@ -124,7 +124,7 @@ class BinningConfig(BaseConfig, Immutable):
 
         if is_custom:
             edges = the_dict.pop("edges")
-            closed = the_dict.pop("closed")
+            closed = the_dict.pop("closed", Closed.right)
             binning = Binning(edges, closed=closed)
             return cls(binning, **the_dict)
 

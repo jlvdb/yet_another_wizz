@@ -117,20 +117,18 @@ class CatPairConfig(HasParamSpec, Serialisable):
         the_dict.update(asdict(self.columns))
         return the_dict
 
-
-class ReferenceCatConfig(CatPairConfig):
     @classmethod
     def get_paramspec(cls, name: str | None = None):
         params = [
             Parameter(
                 name="path_data",
-                help="Path to reference data catalog.",
+                help="Path to data catalog.",
                 type=str,
                 default=None,
             ),
             Parameter(
                 name="path_rand",
-                help="Path to reference random catalog if needed for correlations.",
+                help="Path to random catalog if needed for correlations.",
                 type=str,
                 default=None,
             ),
@@ -139,6 +137,10 @@ class ReferenceCatConfig(CatPairConfig):
         return ParamSpec(
             name or cls.__name__, params, help="Reference catalog specification"
         )
+
+
+class ReferenceCatConfig(CatPairConfig):
+    pass
 
 
 class UnknownCatConfig(Serialisable):
@@ -201,11 +203,11 @@ class UnknownCatConfig(Serialisable):
         params = [
             TomoPathParameter(
                 name="path_data",
-                help="Mapping of bin index to unknown data catalog path.",
+                help="Mapping of bin index to data catalog path.",
             ),
             TomoPathParameter(
                 name="path_rand",
-                help="Mapping of bin index to unknown random catalog path if needed for correlations.",
+                help="Mapping of bin index to random catalog path if needed for correlations.",
             ),
         ]
         params.extend(ColumnsConfig.get_paramspec().values())

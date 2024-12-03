@@ -222,6 +222,9 @@ def run_autocorr(
     progress: bool = False,
 ) -> None:
     data, rand = cache_handle.load()
+    if rand is None:
+        raise ValueError("could not load randoms")
+
     (corr,) = yaw.autocorrelate(
         config,
         data,
@@ -298,6 +301,8 @@ class CrossCorrTask(Task):
 
         for idx, handle in bin_iter_progress(directory.cache.unknown.items()):
             unk_data, unk_rand = handle.load()
+            if ref_rand is None and unk_rand is None:
+                raise ValueError("could not load any randoms")
 
             (corr,) = yaw.crosscorrelate(
                 config.correlation,
