@@ -85,7 +85,12 @@ class RandomsBase(HandlesDataChunk):
     def reseed(self, seed: int | None = None) -> None:
         if seed is not None:
             self.seed = int(seed)
-        self.rng = np.random.default_rng(self.seed)
+
+        # compute seed the same way v2 used to do, which was how v1 used to do
+        seeder = np.random.SeedSequence(self.seed)
+        seed = seeder.spawn(1)[0]
+
+        self.rng = np.random.default_rng(seed)
 
     @abstractmethod
     def _draw_coords(self, probe_size: int) -> tuple[NDArray, NDArray]:

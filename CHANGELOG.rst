@@ -3,6 +3,13 @@
 Change log
 ==========
 
+Version 3.0.7
+-------------
+
+Adapted the random generator seeding such that the new `randoms.BoxRandoms`
+generator generates the same results as the legacy `randoms.UniformRandoms`.
+
+
 Version 3.0.6
 -------------
 
