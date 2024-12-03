@@ -47,7 +47,7 @@ def format_yaml(padding: int, name: str, *, default: str = "", help: str) -> str
     be placed away from the start of the string (filled with spaces).
     """
     string = f"{name}: {default}"
-    return f"{string:{padding}s}  # {help}"
+    return f"{string:{padding}s}# {help}"
 
 
 @dataclass
@@ -121,7 +121,7 @@ class ParamSpec(Mapping[str, Union[Parameter, "ParamSpec"]]):
     def __contains__(self, item) -> bool:
         return item in self._params
 
-    def to_yaml(self, indent: int = 0, indet_by: int = 4, padding: int = 20) -> str:
+    def to_yaml(self, indent: int = 0, indent_by: int = 4, padding: int = 20) -> str:
         """
         Format the parameter section as a multi-line YAML string.
 
@@ -141,10 +141,10 @@ class ParamSpec(Mapping[str, Union[Parameter, "ParamSpec"]]):
         section = format_yaml(padding, self.name, help=self.help)
         string = f"{indent_str}{section}\n"
 
-        indent_str += " " * indet_by  # increase indent for following parameters
+        indent_str += " " * indent_by  # increase indent for following parameters
         for param in self.values():
             if isinstance(param, ParamSpec):
-                string += param.to_yaml(indent + indet_by, indet_by, padding=padding)
+                string += param.to_yaml(indent + indent_by, indent_by, padding=padding)
             else:
                 param_str = param.to_yaml(padding)
                 string += f"{indent_str}{param_str}\n"

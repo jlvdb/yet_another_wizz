@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yaw import Configuration
-from yaw.config.base import ConfigError, HasParamSpec, Parameter, ParamSpec
+from yaw.config.base import ConfigError, HasParamSpec, Parameter, ParamSpec, format_yaml
 from yaw.utils.abc import Serialisable, YamlSerialisable
 
 if TYPE_CHECKING:
@@ -18,6 +18,22 @@ def new_path_checked(path: Path | str) -> Path:
     if not path.exists():
         raise FileNotFoundError(f"input file not found: {path}")
     return path
+
+
+class TomoPathParameter(ParamSpec):
+    """Used to represent a parameter that expects a dictionary of paths."""
+
+    def __init__(self, name, help):
+        super().__init__(name, [], help)
+
+    def to_yaml(self, indent: int = 0, indent_by: int = 4, padding: int = 20) -> str:
+        indent_str = " " * indent
+        section = format_yaml(padding, self.name, help=self.help)
+        string = f"{indent_str}{section}\n"
+
+        indent_str += " " * indent_by  # increase indent for following lines
+        string += f"{indent_str}1: null\n"
+        return string
 
 
 @dataclass
@@ -38,29 +54,29 @@ class ColumnsConfig(HasParamSpec):
         params = [
             Parameter(
                 name="ra",
-                help="Single or multiple lower scale limits in given unit (required).",
+                help="Name of column with right ascension (given in degrees).",
                 type=str,
             ),
             Parameter(
                 name="dec",
-                help="Single or multiple upper scale limits in given unit (required).",
+                help="Name of column with declination (given in degrees).",
                 type=str,
             ),
             Parameter(
                 name="weight",
-                help="The unit of the lower and upper scale limits.",
+                help="Name of column with object weights.",
                 type=str,
                 default=None,
             ),
             Parameter(
                 name="redshift",
-                help="Optional power-law exponent used to weight pairs by their separation.",
+                help="Name of column with estimated or true redshifts.",
                 type=str,
                 default=None,
             ),
             Parameter(
                 name="patches",
-                help="Optional number of radial logarithmic bin used to approximate the weighting by separation.",
+                help="Name of column with patch IDs, overriedes 'patch_num'.",
                 type=str,
                 default=None,
             ),
@@ -106,7 +122,18 @@ class ReferenceCatConfig(CatPairConfig):
     @classmethod
     def get_paramspec(cls, name: str | None = None):
         params = [
-            # ... paths
+            Parameter(
+                name="path_data",
+                help="Path to reference data catalog.",
+                type=str,
+                default=None,
+            ),
+            Parameter(
+                name="path_rand",
+                help="Path to reference random catalog if needed for correlations.",
+                type=str,
+                default=None,
+            ),
         ]
         params.extend(ColumnsConfig.get_paramspec().values())
         return ParamSpec(
@@ -172,11 +199,20 @@ class UnknownCatConfig(Serialisable):
     @classmethod
     def get_paramspec(cls, name: str | None = None):
         params = [
-            # ... paths
+            TomoPathParameter(
+                name="path_data",
+                help="Mapping of bin index to unknown data catalog path.",
+            ),
+            TomoPathParameter(
+                name="path_rand",
+                help="Mapping of bin index to unknown random catalog path if needed for correlations.",
+            ),
         ]
         params.extend(ColumnsConfig.get_paramspec().values())
         return ParamSpec(
-            name or cls.__name__, params, help="Unknown catalog(s) specification"
+            name or cls.__name__,
+            params,
+            help="(Tomographic) unknown catalog specification",
         )
 
 
@@ -221,13 +257,13 @@ class InputConfig(HasParamSpec, YamlSerialisable):
             UnknownCatConfig.get_paramspec("unknown"),
             Parameter(
                 name="num_patches",
-                help="Number of spatial patches to generate (overriden by ...).",
+                help="Number of spatial patches to generate (overriden by 'patches' in catalog configuration).",
                 type=int,
                 default=None,
             ),
             Parameter(
                 name="cache_path",
-                help="Optional external cache path to use.",
+                help="External cache path to use (e.g. /dev/shm).",
                 type=str,
                 default=None,
             ),

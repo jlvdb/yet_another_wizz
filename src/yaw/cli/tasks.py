@@ -53,6 +53,7 @@ def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
 
 class Task(ABC):
     name: str
+    help: str
     _tasks: dict[str, type[Task]] = {}
     _inputs: set[type[Task]]
     _optionals: set[type[Task]]
@@ -116,6 +117,10 @@ class Task(ABC):
     ) -> None:
         pass
 
+    @classmethod
+    def to_yaml(cls, padding: int = 20) -> str:
+        return f"{cls.name:{padding}s}# {cls.help}"
+
 
 def create_catalog(
     global_cache: CacheDirectory,
@@ -157,6 +162,7 @@ def create_catalog(
 
 
 class LoadRefTask(Task):
+    help = "Load and cache the reference data and randoms."
     _inputs = set()
     _optionals = set()
 
@@ -181,6 +187,7 @@ class LoadRefTask(Task):
 
 
 class LoadUnkTask(Task):
+    help = "Load and cache the unknown data and randoms."
     # has no inputs, but we want to enforce LoadRefTask to be run first if
     # possible to determine patch centers
     _inputs = set()
@@ -226,6 +233,7 @@ def run_autocorr(
 
 
 class AutoRefTask(Task):
+    help = "Run the pair counting for the reference autocorrelation function."
     _inputs = {LoadRefTask}
     _optionals = set()
 
@@ -248,6 +256,7 @@ class AutoRefTask(Task):
 
 
 class AutoUnkTask(Task):
+    help = "Run the pair counting for the unknown autocorrelation functions."
     _inputs = {LoadUnkTask}
     _optionals = set()
 
@@ -271,6 +280,7 @@ class AutoUnkTask(Task):
 
 
 class CrossCorrTask(Task):
+    help = "Run the pair counting for the cross-correlation functions."
     _inputs = {LoadRefTask, LoadUnkTask}
     _optionals = set()
 
@@ -302,6 +312,7 @@ class CrossCorrTask(Task):
 
 
 class EstimateTask(Task):
+    help = "Compute the clustering redshift estimate and use autocorrelations to mitigate galaxy bias."
     _inputs = {CrossCorrTask}
     _optionals = {AutoRefTask, AutoUnkTask}
 
@@ -339,6 +350,7 @@ class EstimateTask(Task):
 
 
 class HistTask(Task):
+    help = "Compute redshift histograms from unknown data if a redshift column is configured."
     _inputs = {LoadUnkTask}
     _optionals = set()
 
@@ -363,6 +375,7 @@ class HistTask(Task):
 
 
 class PlotTask(Task):
+    help = "Plot all available autocorrelation functions and redshift estimates."
     _inputs = set()
     _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
 
