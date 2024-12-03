@@ -122,13 +122,13 @@ class ScalesConfig(BaseConfig, Immutable):
         params = [
             Parameter(
                 name="rmin",
-                help="Single or multiple lower scale limits in given unit (required).",
+                help="Single or multiple lower scale limits in given 'unit'.",
                 type=float,
                 is_sequence=True,
             ),
             Parameter(
                 name="rmax",
-                help="Single or multiple upper scale limits in given unit (required).",
+                help="Single or multiple upper scale limits in given 'unit'.",
                 type=float,
                 is_sequence=True,
             ),
@@ -141,13 +141,13 @@ class ScalesConfig(BaseConfig, Immutable):
             ),
             Parameter(
                 name="rweight",
-                help="Optional power-law exponent used to weight pairs by their separation.",
+                help="Power-law exponent used to weight pairs by their separation.",
                 type=float,
                 default=None,
             ),
             Parameter(
                 name="resolution",
-                help="Optional number of radial logarithmic bin used to approximate the weighting by separation.",
+                help="Number of radial logarithmic bin used to approximate the weighting by separation.",
                 type=int,
                 default=None,
             ),

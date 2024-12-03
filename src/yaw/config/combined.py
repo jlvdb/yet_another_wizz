@@ -223,7 +223,7 @@ class Configuration(BaseConfig, Immutable):
             BinningConfig.get_paramspec("binning"),
             Parameter(
                 name="cosmology",
-                help="Optional cosmological model to use for distance computations.",
+                help="Cosmological model to use for distance computations.",
                 type=str,
                 default=default_cosmology,
             ),

@@ -39,6 +39,17 @@ class Immutable:
         raise AttributeError(f"attribute '{name}' is immutable")
 
 
+def format_yaml(padding: int, name: str, *, default: str = "", help: str) -> str:
+    """
+    Format a single line of YAML code with a comment containing a help message
+
+    Padding indicates the minimum number of characters the comment # should
+    be placed away from the start of the string (filled with spaces).
+    """
+    string = f"{name}: {default}"
+    return f"{string:{padding}s}  # {help}"
+
+
 @dataclass
 class Parameter:
     """Defines the meta data for a configuration parameter, including a
@@ -51,27 +62,48 @@ class Parameter:
     default: Any = field(default=NotSet)
     choices: tuple[Any, ...] = field(default=NotSet)
 
-    def to_dict(self) -> dict[str, Any]:  # NOTE: used by RAIL wrapper
+    def to_dict(self) -> dict[str, Any]:
         return {key: val for key, val in asdict(self).items() if val is not NotSet}
 
     def to_yaml(self, padding: int = 0) -> str:
+        """
+        Format the parameter as a YAML string.
+
+        Format: ``{name}: {default}  # {help} {choices, if any}``
+
+        Padding indicates the minimum number of characters the comment # should
+        be placed away from the start of the string (filled with spaces).
+        """
         default = "null" if self.default is None else str(self.default)
         if self.choices is NotSet:
             choices = ""
         else:
-            choices = " (Choices: " + ", ".join(str(c) for c in self.choices) + ")"
-        string = f"{self.name}: {default}"
-        return f"{string:{padding}s}  # {self.help}{choices}\n"
+            choice_str = ", ".join(str(c) for c in self.choices)
+            choices = f" (choices: {choice_str})"
+
+        help = self.help.rstrip()
+        if self.default is NotSet:
+            if help.endswith("."):
+                help = f"{help[:-1]}, required."
+            else:
+                help = help + ", required"
+
+        return format_yaml(padding, self.name, default=default, help=help + choices)
 
 
 class ParamSpec(Mapping[str, Union[Parameter, "ParamSpec"]]):
-    """Dict-like collection of configuration parameters."""
+    """
+    Dict-like collection of configuration parameters.
+
+    Represents a section of a hierarchical configuration that has its own 'name'
+    and 'help' (short description).
+    """
 
     def __init__(
         self, name: str, params: Iterable[Parameter | ParamSpec], help: str
     ) -> None:
-        self.name = str(name or type(self).__name__)
-        self.help = help
+        self.name = str(name)
+        self.help = str(help)
         self._params = {p.name: p for p in params}
 
     def __repr__(self) -> str:
@@ -90,21 +122,33 @@ class ParamSpec(Mapping[str, Union[Parameter, "ParamSpec"]]):
         return item in self._params
 
     def to_yaml(self, indent: int = 0, indet_by: int = 4, padding: int = 20) -> str:
-        indent_str = " " * indent
-        string = self.name + ":"
-        string = f"{indent_str}{string:{padding}s}  # {self.help}\n"
-        indent_str += " " * indet_by
+        """
+        Format the parameter section as a multi-line YAML string.
 
+        Keyword Args:
+            indent:
+                The current level of indentation.
+            indent_by:
+                The number of spaces to use for indenting.
+            padding:
+                The space to reserve for parameter names and default values
+                before rendering the help string.
+
+        Returns:
+            The formatted YAML string.
+        """
+        indent_str = " " * indent
+        section = format_yaml(padding, self.name, help=self.help)
+        string = f"{indent_str}{section}\n"
+
+        indent_str += " " * indet_by  # increase indent for following parameters
         for param in self.values():
             if isinstance(param, ParamSpec):
-                string += param.to_yaml(indent + indet_by, indet_by)
+                string += param.to_yaml(indent + indet_by, indet_by, padding=padding)
             else:
-                string += indent_str + param.to_yaml(padding)
+                param_str = param.to_yaml(padding)
+                string += f"{indent_str}{param_str}\n"
         return string
-
-    def add_param(self, param: Parameter) -> None:
-        """Extend the parameter collection by another parameter."""
-        self._params[param.name] = param
 
 
 class HasParamSpec(ABC):

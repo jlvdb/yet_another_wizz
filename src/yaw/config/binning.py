@@ -167,12 +167,12 @@ class BinningConfig(BaseConfig, Immutable):
         params = [
             Parameter(
                 name="zmin",
-                help="Lowest redshift bin edge to generate (required without explicit edges).",
+                help="Lowest redshift bin edge to generate (alternatively use 'edges').",
                 type=float,
             ),
             Parameter(
                 name="zmax",
-                help="Highest redshift bin edge to generate (required without explicit edges).",
+                help="Highest redshift bin edge to generate (alternatively use 'edges').",
                 type=float,
             ),
             Parameter(
