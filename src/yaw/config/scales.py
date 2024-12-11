@@ -5,31 +5,25 @@ correlation function measurements.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.config.base import (
-    BaseConfig,
-    ConfigError,
-    Immutable,
-    Parameter,
-    ParamSpec,
-    parse_optional,
-)
+from yaw.config.base import Parameter, YawConfig
 from yaw.cosmology import Scales, new_scales
-from yaw.options import NotSet, Unit, get_options
+from yaw.options import NotSet, Unit
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from typing import Any
 
 __all__ = [
     "ScalesConfig",
 ]
 
 
-class ScalesConfig(BaseConfig, Immutable):
+@dataclass(frozen=True)
+class ScalesConfig(YawConfig):
     """
     Configuration for correlation function measurement scales.
 
@@ -52,6 +46,42 @@ class ScalesConfig(BaseConfig, Immutable):
         :meth:`modify()` method.
     """
 
+    _paramspec = (
+        Parameter(
+            name="rmin",
+            help="Single or multiple lower scale limits in given 'unit'.",
+            type=float,
+            is_sequence=True,
+        ),
+        Parameter(
+            name="rmax",
+            help="Single or multiple upper scale limits in given 'unit'.",
+            type=float,
+            is_sequence=True,
+        ),
+        Parameter(
+            name="unit",
+            help="The unit of the lower and upper scale limits.",
+            type=str,
+            choices=Unit,
+            default=Unit.kpc,
+        ),
+        Parameter(
+            name="rweight",
+            help="Power-law exponent used to weight pairs by their separation.",
+            type=float,
+            default=None,
+            nullable=True,
+        ),
+        Parameter(
+            name="resolution",
+            help="Number of radial logarithmic bin used to approximate the weighting by separation.",
+            type=int,
+            default=None,
+            nullable=True,
+        ),
+    )
+
     scales: Scales
     """Correlation scales in angular or physical units."""
     rweight: float | None
@@ -60,24 +90,6 @@ class ScalesConfig(BaseConfig, Immutable):
     resolution: int | None
     """Optional number of radial logarithmic bin used to approximate the
     weighting by separation."""
-
-    def __init__(
-        self,
-        rmin: Iterable[float] | float,
-        rmax: Iterable[float] | float,
-        *,
-        unit: Unit = Unit.kpc,
-        rweight: float | None = None,
-        resolution: int | None = None,
-    ) -> None:
-        try:
-            scales = new_scales(rmin, rmax, unit=unit)
-        except ValueError as err:
-            raise ConfigError(err.args[0])
-        object.__setattr__(self, "scales", scales)
-        # ensure a YAML-friendly, i.e. native python, type
-        object.__setattr__(self, "rweight", parse_optional(rweight, float))
-        object.__setattr__(self, "resolution", parse_optional(resolution, int))
 
     @property
     def rmin(self) -> float | list[float]:
@@ -100,11 +112,6 @@ class ScalesConfig(BaseConfig, Immutable):
         """Number of correlation scales."""
         return self.scales.num_scales
 
-    def to_dict(self) -> dict[str, Any]:
-        attrs = ("rmin", "rmax", "unit", "rweight", "resolution")
-        the_dict = {attr: getattr(self, attr) for attr in attrs}
-        return {attr: value for attr, value in the_dict.items()}
-
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
             return False
@@ -118,43 +125,16 @@ class ScalesConfig(BaseConfig, Immutable):
         )
 
     @classmethod
-    def get_paramspec(cls, name: str | None = None) -> ParamSpec:
-        params = [
-            Parameter(
-                name="rmin",
-                help="Single or multiple lower scale limits in given 'unit'.",
-                type=float,
-                is_sequence=True,
-            ),
-            Parameter(
-                name="rmax",
-                help="Single or multiple upper scale limits in given 'unit'.",
-                type=float,
-                is_sequence=True,
-            ),
-            Parameter(
-                name="unit",
-                help="The unit of the lower and upper scale limits.",
-                type=str,
-                choices=get_options(Unit),
-                default=str(Unit.kpc),
-            ),
-            Parameter(
-                name="rweight",
-                help="Power-law exponent used to weight pairs by their separation.",
-                type=float,
-                default=None,
-            ),
-            Parameter(
-                name="resolution",
-                help="Number of radial logarithmic bin used to approximate the weighting by separation.",
-                type=int,
-                default=None,
-            ),
-        ]
-        return ParamSpec(
-            name or cls.__name__, params, help="Correlation scales configuration"
+    def from_dict(cls, the_dict):
+        cls._check_dict_keys(the_dict)
+        parsed = cls._parse_params(the_dict)
+
+        scales = new_scales(
+            parsed.pop("rmin"),
+            parsed.pop("rmax"),
+            unit=parsed.pop("unit"),
         )
+        return cls(scales, **parsed)
 
     @classmethod
     def create(
@@ -188,9 +168,14 @@ class ScalesConfig(BaseConfig, Immutable):
         Returns:
             New configuration instance.
         """
-        return cls(
-            rmin=rmin, rmax=rmax, unit=unit, rweight=rweight, resolution=resolution
+        the_dict = dict(
+            rmin=rmin,
+            rmax=rmax,
+            unit=unit,
+            rweight=rweight,
+            resolution=resolution,
         )
+        return cls.from_dict(the_dict)
 
     def modify(
         self,
@@ -226,6 +211,13 @@ class ScalesConfig(BaseConfig, Immutable):
         Returns:
             New instance with updated parameter values.
         """
-        return super().modify(
-            rmin=rmin, rmax=rmax, unit=unit, rweight=rweight, resolution=resolution
+        the_dict = self.to_dict()
+        updates = dict(
+            rmin=rmin,
+            rmax=rmax,
+            unit=unit,
+            rweight=rweight,
+            resolution=resolution,
         )
+        the_dict.update(kv for kv in updates.items() if kv[1] is not NotSet)
+        return self.from_dict(the_dict)

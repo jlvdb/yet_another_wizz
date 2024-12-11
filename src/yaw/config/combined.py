@@ -7,11 +7,18 @@ to use for correlation fuction measurements.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, get_args
 
 import astropy.cosmology
 
-from yaw.config.base import BaseConfig, ConfigError, Immutable, Parameter, ParamSpec
+from yaw.config.base import (
+    ConfigError,
+    ConfigSection,
+    Parameter,
+    YawConfig,
+    raise_configerror_with_level,
+)
 from yaw.config.binning import BinningConfig
 from yaw.config.scales import ScalesConfig
 from yaw.cosmology import (
@@ -106,7 +113,8 @@ def parse_cosmology(cosmology: TypeCosmology | str | None) -> TypeCosmology:
 default_cosmology = get_default_cosmology().name
 
 
-class Configuration(BaseConfig, Immutable):
+@dataclass(frozen=True)
+class Configuration(YawConfig):
     """
     Configuration for correlation function measurements.
 
@@ -123,6 +131,24 @@ class Configuration(BaseConfig, Immutable):
         :meth:`modify()` method. The bin edges are recomputed when necessary.
     """
 
+    _paramspec = (
+        ConfigSection(ScalesConfig, "scales", help="hulp", required=True),
+        ConfigSection(BinningConfig, "binning", help="hulp", required=True),
+        Parameter(
+            name="cosmology",
+            help="Cosmological model to use for distance computations.",
+            type=parse_cosmology,
+            default=default_cosmology,
+        ),
+        Parameter(
+            name="max_workers",
+            help="Limit the number of workers for parallel operations.",
+            type=int,
+            default=None,
+            nullable=True,
+        ),
+    )
+
     scales: ScalesConfig
     """Organises the configuration of correlation scales."""
     binning: BinningConfig
@@ -132,80 +158,6 @@ class Configuration(BaseConfig, Immutable):
     max_workers: int | None
     """Limit the number of workers for parallel operations (all by default)."""
 
-    def __init__(
-        self,
-        scales: ScalesConfig,
-        binning: BinningConfig,
-        cosmology: TypeCosmology | str | None = None,
-        max_workers: int | None = None,
-    ) -> None:
-        if not isinstance(scales, ScalesConfig):
-            raise TypeError(f"'scales' must be of type '{type(ScalesConfig)}'")
-        object.__setattr__(self, "scales", scales)
-
-        if not isinstance(binning, BinningConfig):
-            raise TypeError(f"'binning' must be of type '{type(BinningConfig)}'")
-        object.__setattr__(self, "binning", binning)
-
-        object.__setattr__(self, "cosmology", parse_cosmology(cosmology))
-        object.__setattr__(
-            self, "max_workers", int(max_workers) if max_workers else None
-        )
-
-    @classmethod
-    def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> Configuration:
-        the_dict = the_dict.copy()
-
-        cosmology = parse_cosmology(the_dict.pop("cosmology", default_cosmology))
-        max_workers = the_dict.pop("max_workers", None)
-
-        try:  # scales
-            scales_dict = the_dict.pop("scales")
-            scales = ScalesConfig.from_dict(scales_dict)
-        except (TypeError, KeyError) as err:
-            raise ConfigError("failed parsing the 'scales' section") from err
-
-        try:  # binning
-            binning_dict = the_dict.pop("binning")
-            binning = BinningConfig.from_dict(binning_dict, cosmology=cosmology)
-        except (TypeError, KeyError) as err:
-            raise ConfigError("failed parsing the 'binning' section") from err
-
-        if len(the_dict) > 0:
-            key = next(iter(the_dict))
-            raise ConfigError(f"encountered unknown configuration entry '{key}'")
-
-        return cls(
-            scales=scales, binning=binning, cosmology=cosmology, max_workers=max_workers
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(
-            scales=self.scales.to_dict(),
-            binning=self.binning.to_dict(),
-            cosmology=cosmology_to_yaml(self.cosmology),
-            max_workers=self.max_workers,
-        )
-
-    @classmethod
-    def from_file(cls, path: Path | str) -> Configuration:
-        new = None
-
-        if parallel.on_root():
-            logger.info("reading configuration file: %s", path)
-
-            new = super().from_file(path)
-
-        return parallel.COMM.bcast(new, root=0)
-
-    def to_file(self, path: Path | str) -> None:
-        if parallel.on_root():
-            logger.info("writing configuration file: %s", path)
-
-            super().to_file(path)
-
-        parallel.COMM.Barrier()
-
     def __eq__(self, other) -> bool:
         if not isinstance(other, type(self)):
             return False
@@ -214,23 +166,30 @@ class Configuration(BaseConfig, Immutable):
             self.binning == other.binning
             and self.scales == other.scales
             and cosmology_is_equal(self.cosmology, other.cosmology)
+            and self.max_workers == other.max_workers
         )
 
     @classmethod
-    def get_paramspec(cls, name: str | None = None) -> ParamSpec:
-        params = [
-            ScalesConfig.get_paramspec("scales"),
-            BinningConfig.get_paramspec("binning"),
-            Parameter(
-                name="cosmology",
-                help="Cosmological model to use for distance computations.",
-                type=str,
-                default=default_cosmology,
-            ),
-        ]
-        return ParamSpec(
-            name or cls.__name__, params, help="Combined yet_another_wizz configuration"
-        )
+    def from_dict(cls, the_dict: dict[str, Any]) -> Configuration:
+        cls._check_dict_keys(the_dict)
+
+        with raise_configerror_with_level("scales"):
+            scales = ScalesConfig.from_dict(the_dict["scales"])
+        with raise_configerror_with_level("binning"):
+            binning = BinningConfig.from_dict(the_dict["binning"])
+
+        parsed = cls._parse_params(the_dict)
+        return cls(scales, binning, **parsed)
+
+    def from_file(cls, path: Path | str) -> Configuration:
+        if parallel.on_root():
+            logger.info("reading configuration file: %s", path)
+        return super().from_file(path)
+
+    def to_file(self, path: Path | str) -> None:
+        if parallel.on_root():
+            logger.info("writing configuration file: %s", path)
+        super().to_file(path)
 
     @classmethod
     def create(
@@ -301,25 +260,26 @@ class Configuration(BaseConfig, Immutable):
             ``zmax`` (generate bin edges), or ``edges`` (custom bin edges) must
             be provided.
         """
-        cosmology = parse_cosmology(cosmology)
-
-        scales = ScalesConfig.create(
-            rmin=rmin, rmax=rmax, unit=unit, rweight=rweight, resolution=resolution
-        )
-
-        binning = BinningConfig.create(
-            zmin=zmin,
-            zmax=zmax,
-            num_bins=num_bins,
-            method=method,
-            edges=edges,
-            closed=closed,
+        the_dict = dict(
+            scales=dict(
+                rmin=rmin,
+                rmax=rmax,
+                unit=unit,
+                rweight=rweight,
+                resolution=resolution,
+            ),
+            binning=dict(
+                zmin=zmin,
+                zmax=zmax,
+                num_bins=num_bins,
+                method=method,
+                edges=edges,
+                closed=closed,
+            ),
             cosmology=cosmology,
+            max_workers=max_workers,
         )
-
-        return cls(
-            scales=scales, binning=binning, cosmology=cosmology, max_workers=max_workers
-        )
+        return cls.from_dict(the_dict)
 
     def modify(
         self,
@@ -387,25 +347,34 @@ class Configuration(BaseConfig, Immutable):
         Returns:
             New instance with updated parameter values.
         """
-        scales = self.scales.modify(
-            rmin=rmin, rmax=rmax, unit=unit, rweight=rweight, resolution=resolution
-        )
+        the_dict = self.to_dict()
 
-        binning = self.binning.modify(
+        # scales parameters
+        updates = dict(
+            rmin=rmin,
+            rmax=rmax,
+            unit=unit,
+            rweight=rweight,
+            resolution=resolution,
+        )
+        the_dict["scales"].update(kv for kv in updates.items() if kv[1] is not NotSet)
+
+        # binning parameters
+        updates = dict(
             zmin=zmin,
             zmax=zmax,
             num_bins=num_bins,
             method=method,
             edges=edges,
             closed=closed,
+        )
+        the_dict["binning"].update(kv for kv in updates.items() if kv[1] is not NotSet)
+
+        # self-owned parameters
+        updates = dict(
             cosmology=cosmology,
+            max_workers=max_workers,
         )
+        the_dict.update(kv for kv in updates.items() if kv[1] is not NotSet)
 
-        cosmology = (
-            self.cosmology if cosmology is NotSet else parse_cosmology(cosmology)
-        )
-        max_workers = self.max_workers if max_workers is NotSet else max_workers
-
-        return type(self)(
-            scales=scales, binning=binning, cosmology=cosmology, max_workers=max_workers
-        )
+        return self.from_dict(the_dict)

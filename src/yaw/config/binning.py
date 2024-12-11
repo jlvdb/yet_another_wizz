@@ -5,13 +5,13 @@ catalogs when measuring angular correlations.
 
 from __future__ import annotations
 
-import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from yaw.binning import Binning
-from yaw.config.base import BaseConfig, ConfigError, Immutable, Parameter, ParamSpec
+from yaw.config.base import ConfigError, Parameter, YawConfig
 from yaw.cosmology import RedshiftBinningFactory, TypeCosmology
-from yaw.options import BinMethod, Closed, NotSet, get_options
+from yaw.options import BinMethod, Closed, NotSet
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -24,7 +24,8 @@ __all__ = [
 ]
 
 
-class BinningConfig(BaseConfig, Immutable):
+@dataclass(frozen=True)
+class BinningConfig(YawConfig):
     """
     Configuration of the redshift binning for correlation function measurements.
 
@@ -49,21 +50,56 @@ class BinningConfig(BaseConfig, Immutable):
         :meth:`modify()` method. The bin edges are recomputed when necessary.
     """
 
+    _paramspec = (
+        Parameter(
+            name="zmin",
+            help="Lowest redshift bin edge to generate (alternatively use 'edges').",
+            type=float,
+            default=None,
+            nullable=True,
+        ),
+        Parameter(
+            name="zmax",
+            help="Highest redshift bin edge to generate (alternatively use 'edges').",
+            type=float,
+            default=None,
+            nullable=True,
+        ),
+        Parameter(
+            name="num_bins",
+            help="Number of redshift bins to generate.",
+            type=int,
+            default=30,
+        ),
+        Parameter(
+            name="method",
+            help="Method used to generate the bin edges.",
+            type=str,
+            choices=BinMethod,
+            default=BinMethod.linear,
+        ),
+        Parameter(
+            name="edges",
+            help="Use these custom bin edges instead of generating them.",
+            type=float,
+            is_sequence=True,
+            default=None,
+            nullable=True,
+        ),
+        Parameter(
+            name="closed",
+            help="String indicating the side of the bin intervals that are closed.",
+            type=str,
+            choices=Closed,
+            default=Closed.right,
+        ),
+    )
+
     binning: Binning
     """Container for the redshift bins."""
     method: BinMethod
     """Method used to generate the bin edges, see :obj:`~yaw.options.BinMethod`
     for valid options."""
-
-    def __init__(
-        self,
-        binning: Binning,
-        method: BinMethod | str = BinMethod.linear,
-    ) -> None:
-        if not isinstance(binning, Binning):
-            raise TypeError(f"'binning' must be of type '{type(binning)}'")
-        object.__setattr__(self, "binning", binning)
-        object.__setattr__(self, "method", BinMethod(method))
 
     @property
     def edges(self) -> NDArray:
@@ -96,6 +132,12 @@ class BinningConfig(BaseConfig, Immutable):
         """Whether the bin edges are provided by the user."""
         return self.method == "custom"
 
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, type(self)):
+            return False
+
+        return self.method == other.method and self.binning == other.binning
+
     @classmethod
     def from_dict(
         cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
@@ -117,95 +159,25 @@ class BinningConfig(BaseConfig, Immutable):
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
-        is_custom = (
-            the_dict.get("method", "") == BinMethod.custom
-            or the_dict.get("edges", None) is not None
-        )
+        if not ("zmin" in the_dict and "zmax" in the_dict) and "edges" not in the_dict:
+            raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
+        cls._check_dict_keys(the_dict)
+        parsed = cls._parse_params(the_dict)
 
-        if is_custom:
-            edges = the_dict.pop("edges")
-            closed = the_dict.pop("closed", Closed.right)
-            binning = Binning(edges, closed=closed)
-            return cls(binning, **the_dict)
-
-        return cls.create(**the_dict, cosmology=cosmology)
-
-    def to_dict(self) -> dict[str, Any]:
-        the_dict = dict(method=str(self.method))
-
-        if self.is_custom:
-            the_dict.update(
-                dict(
-                    zmin=None,
-                    zmax=None,
-                    num_bins=None,
-                    edges=self.binning.edges.tolist(),
-                )
-            )
+        if parsed["edges"] is not None:
+            method = BinMethod.custom
+            binning = Binning(parsed["edges"], closed=parsed["closed"])
 
         else:
-            the_dict.update(
-                dict(
-                    zmin=self.zmin,
-                    zmax=self.zmax,
-                    num_bins=self.num_bins,
-                    edges=None,
-                )
+            method = parsed["method"]
+            binning = RedshiftBinningFactory(cosmology).get_method(method)(
+                parsed["zmin"],
+                parsed["zmax"],
+                parsed["num_bins"],
+                closed=parsed["closed"],
             )
 
-        the_dict["closed"] = str(self.closed)
-        return the_dict
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, type(self)):
-            return False
-
-        return self.method == other.method and self.binning == other.binning
-
-    @classmethod
-    def get_paramspec(cls, name: str | None = None) -> ParamSpec:
-        params = [
-            Parameter(
-                name="zmin",
-                help="Lowest redshift bin edge to generate (alternatively use 'edges').",
-                type=float,
-            ),
-            Parameter(
-                name="zmax",
-                help="Highest redshift bin edge to generate (alternatively use 'edges').",
-                type=float,
-            ),
-            Parameter(
-                name="num_bins",
-                help="Number of redshift bins to generate.",
-                type=int,
-                default=30,
-            ),
-            Parameter(
-                name="method",
-                help="Method used to generate the bin edges.",
-                type=str,
-                choices=get_options(BinMethod),
-                default=str(BinMethod.linear),
-            ),
-            Parameter(
-                name="edges",
-                help="Use these custom bin edges instead of generating them.",
-                type=float,
-                is_sequence=True,
-                default=None,
-            ),
-            Parameter(
-                name="closed",
-                help="String indicating the side of the bin intervals that are closed.",
-                type=str,
-                choices=get_options(Closed),
-                default=str(Closed.right),
-            ),
-        ]
-        return ParamSpec(
-            name or cls.__name__, params, help="Redshift binning configuration"
-        )
+        return cls(binning=binning, method=method)
 
     @classmethod
     def create(
@@ -252,27 +224,15 @@ class BinningConfig(BaseConfig, Immutable):
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
-        auto_args_set = (zmin is not None, zmax is not None)
-        custom_args_set = (edges is not None,)
-        if not all(custom_args_set) and not all(auto_args_set):
-            raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
-
-        closed = Closed(closed)
-
-        if all(auto_args_set):  # generate bin edges
-            if all(custom_args_set):
-                warnings.warn(
-                    "'zbins' set but ignored since 'zmin' and 'zmax' are provided"
-                )
-            method = BinMethod(method)
-            bin_func = RedshiftBinningFactory(cosmology).get_method(method)
-            binning = bin_func(zmin, zmax, num_bins, closed=closed)
-
-        else:  # use provided bin edges
-            method = BinMethod.custom
-            binning = Binning(edges, closed=closed)
-
-        return cls(binning, method=method)
+        the_dict = dict(
+            zmin=zmin,
+            zmax=zmax,
+            num_bins=num_bins,
+            method=method,
+            edges=edges,
+            closed=closed,
+        )
+        return cls.from_dict(the_dict, cosmology=cosmology)
 
     def modify(
         self,
@@ -316,20 +276,14 @@ class BinningConfig(BaseConfig, Immutable):
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
-        if edges is NotSet:
-            if method == "custom":
-                raise ConfigError("'method' is 'custom' but no bin edges provided")
-            the_dict = dict()
-            the_dict["zmin"] = self.zmin if zmin is NotSet else zmin
-            the_dict["zmax"] = self.zmax if zmax is NotSet else zmax
-            the_dict["num_bins"] = self.num_bins if num_bins is NotSet else num_bins
-            the_dict["method"] = self.method if method is NotSet else BinMethod(method)
-
-        else:
-            the_dict = dict(edges=edges)
-            the_dict["method"] = BinMethod.custom
-
-        the_dict["method"] = str(the_dict["method"])
-        the_dict["closed"] = str(self.closed if closed is NotSet else Closed(closed))
-
-        return type(self).from_dict(the_dict, cosmology=cosmology)
+        the_dict = self.to_dict()
+        updates = dict(
+            zmin=zmin,
+            zmax=zmax,
+            num_bins=num_bins,
+            method=method,
+            edges=edges,
+            closed=closed,
+        )
+        the_dict.update(kv for kv in updates.items() if kv[1] is not NotSet)
+        return self.from_dict(the_dict, cosmology=cosmology)
