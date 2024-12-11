@@ -981,6 +981,7 @@ class Catalog(Mapping[int, Patch]):
         patch_centers: AngularCoordinates | Catalog | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
+        kappa_name: str | None = None,
         degrees: bool = True,
         overwrite: bool = False,
         progress: bool = False,
@@ -1029,6 +1030,8 @@ class Catalog(Mapping[int, Patch]):
                 input data using `treecorr`. Requires an additional scan of the
                 input file to read a sparse sampling of the object coordinates.
                 Ignored if ``patch_centers`` or ``patch_name`` is given.
+            kappa_name:
+                Optional column name in the data frame for kappa (or other scalar field).
             degrees:
                 Whether the input coordinates are given in degreees (default).
             overwrite:
@@ -1062,6 +1065,7 @@ class Catalog(Mapping[int, Patch]):
             weight_name=weight_name,
             redshift_name=redshift_name,
             patch_name=patch_name,
+            kappa_name=kappa_name,
             chunksize=chunksize,
             degrees=degrees,
             **reader_kwargs,
@@ -1106,6 +1110,7 @@ class Catalog(Mapping[int, Patch]):
         patch_centers: AngularCoordinates | Catalog | None = None,
         patch_name: str | None = None,
         patch_num: int | None = None,
+        kappa_name: str | None = None,
         degrees: bool = True,
         overwrite: bool = False,
         progress: bool = False,
@@ -1154,6 +1159,8 @@ class Catalog(Mapping[int, Patch]):
                 input data using `treecorr`. Requires an additional scan of the
                 input file to read a sparse sampling of the object coordinates.
                 Ignored if ``patch_centers`` or ``patch_name`` is given.
+            kappa_name:
+                Optional column or path name in the file for kappa (or other scalar field).
             degrees:
                 Whether the input coordinates are given in degreees (default).
             overwrite:
@@ -1190,6 +1197,7 @@ class Catalog(Mapping[int, Patch]):
             weight_name=weight_name,
             redshift_name=redshift_name,
             patch_name=patch_name,
+            kappa_name=kappa_name,
             chunksize=chunksize,
             degrees=degrees,
             **reader_kwargs,

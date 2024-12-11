@@ -293,8 +293,8 @@ class RedshiftData(CorrData):
     @classmethod
     def from_corrfuncs(
         cls,
-        cross_corr: CorrFunc,
-        ref_corr: CorrFunc | None = None,
+        cross_corr: CorrFunc | CorrFunc_scalar,
+        ref_corr: CorrFunc | CorrFunc_scalar | None = None,
         unk_corr: CorrFunc | None = None,
     ) -> RedshiftData:
         """
