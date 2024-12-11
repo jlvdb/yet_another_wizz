@@ -261,7 +261,8 @@ class Configuration(BaseConfig, Immutable):
                 distance).
             unit:
                 String describing the angular, physical, or comoving unit of
-                correlation scales (default: kpc).
+                correlation scales, see :obj:`~yaw.options.Unit` for valid
+                options (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.
@@ -275,13 +276,13 @@ class Configuration(BaseConfig, Immutable):
             num_bins:
                 Number of redshift bins to generate.
             method:
-                Method used to generate the bin edges, must be either of
-                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+                Method used to generate the bin edges, see
+                :obj:`~yaw.options.BinMethod` for valid options.
             edges:
                 Use these custom bin edges instead of generating them.
             closed:
-                String indicating if the bin edges are closed on the ``left`` or
-                the ``right`` side.
+                Indicating which side of the bin edges is a closed interval, see
+                :obj:`~yaw.options.Closed` for valid options.
             cosmology:
                 Optional cosmological model to use for distance computations.
             max_workers:
@@ -351,7 +352,8 @@ class Configuration(BaseConfig, Immutable):
                 distance).
             unit:
                 String describing the angular, physical, or comoving unit of
-                correlation scales (default: kpc).
+                correlation scales, see :obj:`~yaw.options.Unit` for valid
+                options (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.
@@ -365,13 +367,13 @@ class Configuration(BaseConfig, Immutable):
             num_bins:
                 Number of redshift bins to generate.
             method:
-                Method used to generate the bin edges, must be either of
-                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+                Method used to generate the bin edges, see
+                :obj:`~yaw.options.BinMethod` for valid options.
             edges:
                 Use these custom bin edges instead of generating them.
             closed:
-                String indicating if the bin edges are closed on the ``left`` or
-                the ``right`` side.
+                Indicating which side of the bin edges is a closed interval, see
+                :obj:`~yaw.options.Closed` for valid options.
             cosmology:
                 Optional cosmological model to use for distance computations.
             max_workers:

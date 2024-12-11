@@ -102,7 +102,8 @@ class ScalesConfig(BaseConfig, Immutable):
 
     def to_dict(self) -> dict[str, Any]:
         attrs = ("rmin", "rmax", "unit", "rweight", "resolution")
-        return {attr: getattr(self, attr) for attr in attrs}
+        the_dict = {attr: getattr(self, attr) for attr in attrs}
+        return {attr: value for attr, value in the_dict.items()}
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
@@ -173,7 +174,8 @@ class ScalesConfig(BaseConfig, Immutable):
                 Single or multiple upper scale limits in given unit of scales.
             unit:
                 String describing the angular, physical, or comoving unit of
-                correlation scales (default: kpc).
+                correlation scales, see :obj:`~yaw.options.Unit` for valid
+                options (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.
@@ -210,7 +212,8 @@ class ScalesConfig(BaseConfig, Immutable):
                 Single or multiple upper scale limits in given unit of scales.
             unit:
                 String describing the angular, physical, or comoving unit of
-                correlation scales (default: kpc).
+                correlation scales, see :obj:`~yaw.options.Unit` for valid
+                options (default: kpc).
             rweight:
                 Optional power-law exponent :math:`\\alpha` used to weight pairs
                 by their separation.

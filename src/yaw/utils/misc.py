@@ -4,12 +4,15 @@ Implements generic utility functions, e.g. for formatting data as string.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
+import yaml
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sized
+    from collections.abc import Callable, Iterable, Sized
+    from io import TextIOBase
     from typing import Any, Generator
 
     from h5py import Group
@@ -25,6 +28,8 @@ __all__ = [
     "format_float_fixed_width",
     "format_long_num",
     "format_time",
+    "transform_matches",
+    "write_yaml",
 ]
 
 
@@ -122,3 +127,70 @@ def format_time(elapsed: float) -> str:
     """Format time in seconds as minutes and seconds: ``[MM]MmSS.SSs``"""
     minutes, seconds = divmod(elapsed, 60)
     return f"{minutes:.0f}m{seconds:05.2f}s"
+
+
+def transform_matches(string: str, regex: str, transform: Callable[[str], str]) -> str:
+    """Transforms matches in a regex search to replaces the original."""
+    for match_info in re.finditer(regex, string):
+        offset = len(string) - len(match_info.string)
+        start = match_info.start() + offset
+        end = match_info.end() + offset
+
+        matched = match_info[0]
+        string = string[:start] + transform(matched) + string[end:]
+
+    return string
+
+
+def write_yaml(
+    obj: Any,
+    file: TextIOBase,
+    *,
+    header_lines: Iterable[str] | None = None,
+    indent: int = 2,
+    sort_keys: bool = False,
+    section: bool = True,
+    **kwargs,
+) -> None:
+    """
+    Serialise an object to YAML in a custom format, compatible with PyYAML.
+
+    In particular, indent all list items (- ...) once for better readability.
+
+    Args:
+        obj:
+            Object to serialise, must contain only python native types supported
+            by PyYAML.
+        file:
+            Writable file object.
+
+    Keyword Args:
+        header_lines:
+            Iterable of header lines that will in inserted as comments at the
+            top of the file.
+        indent:
+            Number of spaces used as indentation.
+        sort_keys:
+            Whether to sort keys alphabetically.
+        section:
+            Whether to insert a new line between top level (i.e. unindented)
+            items.
+    """
+    if header_lines is not None:
+        header_lines = ("# " + line.rstrip("\n") for line in header_lines)
+        header = "\n".join(header_lines) + "\n"
+    else:
+        header = ""
+
+    string = yaml.safe_dump_all([obj], indent=indent, sort_keys=sort_keys, **kwargs)
+    string = header + string
+
+    # replace items (- ...) with indented items (  - ...)
+    indent_str = " " * indent
+    string = transform_matches(string, r"[\t ]*- ", lambda match: indent_str + match)
+
+    # insert empty line before a line without indentation
+    if section:
+        string = transform_matches(string, r"\n\w", lambda match: "\n" + match)
+
+    file.write(string)

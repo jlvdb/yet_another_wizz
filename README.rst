@@ -38,9 +38,14 @@ The code base, documentation and, python package are distributed at:
 - docs: https://yet-another-wizz.readthedocs.io/
 - PyPI: https://pypi.org/project/yet_another_wizz/
 
-.. note::
-    In the latest version, the code has been redesigned for large data sets and
-    now supports paralellism with MPI.
+**Note:**
+In the latest version, the code has been redesigned for large data sets and now
+supports paralellism with MPI.
+
+**Citing:**
+When using this code in published work, please cite
+*van den Busch et al. (2020), A&A 642, A200*
+(`arXiv:2007.01846 <https://arxiv.org/abs/2007.01846>`_)
 
 
 Installation
@@ -85,13 +90,8 @@ when installing the sparate command-line client `yet_another_wizz_cli`. This
 tool is deprecated as of version 3.0 but maybe be integrated directly into
 `yet_another_wizz` in a future release.
 
-.. note::
-    When using this code in published work, please cite
-    *van den Busch et al. (2020), A&A 642, A200*
-    (`arXiv:2007.01846 <https://arxiv.org/abs/2007.01846>`_)
-
-For bug reports or requesting new features, please use the github issue page:
-https://github.com/jlvdb/yet_another_wizz/issues
+For bug reports or requesting new features, please use the repository's
+`GitHub issues page <https://github.com/jlvdb/yet_another_wizz/issues>`_.
 
 
 Maintainers

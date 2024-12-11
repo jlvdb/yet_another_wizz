@@ -392,8 +392,8 @@ class DataFrameReader(DataReader):
         return None
 
     def _get_next_chunk(self) -> TypeDataChunk:
-        start = self._num_samples
-        end = start + self.chunksize
+        end = self._num_samples  # already incremented by chunksize in __next__
+        start = end - self.chunksize
         chunk = self._data[start:end]
 
         kwargs = {attr: chunk[name].to_numpy() for attr, name in self._columns.items()}

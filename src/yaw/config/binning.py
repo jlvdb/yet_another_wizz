@@ -52,8 +52,8 @@ class BinningConfig(BaseConfig, Immutable):
     binning: Binning
     """Container for the redshift bins."""
     method: BinMethod
-    """Method used to generate the bin edges, must be either of ``linear``,
-    ``comoving``, ``logspace``, or ``custom``."""
+    """Method used to generate the bin edges, see :obj:`~yaw.options.BinMethod`
+    for valid options."""
 
     def __init__(
         self,
@@ -87,8 +87,8 @@ class BinningConfig(BaseConfig, Immutable):
 
     @property
     def closed(self) -> Closed:
-        """String indicating if the bin edges are closed on the ``left`` or the
-        ``right`` side."""
+        """Indicating which side of the bin edges is a closed interval, see
+        :obj:`~yaw.options.Closed` for valid options."""
         return self.binning.closed
 
     @property
@@ -117,7 +117,12 @@ class BinningConfig(BaseConfig, Immutable):
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
-        if the_dict["method"] == "custom":
+        is_custom = (
+            the_dict.get("method", "") == BinMethod.custom
+            or the_dict.get("edges", None) is not None
+        )
+
+        if is_custom:
             edges = the_dict.pop("edges")
             closed = the_dict.pop("closed")
             binning = Binning(edges, closed=closed)
@@ -126,17 +131,28 @@ class BinningConfig(BaseConfig, Immutable):
         return cls.create(**the_dict, cosmology=cosmology)
 
     def to_dict(self) -> dict[str, Any]:
-        if self.is_custom:
-            the_dict = dict(edges=self.binning.edges)
+        the_dict = dict(method=str(self.method))
 
-        else:
-            the_dict = dict(
-                zmin=self.zmin,
-                zmax=self.zmax,
-                num_bins=self.num_bins,
+        if self.is_custom:
+            the_dict.update(
+                dict(
+                    zmin=None,
+                    zmax=None,
+                    num_bins=None,
+                    edges=self.binning.edges.tolist(),
+                )
             )
 
-        the_dict["method"] = str(self.method)
+        else:
+            the_dict.update(
+                dict(
+                    zmin=self.zmin,
+                    zmax=self.zmax,
+                    num_bins=self.num_bins,
+                    edges=None,
+                )
+            )
+
         the_dict["closed"] = str(self.closed)
         return the_dict
 
@@ -169,7 +185,7 @@ class BinningConfig(BaseConfig, Immutable):
                 name="method",
                 help="Method used to generate the bin edges, must be either of ``linear``, ``comoving``, ``logspace``, or ``custom``.",
                 type=str,
-                choices=get_options(Closed),
+                choices=get_options(BinMethod),
                 default=str(BinMethod.linear),
             ),
             Parameter(
@@ -212,13 +228,13 @@ class BinningConfig(BaseConfig, Immutable):
             num_bins:
                 Number of redshift bins to generate.
             method:
-                Method used to generate the bin edges, must be either of
-                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+                Method used to generate the bin edges, see
+                :obj:`~yaw.options.BinMethod` for valid options.
             edges:
                 Use these custom bin edges instead of generating them.
             closed:
-                String indicating if the bin edges are closed on the ``left`` or
-                the ``right`` side.
+                Indicating which side of the bin edges is a closed interval, see
+                :obj:`~yaw.options.Closed` for valid options.
             cosmology:
                 Optional, cosmological model to use for distance computations.
 
@@ -281,13 +297,13 @@ class BinningConfig(BaseConfig, Immutable):
             num_bins:
                 Number of redshift bins to generate.
             method:
-                Method used to generate the bin edges, must be either of
-                ``linear``, ``comoving``, ``logspace``, or ``custom``.
+                Method used to generate the bin edges, see
+                :obj:`~yaw.options.BinMethod` for valid options.
             edges:
                 Use these custom bin edges instead of generating them.
             closed:
-                String indicating if the bin edges are closed on the ``left`` or
-                the ``right`` side.
+                Indicating which side of the bin edges is a closed interval, see
+                :obj:`~yaw.options.Closed` for valid options.
             cosmology:
                 Optional, cosmological model to use for distance computations.
 

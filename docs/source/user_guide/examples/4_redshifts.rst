@@ -8,7 +8,7 @@ measured cross-correlation:
 
 .. code-block:: python
 
-    ncc = RedshiftData.from_corrfuncs(
+    ncc = yaw.RedshiftData.from_corrfuncs(
         cross_corr=cts_sp,
         ref_corr=cts_ss,
         # unk_corr=None,

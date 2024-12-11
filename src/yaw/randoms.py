@@ -85,7 +85,12 @@ class RandomsBase(HandlesDataChunk):
     def reseed(self, seed: int | None = None) -> None:
         if seed is not None:
             self.seed = int(seed)
-        self.rng = np.random.default_rng(self.seed)
+
+        # compute seed the same way v2 used to do, which was how v1 used to do
+        seeder = np.random.SeedSequence(self.seed)
+        seed = seeder.spawn(1)[0]
+
+        self.rng = np.random.default_rng(seed)
 
     @abstractmethod
     def _draw_coords(self, probe_size: int) -> tuple[NDArray, NDArray]:
@@ -144,6 +149,39 @@ class RandomsBase(HandlesDataChunk):
             ra, dec, **optionals, degrees=False, chkfinite=False
         )
         return chunk
+
+    def generate_dataframe(self, probe_size: int, *, degrees: bool = True):
+        """
+        Draw a new sample of uniform random points into a pandas DataFrame.
+
+        Requires installing the optional dependency `pandas`.
+
+        Args:
+            probe_size:
+                Number of points to generate.
+
+        Keyword Args:
+            degrees:
+                Whether to return the coordinates in degrees (the default).
+
+        Returns:
+            A `pandas.DataFrame`, always contains keys ``ra`` and ``dec`` for
+            coordinates of random points in degrees or radian. Optionally
+            contains ``weights`` and/or ``redshifts`` if data as been provided
+            to sample from.
+        """
+        try:
+            import pandas as pd
+        except ImportError as err:
+            raise ImportError(
+                "optional dependency 'pandas' required to generate DataFrames"
+            ) from err
+
+        df = pd.DataFrame.from_records(self(probe_size))
+        if degrees:
+            df["ra"] = np.rad2deg(df["ra"])
+            df["dec"] = np.rad2deg(df["dec"])
+        return df
 
 
 class BoxRandoms(RandomsBase):
