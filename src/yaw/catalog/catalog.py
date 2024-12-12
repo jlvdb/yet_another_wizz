@@ -565,7 +565,7 @@ def write_patches_unthreaded(
 
         with CatalogWriter(
             cache_directory=path,
-            chunk_info=reader.copy_chunk_info(),
+            chunk_info=reader.copy_chunk_info(drop_patch_ids=True),
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
@@ -724,7 +724,7 @@ if parallel.use_mpi():
         if rank == worker_config.writer_rank:
             writer_task(
                 cache_directory=path,
-                chunk_info=reader.copy_chunk_info(),
+                chunk_info=reader.copy_chunk_info(drop_patch_ids=True),
                 overwrite=overwrite,
                 buffersize=buffersize,
             )
@@ -889,7 +889,7 @@ else:
             with WriterProcess(
                 patch_queue,
                 cache_directory=path,
-                chunk_info=reader.copy_chunk_info(),
+                chunk_info=reader.copy_chunk_info(drop_patch_ids=True),
                 overwrite=overwrite,
                 buffersize=buffersize,
             ):
