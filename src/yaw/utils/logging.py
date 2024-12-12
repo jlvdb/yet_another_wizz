@@ -284,7 +284,8 @@ def get_logger(
     handlers = []
 
     if stdout:
-        emit_welcome(sys.stdout)
+        if on_root():
+            emit_welcome(sys.stdout)
         handler = logging.StreamHandler(sys.stdout)
         configure_handler(handler, pretty=pretty, level=level_code)
         handlers.append(handler)
@@ -299,5 +300,6 @@ def get_logger(
     logger = logging.getLogger(LOGGER_NAME)
     sys.excepthook = log_uncaught_exceptions
 
-    emit_parallel_mode_log(logger)
+    if on_root():
+        emit_parallel_mode_log(logger)
     return logger
