@@ -181,15 +181,24 @@ class Configuration(YawConfig):
         parsed = cls._parse_params(the_dict)
         return cls(scales, binning, **parsed)
 
+    @classmethod
     def from_file(cls, path: Path | str) -> Configuration:
+        new = None
+
         if parallel.on_root():
             logger.info("reading configuration file: %s", path)
-        return super().from_file(path)
+
+            new = super().from_file(path)
+
+        return parallel.COMM.bcast(new, root=0)
 
     def to_file(self, path: Path | str) -> None:
         if parallel.on_root():
             logger.info("writing configuration file: %s", path)
-        super().to_file(path)
+
+            super().to_file(path)
+
+        parallel.COMM.Barrier()
 
     @classmethod
     def create(

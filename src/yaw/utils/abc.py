@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Generic, TypeVar, Union
 import h5py
 import yaml
 
-from yaw.utils import parallel
 from yaw.utils.misc import write_yaml
 
 if TYPE_CHECKING:
@@ -90,12 +89,9 @@ class YamlSerialisable(Serialisable):
         Returns:
             Restored class instance.
         """
-        new = None
-        if parallel.on_root():
-            with Path(path).open() as f:
-                kwarg_dict = yaml.safe_load(f)
-            new = cls(**kwarg_dict)
-        return parallel.COMM.bcast(new, root=0)
+        with Path(path).open() as f:
+            kwarg_dict = yaml.safe_load(f)
+        return cls.from_dict(kwarg_dict)
 
     def to_file(self, path: Path | str) -> None:
         """
@@ -106,10 +102,8 @@ class YamlSerialisable(Serialisable):
                 Path (:obj:`str` or :obj:`pathlib.Path`) to YAML file to
                 serialise into, see also :meth:`from_file()`.
         """
-        if parallel.on_root():
-            with Path(path).open(mode="w") as f:
-                write_yaml(self.to_dict(), f, indent=4, section=False)
-        parallel.COMM.Barrier()
+        with Path(path).open(mode="w") as f:
+            write_yaml(self.to_dict(), f, indent=4, section=False)
 
 
 class HdfSerializable(ABC):
