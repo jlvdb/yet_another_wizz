@@ -56,14 +56,12 @@ class BinningConfig(YawConfig):
             help="Lowest redshift bin edge to generate (alternatively use 'edges').",
             type=float,
             default=None,
-            nullable=True,
         ),
         Parameter(
             name="zmax",
             help="Highest redshift bin edge to generate (alternatively use 'edges').",
             type=float,
             default=None,
-            nullable=True,
         ),
         Parameter(
             name="num_bins",
@@ -85,7 +83,6 @@ class BinningConfig(YawConfig):
             type=float,
             is_sequence=True,
             default=None,
-            nullable=True,
         ),
         Parameter(
             name="closed",

@@ -71,14 +71,12 @@ class ScalesConfig(YawConfig):
             help="Power-law exponent used to weight pairs by their separation.",
             type=float,
             default=None,
-            nullable=True,
         ),
         Parameter(
             name="resolution",
             help="Number of radial logarithmic bin used to approximate the weighting by separation.",
             type=int,
             default=None,
-            nullable=True,
         ),
     )
 

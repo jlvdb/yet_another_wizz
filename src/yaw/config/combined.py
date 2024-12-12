@@ -146,7 +146,6 @@ class Configuration(YawConfig):
             help="Limit the number of workers for parallel operations.",
             type=int,
             default=None,
-            nullable=True,
         ),
     )
 

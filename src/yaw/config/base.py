@@ -96,12 +96,15 @@ class Parameter(Generic[T]):
     help: str
     type: type[T] | Callable[[Any], T]
     is_sequence: bool = field(default=False, kw_only=True)
-    default: T | NotSet = field(default=NotSet, kw_only=True)
-    nullable: bool = field(default=False, kw_only=True)
+    default: T | None | NotSet = field(default=NotSet, kw_only=True)
     choices: StrEnum | Iterable[T] | NotSet = field(default=NotSet, kw_only=True)
     serialiser: Callable | NotSet = field(default=NotSet, kw_only=True)
 
+    nullable: bool = field(init=False)
+
     def __post_init__(self) -> None:
+        object.__setattr__(self, "nullable", self.default is None)
+
         if self.choices is not NotSet:
             choices = self.choices
             if issubclass(choices, StrEnum):
