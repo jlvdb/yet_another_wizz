@@ -139,6 +139,7 @@ class Configuration(YawConfig):
             help="Cosmological model to use for distance computations.",
             type=parse_cosmology,
             default=default_cosmology,
+            serialiser=cosmology_to_yaml,
         ),
         Parameter(
             name="max_workers",

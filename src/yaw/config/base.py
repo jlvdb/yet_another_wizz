@@ -99,6 +99,7 @@ class Parameter(Generic[T]):
     default: T | NotSet = field(default=NotSet, kw_only=True)
     nullable: bool = field(default=False, kw_only=True)
     choices: StrEnum | Iterable[T] | NotSet = field(default=NotSet, kw_only=True)
+    serialiser: Callable | NotSet = field(default=NotSet, kw_only=True)
 
     def __post_init__(self) -> None:
         if self.choices is not NotSet:
@@ -169,7 +170,7 @@ class Parameter(Generic[T]):
     def _format_choices(self) -> str:
         if self.choices is NotSet:
             return ""
-        return ", ".join(str(c) for c in self.choices)
+        return ", ".join(str(c) for c in sorted(self.choices))
 
     def _format_help(self) -> str:
         help_str = self.help.rstrip()
@@ -196,6 +197,11 @@ class Parameter(Generic[T]):
             help_str += f" (choices: {choices_str})"
         string = format_yaml(self.name, help_str, value=default_str, padding=padding)
         return indentation.format_line(string)
+
+    def serialise(self, value: Any) -> Any:
+        if self.serialiser is NotSet:
+            return value
+        return self.serialiser(value)
 
 
 class ConfigSection:
@@ -250,7 +256,9 @@ class BaseConfig(YamlSerialisable):
         padding: int = 20,
     ) -> str:
         lines = [
-            item.format_default_yaml(indentation or TextIndenter(), padding=padding)
+            item.format_default_yaml(
+                indentation=indentation or TextIndenter(), padding=padding
+            )
             for item in cls._paramspec
         ]
         return "".join(lines)
@@ -280,6 +288,24 @@ class BaseConfig(YamlSerialisable):
             parsed[param.name] = param.parse(the_dict[param.name])
         return parsed
 
+    def _serialise(self, subset: Iterable[str] | None = None) -> dict:
+        if subset is None:
+            params = self._paramspec
+        else:
+            subset = set(subset)
+            params = (param for param in self._paramspec if param.name in subset)
+
+        the_dict = dict()
+        for param in params:
+            name = param.name
+            value = getattr(self, name)
+            if isinstance(value, BaseConfig):
+                the_dict[name] = value.to_dict()
+            else:
+                the_dict[name] = param.serialise(value)
+
+        return the_dict
+
     @classmethod
     @abstractmethod
     def from_dict(
@@ -290,17 +316,7 @@ class BaseConfig(YamlSerialisable):
         pass
 
     def to_dict(self) -> dict[str, Any]:
-        attrs = (param.name for param in self._paramspec)
-
-        the_dict = dict()
-        for attr in attrs:
-            value = getattr(self, attr)
-            if isinstance(value, BaseConfig):
-                the_dict[attr] = value.to_dict()
-            else:
-                the_dict[attr] = value
-
-        return the_dict
+        return self._serialise()
 
 
 class YawConfig(BaseConfig):

@@ -77,6 +77,7 @@ class BinningConfig(YawConfig):
             type=str,
             choices=BinMethod,
             default=BinMethod.linear,
+            serialiser=str,
         ),
         Parameter(
             name="edges",
@@ -92,6 +93,7 @@ class BinningConfig(YawConfig):
             type=str,
             choices=Closed,
             default=Closed.right,
+            serialiser=str,
         ),
     )
 
@@ -104,7 +106,7 @@ class BinningConfig(YawConfig):
     @property
     def edges(self) -> NDArray:
         """Array of redshift bin edges."""
-        return self.binning.edges
+        return self.binning.edges.tolist()
 
     @property
     def zmin(self) -> float:
@@ -125,7 +127,7 @@ class BinningConfig(YawConfig):
     def closed(self) -> Closed:
         """Indicating which side of the bin edges is a closed interval, see
         :obj:`~yaw.options.Closed` for valid options."""
-        return self.binning.closed
+        return str(self.binning.closed)
 
     @property
     def is_custom(self) -> bool:
@@ -179,6 +181,11 @@ class BinningConfig(YawConfig):
             )
 
         return cls(binning=binning, method=method)
+
+    def to_dict(self) -> dict[str, Any]:
+        if self.is_custom:
+            return self._serialise(["method", "edges", "closed"])
+        return self._serialise(["zmin", "zmax", "num_bins", "method", "closed"])
 
     @classmethod
     def create(
