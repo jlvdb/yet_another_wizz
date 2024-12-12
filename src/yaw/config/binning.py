@@ -159,14 +159,15 @@ class BinningConfig(YawConfig):
             This cosmology object is not stored with this instance, but should
             be managed by the top level :obj:`~yaw.Configuration` class.
         """
-        if not ("zmin" in the_dict and "zmax" in the_dict) and "edges" not in the_dict:
-            raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
-        cls._check_dict_keys(the_dict)
+        cls._check_dict(the_dict)
         parsed = cls._parse_params(the_dict)
 
         if parsed["edges"] is not None:
             method = BinMethod.custom
             binning = Binning(parsed["edges"], closed=parsed["closed"])
+
+        elif parsed["zmin"] is None or parsed["zmax"] is None:
+            raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
 
         else:
             method = parsed["method"]

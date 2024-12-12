@@ -144,9 +144,18 @@ class Parameter(Generic[T]):
         if self.is_sequence:
             if self.nullable and value is None:
                 return None
+            try:
+                iter(value)
+            except TypeError:
+                value = [value]
             return [self._parse_item(val) for val in value]
         else:
             return self._parse_item(value)
+
+    def is_default(self, value: Any) -> bool:
+        if self.required:
+            return False
+        return value == self.default
 
     def _format_default(self) -> str:
         if self.required:

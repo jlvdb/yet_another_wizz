@@ -126,7 +126,7 @@ class ScalesConfig(YawConfig):
 
     @classmethod
     def from_dict(cls, the_dict):
-        cls._check_dict_keys(the_dict)
+        cls._check_dict(the_dict)
         parsed = cls._parse_params(the_dict)
 
         scales = new_scales(

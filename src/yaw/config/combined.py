@@ -171,7 +171,7 @@ class Configuration(YawConfig):
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]) -> Configuration:
-        cls._check_dict_keys(the_dict)
+        cls._check_dict(the_dict)
 
         with raise_configerror_with_level("scales"):
             scales = ScalesConfig.from_dict(the_dict["scales"])
