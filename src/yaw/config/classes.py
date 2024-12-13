@@ -151,11 +151,14 @@ class ScalesConfig(YawConfig):
         cls._check_dict(the_dict)
         parsed = cls._parse_params(the_dict)
 
-        scales = new_scales(
-            parsed.pop("rmin"),
-            parsed.pop("rmax"),
-            unit=parsed.pop("unit"),
-        )
+        try:
+            scales = new_scales(
+                parsed.pop("rmin"),
+                parsed.pop("rmax"),
+                unit=parsed.pop("unit"),
+            )
+        except Exception as err:
+            raise ConfigError(str(err)) from err
         return cls(scales, **parsed)
 
     @classmethod
@@ -381,19 +384,25 @@ class BinningConfig(YawConfig):
 
         if parsed["edges"] is not None:
             method = BinMethod.custom
-            binning = Binning(parsed["edges"], closed=parsed["closed"])
+            try:
+                binning = Binning(parsed["edges"], closed=parsed["closed"])
+            except Exception as err:
+                raise ConfigError(str(err)) from err
 
         elif parsed["zmin"] is None or parsed["zmax"] is None:
             raise ConfigError("either 'edges' or 'zmin' and 'zmax' are required")
 
         else:
             method = parsed["method"]
-            binning = RedshiftBinningFactory(cosmology).get_method(method)(
-                parsed["zmin"],
-                parsed["zmax"],
-                parsed["num_bins"],
-                closed=parsed["closed"],
-            )
+            try:
+                binning = RedshiftBinningFactory(cosmology).get_method(method)(
+                    parsed["zmin"],
+                    parsed["zmax"],
+                    parsed["num_bins"],
+                    closed=parsed["closed"],
+                )
+            except Exception as err:
+                raise ConfigError(str(err)) from err
 
         return cls(binning=binning, method=method)
 

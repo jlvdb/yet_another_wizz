@@ -131,7 +131,7 @@ def create_catalog(
     progress: bool = False,
     max_workers: int | None = None,
 ) -> None:
-    columns = inputs.columns
+    columns = inputs.get_columns()
     paths = {
         cache_handle.rand.path: inputs.path_rand,
         cache_handle.data.path: inputs.path_data,
@@ -144,12 +144,12 @@ def create_catalog(
         cat = yaw.Catalog.from_file(
             cache_directory=cache_path,
             path=input_path,
-            ra_name=columns.ra,
-            dec_name=columns.dec,
-            weight_name=columns.weight,
-            redshift_name=columns.redshift,
+            ra_name=columns["ra"],
+            dec_name=columns["dec"],
+            weight_name=columns["weight"],
+            redshift_name=columns["redshift"],
             patch_centers=global_cache.get_patch_centers(),
-            patch_name=columns.patches,
+            patch_name=columns["patches"],
             patch_num=num_patches,
             overwrite=True,
             progress=progress,

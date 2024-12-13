@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pprint
 from abc import abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generic, TypeVar
@@ -449,12 +449,15 @@ class BaseConfig(YamlSerialisable):
         """Check whether the input parameter dictionary contains all required
         keys and does not contain any extra keys with no corresponding
         parameter."""
+        if not isinstance(param_dict, Mapping):
+            raise ConfigError("expected a configuration section / parameter dictionary")
+
         received = set(param_dict.keys())
         all_pars = set(item.name for item in cls._paramspec)
         required = set(item.name for item in cls._paramspec if item.required)
 
         for missing in required - received:
-            item = cls.get_paramspec(missing)
+            item = cls.get_paramspec()[missing]
             item_type = "section" if isinstance(item, ConfigError) else "parameter"
             raise ConfigError(f"{item_type} is required", missing)
         for unknown in received - all_pars:
@@ -468,7 +471,7 @@ class BaseConfig(YamlSerialisable):
         for param in cls._paramspec:
             if isinstance(param, ConfigSection):
                 continue
-            parsed[param.name] = param.parse(the_dict[param.name])
+            parsed[param.name] = param.parse(the_dict.get(param.name, param.default))
         return parsed
 
     def _serialise(self, subset: Iterable[str] | None = None) -> dict:

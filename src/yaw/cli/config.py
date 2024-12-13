@@ -161,6 +161,13 @@ class CatPairConfig(BaseConfig):
     weight: str | None = field(default=None, kw_only=True)
     patches: str | None = field(default=None, kw_only=True)
 
+    def get_columns(self) -> dict[str, str]:
+        return dict(
+            (attr, value)
+            for attr, value in asdict(self).items()
+            if not attr.startswith("path_")
+        )
+
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]) -> TypeBaseConfig:
         return super().from_dict(the_dict)
@@ -199,12 +206,7 @@ class UnknownCatConfig(CatPairConfig):
     patches: str | None = field(default=None, kw_only=True)
 
     def iter_bins(self) -> Iterator[tuple[int, CatPairConfig]]:
-        columns = dict(
-            (attr, value)
-            for attr, value in asdict(self).items()
-            if not attr.startswith("path_")
-        )
-
+        columns = self.get_columns()
         for idx, data in self.path_data.items():
             rand = None if self.path_rand is None else self.path_rand[idx]
             conf = CatPairConfig(data, rand, **columns)
@@ -213,19 +215,6 @@ class UnknownCatConfig(CatPairConfig):
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
         return super().from_dict(the_dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        the_dict = dict(
-            path_data={idx: str(path) for idx, path in self.path_data.items()}
-        )
-
-        if self.path_rand is not None:
-            the_dict["path_rand"] = {
-                idx: str(path) for idx, path in self.path_rand.items()
-            }
-
-        the_dict.update(asdict(self.columns))
-        return the_dict
 
 
 @dataclass
