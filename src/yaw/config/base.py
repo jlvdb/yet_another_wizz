@@ -311,6 +311,7 @@ class SequenceParameter(Parameter[T]):
     def parse(self, value: Any) -> list[T]:
         if self.nullable and value is None:
             return None
+
         if not isinstance(value, Iterable):
             return [self._parse_item(value)]
         return list(map(self._parse_item, value))
@@ -322,7 +323,7 @@ class SequenceParameter(Parameter[T]):
             return value
 
         if not isinstance(value, Iterable):
-            return [self._parse_item(value)]
+            return [self.to_builtin(value)]
         return list(map(self.to_builtin, value))
 
 
@@ -503,6 +504,9 @@ class BaseConfig(YamlSerialisable):
 
 
 class YawConfig(BaseConfig):
+    """Base class that defines additional constructor methods for configuration
+    classes."""
+
     @abstractmethod
     def __eq__(self) -> bool:
         pass
