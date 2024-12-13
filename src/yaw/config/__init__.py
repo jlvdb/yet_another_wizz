@@ -4,9 +4,7 @@ function measurements.
 """
 
 from yaw.config.base import Parameter
-from yaw.config.binning import BinningConfig
-from yaw.config.combined import Configuration
-from yaw.config.scales import ScalesConfig
+from yaw.config.classes import BinningConfig, Configuration, ScalesConfig
 
 __all__ = [
     "BinningConfig",
