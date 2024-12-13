@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pprint
 from abc import abstractmethod
+from collections.abc import Iterable
 from contextlib import contextmanager
-from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generic, TypeVar
 
@@ -18,11 +18,16 @@ from yaw.options import NotSet, get_options
 from yaw.utils.abc import YamlSerialisable
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-    from typing import Any
+    from collections.abc import Callable
+    from typing import Any, Union
 
     from typing_extensions import Self
 
+    TypeBuiltScalar = Union[None, bool, int, float, str]
+    TypeBuiltCollection = Union[
+        list[TypeBuiltScalar], dict[TypeBuiltScalar, TypeBuiltScalar]
+    ]
+    TypeBuiltin = TypeVar("TypeBuiltin", TypeBuiltScalar, TypeBuiltCollection)
     TypeBaseConfig = TypeVar("TypeBaseConfig", bound="BaseConfig")
 T = TypeVar("T")
 
@@ -33,6 +38,15 @@ __all__ = [
 
 
 class ConfigError(Exception):
+    """
+    Specialised exception used when paring configurations.
+
+    The extra `attr` argument is used to indicate the name of the configuration
+    parameter where the exception occured. The `add_level` method can be used
+    to add a prefix to the attribute name when the error occurs in a subsection
+    of the configuration.
+    """
+
     def __init__(self, msg: str, attr: str = ""):
         self.has_attr = len(str(attr)) > 0
         if self.has_attr:
@@ -51,65 +65,138 @@ class ConfigError(Exception):
 
 @contextmanager
 def raise_configerror_with_level(level):
+    """Reraise any `ConfigError` with the added prefix `level` describing the
+    attribute at which the error occured."""
     try:
         yield
     except ConfigError as err:
         raise err.add_level(level)
 
 
-def format_yaml(name: str, help: str, *, value: str = "", padding: int = 2) -> str:
+def format_yaml(value: Any) -> str:
+    """Serialise a python object as a single-line string in YAML format."""
+    if value is NotSet:
+        return ""
+    elif value is None:
+        return "null"
+
+    string = str(value)
+    if type(value) is bool:
+        return string.lower()
+    return string
+
+
+def format_yaml_record_commented(
+    key, comment: str, *, value: Any | NotSet = NotSet, padding: int = 2
+) -> str:
     """
-    Format a single line of YAML code with a comment containing a help message
+    Format a single line of YAML mapping key and value followed by a comment.
 
     Padding indicates the minimum number of characters the comment # should
     be placed away from the start of the string (filled with spaces).
     """
-    param_str = f"{name}: {value}".ljust(padding)
-    if not param_str.endswith(" "):
-        param_str += " "
-    return f"{param_str}# {help}"
+    record = f"{format_yaml(key)}: {format_yaml(value)}"
+    padding = max(padding, len(record) + 1)
+    record = record.ljust(padding)
+    return f"{record}# {comment}"
 
 
 class TextIndenter:
+    """
+    Helper class for printing text lines with fixed indentation levels.
+
+    Args:
+        initial_level:
+            The initial level on indentation.
+        num_spaces:
+            The number of spaces used for a level of indentation.
+    """
+
     def __init__(self, initial_level: int = 0, num_spaces: int = 4) -> None:
         self.level = initial_level
         self.indent = " " * num_spaces
 
     def increment(self) -> None:
+        """Increase the indentation level."""
         self.level += 1
 
     def decrement(self) -> None:
+        """Decrease the indentation level."""
         if self.level == 0:
             raise ValueError("cannot decrement indentation at indentation level 0")
 
     def format_line(self, string: str) -> str:
+        """Format a single line string with the current indentation and an added
+        new-line character at the end."""
         indent = self.indent * self.level
         return indent + string + "\n"
 
 
 @dataclass(frozen=True)
 class Parameter(Generic[T]):
-    """Defines the meta data for a configuration parameter, including a
-    describing help message."""
+    """
+    Defines the meta data for a configuration parameter.
+
+    Parameters are considered required if no default is specified. Supplies
+    methods to parse inputs to the specified parameter type and methods to
+    convert the value back to YAML-supported basic types.
+
+    Args:
+        name:
+            Name of the parameter.
+        help:
+            Single-line help message describing the parameter.
+        type:
+            Expected type of the parameter.
+
+    Keyword Args:
+        default:
+            The default value for the parameter, must be parsable to `type` or
+            `None` if there is no specific default value.
+        choices:
+            Ensure that the parameter accepts only this limited set of allowed
+            values.
+        to_type:
+            Function that converts the user input to `type`.
+        to_builtin:
+            Function that converts the typed value back to builtin python types
+            supported by YAML.
+    """
 
     name: str
+    """Name of the parameter."""
     help: str
-    type: type[T] | Callable[[Any], T]
-    is_sequence: bool = field(default=False, kw_only=True)
+    """Single-line help message describing the parameter."""
+    type: type[T]
+    """Expected type of the parameter."""
     default: T | None | NotSet = field(default=NotSet, kw_only=True)
+    """The default value for the parameter, must be parsable to `type` or `None`
+    if there is no specific default value."""
     choices: StrEnum | Iterable[T] | NotSet = field(default=NotSet, kw_only=True)
-    serialiser: Callable | NotSet = field(default=NotSet, kw_only=True)
+    """Ensure that the parameter accepts only this limited set of allowed
+    values."""
+    to_type: Callable[[Any], T] | NotSet = field(default=NotSet, kw_only=True)
+    """Function that converts the user input to `type`."""
+    to_builtin: Callable[[T], TypeBuiltin] | NotSet = field(
+        default=NotSet, kw_only=True
+    )
+    """Function that converts the typed value back to builtin python types
+    supported by YAML."""
 
     nullable: bool = field(init=False)
+    """Whether `None` is an allowed parameter value (if ``default=None``)."""
 
     def __post_init__(self) -> None:
+        if self.to_type is NotSet:
+            object.__setattr__(self, "to_type", self.type)
+
         object.__setattr__(self, "nullable", self.default is None)
 
         if self.choices is not NotSet:
             choices = self.choices
             if issubclass(choices, StrEnum):
                 choices = get_options(choices)
-            choices = set(self.parse(choice) for choice in choices)
+            choices = tuple(self.parse(choice) for choice in choices)
             object.__setattr__(self, "choices", choices)
 
         if self.default is not NotSet:
@@ -117,118 +204,184 @@ class Parameter(Generic[T]):
 
     @property
     def required(self):
+        """Whether the parameter is required."""
         return self.default is NotSet
 
     @property
     def has_choices(self):
+        """Whether the parameter has only a limited number of allowed values."""
         return self.choices is not NotSet
 
     def _parse_item(self, value: Any) -> T:
-        if self.nullable and value is None:
-            return None
-
         try:
-            parsed = self.type(value)
+            parsed = self.to_type(value)
         except Exception as err:
-            type_str = self.type.__name__
-            if self.is_sequence:
-                type_str = f"list[{type_str}]"
-            msg = f"could not convert '{value}' to type {type_str}"
+            msg = f"could not convert to type {self.type.__name__}: {err}"
             raise ConfigError(msg, self.name) from err
 
-        if self.has_choices:
-            if parsed not in self.choices:
-                choice_str = ".".join(self.choices)
-                msg = f"invalid value '{value}', allowed choices are: {choice_str}"
-                raise ConfigError(msg, self.name)
+        if self.has_choices and parsed not in self.choices:
+            choice_str = ", ".join(self.choices)
+            msg = f"invalid value '{value}', allowed choices are: {choice_str}"
+            raise ConfigError(msg, self.name)
 
         return parsed
 
-    def parse(self, value: Any) -> T | list[T]:
-        if self.is_sequence:
-            if self.nullable and value is None:
-                return None
-            try:
-                iter(value)
-            except TypeError:
-                value = [value]
-            return [self._parse_item(val) for val in value]
-        else:
-            return self._parse_item(value)
+    def parse(self, value: Any) -> T:
+        """Parse the input to the specifed parameter type."""
+        if self.nullable and value is None:
+            return None
+        return self._parse_item(value)
 
-    def is_default(self, value: Any) -> bool:
-        if self.required:
-            return False
-        return value == self.default
+    def as_builtin(self, value: T) -> TypeBuiltin:
+        """Convert the typed value back to builtin python types supported by
+        YAML."""
+        if self.nullable and value is None:
+            return None
+        elif self.to_builtin is NotSet:
+            return value
+        return self.to_builtin(value)
 
-    def _format_default(self) -> str:
-        if self.required:
-            return ""
-        elif self.type is bool:
-            return str(self.default).lower()
-        elif self.default is None:
-            return "null"
-        return str(self.default)
-
-    def _format_choices(self) -> str:
-        if self.choices is NotSet:
-            return ""
-        return ", ".join(str(c) for c in sorted(self.choices))
-
-    def _format_help(self) -> str:
-        help_str = self.help.rstrip()
-        if not self.required:
-            return help_str
-
-        if help_str.endswith("."):
-            return help_str[:-1] + ", required."
-        return help_str + ", required"
-
-    def format_default_yaml(
+    def format_yaml_doc(
         self,
         *,
         indentation: TextIndenter | None = None,
         padding: int = 2,
     ) -> str:
+        """
+        Format the parameter as YAML for documentation purposes.
+
+        Lists the parameter as mapping of name to default value (if given,
+        otherwise blank) followed by a comment containing the help message,
+        whether the parameter is required and possible choices.
+
+        Args:
+            indentation:
+                Use this indenter to determine the appropriate line indentation.
+            padding:
+                Padding in spaces between YAML text and comment.
+        """
         indentation = indentation or TextIndenter()
 
-        default_str = self._format_default()
-        help_str = self._format_help()
-        choices_str = self._format_choices()
+        comment = self.help.rstrip()
+        if self.required:
+            comment = comment.rstrip(".") + ", required"
+        if self.has_choices:
+            choices_str = ", ".join(format_yaml(c) for c in self.choices)
+            comment += f" (choices: {choices_str})"
 
-        if choices_str:
-            help_str += f" (choices: {choices_str})"
-        string = format_yaml(self.name, help_str, value=default_str, padding=padding)
+        string = format_yaml_record_commented(
+            self.name, comment, value=self.as_builtin(self.default), padding=padding
+        )
         return indentation.format_line(string)
 
-    def serialise(self, value: Any) -> Any:
-        if self.serialiser is NotSet:
+
+@dataclass(frozen=True)
+class SequenceParameter(Parameter[T]):
+    """
+    Defines the meta data for a configuration parameter that takes a sequence of
+    values.
+
+    Parameters are considered required if no default is specified. Supplies
+    methods to parse inputs to the specified parameter type and methods to
+    convert the value back to YAML-supported basic types.
+
+    Args:
+        name:
+            Name of the parameter.
+        help:
+            Single-line help message describing the parameter.
+        type:
+            Expected item type of the parameter.
+
+    Keyword Args:
+        default:
+            The default value for the parameter, must be parsable to `type` or
+            `None` if there is no specific default value.
+        choices:
+            Ensure that the parameter accepts only this limited set of allowed
+            values as its items.
+        to_type:
+            Function that converts items of the sequence of the user inputs to
+            `type`.
+        to_builtin:
+            Function that converts the typed item value back to builtin python
+            types supported by YAML.
+    """
+
+    def parse(self, value: Any) -> list[T]:
+        if self.nullable and value is None:
+            return None
+        if not isinstance(value, Iterable):
+            return [self._parse_item(value)]
+        return list(map(self._parse_item, value))
+
+    def as_builtin(self, value: T) -> list[TypeBuiltin]:
+        if self.nullable and value is None:
+            return None
+        elif self.to_builtin is NotSet:
             return value
-        return self.serialiser(value)
+
+        if not isinstance(value, Iterable):
+            return [self._parse_item(value)]
+        return list(map(self.to_builtin, value))
 
 
+@dataclass(frozen=True)
 class ConfigSection:
-    def __init__(
-        self, config_class: type[BaseConfig], name: str, *, help: str, required: bool
-    ) -> None:
-        self.config_class = config_class
-        self.name = name
-        self.help = help
-        self.required = required
+    """
+    Use to indicate that a given parameter represents an independent (sub-)
+    configuration, parsed independently.
 
-    def format_default_yaml(
+    Args:
+        config_class:
+            The configuration class linked to the configuration section that
+            will handle parsing the values.
+        name:
+            Name of the section.
+        help:
+            Single-line help message describing the section.
+
+    Keyword Args:
+        Whether the section is required (the default).
+    """
+
+    config_class: type[BaseConfig]
+    """The configuration class linked to the configuration section that will
+    handle parsing the values."""
+    name: str
+    """Name of the section."""
+    help: str
+    """Single-line help message describing the section."""
+    required: bool = field(default=True, kw_only=True)
+    """Whether the section is required."""
+
+    def format_yaml_doc(
         self,
         *,
         indentation: TextIndenter | None = None,
         padding: int = 2,
     ) -> str:
+        """
+        Format the parameter as YAML for documentation purposes.
+
+        Writes the section name with its help message as comment, followed by a
+        mapping of parameter names (belonging to that section) to default values
+        (if given, otherwise blank) followed by comments containing the help
+        messages, whether parameter are required and possible choices.
+
+        Args:
+            indentation:
+                Use this indenter to determine the appropriate line indentation.
+            padding:
+                Padding in spaces between YAML text and comment.
+        """
         indentation = indentation or TextIndenter()
 
-        header = format_yaml(self.name, self.help, padding=padding)
+        header = format_yaml_record_commented(self.name, self.help, padding=padding)
         string = indentation.format_line(header)
         indentation.increment()
 
-        string += self.config_class.format_default_yaml(
+        string += self.config_class.format_yaml_doc(
             indentation=indentation, padding=padding
         )
         indentation.decrement()
@@ -246,20 +399,38 @@ class BaseConfig(YamlSerialisable):
     """
 
     _paramspec: tuple[ConfigSection | Parameter]
+    """List of parameters and subsections for this configuration, must be
+    implemented by subclass."""
 
     @classmethod
     def get_paramspec(cls) -> dict[str, ConfigSection | Parameter]:
-        return dict((str(param.name), deepcopy(param)) for param in cls._paramspec)
+        """Get a mapping of paramter name to parameter meta-data."""
+        return dict((str(param.name), param) for param in cls._paramspec)
 
     @classmethod
-    def format_default_yaml(
+    def format_yaml_doc(
         cls,
         *,
         indentation: TextIndenter | None = None,
-        padding: int = 20,
+        padding: int = 24,
     ) -> str:
+        """
+        Format the parameter as YAML for documentation purposes.
+
+        Writes a mapping of parameter names to default values (if given,
+        otherwise blank) followed by comments containing the help messages,
+        whether parameter are required and possible choices. If the class
+        contains configuration sub-classes, include them hierarchically as a
+        mapping sub-section.
+
+        Args:
+            indentation:
+                Use this indenter to determine the appropriate line indentation.
+            padding:
+                Padding in spaces between YAML text and comment.
+        """
         lines = [
-            item.format_default_yaml(
+            item.format_yaml_doc(
                 indentation=indentation or TextIndenter(), padding=padding
             )
             for item in cls._paramspec
@@ -271,6 +442,9 @@ class BaseConfig(YamlSerialisable):
 
     @classmethod
     def _check_dict(cls, param_dict: dict) -> None:
+        """Check whether the input parameter dictionary contains all required
+        keys and does not contain any extra keys with no corresponding
+        parameter."""
         received = set(param_dict.keys())
         all_pars = set(item.name for item in cls._paramspec)
         required = set(item.name for item in cls._paramspec if item.required)
@@ -284,6 +458,8 @@ class BaseConfig(YamlSerialisable):
 
     @classmethod
     def _parse_params(cls, the_dict: dict, **kwargs) -> dict:
+        """Parse the input parameter dictionary hierachically using the defined
+        class parameters to the output types."""
         parsed = dict()
         for param in cls._paramspec:
             if isinstance(param, ConfigSection):
@@ -292,6 +468,8 @@ class BaseConfig(YamlSerialisable):
         return parsed
 
     def _serialise(self, subset: Iterable[str] | None = None) -> dict:
+        """Convert the attributes to a hierarchical dictionary of simple types,
+        supported by YAML."""
         if subset is None:
             params = self._paramspec
         else:
@@ -305,7 +483,7 @@ class BaseConfig(YamlSerialisable):
             if isinstance(value, BaseConfig):
                 the_dict[name] = value.to_dict()
             else:
-                the_dict[name] = param.serialise(value)
+                the_dict[name] = param.as_builtin(value)
 
         return the_dict
 
@@ -316,7 +494,9 @@ class BaseConfig(YamlSerialisable):
         the_dict: dict[str, Any],
         **kwargs,
     ) -> TypeBaseConfig:
-        pass
+        cls._check_dict(the_dict)
+        parsed = cls._parse_params(the_dict)
+        return cls(**parsed)
 
     def to_dict(self) -> dict[str, Any]:
         return self._serialise()

@@ -132,14 +132,25 @@ class Configuration(YawConfig):
     """
 
     _paramspec = (
-        ConfigSection(ScalesConfig, "scales", help="hulp", required=True),
-        ConfigSection(BinningConfig, "binning", help="hulp", required=True),
+        ConfigSection(
+            ScalesConfig,
+            name="scales",
+            help="hulp",
+            required=True,
+        ),
+        ConfigSection(
+            BinningConfig,
+            name="binning",
+            help="hulp",
+            required=True,
+        ),
         Parameter(
             name="cosmology",
             help="Cosmological model to use for distance computations.",
-            type=parse_cosmology,
+            type=CustomCosmology,
             default=default_cosmology,
-            serialiser=cosmology_to_yaml,
+            to_type=parse_cosmology,
+            to_builtin=cosmology_to_yaml,
         ),
         Parameter(
             name="max_workers",
@@ -150,11 +161,11 @@ class Configuration(YawConfig):
     )
 
     scales: ScalesConfig
-    """Organises the configuration of correlation scales."""
+    """Configuration of correlation scales."""
     binning: BinningConfig
-    """Organises the configuration of redshift bins."""
+    """Configuration of redshift bins used for sampling the redshift estimate."""
     cosmology: TypeCosmology | str
-    """Optional cosmological model to use for distance computations."""
+    """Cosmological model to use for distance computations."""
     max_workers: int | None
     """Limit the number of workers for parallel operations (all by default)."""
 

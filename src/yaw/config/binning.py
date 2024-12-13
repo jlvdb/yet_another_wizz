@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from yaw.binning import Binning
-from yaw.config.base import ConfigError, Parameter, YawConfig
+from yaw.config.base import ConfigError, Parameter, SequenceParameter, YawConfig
 from yaw.cosmology import RedshiftBinningFactory, TypeCosmology
 from yaw.options import BinMethod, Closed, NotSet
 
@@ -65,23 +65,22 @@ class BinningConfig(YawConfig):
         ),
         Parameter(
             name="num_bins",
-            help="Number of redshift bins to generate.",
+            help="Number of redshift bins to generate between 'zmin' and 'zmax'.",
             type=int,
             default=30,
         ),
         Parameter(
             name="method",
-            help="Method used to generate the bin edges.",
+            help="Method used to compute the spacing of bin edges.",
             type=str,
             choices=BinMethod,
             default=BinMethod.linear,
-            serialiser=str,
+            to_builtin=str,
         ),
-        Parameter(
+        SequenceParameter(
             name="edges",
             help="Use these custom bin edges instead of generating them.",
             type=float,
-            is_sequence=True,
             default=None,
         ),
         Parameter(
@@ -90,15 +89,14 @@ class BinningConfig(YawConfig):
             type=str,
             choices=Closed,
             default=Closed.right,
-            serialiser=str,
+            to_builtin=str,
         ),
     )
 
     binning: Binning
     """Container for the redshift bins."""
     method: BinMethod
-    """Method used to generate the bin edges, see :obj:`~yaw.options.BinMethod`
-    for valid options."""
+    """Method used to compute the spacing of bin edges."""
 
     @property
     def edges(self) -> NDArray:
@@ -122,8 +120,7 @@ class BinningConfig(YawConfig):
 
     @property
     def closed(self) -> Closed:
-        """Indicating which side of the bin edges is a closed interval, see
-        :obj:`~yaw.options.Closed` for valid options."""
+        """String indicating the side of the bin intervals that are closed."""
         return str(self.binning.closed)
 
     @property

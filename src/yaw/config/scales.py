@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.config.base import Parameter, YawConfig
+from yaw.config.base import Parameter, SequenceParameter, YawConfig
 from yaw.cosmology import Scales, new_scales
 from yaw.options import NotSet, Unit
 
@@ -47,17 +47,15 @@ class ScalesConfig(YawConfig):
     """
 
     _paramspec = (
-        Parameter(
+        SequenceParameter(
             name="rmin",
-            help="Single or multiple lower scale limits in given 'unit'.",
+            help="Single or sequence of lower scale limits in given 'unit'.",
             type=float,
-            is_sequence=True,
         ),
-        Parameter(
+        SequenceParameter(
             name="rmax",
-            help="Single or multiple upper scale limits in given 'unit'.",
+            help="Single or sequence of upper scale limits in given 'unit'.",
             type=float,
-            is_sequence=True,
         ),
         Parameter(
             name="unit",
@@ -83,26 +81,24 @@ class ScalesConfig(YawConfig):
     scales: Scales
     """Correlation scales in angular or physical units."""
     rweight: float | None
-    """Optional power-law exponent :math:`\\alpha` used to weight pairs by their
-    separation."""
+    """Power-law exponent used to weight pairs by their separation."""
     resolution: int | None
-    """Optional number of radial logarithmic bin used to approximate the
-    weighting by separation."""
+    """Number of radial logarithmic bin used to approximate the weighting by
+    separation."""
 
     @property
     def rmin(self) -> float | list[float]:
-        """Single or multiple lower scale limits in given unit of scales."""
+        """Single or sequence of lower scale limits in given 'unit'."""
         return self.scales.scale_min.squeeze().tolist()
 
     @property
     def rmax(self) -> float | list[float]:
-        """Single or multiple upper scale limits in given unit of scales."""
+        """Single or sequence of upper scale limits in given 'unit'."""
         return self.scales.scale_max.squeeze().tolist()
 
     @property
     def unit(self) -> str:
-        """String describing the angular, physical, or comoving unit of
-        correlation scales (default: kpc)."""
+        """The unit of the lower and upper scale limits (default: kpc)."""
         return str(self.scales.unit)
 
     @property
