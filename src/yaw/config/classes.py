@@ -605,13 +605,13 @@ class Configuration(YawConfig):
         ConfigSection(
             ScalesConfig,
             name="scales",
-            help="hulp",
+            help="Configuration of correlation measurement scales.",
             required=True,
         ),
         ConfigSection(
             BinningConfig,
             name="binning",
-            help="hulp",
+            help="Configuration of redshift binning for correlation measurements.",
             required=True,
         ),
         Parameter(

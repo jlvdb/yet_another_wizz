@@ -18,7 +18,7 @@ from yaw.options import NotSet, get_options
 from yaw.utils.abc import YamlSerialisable
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from typing import Any, Union
 
     from typing_extensions import Self
@@ -122,8 +122,9 @@ class TextIndenter:
 
     def decrement(self) -> None:
         """Decrease the indentation level."""
-        if self.level == 0:
+        if self.level <= 0:
             raise ValueError("cannot decrement indentation at indentation level 0")
+        self.level -= 1
 
     def format_line(self, string: str) -> str:
         """Format a single line string with the current indentation and an added
@@ -264,13 +265,15 @@ class Parameter(Generic[T]):
 
         comment = self.help.rstrip()
         if self.required:
-            comment = comment.rstrip(".") + ", required"
+            end = "." if comment.endswith(".") else ""
+            comment = comment.rstrip(".") + ", required" + end
         if self.has_choices:
             choices_str = ", ".join(format_yaml(c) for c in self.choices)
             comment += f" (choices: {choices_str})"
 
+        value = "" if self.default is NotSet else self.as_builtin(self.default)
         string = format_yaml_record_commented(
-            self.name, comment, value=self.as_builtin(self.default), padding=padding
+            self.name, comment, value=value, padding=padding
         )
         return indentation.format_line(string)
 
@@ -308,7 +311,7 @@ class SequenceParameter(Parameter[T]):
             types supported by YAML.
     """
 
-    def parse(self, value: Any) -> list[T]:
+    def parse(self, value: Sequence[Any] | None) -> list[T]:
         if self.nullable and value is None:
             return None
 
@@ -316,7 +319,7 @@ class SequenceParameter(Parameter[T]):
             return [self._parse_item(value)]
         return list(map(self._parse_item, value))
 
-    def as_builtin(self, value: T) -> list[TypeBuiltin]:
+    def as_builtin(self, value: T) -> list[TypeBuiltin] | None:
         if self.nullable and value is None:
             return None
         elif self.to_builtin is NotSet:
