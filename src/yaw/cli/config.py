@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from yaw import Configuration
-from yaw.config.base import ConfigError, HasParamSpec, Parameter, ParamSpec, format_yaml
-from yaw.utils.abc import Serialisable, YamlSerialisable
+from yaw.config.base import (
+    BaseConfig,
+    ConfigError,
+    ConfigSection,
+    Parameter,
+    raise_configerror_with_level,
+)
+from yaw.options import NotSet
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator
     from typing import Any
+
+    from yaw.config.base import TypeBaseConfig, TypeBuiltin
+
+T = TypeVar("T")
 
 
 def new_path_checked(path: Path | str) -> Path:
@@ -20,162 +31,180 @@ def new_path_checked(path: Path | str) -> Path:
     return path
 
 
-class TomoPathParameter(ParamSpec):
-    """Used to represent a parameter that expects a dictionary of paths."""
+@dataclass(frozen=True)
+class IntMappingParameter(Parameter[T]):
+    """
+    Defines the meta data for a configuration parameter that is a mapping from
+    integer keys to values.
 
-    def __init__(self, name, help):
-        super().__init__(name, [], help)
+    Parameters are considered required if no default is specified. Supplies
+    methods to parse inputs to the specified parameter type and methods to
+    convert the value back to YAML-supported basic types.
 
-    def to_yaml(self, indent: int = 0, indent_by: int = 4, padding: int = 20) -> str:
-        indent_str = " " * indent
-        section = format_yaml(padding, self.name, help=self.help)
-        string = f"{indent_str}{section}\n"
+    Args:
+        name:
+            Name of the parameter.
+        help:
+            Single-line help message describing the parameter.
+        type:
+            Expected mapping value type of the parameter.
 
-        indent_str += " " * indent_by  # increase indent for following lines
-        string += f"{indent_str}1: null\n"
-        return string
+    Keyword Args:
+        default:
+            The default value for the parameter, must be parsable to `type` or
+            `None` if there is no specific default value.
+        choices:
+            Ensure that the parameter accepts only this limited set of allowed
+            values as its mapping values.
+        to_type:
+            Function that converts mapping values of the user inputs to `type`.
+        to_builtin:
+            Function that converts the typed mapping values back to builtin
+            python types supported by YAML.
+    """
+
+    def parse(self, value: Mapping[int, Any] | None) -> dict[int, T]:
+        if self.nullable and value is None:
+            return None
+
+        if not isinstance(value, Mapping):
+            raise ConfigError("expected a mapping-type (config section)", self.name)
+
+        try:
+            key_iter = tuple(int(key) for key in value.keys())
+        except Exception as err:
+            ConfigError(f"cannot parse mapping keys to type int: {err}", self.name)
+        parsed_iter = map(self._parse_item, value.values())
+        return dict(zip(key_iter, parsed_iter))
+
+    def as_builtin(self, value: dict[int, T]) -> dict[int, TypeBuiltin] | None:
+        if self.nullable and value is None:
+            return None
+        elif self.to_builtin is NotSet:
+            return value
+
+        if value is NotSet:
+            return {}
+
+        if not isinstance(value, Mapping):
+            raise ConfigError("expected a mapping-type (config section)", self.name)
+
+        key_iter = tuple(int(key) for key in value.keys())
+        parsed_iter = map(self.to_builtin, value.values())
+        return dict(zip(key_iter, parsed_iter))
+
+
+def update_paramspec(
+    base_class: BaseConfig,
+    *updates: BaseConfig | ConfigSection,
+) -> tuple[ConfigSection | Parameter]:
+    """Replaces existing items in a paramspec and appends new items."""
+    paramspec = base_class.get_paramspec()
+    for item in updates:
+        paramspec[item.name] = item
+    return tuple(paramspec.values())
 
 
 @dataclass
-class ColumnsConfig(HasParamSpec):
-    ra: str
-    dec: str
-    weight: str | None = field(default=None)
-    redshift: str | None = field(default=None)
-    patches: str | None = field(default=None)
+class CatPairConfig(BaseConfig):
+    _paramspec = (
+        Parameter(
+            name="path_data",
+            help="Path to data catalog.",
+            type=Path,
+            to_type=new_path_checked,
+            to_builtin=str,
+        ),
+        Parameter(
+            name="path_rand",
+            help="Path to random catalog if needed for correlations.",
+            type=Path,
+            default=None,
+            to_type=new_path_checked,
+            to_builtin=str,
+        ),
+        Parameter(
+            name="ra",
+            help="Name of column with right ascension (given in degrees).",
+            type=str,
+        ),
+        Parameter(
+            name="dec",
+            help="Name of column with declination (given in degrees).",
+            type=str,
+        ),
+        Parameter(
+            name="weight",
+            help="Name of column with object weights.",
+            type=str,
+            default=None,
+        ),
+        Parameter(
+            name="redshift",
+            help="Name of column with estimated or true redshifts.",
+            type=str,
+            default=None,
+        ),
+        Parameter(
+            name="patches",
+            help="Name of column with patch IDs, overriedes global 'patch_num'.",
+            type=str,
+            default=None,
+        ),
+    )
 
-    def __post_init__(self) -> None:
-        for attr, value in asdict(self).items():
-            if value is not None and not isinstance(value, str):
-                raise ConfigError(f"column name for '{attr}' must be a string")
-
-    @classmethod
-    def get_paramspec(cls, name: str | None = None):
-        params = [
-            Parameter(
-                name="ra",
-                help="Name of column with right ascension (given in degrees).",
-                type=str,
-            ),
-            Parameter(
-                name="dec",
-                help="Name of column with declination (given in degrees).",
-                type=str,
-            ),
-            Parameter(
-                name="weight",
-                help="Name of column with object weights.",
-                type=str,
-                default=None,
-            ),
-            Parameter(
-                name="redshift",
-                help="Name of column with estimated or true redshifts.",
-                type=str,
-                default=None,
-            ),
-            Parameter(
-                name="patches",
-                help="Name of column with patch IDs, overriedes 'patch_num'.",
-                type=str,
-                default=None,
-            ),
-        ]
-        return ParamSpec(name or cls.__name__, params, help="Input file column names")
-
-
-class CatPairConfig(HasParamSpec, Serialisable):
-    def __init__(
-        self,
-        path_data: Path | str,
-        path_rand: Path | str | None = None,
-        *,
-        ra: str,
-        dec: str,
-        redshift: str | None,
-        weight: str | None = None,
-        patches: str | None = None,
-    ) -> None:
-        self.columns = ColumnsConfig(ra, dec, weight, redshift, patches)
-
-        self.path_data = new_path_checked(path_data)
-        if path_rand is None:
-            self.path_rand = None
-        else:
-            self.path_rand = new_path_checked(path_rand)
+    path_data: Path | str
+    path_rand: Path | str | None = field(default=None)
+    ra: str = field(kw_only=True)
+    dec: str = field(kw_only=True)
+    redshift: str | None = field(default=None, kw_only=True)
+    weight: str | None = field(default=None, kw_only=True)
+    patches: str | None = field(default=None, kw_only=True)
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any]):
+    def from_dict(cls, the_dict: dict[str, Any]) -> TypeBaseConfig:
         return super().from_dict(the_dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        the_dict = dict(path_data=str(self.path_data))
 
-        if self.path_rand is not None:
-            the_dict["path_rand"] = str(self.path_rand)
-
-        the_dict.update(asdict(self.columns))
-        return the_dict
-
-    @classmethod
-    def get_paramspec(cls, name: str | None = None):
-        params = [
-            Parameter(
-                name="path_data",
-                help="Path to data catalog.",
-                type=str,
-                default=None,
-            ),
-            Parameter(
-                name="path_rand",
-                help="Path to random catalog if needed for correlations.",
-                type=str,
-                default=None,
-            ),
-        ]
-        params.extend(ColumnsConfig.get_paramspec().values())
-        return ParamSpec(
-            name or cls.__name__, params, help="Reference catalog specification"
-        )
-
-
+@dataclass
 class ReferenceCatConfig(CatPairConfig):
     pass
 
 
-class UnknownCatConfig(Serialisable):
-    def __init__(
-        self,
-        path_data: Mapping[int, Path | str],
-        path_rand: Mapping[int, Path | str] | None = None,
-        *,
-        ra: str,
-        dec: str,
-        redshift: str | None = None,
-        weight: str | None = None,
-        patches: str | None = None,
-    ) -> None:
-        self.columns = ColumnsConfig(ra, dec, weight, redshift, patches)
+@dataclass
+class UnknownCatConfig(CatPairConfig):
+    _paramspec = update_paramspec(
+        CatPairConfig,
+        IntMappingParameter(
+            name="path_data",
+            type=new_path_checked,
+            help="Mapping of bin index to data catalog path.",
+            to_builtin=str,
+        ),
+        IntMappingParameter(
+            name="path_rand",
+            help="Mapping of bin index to random catalog path if needed for correlations.",
+            type=new_path_checked,
+            default=None,
+            to_builtin=str,
+        ),
+    )
 
-        if path_rand is not None:
-            try:
-                if set(path_data.keys()) != set(path_rand.keys()):
-                    raise ConfigError("bin indices of 'data' and 'rand' do not match")
-            except AttributeError:
-                raise ConfigError("paths must be mapping from bin index to file path")
-
-        self.path_data = {
-            idx: new_path_checked(path) for idx, path in path_data.items()
-        }
-        if path_rand is None:
-            self.path_rand = None
-        else:
-            self.path_rand = {
-                idx: new_path_checked(path) for idx, path in path_rand.items()
-            }
+    path_data: Mapping[int, Path | str]
+    path_rand: Mapping[int, Path | str] | None = field(default=None)
+    ra: str = field(kw_only=True)
+    dec: str = field(kw_only=True)
+    redshift: str | None = field(default=None, kw_only=True)
+    weight: str | None = field(default=None, kw_only=True)
+    patches: str | None = field(default=None, kw_only=True)
 
     def iter_bins(self) -> Iterator[tuple[int, CatPairConfig]]:
-        columns = asdict(self.columns)
+        columns = dict(
+            (attr, value)
+            for attr, value in asdict(self).items()
+            if not attr.startswith("path_")
+        )
+
         for idx, data in self.path_data.items():
             rand = None if self.path_rand is None else self.path_rand[idx]
             conf = CatPairConfig(data, rand, **columns)
@@ -198,102 +227,85 @@ class UnknownCatConfig(Serialisable):
         the_dict.update(asdict(self.columns))
         return the_dict
 
-    @classmethod
-    def get_paramspec(cls, name: str | None = None):
-        params = [
-            TomoPathParameter(
-                name="path_data",
-                help="Mapping of bin index to data catalog path.",
-            ),
-            TomoPathParameter(
-                name="path_rand",
-                help="Mapping of bin index to random catalog path if needed for correlations.",
-            ),
-        ]
-        params.extend(ColumnsConfig.get_paramspec().values())
-        return ParamSpec(
-            name or cls.__name__,
-            params,
-            help="(Tomographic) unknown catalog specification",
-        )
 
+@dataclass
+class InputConfig(BaseConfig):
+    _paramspec = (
+        ConfigSection(
+            ReferenceCatConfig,
+            name="reference",
+            help="Input reference catalog (optional).",
+            required=False,
+        ),
+        ConfigSection(
+            UnknownCatConfig,
+            name="unknown",
+            help="Input tomographic unknown catalog(s) (optional).",
+            required=False,
+        ),
+        Parameter(
+            name="num_patches",
+            help="Number of spatial patches to generate (overriden by 'patches' in catalog configuration).",
+            type=int,
+            default=None,
+        ),
+        Parameter(
+            name="cache_path",
+            help="External cache path to use (e.g. /dev/shm).",
+            type=Path,
+            default=None,
+            to_builtin=str,
+        ),
+    )
 
-class InputConfig(HasParamSpec, YamlSerialisable):
-    def __init__(
-        self,
-        reference: ReferenceCatConfig,
-        unknown: UnknownCatConfig,
-        *,
-        num_patches: int | None = None,
-        cache_path: Path | str | None = None,
-    ) -> None:
-        self.reference = reference
-        self.unknown = unknown
-        self.num_patches = None if num_patches is None else int(num_patches)
-        self.cache_path = None if cache_path is None else Path(cache_path)
+    reference: ReferenceCatConfig
+    unknown: UnknownCatConfig
+    num_patches: int | None = field(default=None, kw_only=True)
+    cache_path: Path | str | None = field(default=None, kw_only=True)
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
-        the_dict = the_dict.copy()
-        reference = the_dict.pop("reference")
-        unknown = the_dict.pop("unknown")
+        cls._check_dict(the_dict)
 
-        return cls(
-            ReferenceCatConfig.from_dict(reference),
-            UnknownCatConfig.from_dict(unknown),
-            **the_dict,
-        )
+        with raise_configerror_with_level("reference"):
+            reference = ReferenceCatConfig.from_dict(the_dict["reference"])
+        with raise_configerror_with_level("unknown"):
+            unknown = UnknownCatConfig.from_dict(the_dict["unknown"])
 
-    def to_dict(self) -> dict[str, Any]:
-        return dict(
-            reference=self.reference.to_dict(),
-            unknown=self.unknown.to_dict(),
-            num_patches=self.num_patches,
-            cache_path=None if self.cache_path is None else str(self.cache_path),
-        )
-
-    @classmethod
-    def get_paramspec(cls, name: str | None = None):
-        params = [
-            ReferenceCatConfig.get_paramspec("reference"),
-            UnknownCatConfig.get_paramspec("unknown"),
-            Parameter(
-                name="num_patches",
-                help="Number of spatial patches to generate (overriden by 'patches' in catalog configuration).",
-                type=int,
-                default=None,
-            ),
-            Parameter(
-                name="cache_path",
-                help="External cache path to use (e.g. /dev/shm).",
-                type=str,
-                default=None,
-            ),
-        ]
-        return ParamSpec(name or cls.__name__, params, help="Input data specification")
+        parsed = cls._parse_params(the_dict)
+        return cls(reference, unknown, **parsed)
 
 
 @dataclass
-class ProjectConfig(YamlSerialisable):
+class ProjectConfig(BaseConfig):
+    _paramspec = (
+        ConfigSection(
+            Configuration,
+            name="correlation",
+            help="Configuration of correlation measurements.",
+            required=False,
+        ),
+        ConfigSection(
+            InputConfig,
+            name="inputs",
+            help="Configuration of input catalogs.",
+            required=False,
+        ),
+    )
+
     correlation: Configuration
     inputs: InputConfig
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
-        the_dict = the_dict.copy()
-        correlation = the_dict.pop("correlation")
-        inputs = the_dict.pop("inputs")
+        cls._check_dict(the_dict)
 
-        return cls(
-            correlation=Configuration.from_dict(correlation),
-            inputs=InputConfig.from_dict(inputs),
-        )
+        with raise_configerror_with_level("correlation"):
+            correlation = Configuration.from_dict(the_dict["correlation"])
+        with raise_configerror_with_level("inputs"):
+            inputs = InputConfig.from_dict(the_dict["inputs"])
 
-    def to_dict(self):
-        return dict(
-            correlation=self.correlation.to_dict(),
-            inputs=self.inputs.to_dict(),
-        )
+        return cls(correlation, inputs)
 
     def get_bin_indices(self) -> list[int]:
         return sorted(self.inputs.unknown.path_data.keys())
