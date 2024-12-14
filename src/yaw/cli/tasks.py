@@ -12,11 +12,11 @@ cache_unk === auto_unk --+--------+  |
 
 from __future__ import annotations
 
-import itertools
 import logging
 from abc import ABC, abstractmethod
 from collections import Counter, deque
 from collections.abc import Container, Sized
+from graphlib import TopologicalSorter
 from typing import TYPE_CHECKING
 
 import yaw
@@ -26,7 +26,7 @@ from yaw.utils import transform_matches
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from typing import Any, TypeVar
+    from typing import TypeVar
 
     from yaw.cli.config import CatPairConfig, ProjectConfig
     from yaw.cli.directory import CacheDirectory, ProjectDirectory
@@ -448,49 +448,6 @@ class PlotTask(Task):
                         ax.legend()
 
 
-def has_child(task: Task, candidates: set[Task]) -> bool:
-    for candidate in candidates:
-        if task in candidate.inputs | candidate.optionals:
-            return True
-    return False
-
-
-def find_chain_ends(tasks: set[Task]) -> set[Task]:
-    return {task for task in tasks if not has_child(task, tasks)}
-
-
-def move_to_front(queue: deque, item: Any) -> None:
-    queue.remove(item)
-    queue.appendleft(item)
-
-
-def build_chain(end: Task, chain: deque[Task] | None = None) -> deque[Task]:
-    chain = chain or deque((end,))
-
-    for parent in end.inputs | end.optionals:
-        while parent in chain:
-            chain.remove(parent)
-
-        similar_tasks = tuple(task for task in chain if task.name == parent.name)
-        for task in similar_tasks:
-            move_to_front(chain, task)
-
-        chain.appendleft(parent)
-        chain = build_chain(parent, chain)
-
-    return chain
-
-
-def remove_duplicates(tasks: Iterable[Task]) -> deque[Task]:
-    seen = set()
-    uniques = deque()
-    for task in tasks:
-        if task not in seen:
-            uniques.append(task)
-            seen.add(task)
-    return uniques
-
-
 class TaskList(Container, Sized):
     _tasks: set[Task]
     _queue: deque[Task]
@@ -553,8 +510,9 @@ class TaskList(Container, Sized):
             task.check_inputs()
 
     def _schedule(self, directory: ProjectDirectory | None = None) -> deque[Task]:
-        chains = [build_chain(end) for end in find_chain_ends(self._tasks)]
-        queue = remove_duplicates(itertools.chain(*chains))
+        graph = {task: task.inputs | task.optionals for task in self._tasks}
+        sorter = TopologicalSorter(graph)
+        queue = deque(sorter.static_order())
         if directory is not None:  # check for completed tasks
             return deque(task for task in queue if not task.completed(directory))
         return queue
