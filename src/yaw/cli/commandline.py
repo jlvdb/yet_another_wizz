@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yaw._version import __version__
 from yaw.cli.config import ProjectConfig
+from yaw.cli.pipeline import run_setup
 from yaw.cli.tasks import TaskList
 from yaw.config.base import TextIndenter
 from yaw.utils import transform_matches
@@ -44,22 +46,23 @@ def path_exists(path: str) -> Path:
     return filepath
 
 
+@dataclass
 class NameSpace:
     # required
     wdir: Path
     setup: Path
     # optional
-    cache_path: Path | None
-    workers: int | None
-    drop: bool
-    overwrite: bool
-    resume: bool
-    verbose: int
-    quiet: int
-    progress: bool
+    cache_path: Path | None = field(default=None, kw_only=True)
+    workers: int | None = field(default=None, kw_only=True)
+    drop: bool = field(default=False, kw_only=True)
+    overwrite: bool = field(default=False, kw_only=True)
+    resume: bool = field(default=False, kw_only=True)
+    verbose: bool = field(default=False, kw_only=True)
+    quiet: int = field(default=False, kw_only=True)
+    progress: bool = field(default=False, kw_only=True)
 
     @classmethod
-    def create_parser(cls) -> ArgumentParser:
+    def parse_args(cls) -> ArgumentParser:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description=(
@@ -154,30 +157,9 @@ class NameSpace:
             "--version", action="version", version=f"yet_another_wizz v{__version__}"
         )
 
-        return parser
+        return parser.parse_args(namespace=cls.__new__(cls))
 
 
 def main():
-    from yaw.cli.pipeline import Pipeline
-    from yaw.utils import get_logger
-
-    args = NameSpace.create_parser().parse_args(namespace=NameSpace)
-
-    if args.quiet:
-        get_logger(stdout=False)
-        args.progress = False
-    else:
-        get_logger("debug" if args.verbose else "info")
-
-    pipeline = Pipeline.create(
-        args.wdir,
-        args.setup,
-        cache_path=args.cache_path,
-        max_workers=args.workers,
-        overwrite=args.overwrite,
-        resume=args.resume,
-        progress=args.progress,
-    )
-    pipeline.run()
-    if args.drop:
-        pipeline.drop_cache()
+    args = NameSpace.parse_args()
+    run_setup(**asdict(args))

@@ -189,7 +189,7 @@ def run_autocorr(
 
 class LoadRefTask(Task):
     properties = TaskProperties(
-        "load_ref",
+        name="load_ref",
         help="Load and cache the reference data and randoms.",
         auto_link=True,
     )
@@ -216,7 +216,7 @@ class LoadRefTask(Task):
 
 class LoadUnkTask(Task):
     properties = TaskProperties(
-        "load_unk",
+        name="load_unk",
         help="Load and cache the unknown data and randoms.",
         optionals={LoadRefTask},
         auto_link=True,
@@ -247,7 +247,7 @@ class LoadUnkTask(Task):
 
 class AutoRefTask(Task):
     properties = TaskProperties(
-        "auto_ref",
+        name="auto_ref",
         help="Run the pair counting for the reference autocorrelation function.",
         inputs={LoadRefTask},
     )
@@ -272,7 +272,7 @@ class AutoRefTask(Task):
 
 class AutoUnkTask(Task):
     properties = TaskProperties(
-        "auto_unk",
+        name="auto_unk",
         help="Run the pair counting for the unknown autocorrelation functions.",
         inputs={LoadUnkTask},
     )
@@ -298,7 +298,7 @@ class AutoUnkTask(Task):
 
 class CrossCorrTask(Task):
     properties = TaskProperties(
-        "cross_corr",
+        name="cross_corr",
         help="Run the pair counting for the cross-correlation functions.",
         inputs={LoadRefTask, LoadUnkTask},
     )
@@ -334,7 +334,7 @@ class CrossCorrTask(Task):
 
 class EstimateTask(Task):
     properties = TaskProperties(
-        "estimate",
+        name="estimate",
         help="Compute the clustering redshift estimate and use autocorrelations to mitigate galaxy bias.",
         inputs={CrossCorrTask},
         optionals={AutoRefTask, AutoUnkTask},
@@ -375,7 +375,7 @@ class EstimateTask(Task):
 
 class HistTask(Task):
     properties = TaskProperties(
-        "hist",
+        name="hist",
         help="Compute redshift histograms from unknown data if a redshift column is configured.",
         inputs={LoadUnkTask},
     )
@@ -402,7 +402,7 @@ class HistTask(Task):
 
 class PlotTask(Task):
     properties = TaskProperties(
-        "plot",
+        name="plot",
         help="Plot all available autocorrelation functions and redshift estimates.",
         optionals={AutoRefTask, AutoUnkTask, EstimateTask, HistTask},
     )

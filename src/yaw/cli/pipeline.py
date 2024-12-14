@@ -13,7 +13,7 @@ from yaw.cli.config import ProjectConfig
 from yaw.cli.directory import ProjectDirectory
 from yaw.cli.logging import init_file_logging
 from yaw.cli.tasks import TaskList
-from yaw.utils import write_yaml
+from yaw.utils import get_logger, write_yaml
 
 logger = logging.getLogger("yaw.cli.pipeline")
 
@@ -188,3 +188,36 @@ class Pipeline:
 
         else:
             rmtree(self.directory.cache.path)
+
+
+def run_setup(
+    wdir: Path,
+    setup: Path,
+    *,
+    cache_path: Path | None = None,
+    workers: int | None = None,
+    drop: bool = False,
+    overwrite: bool = False,
+    resume: bool = False,
+    verbose: bool = False,
+    quiet: int = False,
+    progress: bool = False,
+) -> None:
+    if quiet:
+        get_logger(stdout=False)
+        progress = False
+    else:
+        get_logger("debug" if verbose else "info")
+
+    pipeline = Pipeline.create(
+        wdir,
+        setup,
+        cache_path=cache_path,
+        max_workers=workers,
+        overwrite=overwrite,
+        resume=resume,
+        progress=progress,
+    )
+    pipeline.run()
+    if drop:
+        pipeline.drop_cache()
