@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yaw._version import __version__
-from yaw.cli.config import InputConfig
-from yaw.cli.tasks import Task
-from yaw.config import Configuration
-from yaw.config.base import format_yaml
+from yaw.cli.config import ProjectConfig
+from yaw.cli.tasks import TaskList
+from yaw.config.base import TextIndenter
+from yaw.utils import transform_matches
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -16,39 +16,17 @@ if TYPE_CHECKING:
 
 class DumpConfigAction(argparse.Action):
     def __call__(self, parser, *args, **kwargs):
-        indent = 0
-        indent_by = 4
+        indenter = TextIndenter(num_spaces=4)
         padding = 22
 
+        # add a header
         print(f"# {parser.prog} v{__version__} configuration\n")
-        print(
-            "NOTE: NotSet indicates a required parameter (except for 'zmin' and 'zmax')\n"
-        )
 
-        # yaw configuration
-        yaml = Configuration.get_paramspec("correlation").to_yaml(
-            indent, indent_by, padding
-        )
+        yaml = ProjectConfig.format_yaml_doc(indentation=indenter, padding=padding)
+        yaml += TaskList.format_yaml_doc(indentation=indenter, padding=padding)
+        # add empty lines between top-level sections
+        yaml = transform_matches(yaml, r"\n\w", lambda match: "\n" + match)
         print(yaml)
-
-        # input configuration
-        yaml = InputConfig.get_paramspec("correlation").to_yaml(
-            indent, indent_by, padding
-        )
-        print(yaml)
-
-        # task list
-        indent_str = " " * indent
-        section = format_yaml(
-            padding, "tasks", help="List of pipeline tasks to execute"
-        )
-        print(section)
-
-        item_indent = max(indent_by - 2, 0)
-        indent_str += " " * item_indent  # increase indent for following lines
-        for task in Task._tasks.values():
-            line = indent_str + "- " + task.to_yaml(padding)
-            print(line)
 
         parser.exit()
 

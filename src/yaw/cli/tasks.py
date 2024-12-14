@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import yaw
 from yaw.cli.plotting import WrappedFigure
-from yaw.config.base import ConfigError
+from yaw.config.base import ConfigError, TextIndenter, format_yaml_record_commented
 from yaw.utils import transform_matches
 
 if TYPE_CHECKING:
@@ -131,7 +131,7 @@ def create_catalog(
     progress: bool = False,
     max_workers: int | None = None,
 ) -> None:
-    columns = inputs.columns
+    columns = inputs.get_columns()
     paths = {
         cache_handle.rand.path: inputs.path_rand,
         cache_handle.data.path: inputs.path_data,
@@ -144,12 +144,12 @@ def create_catalog(
         cat = yaw.Catalog.from_file(
             cache_directory=cache_path,
             path=input_path,
-            ra_name=columns.ra,
-            dec_name=columns.dec,
-            weight_name=columns.weight,
-            redshift_name=columns.redshift,
+            ra_name=columns["ra"],
+            dec_name=columns["dec"],
+            weight_name=columns["weight"],
+            redshift_name=columns["redshift"],
             patch_centers=global_cache.get_patch_centers(),
-            patch_name=columns.patches,
+            patch_name=columns["patches"],
             patch_num=num_patches,
             overwrite=True,
             progress=progress,
@@ -500,6 +500,27 @@ class TaskList(Container, Sized):
         self.clear()
         self._tasks = set(tasks)
         self._link_tasks()
+
+    @classmethod
+    def format_yaml_doc(
+        self,
+        *,
+        indentation: TextIndenter | None = None,
+        padding: int = 24,
+    ) -> str:
+        indentation = indentation or TextIndenter()
+        list_indent = indentation.indent[:-2]  # manual fix for nicer list format
+
+        lines = [
+            format_yaml_record_commented(
+                "tasks", comment="List of pipeline tasks to execute", padding=padding
+            )
+        ]
+        lines.extend(
+            list_indent + "- " + task.to_yaml(padding) for task in Task._tasks.values()
+        )
+
+        return "\n".join(lines)
 
     @classmethod
     def from_list(cls, task_names: Iterable[str]) -> TaskList:
