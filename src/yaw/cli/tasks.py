@@ -16,13 +16,13 @@ import logging
 from abc import ABC, abstractmethod
 from collections import Counter, deque
 from collections.abc import Container, Sized
+from dataclasses import dataclass, field
 from graphlib import TopologicalSorter
 from typing import TYPE_CHECKING
 
 import yaw
 from yaw.cli.plotting import WrappedFigure
 from yaw.config.base import ConfigError, TextIndenter, format_yaml_record_commented
-from yaw.utils import transform_matches
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -51,25 +51,37 @@ def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
         yield item
 
 
-class Task(ABC):
+REGISTERED_TASKS: dict[str, type[Task]] = {}
+
+
+def get_all_tasks() -> tuple[type[Task]]:
+    return tuple(REGISTERED_TASKS.values())
+
+
+def get_autolink_tasks() -> tuple[type[Task]]:
+    return tuple(filter(lambda task: task.properties.auto_link, get_all_tasks()))
+
+
+def get_user_tasks() -> tuple[type[Task]]:
+    return tuple(filter(lambda task: not task.properties.auto_link, get_all_tasks()))
+
+
+@dataclass(frozen=True)
+class TaskProperties:
     name: str
     help: str
-    _tasks: dict[str, type[Task]] = {}
-    _inputs: set[type[Task]]
-    _optionals: set[type[Task]]
+    inputs: set[type[Task]] = field(default_factory=set, kw_only=True)
+    optionals: set[type[Task]] = field(default_factory=set, kw_only=True)
+    auto_link: bool = field(default=False, kw_only=True)
+
+
+class Task(ABC):
+    properties: TaskProperties
+    name: str
 
     def __init_subclass__(cls):
-        # implicit naming conventions are nasty, but here we go
-        if not cls.__name__.endswith("Task"):
-            raise NameError("name of sublasses of 'Task' must contain 'Task'")
-        name = cls.__name__.replace("Task", "")
-
-        # transform name: MyNew -> my_new
-        cls.name = transform_matches(
-            name, regex=r"[A-Z]", transform=lambda match: "_" + match.lower()
-        ).lstrip("_")
-
-        cls._tasks[cls.name] = cls
+        REGISTERED_TASKS[cls.properties.name] = cls
+        cls.name = cls.properties.name
         return super().__init_subclass__()
 
     def __init__(self) -> None:
@@ -79,27 +91,20 @@ class Task(ABC):
     def __hash__(self):
         return hash(self.__class__)
 
-    @classmethod
-    def get(cls: type[TypeTask], name: str) -> type[TypeTask]:
-        try:
-            return cls._tasks[name]
-        except KeyError as err:
-            raise ValueError(f"no tasked with name '{name}'") from err
-
     def connect_input(self, task: Task) -> bool:
-        if type(task) in self._inputs:
+        if type(task) in self.properties.inputs:
             self.inputs.add(task)
             return True
 
-        if type(task) in self._optionals:
+        if type(task) in self.properties.optionals:
             self.optionals.add(task)
             return True
 
         return False
 
     def check_inputs(self) -> None:
-        expect = set(t.name for t in self._inputs)
-        have = set(t.name for t in self.inputs)
+        expect = set(t.name for t in self.properties.inputs)
+        have = set(t.name for t in self.properties.inputs)
         for name in expect - have:
             raise ConfigError(f"missing input '{name}' for task '{self.name}'")
 
@@ -119,7 +124,7 @@ class Task(ABC):
 
     @classmethod
     def to_yaml(cls, padding: int = 20) -> str:
-        return f"{cls.name:{padding}s}# {cls.help}"
+        return f"{cls.name:{padding}s}# {cls.properties.help}"
 
 
 def create_catalog(
@@ -161,10 +166,33 @@ def create_catalog(
             pass
 
 
+def run_autocorr(
+    cache_handle: CacheHandle,
+    corrfunc_handle: CorrFuncHandle,
+    config: Configuration,
+    *,
+    progress: bool = False,
+) -> None:
+    data, rand = cache_handle.load()
+    if rand is None:
+        raise ValueError("could not load randoms")
+
+    (corr,) = yaw.autocorrelate(
+        config,
+        data,
+        rand,
+        progress=progress,
+        max_workers=config.max_workers,
+    )
+    corr.to_file(corrfunc_handle.path)
+
+
 class LoadRefTask(Task):
-    help = "Load and cache the reference data and randoms."
-    _inputs = set()
-    _optionals = set()
+    properties = TaskProperties(
+        "load_ref",
+        help="Load and cache the reference data and randoms.",
+        auto_link=True,
+    )
 
     def completed(self, directory) -> bool:
         return directory.cache.reference.exists()
@@ -187,11 +215,14 @@ class LoadRefTask(Task):
 
 
 class LoadUnkTask(Task):
-    help = "Load and cache the unknown data and randoms."
+    properties = TaskProperties(
+        "load_unk",
+        help="Load and cache the unknown data and randoms.",
+        optionals={LoadRefTask},
+        auto_link=True,
+    )
     # has no inputs, but we want to enforce LoadRefTask to be run first if
     # possible to determine patch centers
-    _inputs = set()
-    _optionals = {LoadRefTask}
 
     def completed(self, directory) -> bool:
         return directory.cache.unknown.exists()
@@ -214,31 +245,12 @@ class LoadUnkTask(Task):
             )
 
 
-def run_autocorr(
-    cache_handle: CacheHandle,
-    corrfunc_handle: CorrFuncHandle,
-    config: Configuration,
-    *,
-    progress: bool = False,
-) -> None:
-    data, rand = cache_handle.load()
-    if rand is None:
-        raise ValueError("could not load randoms")
-
-    (corr,) = yaw.autocorrelate(
-        config,
-        data,
-        rand,
-        progress=progress,
-        max_workers=config.max_workers,
-    )
-    corr.to_file(corrfunc_handle.path)
-
-
 class AutoRefTask(Task):
-    help = "Run the pair counting for the reference autocorrelation function."
-    _inputs = {LoadRefTask}
-    _optionals = set()
+    properties = TaskProperties(
+        "auto_ref",
+        help="Run the pair counting for the reference autocorrelation function.",
+        inputs={LoadRefTask},
+    )
 
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_ref.exists()
@@ -259,9 +271,11 @@ class AutoRefTask(Task):
 
 
 class AutoUnkTask(Task):
-    help = "Run the pair counting for the unknown autocorrelation functions."
-    _inputs = {LoadUnkTask}
-    _optionals = set()
+    properties = TaskProperties(
+        "auto_unk",
+        help="Run the pair counting for the unknown autocorrelation functions.",
+        inputs={LoadUnkTask},
+    )
 
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_unk.exists()
@@ -283,9 +297,11 @@ class AutoUnkTask(Task):
 
 
 class CrossCorrTask(Task):
-    help = "Run the pair counting for the cross-correlation functions."
-    _inputs = {LoadRefTask, LoadUnkTask}
-    _optionals = set()
+    properties = TaskProperties(
+        "cross_corr",
+        help="Run the pair counting for the cross-correlation functions.",
+        inputs={LoadRefTask, LoadUnkTask},
+    )
 
     def completed(self, directory) -> bool:
         return directory.paircounts.cross.exists()
@@ -317,9 +333,12 @@ class CrossCorrTask(Task):
 
 
 class EstimateTask(Task):
-    help = "Compute the clustering redshift estimate and use autocorrelations to mitigate galaxy bias."
-    _inputs = {CrossCorrTask}
-    _optionals = {AutoRefTask, AutoUnkTask}
+    properties = TaskProperties(
+        "estimate",
+        help="Compute the clustering redshift estimate and use autocorrelations to mitigate galaxy bias.",
+        inputs={CrossCorrTask},
+        optionals={AutoRefTask, AutoUnkTask},
+    )
 
     def completed(self, directory) -> bool:
         return (
@@ -355,9 +374,11 @@ class EstimateTask(Task):
 
 
 class HistTask(Task):
-    help = "Compute redshift histograms from unknown data if a redshift column is configured."
-    _inputs = {LoadUnkTask}
-    _optionals = set()
+    properties = TaskProperties(
+        "hist",
+        help="Compute redshift histograms from unknown data if a redshift column is configured.",
+        inputs={LoadUnkTask},
+    )
 
     def completed(self, directory) -> bool:
         return directory.true.unknown.exists()
@@ -380,9 +401,11 @@ class HistTask(Task):
 
 
 class PlotTask(Task):
-    help = "Plot all available autocorrelation functions and redshift estimates."
-    _inputs = set()
-    _optionals = {AutoRefTask, AutoUnkTask, EstimateTask, HistTask}
+    properties = TaskProperties(
+        "plot",
+        help="Plot all available autocorrelation functions and redshift estimates.",
+        optionals={AutoRefTask, AutoUnkTask, EstimateTask, HistTask},
+    )
 
     def completed(self, directory) -> bool:
         if len(self.optionals) == 0:
@@ -474,7 +497,7 @@ class TaskList(Container, Sized):
             )
         ]
         lines.extend(
-            list_indent + "- " + task.to_yaml(padding) for task in Task._tasks.values()
+            list_indent + "- " + task.to_yaml(padding) for task in get_user_tasks()
         )
 
         return "\n".join(lines)
@@ -482,7 +505,7 @@ class TaskList(Container, Sized):
     @classmethod
     def from_list(cls, task_names: Iterable[str]) -> TaskList:
 
-        tasks = [Task.get(name) for name in task_names]
+        tasks = [REGISTERED_TASKS[name] for name in task_names]
         return cls(task() for task in tasks)
 
     def to_list(self) -> list[str]:
@@ -501,8 +524,10 @@ class TaskList(Container, Sized):
         )
 
     def _link_tasks(self) -> None:
+        auto_links = set(task() for task in get_autolink_tasks())
+
         for task in self._tasks:
-            for candidate in self._tasks:
+            for candidate in self._tasks | auto_links:
                 if candidate == task:
                     continue
                 task.connect_input(candidate)

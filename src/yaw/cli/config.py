@@ -12,6 +12,7 @@ from yaw.config.base import (
     ConfigSection,
     Parameter,
     raise_configerror_with_level,
+    update_paramspec,
 )
 from yaw.options import NotSet
 
@@ -92,17 +93,6 @@ class IntMappingParameter(Parameter[T]):
         key_iter = tuple(int(key) for key in value.keys())
         parsed_iter = map(self.to_builtin, value.values())
         return dict(zip(key_iter, parsed_iter))
-
-
-def update_paramspec(
-    base_class: BaseConfig,
-    *updates: BaseConfig | ConfigSection,
-) -> tuple[ConfigSection | Parameter]:
-    """Replaces existing items in a paramspec and appends new items."""
-    paramspec = base_class.get_paramspec()
-    for item in updates:
-        paramspec[item.name] = item
-    return tuple(paramspec.values())
 
 
 @dataclass

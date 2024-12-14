@@ -528,3 +528,14 @@ class YawConfig(BaseConfig):
         """Create a new instance by modifing the original instance with the
         given parameter values."""
         pass
+
+
+def update_paramspec(
+    base_class: BaseConfig,
+    *updates: BaseConfig | ConfigSection,
+) -> tuple[ConfigSection | Parameter]:
+    """Replaces existing items in a paramspec and appends new items."""
+    paramspec = base_class.get_paramspec()
+    for item in updates:
+        paramspec[item.name] = item
+    return tuple(paramspec.values())
