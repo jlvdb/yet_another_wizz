@@ -21,8 +21,10 @@ from graphlib import TopologicalSorter
 from typing import TYPE_CHECKING
 
 import yaw
-from yaw.cli.plotting import WrappedFigure
+from yaw.cli import plotting
+from yaw.cli.handles import load_optional_data
 from yaw.config.base import ConfigError, TextIndenter, format_yaml_record_commented
+from yaw.utils import parallel
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -47,7 +49,8 @@ def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
         N = len(iterable)
 
     for i, item in enumerate(iterable, 1):
-        logger.info(f"processing bin {i} / {N}")
+        if parallel.on_root():
+            logger.info(f"processing bin {i} / {N}")
         yield item
 
 
@@ -109,6 +112,7 @@ class Task(ABC):
             raise ConfigError(f"missing input '{name}' for task '{self.name}'")
 
     @abstractmethod
+    @parallel.broadcasted
     def completed(self, directory: ProjectDirectory) -> bool:
         pass
 
@@ -161,9 +165,11 @@ def create_catalog(
             max_workers=max_workers,
         )
         try:
-            global_cache.set_patch_centers(cat.get_centers())
+            if parallel.on_root():
+                global_cache.set_patch_centers(cat.get_centers())
         except RuntimeError:
             pass
+        parallel.COMM.Barrier()
 
 
 def run_autocorr(
@@ -194,6 +200,7 @@ class LoadRefTask(Task):
         auto_link=True,
     )
 
+    @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.cache.reference.exists()
 
@@ -224,6 +231,7 @@ class LoadUnkTask(Task):
     # has no inputs, but we want to enforce LoadRefTask to be run first if
     # possible to determine patch centers
 
+    @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.cache.unknown.exists()
 
@@ -252,6 +260,7 @@ class AutoRefTask(Task):
         inputs={LoadRefTask},
     )
 
+    @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_ref.exists()
 
@@ -277,6 +286,7 @@ class AutoUnkTask(Task):
         inputs={LoadUnkTask},
     )
 
+    @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_unk.exists()
 
@@ -303,6 +313,7 @@ class CrossCorrTask(Task):
         inputs={LoadRefTask, LoadUnkTask},
     )
 
+    @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.cross.exists()
 
@@ -340,6 +351,7 @@ class EstimateTask(Task):
         optionals={AutoRefTask, AutoUnkTask},
     )
 
+    @parallel.broadcasted
     def completed(self, directory) -> bool:
         return (
             directory.estimate.auto_ref.exists()
@@ -354,19 +366,16 @@ class EstimateTask(Task):
         *,
         progress: bool = False,
     ) -> None:
-        if directory.paircounts.auto_ref.exists():
-            auto_ref = directory.paircounts.auto_ref.load().sample()
+        auto_ref = load_optional_data(directory.paircounts.auto_ref)
+        if auto_ref:
+            auto_ref = auto_ref.sample()
             auto_ref.to_files(directory.estimate.auto_ref.template)
-        else:
-            auto_ref = None
 
         for idx, cross_handle in bin_iter_progress(directory.paircounts.cross.items()):
-            auto_handle = directory.paircounts.auto_unk[idx]
-            if auto_handle.exists():
-                auto_unk = auto_handle.load().sample()
+            auto_unk = load_optional_data(directory.paircounts.auto_unk[idx])
+            if auto_unk:
+                auto_unk = auto_unk.sample()
                 auto_unk.to_files(directory.estimate.auto_unk[idx].template)
-            else:
-                auto_unk = None
 
             cross = cross_handle.load().sample()
             ncc = yaw.RedshiftData.from_corrdata(cross, auto_ref, auto_unk)
@@ -380,6 +389,7 @@ class HistTask(Task):
         inputs={LoadUnkTask},
     )
 
+    @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.true.unknown.exists()
 
@@ -422,53 +432,19 @@ class PlotTask(Task):
         *,
         progress: bool = False,
     ) -> None:
-        plot_dir = directory.plot
-        indices = config.get_bin_indices()
-        num_bins = len(indices)
+        auto_ref = load_optional_data(directory.estimate.auto_ref)
+        auto_unks = [
+            load_optional_data(w) for w in directory.estimate.auto_unk.values()
+        ]
+        nz_ests = [load_optional_data(w) for w in directory.estimate.nz_est.values()]
+        hists = [load_optional_data(w) for w in directory.true.unknown.values()]
 
-        auto_ref_exists = directory.estimate.auto_ref.exists()
-        auto_unk_exists = directory.estimate.auto_unk.exists()
-        nz_est_exists = directory.estimate.nz_est.exists()
-        hist_exists = directory.true.unknown.exists()
+        plot_created = plotting.plot_wss(directory.plot.auto_ref_path, auto_ref)
+        plot_created |= plotting.plot_wpp(directory.plot.auto_unk_path, auto_unks)
+        plot_created |= plotting.plot_nz(directory.plot.redshifts_path, nz_ests, hists)
 
-        if not (auto_ref_exists | auto_unk_exists | nz_est_exists | hist_exists):
+        if not plot_created and parallel.on_root():
             logger.warning("no data to plot")
-
-        if auto_ref_exists:
-            ylabel = r"$w_{\rm ss}$"
-            with WrappedFigure(plot_dir.auto_ref_path, 1, ylabel) as fig:
-                auto_ref = directory.estimate.auto_ref
-                auto_ref.load().plot(ax=fig.axes[0], indicate_zero=True)
-
-        if auto_unk_exists:
-            ylabel = r"$w_{\rm pp}$"
-            with WrappedFigure(plot_dir.auto_unk_path, num_bins, ylabel) as fig:
-                for ax, auto_unk in zip(fig.axes, directory.estimate.auto_unk.values()):
-                    auto_unk.load().plot(ax=ax, indicate_zero=True)
-
-        if nz_est_exists or hist_exists:
-            ylabel = r"Density estimate"
-            with WrappedFigure(plot_dir.redshifts_path, num_bins, ylabel) as fig:
-                for ax, idx in zip(fig.axes, indices):
-                    is_last_bin = idx == indices[-1]
-
-                    if nz_est_exists:
-                        nz_est = directory.estimate.nz_est[idx].load()
-
-                    if hist_exists:
-                        hist = directory.true.unknown[idx].load().normalised()
-                        if nz_est_exists:
-                            nz_est = nz_est.normalised(hist)
-
-                    if hist_exists:
-                        label = "Histogram" if is_last_bin else None
-                        hist.plot(ax=ax, indicate_zero=True, label=label)
-                    if nz_est_exists:
-                        label = "CC $p(z)$" if is_last_bin else None
-                        nz_est.plot(ax=ax, indicate_zero=True, label=label)
-
-                    if is_last_bin:
-                        ax.legend()
 
 
 class TaskList(Container, Sized):
@@ -504,7 +480,6 @@ class TaskList(Container, Sized):
 
     @classmethod
     def from_list(cls, task_names: Iterable[str]) -> TaskList:
-
         tasks = [REGISTERED_TASKS[name] for name in task_names]
         return cls(task() for task in tasks)
 

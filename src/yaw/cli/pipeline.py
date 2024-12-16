@@ -13,7 +13,7 @@ from yaw.cli.config import ProjectConfig
 from yaw.cli.directory import ProjectDirectory
 from yaw.cli.logging import init_file_logging
 from yaw.cli.tasks import TaskList
-from yaw.utils import get_logger, write_yaml
+from yaw.utils import get_logger, parallel, write_yaml
 
 logger = logging.getLogger("yaw.cli.pipeline")
 
@@ -23,6 +23,7 @@ class LockFile:
         self.path = Path(path)
         self.content = content
 
+    @parallel.broadcasted
     def inspect(self) -> str | None:
         if not self.path.exists():
             return None
@@ -30,6 +31,7 @@ class LockFile:
         with self.path.open() as f:
             return f.read()
 
+    @parallel.broadcasted
     def acquire(self, *, resume: bool = False) -> None:
         if self.path.exists() and not resume:
             raise FileExistsError(f"lock file already exists: {self.path}")
@@ -37,10 +39,12 @@ class LockFile:
         with self.path.open(mode="w") as f:
             f.write(self.content)
 
+    @parallel.broadcasted
     def release(self) -> None:
         self.path.unlink()
 
 
+@parallel.broadcasted
 def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
     with open(setup_file) as f:
         config_dict = yaml.safe_load(f)
@@ -51,6 +55,7 @@ def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
     return config, tasks
 
 
+@parallel.broadcasted
 def write_config(
     setup_file: Path | str, config: ProjectConfig, tasks: TaskList
 ) -> None:
@@ -76,16 +81,17 @@ class Pipeline:
         resume: bool = False,
         progress: bool = True,
     ) -> None:
-        logger.info(f"using project directory: {directory.path}")
+        if parallel.on_root():
+            logger.info(f"using project directory: {directory.path}")
 
         self.directory = directory
         self.config = config
+        self._check_config()
         self._update_cache_path(cache_path)
         self._update_max_workers(max_workers)
 
         self.tasks = tasks
         self.tasks.schedule(self.directory, resume=resume)
-        self._validate()
 
         self._resume = resume
         self.progress = progress
@@ -105,15 +111,19 @@ class Pipeline:
         config, tasks = read_config(setup_file)
         bin_indices = config.get_bin_indices()
 
-        if Path(project_path).exists() and not overwrite:
-            directory = ProjectDirectory(project_path)
-        else:
-            directory = ProjectDirectory.create(
-                project_path, bin_indices, overwrite=overwrite
-            )
+        directory = None
+        if parallel.on_root():
+            if Path(project_path).exists() and not overwrite:
+                directory = ProjectDirectory(project_path)
+            else:
+                directory = ProjectDirectory.create(
+                    project_path, bin_indices, overwrite=overwrite
+                )
+        directory = parallel.COMM.bcast(directory, root=0)
 
         init_file_logging(directory.log_path)
-        logger.info(f"using configuration from: {setup_file}")
+        if parallel.on_root():
+            logger.info(f"using configuration from: {setup_file}")
 
         write_config(directory.config_path, config, tasks)
         return cls(
@@ -126,6 +136,7 @@ class Pipeline:
             max_workers=max_workers,
         )
 
+    @parallel.broadcasted
     def _update_cache_path(self, root_path: Path | str | None) -> None:
         if root_path is None:
             return
@@ -145,20 +156,24 @@ class Pipeline:
             max_workers=max_workers
         )
 
-    def _validate(self) -> None:
+    @parallel.broadcasted
+    def _check_config(self) -> None:
         NotImplemented
 
     def run(self) -> None:
-        if len(self.tasks) > 0:
-            msg = "resuming" if self._resume else "running"
-            msg = msg + f" tasks: {self.tasks}"
-            logger.info(msg)
-        else:
-            logger.warning("nothing to do")
+        if parallel.on_root():
+            if len(self.tasks) > 0:
+                msg = "resuming" if self._resume else "running"
+                msg = msg + f" tasks: {self.tasks}"
+                logger.info(msg)
+            else:
+                logger.warning("nothing to do")
 
         while self.tasks:
             task = self.tasks.pop()
-            logger.client(f"running '{task.name}'")
+            task = parallel.COMM.bcast(task, root=0)  # order may differ on workers
+            if parallel.on_root():
+                logger.client(f"running '{task.name}'")
 
             lock = LockFile(self.directory.lock_path, task.name)
             try:
@@ -174,8 +189,11 @@ class Pipeline:
 
             lock.release()
 
-        logger.client("done")
+        self.tasks.clear()
+        if parallel.on_root():
+            logger.client("done")
 
+    @parallel.broadcasted
     def drop_cache(self) -> None:
         logger.client("dropping cache directory")
 

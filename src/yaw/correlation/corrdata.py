@@ -446,6 +446,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
         return bcast_instance(new)
 
+    @parallel.broadcasted
     def to_files(self, path_prefix: Path | str) -> None:
         """
         Serialise the class instance into a set of ASCII files.
@@ -466,40 +467,35 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 ``[path_prefix].{dat,smp,cov}`` pointing to the ASCII files
                 to serialise into, see also :meth:`from_files()`.
         """
-        if parallel.on_root():
-            logger.info(
-                "writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix
-            )
+        logger.info("writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix)
 
-            path_prefix = Path(path_prefix)
+        path_prefix = Path(path_prefix)
 
-            write_data(
-                path_prefix.with_suffix(".dat"),
-                self._description_data,
-                zleft=self.binning.left,
-                zright=self.binning.right,
-                data=self.data,
-                error=self.error,
-                closed=str(self.binning.closed),
-            )
+        write_data(
+            path_prefix.with_suffix(".dat"),
+            self._description_data,
+            zleft=self.binning.left,
+            zright=self.binning.right,
+            data=self.data,
+            error=self.error,
+            closed=str(self.binning.closed),
+        )
 
-            write_samples(
-                path_prefix.with_suffix(".smp"),
-                self._description_samples,
-                zleft=self.binning.left,
-                zright=self.binning.right,
-                samples=self.samples,
-                closed=str(self.binning.closed),
-            )
+        write_samples(
+            path_prefix.with_suffix(".smp"),
+            self._description_samples,
+            zleft=self.binning.left,
+            zright=self.binning.right,
+            samples=self.samples,
+            closed=str(self.binning.closed),
+        )
 
-            # write covariance for convenience only, it is not required to restore
-            write_covariance(
-                path_prefix.with_suffix(".cov"),
-                self._description_covariance,
-                covariance=self.covariance,
-            )
-
-        parallel.COMM.Barrier()
+        # write covariance for convenience only, it is not required to restore
+        write_covariance(
+            path_prefix.with_suffix(".cov"),
+            self._description_covariance,
+            covariance=self.covariance,
+        )
 
 
 def create_columns(columns: list[str], closed: str) -> list[str]:

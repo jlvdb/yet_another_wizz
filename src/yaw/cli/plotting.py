@@ -6,9 +6,13 @@ from typing import TYPE_CHECKING
 from yaw.utils.plotting import check_plotting_enabled
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
     from typing_extensions import Self
+
+    from yaw.correlation import CorrData
+    from yaw.redshifts import HistData, RedshiftData
 
 
 @check_plotting_enabled
@@ -74,3 +78,50 @@ class WrappedFigure:
 
     def __exit__(self, *args, **kwargs) -> None:
         self.finalise()
+
+
+def plot_wss(fig_path: Path, auto_ref: CorrData | None) -> bool:
+    if auto_ref is None:
+        return False
+
+    with WrappedFigure(fig_path, 1, r"$w_{\rm ss}$") as fig:
+        auto_ref.plot(ax=fig.axes[0], indicate_zero=True)
+
+    return True
+
+
+def plot_wpp(fig_path: Path, auto_unks: Iterable[CorrData | None]) -> bool:
+    if any(auto_unk is None for auto_unk in auto_unks):
+        return False
+
+    with WrappedFigure(fig_path, len(auto_unks), r"$w_{\rm pp}$") as fig:
+        for ax, auto_unk in zip(fig.axes, auto_unks):
+            auto_unk.plot(ax=ax, indicate_zero=True)
+
+    return True
+
+
+def plot_nz(
+    fig_path: Path,
+    nz_ests: Iterable[RedshiftData | None],
+    hists: Iterable[HistData | None],
+) -> bool:
+    if any(nz_est is None for nz_est in nz_ests) and any(
+        hist is None for hist in hists
+    ):
+        return False
+
+    with WrappedFigure(fig_path, len(nz_ests), r"Density estimate") as fig:
+        for ax, nz_est, hist in zip(fig.axes, nz_ests, hists):
+            if hist:
+                hist = hist.normalised()
+                hist.plot(ax=ax, indicate_zero=True, label=r"Histogram")
+
+            if nz_est:
+                if hist:
+                    nz_est = nz_est.normalised(hist)
+                nz_est.plot(ax=ax, indicate_zero=True, label=r"CC $p(z)$")
+
+        ax.legend()
+
+    return True

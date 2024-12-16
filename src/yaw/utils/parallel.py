@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 from abc import ABC
-from functools import partial
+from functools import partial, wraps
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -180,6 +180,24 @@ def world_to_comm_rank(comm: Comm, world_rank: int) -> int:
     if MPI.COMM_WORLD.Get_rank() == world_rank:
         comm_rank = comm.Get_rank()
     return comm.bcast(comm_rank, root=world_rank)
+
+
+def broadcasted(func):
+    """
+    Decorator for a function that should only run on the root MPI worker.
+
+    Calls the function as usual on the root worker and broadcasts the function
+    return value(s) to all other workers before returning.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        result = None
+        if on_root():
+            result = func(*args, **kwargs)
+        return COMM.bcast(result, root=0)
+
+    return wrapper
 
 
 class EndOfQueue:

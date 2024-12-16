@@ -524,11 +524,9 @@ class FitsReader(FileReader):
             degrees=degrees,
         )
 
+    @parallel.broadcasted
     def get_available_columns(self) -> set[str]:
-        columns = None
-        if parallel.on_root():
-            columns = set(self._hdu_data.columns.names)
-        return parallel.COMM.bcast(columns, root=0)
+        return set(self._hdu_data.columns.names)
 
     def _get_next_chunk(self) -> DataChunk:
         def get_data_swapped(colname: str) -> NDArray:
@@ -604,11 +602,9 @@ class HDFReader(FileReader):
         if parallel.on_root():
             common_len_assert([self._file[col] for col in self._columns.values()])
 
+    @parallel.broadcasted
     def get_available_columns(self) -> set[str]:
-        columns = None
-        if parallel.on_root():
-            columns = set(self._file.keys())
-        return parallel.COMM.bcast(columns, root=0)
+        return set(self._file.keys())
 
     def _get_next_chunk(self) -> DataChunk:
         end = self._num_samples  # already incremented by chunksize in __next__
@@ -679,11 +675,9 @@ class ParquetReader(FileReader):
             degrees=degrees,
         )
 
+    @parallel.broadcasted
     def get_available_columns(self) -> set[str]:
-        columns = None
-        if parallel.on_root():
-            columns = set(self._file.schema.names)
-        return parallel.COMM.bcast(columns, root=0)
+        return set(self._file.schema.names)
 
     def _reset_iter_state(self) -> None:
         super()._reset_iter_state()

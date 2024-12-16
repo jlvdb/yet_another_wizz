@@ -10,7 +10,7 @@ from yaw.cli.config import ProjectConfig
 from yaw.cli.pipeline import run_setup
 from yaw.cli.tasks import TaskList
 from yaw.config.base import TextIndenter
-from yaw.utils import transform_matches
+from yaw.utils import parallel, transform_matches
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -18,17 +18,18 @@ if TYPE_CHECKING:
 
 class DumpConfigAction(argparse.Action):
     def __call__(self, parser, *args, **kwargs):
-        indenter = TextIndenter(num_spaces=4)
-        padding = 22
+        if parallel.on_root():
+            indenter = TextIndenter(num_spaces=4)
+            padding = 22
 
-        # add a header
-        print(f"# {parser.prog} v{__version__} configuration\n")
+            # add a header
+            print(f"# {parser.prog} v{__version__} configuration\n")
 
-        yaml = ProjectConfig.format_yaml_doc(indentation=indenter, padding=padding)
-        yaml += TaskList.format_yaml_doc(indentation=indenter, padding=padding)
-        # add empty lines between top-level sections
-        yaml = transform_matches(yaml, r"\n\w", lambda match: "\n" + match)
-        print(yaml)
+            yaml = ProjectConfig.format_yaml_doc(indentation=indenter, padding=padding)
+            yaml += TaskList.format_yaml_doc(indentation=indenter, padding=padding)
+            # add empty lines between top-level sections
+            yaml = transform_matches(yaml, r"\n\w", lambda match: "\n" + match)
+            print(yaml)
 
         parser.exit()
 
@@ -37,6 +38,7 @@ def path_absolute(path: str) -> Path:
     return Path(path).expanduser().absolute()
 
 
+@parallel.broadcasted
 def path_exists(path: str) -> Path:
     filepath = path_absolute(path)
     if not filepath.exists():

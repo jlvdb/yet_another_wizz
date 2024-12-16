@@ -4,19 +4,18 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from glob import glob
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from yaw import Catalog, CorrData, CorrFunc, HistData, RedshiftData
 from yaw.catalog.catalog import PATCH_INFO_FILE
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from typing import Any
 
 T = TypeVar("T")
 
 
-class Handle(ABC):
+class Handle(ABC, Generic[T]):
     @abstractmethod
     def __repr__(self) -> str:
         pass
@@ -26,11 +25,11 @@ class Handle(ABC):
         pass
 
     @abstractmethod
-    def load(self) -> Any:
+    def load(self) -> T:
         pass
 
 
-class SingleFileHandle(Handle):
+class SingleFileHandle(Handle[T]):
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
 
@@ -41,7 +40,7 @@ class SingleFileHandle(Handle):
         return self.path.exists()
 
 
-class CatalogHandle(SingleFileHandle):
+class CatalogHandle(SingleFileHandle[Catalog]):
     def exists(self) -> bool:
         return (self.path / PATCH_INFO_FILE).exists()
 
@@ -49,12 +48,12 @@ class CatalogHandle(SingleFileHandle):
         return Catalog(self.path)
 
 
-class CorrFuncHandle(SingleFileHandle):
+class CorrFuncHandle(SingleFileHandle[CorrFunc]):
     def load(self) -> CorrFunc:
         return CorrFunc.from_file(self.path)
 
 
-class MultiFileHandle(Handle):
+class MultiFileHandle(Handle[T]):
     def __init__(self, template: Path | str) -> None:
         self.template = Path(template)
         if self.template.suffix:
@@ -69,22 +68,22 @@ class MultiFileHandle(Handle):
         return False
 
 
-class CorrDataHandle(MultiFileHandle):
+class CorrDataHandle(MultiFileHandle[CorrData]):
     def load(self) -> CorrData:
         return CorrData.from_files(self.template)
 
 
-class RedshiftDataHandle(MultiFileHandle):
+class RedshiftDataHandle(MultiFileHandle[RedshiftData]):
     def load(self) -> RedshiftData:
         return RedshiftData.from_files(self.template)
 
 
-class HistDataHandle(MultiFileHandle):
+class HistDataHandle(MultiFileHandle[HistData]):
     def load(self) -> HistData:
         return HistData.from_files(self.template)
 
 
-class CacheHandle(Handle):
+class CacheHandle(Handle[tuple[Catalog, Catalog | None]]):
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         self.path.mkdir(exist_ok=True)
@@ -142,3 +141,10 @@ class TomographyWrapper(Mapping[int, T]):
 
     def exists(self) -> bool:
         return all(handle.exists() for handle in self._handles.values())
+
+
+def load_optional_data(handle: Handle[T]) -> T | None:
+    try:
+        return handle.load()
+    except FileNotFoundError:
+        return None
