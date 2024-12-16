@@ -76,6 +76,18 @@ PATCH_INFO_FILE = "patch_ids.bin"
 logger = logging.getLogger("yaw.catalog")  # instead of "yaw.catalog.catalog"
 
 
+def log_info(*args) -> None:
+    """Emit an info-level log message on the root MPI worker."""
+    if parallel.on_root():
+        logger.info(*args)
+
+
+def log_debug(*args) -> None:
+    """Emit a debug-level log message on the root MPI worker."""
+    if parallel.on_root():
+        logger.debug(*args)
+
+
 class InconsistentPatchesError(Exception):
     pass
 
@@ -127,8 +139,6 @@ class PatchMode(Enum):
                 If the number of patches exceeds the maximum allowed number or
                 none of the input parameters are provided.
         """
-        log_sink = logger.debug if parallel.on_root() else lambda *x: x
-
         if patch_centers is not None:
             if not isinstance(patch_centers, (AngularCoordinates, Catalog)):
                 raise TypeError(
@@ -136,14 +146,14 @@ class PatchMode(Enum):
                 )
             check_patch_ids(len(patch_centers))
 
-            log_sink("applying %d patches", len(patch_centers))
+            log_debug("applying %d patches", len(patch_centers))
             return PatchMode.apply
 
         if patch_name is not None:
             if not isinstance(patch_name, str):
                 raise TypeError("'patch_name' must be a string")
 
-            log_sink("dividing patches based on '%s'", patch_name)
+            log_debug("dividing patches based on '%s'", patch_name)
             return PatchMode.divide
 
         elif patch_num is not None:
@@ -151,7 +161,7 @@ class PatchMode(Enum):
                 raise TypeError("'patch_num' must be an integer")
             check_patch_ids(patch_num)
 
-            log_sink("creating %d patches", patch_num)
+            log_debug("creating %d patches", patch_num)
             return PatchMode.create
 
         raise ValueError("no patch method specified")
@@ -193,11 +203,10 @@ def create_patch_centers(
     """
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
-    if parallel.on_root():
-        logger.info(
-            "computing patch centers from subset of %s records",
-            format_long_num(probe_size),
-        )
+    log_info(
+        "computing patch centers from subset of %s records",
+        format_long_num(probe_size),
+    )
 
     data_probe = reader.get_probe(probe_size)
 
@@ -430,12 +439,11 @@ class CatalogWriter(AbstractContextManager, HandlesDataChunk):
         self.cache_directory = Path(cache_directory)
         cache_exists = self.cache_directory.exists()
 
-        if parallel.on_root():
-            logger.info(
-                "%s cache directory: %s",
-                "overwriting" if cache_exists and overwrite else "using",
-                cache_directory,
-            )
+        log_info(
+            "%s cache directory: %s",
+            "overwriting" if cache_exists and overwrite else "using",
+            cache_directory,
+        )
 
         if self.cache_directory.exists():
             if overwrite:
@@ -714,8 +722,7 @@ if parallel.use_mpi():
         max_workers = parallel.get_size(max_workers)
         if max_workers < 2:
             raise ValueError("catalog creation requires at least two workers")
-        if parallel.on_root():
-            logger.debug("running preprocessing on %d workers", max_workers)
+        log_debug("running preprocessing on %d workers", max_workers)
 
         rank = parallel.COMM.Get_rank()
         worker_config = WorkerManager(max_workers, 0)
@@ -862,7 +869,7 @@ else:
         max_workers = parallel.get_size(max_workers)
 
         if max_workers == 1:
-            logger.debug("running preprocessing sequentially")
+            log_debug("running preprocessing sequentially")
             return write_patches_unthreaded(
                 path,
                 reader,
@@ -873,7 +880,7 @@ else:
             )
 
         else:
-            logger.debug("running preprocessing on %d workers", max_workers)
+            log_debug("running preprocessing on %d workers", max_workers)
 
         with (
             reader,
@@ -954,8 +961,7 @@ class Catalog(Mapping[int, Patch]):
     def __init__(
         self, cache_directory: Path | str, *, max_workers: int | None = None
     ) -> None:
-        if parallel.on_root():
-            logger.info("restoring from cache directory: %s", cache_directory)
+        log_info("restoring from cache directory: %s", cache_directory)
 
         self.cache_directory = Path(cache_directory)
         if not self.cache_directory.exists():
@@ -1081,8 +1087,7 @@ class Catalog(Mapping[int, Patch]):
             buffersize=-1,
         )
 
-        if parallel.on_root():
-            logger.info("computing patch metadata")
+        log_info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new._patches = load_patches(
@@ -1209,8 +1214,7 @@ class Catalog(Mapping[int, Patch]):
             buffersize=-1,
         )
 
-        if parallel.on_root():
-            logger.info("computing patch metadata")
+        log_info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new._patches = load_patches(
@@ -1310,8 +1314,7 @@ class Catalog(Mapping[int, Patch]):
             buffersize=-1,
         )
 
-        if parallel.on_root():
-            logger.info("computing patch metadata")
+        log_info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new._patches = load_patches(
@@ -1421,11 +1424,10 @@ class Catalog(Mapping[int, Patch]):
         if binning is not None:
             binning = Binning(binning, closed=closed)
 
-        if parallel.on_root():
-            logger.debug(
-                "building patch-wise trees (%s)",
-                "unbinned" if binning is None else f"using {len(binning)} bins",
-            )
+        log_debug(
+            "building patch-wise trees (%s)",
+            "unbinned" if binning is None else f"using {len(binning)} bins",
+        )
 
         patch_tree_iter = parallel.iter_unordered(
             BinnedTrees.build,

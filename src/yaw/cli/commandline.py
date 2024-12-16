@@ -137,7 +137,7 @@ class NameSpace:
         config_group.add_argument(
             "--progress",
             action="store_true",
-            help="show a progress bar for long-running tasks",
+            help="show a progress bar for long-running tasks (may not update under MPI)",
         )
 
         help_group = parser.add_argument_group(
