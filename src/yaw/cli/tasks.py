@@ -50,7 +50,7 @@ def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
 
     for i, item in enumerate(iterable, 1):
         if parallel.on_root():
-            logger.info(f"processing bin {i} / {N}")
+            logger.client(f"processing bin {i} / {N}")
         yield item
 
 

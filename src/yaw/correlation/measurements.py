@@ -41,6 +41,18 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+def log_info(*args) -> None:
+    """Emit an info-level log message on the root MPI worker."""
+    if parallel.on_root():
+        logger.info(*args)
+
+
+def log_debug(*args) -> None:
+    """Emit a debug-level log message on the root MPI worker."""
+    if parallel.on_root():
+        logger.debug(*args)
+
+
 @dataclass(frozen=True, eq=False, slots=True)
 class PatchPair:
     """Container for arguments of ``process_patch_pair()`` pair counting
@@ -164,9 +176,7 @@ class PatchLinkage:
     def __init__(self, config: Configuration, patch_links: dict[int, set[int]]) -> None:
         self.config = config
         self.patch_links = patch_links
-
-        if parallel.on_root():
-            logger.debug("created patch linkage with %d patch pairs", self.num_links)
+        log_debug("created patch linkage with %d patch pairs", self.num_links)
 
     @classmethod
     def from_catalogs(
@@ -189,11 +199,10 @@ class PatchLinkage:
             raise InconsistentPatchesError("patch IDs do not match")
         max_scale_angle = get_max_angle(config)
 
-        if parallel.on_root():
-            logger.debug(
-                "computing patch linkage with max. separation of %.2e rad",
-                max_scale_angle.data[0],
-            )
+        log_debug(
+            "computing patch linkage with max. separation of %.2e rad",
+            max_scale_angle.data[0],
+        )
 
         # find largest catalog which has best constraints on patch centers/radii
         ref_cat, *other_cats = sorted(
@@ -409,30 +418,28 @@ def autocorrelate(
         InconsistentPatchesError:
             If the patches of the data or random catalog do not overlap.
     """
-    if parallel.on_root():
-        logger.info("building trees for 2 catalogs")
     kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
-
     edges = config.binning.edges
     closed = config.binning.closed
 
+    log_info("building data trees")
     data.build_trees(edges, closed=closed, **kwargs)
+    log_info("building random trees")
     random.build_trees(edges, closed=closed, **kwargs)
 
-    if parallel.on_root():
-        logger.info(
-            "computing auto-correlation from DD, DR" + (", RR" if count_rr else "")
-        )
+    log_info("computing auto-correlation from DD, DR" + (", RR" if count_rr else ""))
 
     links = PatchLinkage.from_catalogs(config, data, random)
-    if parallel.on_root():
-        logger.debug(
-            "using %d scales %s weighting",
-            config.scales.num_scales,
-            "with" if config.scales.rweight else "without",
-        )
+    log_debug(
+        "using %d scales %s weighting",
+        config.scales.num_scales,
+        "with" if config.scales.rweight else "without",
+    )
+    log_info("counting DD from patch pairs")
     DD = links.count_pairs(data, **kwargs)
+    log_info("counting DR from patch pairs")
     DR = links.count_pairs(data, random, **kwargs)
+    log_info("counting RR from patch pairs")
     RR = links.count_pairs_optional(random if count_rr else None, **kwargs)
 
     return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
@@ -499,42 +506,45 @@ def crosscorrelate(
     if not count_dr and not count_rd:
         raise ValueError("at least one random dataset must be provided")
 
-    if parallel.on_root():
-        logger.info("building trees for %d catalogs", 2 + count_dr + count_rd)
     kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
-
     edges = config.binning.edges
     closed = config.binning.closed
     randoms = []
 
+    log_info("building reference data trees")
     reference.build_trees(edges, closed=closed, **kwargs)
     if count_rd:
+        log_info("building reference random trees")
         ref_rand.build_trees(edges, closed=closed, **kwargs)
         randoms.append(ref_rand)
 
+        log_info("building unknown data trees")
     unknown.build_trees(None, **kwargs)
     if count_dr:
+        log_info("building unknown random trees")
         unk_rand.build_trees(None, **kwargs)
         randoms.append(unk_rand)
 
-    if parallel.on_root():
-        logger.info(
-            "computing cross-correlation from DD"
-            + (", DR" if count_dr else "")
-            + (", RD" if count_rd else "")
-            + (", RR" if count_dr and count_dr else "")
-        )
+    log_info(
+        "computing cross-correlation from DD"
+        + (", DR" if count_dr else "")
+        + (", RD" if count_rd else "")
+        + (", RR" if count_dr and count_dr else "")
+    )
 
     links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
-    if parallel.on_root():
-        logger.debug(
-            "using %d scales %s weighting",
-            config.scales.num_scales,
-            "with" if config.scales.rweight else "without",
-        )
+    log_debug(
+        "using %d scales %s weighting",
+        config.scales.num_scales,
+        "with" if config.scales.rweight else "without",
+    )
+    log_info("counting DD from patch pairs")
     DD = links.count_pairs(reference, unknown, **kwargs)
+    log_info("counting DR from patch pairs")
     DR = links.count_pairs_optional(reference, unk_rand, **kwargs)
+    log_info("counting RD from patch pairs")
     RD = links.count_pairs_optional(ref_rand, unknown, **kwargs)
+    log_info("counting RR from patch pairs")
     RR = links.count_pairs_optional(ref_rand, unk_rand, **kwargs)
 
     return [CorrFunc(dd, dr, rd, rr) for dd, dr, rd, rr in zip(DD, DR, RD, RR)]
