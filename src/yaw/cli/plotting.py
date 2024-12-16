@@ -57,7 +57,7 @@ class WrappedFigure:
         *,
         ratio: float = 1.5,
         size: int = 6,
-        dpi: int = 100,
+        dpi: int = 150,
     ) -> None:
         self.path = str(path)
         self._fig = make_redshift_fig(
