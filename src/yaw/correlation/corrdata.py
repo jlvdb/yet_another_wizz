@@ -21,13 +21,14 @@ from yaw.binning import Binning
 from yaw.options import CovKind, PlotStyle
 from yaw.utils import format_float_fixed_width, parallel, plotting
 from yaw.utils.abc import AsciiSerializable, BinwiseData
-from yaw.utils.parallel import Broadcastable, bcast_instance
+from yaw.utils.parallel import COMM, Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
     from typing import Any
 
     from numpy.typing import ArrayLike, NDArray
 
+    from yaw.utils.parallel import TypeComm
     from yaw.utils.plotting import Axis
 
     # container class types
@@ -421,7 +422,9 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
         return f"correlation function covariance matrix ({n}x{n})"
 
     @classmethod
-    def from_files(cls: type[TypeCorrData], path_prefix: Path | str) -> TypeCorrData:
+    def from_files(
+        cls: type[TypeCorrData], path_prefix: Path | str, *, comm: TypeComm = COMM
+    ) -> TypeCorrData:
         """
         Restore the class instance from a set of ASCII files.
 
@@ -430,10 +433,14 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 A path (:obj:`str` or :obj:`pathlib.Path`) prefix used as
                 ``[path_prefix].{dat,smp,cov}``, pointing to the ASCII files
                 to restore from, see also :meth:`to_files()`.
+
+        Keyword Args:
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to use.
         """
         new = None
 
-        if parallel.on_root():
+        if parallel.on_root(comm):
             logger.info("reading %s from: %s.{dat,smp}", cls.__name__, path_prefix)
 
             path_prefix = Path(path_prefix)
@@ -444,10 +451,9 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
             new = cls(binning, data, samples)
 
-        return bcast_instance(new)
+        return bcast_instance(comm, new)
 
-    @parallel.broadcasted
-    def to_files(self, path_prefix: Path | str) -> None:
+    def to_files(self, path_prefix: Path | str, *, comm: TypeComm = COMM) -> None:
         """
         Serialise the class instance into a set of ASCII files.
 
@@ -466,36 +472,45 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
                 A path (:obj:`str` or :obj:`pathlib.Path`) prefix
                 ``[path_prefix].{dat,smp,cov}`` pointing to the ASCII files
                 to serialise into, see also :meth:`from_files()`.
+
+        Keyword Args:
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to use.
         """
-        logger.info("writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix)
+        if parallel.on_root(comm):
+            logger.info(
+                "writing %s to: %s.{dat,smp,cov}", type(self).__name__, path_prefix
+            )
 
-        path_prefix = Path(path_prefix)
+            path_prefix = Path(path_prefix)
 
-        write_data(
-            path_prefix.with_suffix(".dat"),
-            self._description_data,
-            zleft=self.binning.left,
-            zright=self.binning.right,
-            data=self.data,
-            error=self.error,
-            closed=str(self.binning.closed),
-        )
+            write_data(
+                path_prefix.with_suffix(".dat"),
+                self._description_data,
+                zleft=self.binning.left,
+                zright=self.binning.right,
+                data=self.data,
+                error=self.error,
+                closed=str(self.binning.closed),
+            )
 
-        write_samples(
-            path_prefix.with_suffix(".smp"),
-            self._description_samples,
-            zleft=self.binning.left,
-            zright=self.binning.right,
-            samples=self.samples,
-            closed=str(self.binning.closed),
-        )
+            write_samples(
+                path_prefix.with_suffix(".smp"),
+                self._description_samples,
+                zleft=self.binning.left,
+                zright=self.binning.right,
+                samples=self.samples,
+                closed=str(self.binning.closed),
+            )
 
-        # write covariance for convenience only, it is not required to restore
-        write_covariance(
-            path_prefix.with_suffix(".cov"),
-            self._description_covariance,
-            covariance=self.covariance,
-        )
+            # write covariance for convenience only, it is not required to restore
+            write_covariance(
+                path_prefix.with_suffix(".cov"),
+                self._description_covariance,
+                covariance=self.covariance,
+            )
+
+        comm.Barrier()
 
 
 def create_columns(columns: list[str], closed: str) -> list[str]:

@@ -30,12 +30,14 @@ from yaw.datachunk import (
     TypeDataChunk,
 )
 from yaw.utils import common_len_assert, format_long_num, parallel
+from yaw.utils.parallel import COMM
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from typing_extensions import Self
 
     from yaw.randoms import RandomsBase
+    from yaw.utils.parallel import TypeComm
 
 __all__ = [
     "DataFrameReader",
@@ -73,6 +75,7 @@ class DataChunkReader(
           broadcasting if desired.
     """
 
+    comm: TypeComm
     chunksize: int
     _num_records: int
     _num_samples: int  # used to track iteration state
@@ -125,7 +128,7 @@ class DataChunkReader(
 
         self._num_samples += self.chunksize
 
-        if parallel.on_worker():
+        if parallel.on_worker(self.comm):
             return None
         return self._get_next_chunk()
 
@@ -148,11 +151,21 @@ class RandomReader(DataChunkReader):
             Total number of samples to read from the generator.
         chunksize:
             Size of each data chunk, optional.
+
+    Keyword Args:
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
     """
 
     def __init__(
-        self, generator: RandomsBase, num_randoms: int, chunksize: int | None = None
+        self,
+        generator: RandomsBase,
+        num_randoms: int,
+        chunksize: int | None = None,
+        *,
+        comm: TypeComm = COMM,
     ) -> None:
+        self.comm = comm
         self.generator = generator
         self._chunk_info = generator.copy_chunk_info()
 
@@ -161,7 +174,7 @@ class RandomReader(DataChunkReader):
 
         self._reset_iter_state()
 
-        if parallel.on_root():
+        if parallel.on_root(comm):
             logger.info(
                 "generating %s random points in %d chunks",
                 format_long_num(num_randoms),
@@ -212,7 +225,7 @@ class RandomReader(DataChunkReader):
         """
         if probe_size > self.num_records:
             raise ValueError("'probe_size' cannot exceed number of records")
-        if parallel.on_worker():
+        if parallel.on_worker(self.comm):
             return None
 
         self.generator.reseed()
@@ -233,8 +246,11 @@ class DataReader(DataChunkReader):
         patch_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
+        comm: TypeComm = COMM,
         **kwargs,
     ) -> None:
+        self.comm = comm
+
         columns = (
             ra_name,
             dec_name,
@@ -262,7 +278,7 @@ class DataReader(DataChunkReader):
 
         self._reset_iter_state()
 
-        if parallel.on_root():
+        if parallel.on_root(comm):
             logger.debug(
                 "selecting input columns: %s",
                 ", ".join(self._columns.values()),
@@ -291,7 +307,7 @@ class DataReader(DataChunkReader):
             ValueError:
                 If ``probe_size`` exceeds number of records.
         """
-        if parallel.on_root():
+        if parallel.on_root(self.comm):
             idx_keep = np.linspace(0, self.num_records - 1, probe_size).astype(int)
 
             chunks = []
@@ -307,7 +323,7 @@ class DataReader(DataChunkReader):
         else:
             data = None
 
-        parallel.COMM.Barrier()
+        self.comm.Barrier()
         return data
 
 
@@ -323,7 +339,7 @@ def issue_io_log(num_records: int, num_chunks: int, source: str) -> None:
         source:
             A string describing where the data orginates (e.g. "FITS file").
     """
-    if parallel.on_root():
+    if parallel.on_root(COMM):
         logger.info(
             "loading %s records in %d chunks from %s",
             format_long_num(num_records),
@@ -341,6 +357,8 @@ class DataFrameReader(DataReader):
     Args:
         data:
             Input pandas data frame, containing the columns specified below.
+
+    Keyword Args:
         ra_name:
             Column name of the right ascension coordinate.
         dec_name:
@@ -355,6 +373,8 @@ class DataFrameReader(DataReader):
             Size of each data chunk, optional.
         degrees:
             Whether the input coordinates are given in degrees (the default).
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
     """
 
     def __init__(
@@ -368,8 +388,11 @@ class DataFrameReader(DataReader):
         patch_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
+        comm: TypeComm = COMM,
         **kwargs,
     ) -> None:
+        self.comm = comm
+
         self._data = data
         self._num_records = len(data)
         self.chunksize = chunksize or CHUNKSIZE  # we need this early
@@ -424,7 +447,7 @@ class FileReader(DataReader):
 
     def _close_file(self) -> None:
         """Close the underlying file(pointer)."""
-        if parallel.on_root():
+        if parallel.on_root(self.comm):
             self._file.close()
 
 
@@ -438,8 +461,38 @@ def new_filereader(
     patch_name: str | None = None,
     chunksize: int | None = None,
     degrees: bool = True,
+    comm: TypeComm = COMM,
     **reader_kwargs,
 ) -> FileReader:
+    """
+    Create a new file reader.
+
+    Data is read in the provided ``chunksize``, bypassing any row groups stored
+    in the Parquet file. Must be used in a context manager. Reader type is
+    chosen based on file extension of input file path
+
+    Args:
+        path:
+            String or :obj:`pathlib.Path` describing the input file path.
+
+    Keyword Args:
+        ra_name:
+            Column name of the right ascension coordinate.
+        dec_name:
+            Column name of the declination coordinate.
+        weight_name:
+            Optional column name of the object weights.
+        redshift_name:
+            Optional column name of the object redshifts.
+        patch_name:
+            Optional column name of patch IDs, must meet patch ID requirements.
+        chunksize:
+            Size of each data chunk, optional.
+        degrees:
+            Whether the input coordinates are given in degrees (the default).
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
+    """
     ext = Path(path).suffix.lower()
     if ext in (".fits", ".cat"):
         reader_cls = FitsReader
@@ -459,6 +512,7 @@ def new_filereader(
         patch_name=patch_name,
         chunksize=chunksize,
         degrees=degrees,
+        comm=comm,
         **reader_kwargs,
     )
 
@@ -472,6 +526,8 @@ class FitsReader(FileReader):
     Args:
         path:
             String or :obj:`pathlib.Path` describing the input file path.
+
+    Keyword Args:
         ra_name:
             Column name of the right ascension coordinate.
         dec_name:
@@ -488,6 +544,8 @@ class FitsReader(FileReader):
             Whether the input coordinates are given in degrees (the default).
         hdu:
             Index of the table HDU to read from (default: 1).
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
     """
 
     def __init__(
@@ -502,15 +560,18 @@ class FitsReader(FileReader):
         chunksize: int | None = None,
         degrees: bool = True,
         hdu: int = 1,
+        comm: TypeComm = COMM,
     ) -> None:
+        self.comm = comm
+
         self.path = Path(path)
         self._num_records = None
-        if parallel.on_root():
+        if parallel.on_root(comm):
             self._file = fits.open(str(path))
             self._hdu_data = self._file[hdu].data
             self._num_records = len(self._hdu_data)
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = comm.bcast(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"FITS file: {path}")
 
@@ -524,9 +585,11 @@ class FitsReader(FileReader):
             degrees=degrees,
         )
 
-    @parallel.broadcasted
     def get_available_columns(self) -> set[str]:
-        return set(self._hdu_data.columns.names)
+        columns = None
+        if parallel.on_root(self.comm):
+            columns = set(self._hdu_data.columns.names)
+        return parallel.bcast_auto(self.comm, columns)
 
     def _get_next_chunk(self) -> DataChunk:
         def get_data_swapped(colname: str) -> NDArray:
@@ -550,6 +613,8 @@ class HDFReader(FileReader):
     Args:
         path:
             String or :obj:`pathlib.Path` describing the input file path.
+
+    Keyword Args:
         ra_name:
             Column name of the right ascension coordinate.
         dec_name:
@@ -564,6 +629,8 @@ class HDFReader(FileReader):
             Size of each data chunk, optional.
         degrees:
             Whether the input coordinates are given in degrees (the default).
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
     """
 
     def __init__(
@@ -577,15 +644,18 @@ class HDFReader(FileReader):
         patch_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
+        comm: TypeComm = COMM,
         **kwargs,
     ) -> None:
+        self.comm = comm
+
         self.path = Path(path)
         self._num_records = None
-        if parallel.on_root():
+        if parallel.on_root(comm):
             self._file = h5py.File(str(path), mode="r")
             self._num_records = len(self._file[ra_name])
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = comm.bcast(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {path}")
 
@@ -599,12 +669,14 @@ class HDFReader(FileReader):
             degrees=degrees,
         )
         # this final check is necessary since HDF5 columns are independent
-        if parallel.on_root():
+        if parallel.on_root(comm):
             common_len_assert([self._file[col] for col in self._columns.values()])
 
-    @parallel.broadcasted
     def get_available_columns(self) -> set[str]:
-        return set(self._file.keys())
+        columns = None
+        if parallel.on_root(self.comm):
+            columns = set(self._file.keys())
+        return parallel.bcast_auto(self.comm, columns)
 
     def _get_next_chunk(self) -> DataChunk:
         end = self._num_samples  # already incremented by chunksize in __next__
@@ -626,6 +698,8 @@ class ParquetReader(FileReader):
     Args:
         path:
             String or :obj:`pathlib.Path` describing the input file path.
+
+    Keyword Args:
         ra_name:
             Column name of the right ascension coordinate.
         dec_name:
@@ -640,6 +714,8 @@ class ParquetReader(FileReader):
             Size of each data chunk, optional.
         degrees:
             Whether the input coordinates are given in degrees (the default).
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
     """
 
     def __init__(
@@ -653,15 +729,18 @@ class ParquetReader(FileReader):
         patch_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
+        comm: TypeComm = COMM,
         **kwargs,
     ) -> None:
+        self.comm = comm
+
         self.path = Path(path)
         self._num_records = None
-        if parallel.on_root():
+        if parallel.on_root(comm):
             self._file = parquet.ParquetFile(str(path))
             self._num_records = self._file.metadata.num_rows
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = comm.bcast(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"Parquet file: {path}")
 
@@ -675,9 +754,11 @@ class ParquetReader(FileReader):
             degrees=degrees,
         )
 
-    @parallel.broadcasted
     def get_available_columns(self) -> set[str]:
-        return set(self._file.schema.names)
+        columns = None
+        if parallel.on_root(self.comm):
+            columns = set(self._file.schema.names)
+        return parallel.bcast_auto(self.comm, columns)
 
     def _reset_iter_state(self) -> None:
         super()._reset_iter_state()

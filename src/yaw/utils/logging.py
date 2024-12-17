@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from yaw._version import __version__
 from yaw.utils.misc import format_time
-from yaw.utils.parallel import get_size, on_root, use_mpi
+from yaw.utils.parallel import COMM, get_size, on_root, use_mpi
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -102,11 +102,11 @@ class Indicator(Iterable[T]):
         self.min_interval = float(min_interval)
 
         self.printer = ProgressPrinter(self.num_items, stream)
-        if on_root():
+        if on_root(COMM):
             self.printer.start()
 
     def __iter__(self) -> Iterator[T]:
-        if on_root():
+        if on_root(COMM):
             num_items = self.num_items or nan
             min_interval = self.min_interval
             last_update = 0.0
@@ -215,11 +215,12 @@ def configure_handler(handler: Handler, *, pretty: bool, level: int) -> None:
 def emit_parallel_mode_log(logger: Logger) -> None:
     """Emit a log message informing about the parallel mode the code is running
     in."""
-    if use_mpi():
+    if use_mpi(COMM):
         environment = "MPI"
     else:
         environment = "multiprocessing"
-    logger.info("running in %s environment with %d workers", environment, get_size())
+    size = get_size(COMM)
+    logger.info("running in %s environment with %d workers", environment, size)
 
 
 def emit_welcome(file: TextIOBase) -> None:
@@ -284,7 +285,7 @@ def get_logger(
     handlers = []
 
     if stdout:
-        if on_root():
+        if on_root(COMM):
             emit_welcome(sys.stdout)
         handler = logging.StreamHandler(sys.stdout)
         configure_handler(handler, pretty=pretty, level=level_code)
@@ -300,6 +301,6 @@ def get_logger(
     logger = logging.getLogger(LOGGER_NAME)
     sys.excepthook = log_uncaught_exceptions
 
-    if on_root():
+    if on_root(COMM):
         emit_parallel_mode_log(logger)
     return logger

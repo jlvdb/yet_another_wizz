@@ -17,33 +17,35 @@ import os
 import subprocess
 import sys
 from abc import ABC
-from functools import partial, wraps
+from functools import partial
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
-    from typing import Any, Literal, TypeVar
+    from typing import Any, Literal, TypeVar, Union
 
     from mpi4py.MPI import Comm
     from numpy.typing import NDArray
 
     T = TypeVar("T")
     TypeArgument = TypeVar("TypeArgument")
+    TypeComm = Union[Comm, "MockComm"]
     TypeResult = TypeVar("TypeResult")
     TypeBroadcastable = TypeVar("TypeBroadcastable", bound="Broadcastable")
 
 __all__ = [
     "Broadcastable",
     "COMM",
+    "bcast_auto",
+    "call_on_root_and_broadcast",
     "get_size",
     "iter_unordered",
     "on_root",
     "on_worker",
     "ranks_on_same_node",
     "use_mpi",
-    "world_to_comm_rank",
 ]
 
 logger = logging.getLogger(__name__)
@@ -84,83 +86,70 @@ def _num_processes() -> int:
         return system_threads
 
 
-try:
-    from mpi4py import MPI
-
-    def use_mpi() -> bool:
-        """Whether the current code is run in an MPI environment."""
-        return MPI.COMM_WORLD.Get_size() > 1
-
-except ImportError:
-
-    def use_mpi() -> Literal[False]:
-        """Whether the current code is run in an MPI environment."""
-        return False
-
-
 class MockComm:
     """Implements the most basic functionality of an MPI communicator if MPI is
     not installed."""
 
     def Barrier(self) -> None:
-        """Mock-implementation of a synchronisation barrier, does nothing
-        here."""
+        """Mock-implementation of a synchronisation barrier."""
         pass
 
-    def Bcast(self, value: T, *args, **kwargs) -> T:
-        """Mock-implementation of broadcasting array buffers, returns value
-        here."""
-        return value
+    def barrier(self) -> None:
+        """Mock-implementation of a synchronisation barrier."""
+        pass
 
-    def bcast(self, value: T, *args, **kwargs) -> T:
-        """Mock-implementation of broadcasting python objects, returns value
-        here."""
+    def Bcast(self, value: T, root: int = 0) -> None:
+        """Broadcast into array buffer, does nothing."""
+        pass
+
+    def bcast(self, value: T, root: int = 0) -> T:
+        """Broadcasts python object, returns first function argument."""
         return value
 
     def Get_size(self) -> int:
-        """Mock-implementation of getting number of parallel workers, here the
-        number of processes."""
+        """Get the number of parallel workers, i.e. number of processes."""
         return _num_processes()
 
-    def Get_rank(self) -> int:
-        """Mock-implementation of getting the worker rank, always 0 here."""
+    def Get_rank(self) -> Literal[0]:
+        """Current worker rank, always 0."""
         return 0
 
 
-if use_mpi():
+try:
+    from mpi4py import MPI
+
     COMM = MPI.COMM_WORLD
-    """The default communicator that `yet_another_wizz` uses (world comm)."""
-else:
+    assert COMM.Get_size() > 1
+
+except (ImportError, AssertionError):
     COMM = MockComm()
-    """The default communicator that `yet_another_wizz` uses (mock-up comm)."""
 
 
-def get_size(max_workers: int | None = None, comm: Comm = COMM) -> int:
+def use_mpi(comm: TypeComm = COMM) -> bool:
+    return not isinstance(comm, MockComm)
+
+
+def get_size(comm: TypeComm, max_workers: int = 0) -> int:
     """Get the smaller value of ``max_workers`` or the size of the
     communicator."""
-    if use_mpi():
-        size = comm.Get_size()
-    else:
-        size = _num_processes()
+    size = comm.Get_size()
     max_workers = max_workers or size
     return min(max_workers, size)
 
 
-def on_root(comm: Comm = COMM) -> bool:
+def on_root(comm: TypeComm) -> bool:
     """Whether currently on the root worker with rank 0."""
     return comm.Get_rank() == 0
 
 
-def on_worker(comm: Comm = COMM) -> bool:
+def on_worker(comm: TypeComm) -> bool:
     """Whether currently on a non-root worker."""
-    return comm.Get_rank() != 0
+    return not on_root(comm)
 
 
-def ranks_on_same_node(
-    rank: int = 0, max_workers: int | None = None, comm: Comm = COMM
-) -> set[int]:
+def ranks_on_same_node(comm: Comm, rank: int = 0, max_workers: int = 0) -> set[int]:
     """Get the set of MPI ranks that are associated with the same CPU as the
-    root rank."""
+    specified rank."""
     proc_name = MPI.Get_processor_name()
     proc_names = comm.gather(proc_name, root=rank)
 
@@ -172,32 +161,6 @@ def ranks_on_same_node(
         on_same_node = set(on_same_node)
 
     return comm.bcast(on_same_node, root=rank)
-
-
-def world_to_comm_rank(comm: Comm, world_rank: int) -> int:
-    """Get the rank of the current rank in the world rank."""
-    comm_rank = None
-    if MPI.COMM_WORLD.Get_rank() == world_rank:
-        comm_rank = comm.Get_rank()
-    return comm.bcast(comm_rank, root=world_rank)
-
-
-def broadcasted(func):
-    """
-    Decorator for a function that should only run on the root MPI worker.
-
-    Calls the function as usual on the root worker and broadcasts the function
-    return value(s) to all other workers before returning.
-    """
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        result = None
-        if on_root():
-            result = func(*args, **kwargs)
-        return COMM.bcast(result, root=0)
-
-    return wrapper
 
 
 class EndOfQueue:
@@ -234,14 +197,12 @@ class ParallelJob:
         return self.func(*func_args, **self.func_kwargs)
 
 
-def _mpi_root_task(
-    iterable: Iterable, ranks: Iterable[int], comm: Comm = COMM
-) -> Iterator:
+def _mpi_root_task(comm: Comm, iterable: Iterable, ranks: Iterable[int]) -> Iterator:
     """On the root rank, send the job arguments to the remaining ranks and
     collect the results in an iterator."""
     # first pass of assigning tasks to workers dynamically
     active_workers = 0
-    for rank in range(1, get_size()):
+    for rank in range(1, comm.Get_size()):
         try:
             assert rank in ranks
             comm.send(next(iterable), dest=rank, tag=1)
@@ -262,7 +223,7 @@ def _mpi_root_task(
             active_workers -= 1
 
 
-def _mpi_worker_task(func: ParallelJob, comm: Comm = COMM) -> None:
+def _mpi_worker_task(comm: Comm, func: ParallelJob) -> None:
     """On the worker rank, receive function arguments and return the function
     call results to the root rank."""
     rank = comm.Get_rank()
@@ -272,6 +233,7 @@ def _mpi_worker_task(func: ParallelJob, comm: Comm = COMM) -> None:
 
 
 def _mpi_iter_unordered(
+    comm: Comm,
     func: Callable[[TypeArgument], TypeResult],
     iterable: Iterable[TypeArgument],
     *,
@@ -279,7 +241,6 @@ def _mpi_iter_unordered(
     func_kwargs: dict,
     unpack: bool = False,
     ranks: Iterable[int],
-    comm: Comm = COMM,
 ) -> Iterator[TypeResult]:
     """
     Asynchronous iterator that maps arguments to a worker function using MPI
@@ -290,18 +251,19 @@ def _mpi_iter_unordered(
     Additionally, specify if the function expects the the positional arguments
     as a single tuple or unpacked.
     """
-    if on_root():
+    if on_root(comm):
         iterable = iter(iterable)
-        yield from _mpi_root_task(iterable, ranks, comm=comm)
+        yield from _mpi_root_task(comm, iterable, ranks)
 
     else:
         wrapped_func = ParallelJob(func, func_args, func_kwargs, unpack=unpack)
-        _mpi_worker_task(wrapped_func, comm=comm)
+        _mpi_worker_task(comm, wrapped_func)
 
     comm.Barrier()
 
 
 def _multiprocessing_iter_unordered(
+    comm: MockComm,
     func: Callable[[TypeArgument], TypeResult],
     iterable: Iterable[TypeArgument],
     *,
@@ -330,6 +292,7 @@ def _multiprocessing_iter_unordered(
 
 
 def iter_unordered(
+    comm: TypeComm,
     func: Callable[[TypeArgument], TypeResult],
     iterable: Iterable[TypeArgument],
     *,
@@ -338,7 +301,6 @@ def iter_unordered(
     unpack: bool = False,
     max_workers: int | None = None,
     rank0_node_only: bool = False,
-    comm: Comm = COMM,
 ) -> Iterator[TypeResult]:
     """
     Asynchronous iterator that maps arguments to a worker function, choosing
@@ -350,22 +312,21 @@ def iter_unordered(
     unpacked. Additionally limit the number of workers to use (also applies to
     MPI) or run only on the same node as the root worker (MPI only).
     """
-    max_workers = get_size(max_workers)
+    max_workers = get_size(comm, max_workers)
     iter_kwargs = dict(
         func_args=(func_args or tuple()),
         func_kwargs=(func_kwargs or dict()),
         unpack=unpack,
     )
 
-    if use_mpi():
+    if use_mpi(comm):
         if rank0_node_only:
-            ranks = ranks_on_same_node(rank=0, max_workers=max_workers, comm=comm)
+            ranks = ranks_on_same_node(comm, rank=0, max_workers=max_workers)
         else:
             ranks = set(range(max_workers))
 
         num_workers = len(ranks)
         iter_kwargs["ranks"] = ranks
-        iter_kwargs["comm"] = comm
         parallel_method = _mpi_iter_unordered
 
     else:
@@ -373,13 +334,14 @@ def iter_unordered(
         iter_kwargs["num_processes"] = max_workers
         parallel_method = _multiprocessing_iter_unordered
 
-    if on_root():
+    if on_root(comm):
         if max_workers > 1:
             logger.debug("running parallel jobs on %d workers", num_workers)
         else:
             logger.debug("running jobs sequentially")
+    comm.Barrier()
 
-    yield from parallel_method(func, iterable, **iter_kwargs)
+    yield from parallel_method(comm, func, iterable, **iter_kwargs)
 
 
 class Broadcastable(ABC):
@@ -413,49 +375,70 @@ def new_uninitialised(cls: type[TypeBroadcastable]) -> TypeBroadcastable:
     return inst
 
 
-def bcast_array(array: NDArray, comm: Comm = COMM) -> NDArray:
-    """Broadcast a numpy array to all non-root ranks. Input array may have any
-    value on non-root ranks."""
+def bcast_array(comm: TypeComm, array: NDArray, root: int = 0) -> NDArray:
+    """Broadcast a numpy array across ranks, input array may have any value on
+    non-root ranks when entering the function."""
     array_info = ()
-    if on_root():
+    if on_root(comm):
         array = np.ascontiguousarray(array)
         array_info = (array.shape, array.dtype)
-    array_info = comm.bcast(array_info, root=0)
+    array_info = comm.bcast(array_info, root=root)
 
-    if on_worker():
+    if on_worker(comm):
         shape, dtype = array_info
         array = np.empty(shape, dtype=dtype)
-    comm.Bcast(array, root=0)
+    comm.Bcast(array, root=root)
 
     return array
 
 
-def get_bcast_method(inst: T, comm: Comm = COMM) -> Callable[[T], T]:
+def get_bcast_method(comm: TypeComm, inst: T, root: int = 0) -> Callable[[T], T]:
     """Determine if the object must be broadcastes by recursion, using MPI
     broadcasting mechanisms, or using pickling."""
     if isinstance(inst, Broadcastable):
-        bcast_method = partial(bcast_instance, comm=comm)
+        bcast_method = partial(bcast_instance, comm)
     elif isinstance(inst, np.ndarray):
-        bcast_method = partial(bcast_array, comm=comm)
+        bcast_method = partial(bcast_array, comm)
     else:
         bcast_method = comm.bcast
 
-    return comm.bcast(bcast_method, root=0)
+    return comm.bcast(bcast_method, root=root)
 
 
-def bcast_instance(inst: TypeBroadcastable, *, comm: Comm = COMM) -> TypeBroadcastable:
+def bcast_instance(
+    comm: TypeComm, inst: TypeBroadcastable, root: int = 0
+) -> TypeBroadcastable:
     """Broadcast an instance of a subclass of ``Broadcastable`` to all non-root
-    ranks. Instance may have any value on non-root ranks."""
-    if not use_mpi():
+    ranks, instance may have any value on non-root ranks."""
+    if not use_mpi(comm):
         return inst
 
-    cls = comm.bcast(type(inst), root=0)
-    if on_worker():
+    cls = comm.bcast(type(inst), root=root)
+    if on_worker(comm):
         inst = new_uninitialised(cls)
 
     for name in inst.__slots__:
         value = getattr(inst, name)
-        bcast = get_bcast_method(value, comm=comm)
-        setattr(inst, name, bcast(value))
+        bcast = get_bcast_method(comm, value, root=root)
+        setattr(inst, name, bcast(value, root=root))
 
     return inst
+
+
+def bcast_auto(comm: TypeComm, obj: T, root: int = 0) -> T:
+    """Broadcast an object with the most appropriate mechanism, instance may
+    have any value on non-root ranks."""
+    bcast = get_bcast_method(comm, obj, root=root)
+    return bcast(obj, root=root)
+
+
+def call_on_root_and_broadcast(
+    comm: TypeComm,
+    func: Callable[..., T],
+    *args,
+    **kwargs,
+) -> T:
+    result = None
+    if on_root(comm):
+        result = func(*args, **kwargs)
+    return bcast_auto(comm, result)

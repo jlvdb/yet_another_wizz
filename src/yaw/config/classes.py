@@ -33,6 +33,7 @@ from yaw.cosmology import (
 )
 from yaw.options import BinMethod, Closed, NotSet, Unit
 from yaw.utils import parallel
+from yaw.utils.parallel import COMM
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -40,6 +41,8 @@ if TYPE_CHECKING:
     from typing import Any
 
     from numpy.typing import NDArray
+
+    from yaw.utils.parallel import TypeComm
 
 __all__ = [
     "BinningConfig",
@@ -672,15 +675,47 @@ class Configuration(YawConfig):
         return cls(scales, binning, **parsed)
 
     @classmethod
-    @parallel.broadcasted
-    def from_file(cls, path: Path | str) -> Configuration:
-        logger.info("reading configuration file: %s", path)
-        return super().from_file(path)
+    def from_file(cls, path: Path | str, *, comm: TypeComm = COMM) -> Configuration:
+        """
+        Restore the class instance from a YAML file.
 
-    @parallel.broadcasted
-    def to_file(self, path: Path | str) -> None:
-        logger.info("writing configuration file: %s", path)
-        super().to_file(path)
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to YAML file to restore
+                from, see also :meth:`to_file()`.
+
+        Keyword Args:
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
+
+        Returns:
+            Restored class instance.
+        """
+        new = None
+        if parallel.on_root(comm):
+            logger.info("reading configuration file: %s", path)
+            new = super().from_file(path)
+        return parallel.bcast_auto(comm, new)
+
+    def to_file(self, path: Path | str, *, comm: TypeComm = COMM) -> None:
+        """
+        Serialise the class instances into a YAML file.
+
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to YAML file to
+                serialise into, see also :meth:`from_file()`.
+
+        Keyword Args:
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
+        """
+        if parallel.on_root(comm):
+            logger.info("writing configuration file: %s", path)
+            super().to_file(path)
+        comm.Barrier()
 
     @classmethod
     def create(

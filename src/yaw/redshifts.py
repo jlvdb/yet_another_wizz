@@ -23,6 +23,7 @@ from yaw.correlation.corrfunc import CorrData
 from yaw.options import PlotStyle
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
+from yaw.utils.parallel import COMM
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from yaw.catalog import Catalog, Patch
     from yaw.config import BinningConfig
     from yaw.correlation.corrfunc import CorrFunc, TypeCorrData
+    from yaw.utils.parallel import TypeComm
 
 __all__ = [
     "HistData",
@@ -103,6 +105,7 @@ class HistData(CorrData):
         config: Configuration | BinningConfig,
         progress: bool = False,
         max_workers: int | None = None,
+        comm: TypeComm = COMM,
     ) -> HistData:
         """
         Compute a redshift histogram from a data catalog.
@@ -119,8 +122,11 @@ class HistData(CorrData):
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
                 default). Takes precedence over the value in the configuration.
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
         """
-        if parallel.on_root():
+        if parallel.on_root(comm):
             logger.info("computing redshift histogram")
 
         if isinstance(config, Configuration):
@@ -128,6 +134,7 @@ class HistData(CorrData):
             config = config.binning
 
         patch_count_iter = parallel.iter_unordered(
+            comm,
             _redshift_histogram,
             catalog.values(),
             func_kwargs=dict(binning=config.binning),
@@ -139,7 +146,7 @@ class HistData(CorrData):
         counts = np.empty((len(catalog), config.num_bins))
         for i, patch_count in enumerate(patch_count_iter):
             counts[i] = patch_count
-        parallel.COMM.Bcast(counts, root=0)
+        comm.Bcast(counts, root=0)
 
         return cls(
             config.binning.copy(),
@@ -174,7 +181,7 @@ class HistData(CorrData):
             A new instance with a normalisation factor applied to the counts and
             jackknife samples.
         """
-        if parallel.on_root():
+        if parallel.on_root(COMM):
             logger.debug("normalising %s", type(self).__name__)
 
         edges = self.binning.edges
@@ -247,7 +254,7 @@ class RedshiftData(CorrData):
         Returns:
             The redshift estimate as :obj:`~yaw.RedshiftData`.
         """
-        if parallel.on_root():
+        if parallel.on_root(COMM):
             logger.debug(
                 "computing clustering redshifts from correlation function samples"
             )
@@ -275,7 +282,7 @@ class RedshiftData(CorrData):
             w_pp_samp = unk_data.samples
             used_autocorrs.append("unknown")
 
-        if parallel.on_root():
+        if parallel.on_root(COMM):
             if len(used_autocorrs) > 0:
                 bias_info_str = " and ".join(used_autocorrs)
             else:
@@ -374,7 +381,7 @@ class RedshiftData(CorrData):
             A new instance with a normalisation factor applied to the data and
             jackknife samples.
         """
-        if parallel.on_root():
+        if parallel.on_root(COMM):
             msg = "normalising %s"
             if target is not None:
                 msg += " to target distribution"

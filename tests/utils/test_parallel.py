@@ -11,7 +11,7 @@ def dummy_task(*args, **kwargs):
 
 class TestMockComm:
     def test_Bcast(self):
-        assert parallel.COMM.Bcast(Dummy) is Dummy
+        assert parallel.COMM.Bcast(Dummy) is None
 
     def test_bcast(self):
         assert parallel.COMM.bcast(Dummy) is Dummy
@@ -21,19 +21,19 @@ class TestMockComm:
 
 
 def test_use_mpi():
-    assert parallel.use_mpi() is False
+    assert parallel.use_mpi(parallel.COMM) is False
 
 
 def test_get_size():
-    assert parallel.get_size() == 1
+    assert parallel.get_size(parallel.COMM) == 1
 
 
 def test_on_root():
-    assert parallel.on_root() is True
+    assert parallel.on_root(parallel.COMM) is True
 
 
 def test_on_worker():
-    assert parallel.on_worker() is False
+    assert parallel.on_worker(parallel.COMM) is False
 
 
 def test_ParallelJob():
@@ -60,5 +60,7 @@ def test_iter_unordered():
     job = parallel.ParallelJob(dummy_task, (), {})
     args = range(10)
 
-    for arg, (run_args, _) in zip(args, parallel.iter_unordered(job, args)):
+    for arg, (run_args, _) in zip(
+        args, parallel.iter_unordered(parallel.COMM, job, args)
+    ):
         assert run_args == (arg,)

@@ -20,7 +20,7 @@ from yaw.correlation.corrdata import CorrData
 from yaw.correlation.paircounts import NormalisedCounts
 from yaw.utils import parallel, write_version_tag
 from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
-from yaw.utils.parallel import Broadcastable, bcast_instance
+from yaw.utils.parallel import COMM, Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
     from typing import Any
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from yaw.utils.abc import TypeSliceIndex
+    from yaw.utils.parallel import TypeComm
 
 __all__ = [
     "CorrFunc",
@@ -194,20 +195,51 @@ class CorrFunc(
                 count.to_hdf(group)
 
     @classmethod
-    def from_file(cls, path: Path | str) -> CorrFunc:
+    def from_file(cls, path: Path | str, *, comm: TypeComm = COMM) -> CorrFunc:
+        """
+        Restore the class instance from a HDF5 file.
+
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to HDF5 file to restore
+                from, see also :meth:`to_file()`.
+
+        Keyword Args:
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
+
+        Returns:
+            Restored class instance.
+        """
         new = None
 
-        if parallel.on_root():
+        if parallel.on_root(comm):
             logger.info("reading %s from: %s", cls.__name__, path)
 
             new = super().from_file(path)
 
-        return bcast_instance(new)
+        return bcast_instance(comm, new)
 
-    @parallel.broadcasted
-    def to_file(self, path: Path | str) -> None:
-        logger.info("writing %s to: %s", type(self).__name__, path)
-        super().to_file(path)
+    def to_file(self, path: Path | str, *, comm: TypeComm = COMM) -> None:
+        """
+        Serialise the class instances into a HDF5 file.
+
+        Args:
+            path:
+                Path (:obj:`str` or :obj:`pathlib.Path`) to HDF5 file to
+                serialise into, see also :meth:`from_file()`.
+
+        Keyword Args:
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
+        """
+        if parallel.on_root(comm):
+            logger.info("writing %s to: %s", type(self).__name__, path)
+            super().to_file(path)
+
+        comm.Barrier()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -283,7 +315,7 @@ class CorrFunc(
         """
         estimator = landy_szalay if self.rr is not None else davis_peebles
 
-        if parallel.on_root():
+        if parallel.on_root(COMM):
             logger.debug(
                 "sampling correlation function with estimator '%s'", estimator.name
             )

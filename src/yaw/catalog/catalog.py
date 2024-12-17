@@ -47,7 +47,7 @@ from yaw.options import Closed
 from yaw.randoms import RandomsBase
 from yaw.utils import format_long_num, parallel
 from yaw.utils.logging import Indicator
-from yaw.utils.parallel import EndOfQueue
+from yaw.utils.parallel import COMM, EndOfQueue
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -57,6 +57,7 @@ if TYPE_CHECKING:
 
     from yaw.catalog.readers import DataFrame
     from yaw.datachunk import TypeDataChunk, TypePatchIDs
+    from yaw.utils.parallel import TypeComm
 
 __all__ = [
     "Catalog",
@@ -78,13 +79,13 @@ logger = logging.getLogger("yaw.catalog")  # instead of "yaw.catalog.catalog"
 
 def log_info(*args) -> None:
     """Emit an info-level log message on the root MPI worker."""
-    if parallel.on_root():
+    if parallel.on_root(COMM):
         logger.info(*args)
 
 
 def log_debug(*args) -> None:
     """Emit a debug-level log message on the root MPI worker."""
-    if parallel.on_root():
+    if parallel.on_root(COMM):
         logger.debug(*args)
 
 
@@ -181,7 +182,11 @@ def get_patch_centers(instance: AngularCoordinates | Catalog) -> AngularCoordina
 
 
 def create_patch_centers(
-    reader: DataChunkReader, patch_num: int, probe_size: int
+    reader: DataChunkReader,
+    patch_num: int,
+    probe_size: int,
+    *,
+    comm: TypeComm = COMM,
 ) -> AngularCoordinates:
     """
     Automatically create new patch centers from a data source.
@@ -198,6 +203,10 @@ def create_patch_centers(
         probe_size:
             The size of the subsample from which the patches are computed.
 
+    Keyword Args:
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
+
     Returns:
         A new set of angular coordinates of the patch centers.
     """
@@ -211,7 +220,7 @@ def create_patch_centers(
     data_probe = reader.get_probe(probe_size)
 
     patch_centers = None
-    if parallel.on_root():
+    if parallel.on_root(comm):
         cat = treecorr.Catalog(
             ra=DataChunk.getattr(data_probe, "ra"),
             ra_units="radians",
@@ -219,10 +228,10 @@ def create_patch_centers(
             dec_units="radians",
             w=DataChunk.getattr(data_probe, "weights", None),
             npatch=patch_num,
-            config=dict(num_threads=parallel.get_size()),
+            config=dict(num_threads=parallel.get_size(comm)),
         )
         patch_centers = AngularCoordinates.from_3d(cat.patch_centers)
-    return parallel.COMM.bcast(patch_centers, root=0)
+    return comm.bcast(patch_centers, root=0)
 
 
 def assign_patch_centers(patch_centers: NDArray, data: TypeDataChunk) -> TypePatchIDs:
@@ -336,6 +345,7 @@ def load_patches(
     patch_centers: AngularCoordinates | Catalog | None,
     progress: bool,
     max_workers: int | None = None,
+    comm: TypeComm = COMM,
 ) -> dict[int, Patch]:
     """
     Instantiate all patches stored in a catalog's cache directory.
@@ -357,11 +367,13 @@ def load_patches(
         max_workers:
             Limit the  number of parallel workers for this operation (all by
             default).
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
     """
     patch_ids = None
-    if parallel.on_root():
+    if parallel.on_root(comm):
         patch_ids = read_patch_ids(cache_directory)
-    patch_ids = parallel.COMM.bcast(patch_ids, root=0)
+    patch_ids = comm.bcast(patch_ids, root=0)
 
     # instantiate patches, which triggers computing the patch meta-data
     path_template = str(cache_directory / PATCH_NAME_TEMPLATE)
@@ -376,13 +388,13 @@ def load_patches(
         patch_arg_iter = zip(patch_paths)
 
     patch_iter = parallel.iter_unordered(
-        Patch, patch_arg_iter, unpack=True, max_workers=max_workers
+        comm, Patch, patch_arg_iter, unpack=True, max_workers=max_workers
     )
     if progress:
         patch_iter = Indicator(patch_iter, len(patch_ids))
 
     patches = {get_id_from_patch_path(patch.cache_path): patch for patch in patch_iter}
-    return parallel.COMM.bcast(patches, root=0)
+    return comm.bcast(patches, root=0)
 
 
 class CatalogWriter(AbstractContextManager, HandlesDataChunk):
@@ -583,7 +595,7 @@ def write_patches_unthreaded(
                 writer.process_patches(patches)
 
 
-if parallel.use_mpi():
+if parallel.use_mpi(COMM):
     """Implementation of parallel input data processing based on OpenMPI."""
 
     from mpi4py import MPI
@@ -591,28 +603,62 @@ if parallel.use_mpi():
     if TYPE_CHECKING:
         from mpi4py.MPI import Comm
 
-    class WorkerManager:
-        """Contains information required by the MPI workers to coordinate
-        parallel processing: rank that is responsible for reading, rank that is
-        responsible for writing and which ranks are responsible for processing
-        chunk data in parallel."""
+    class WorkerManager(AbstractContextManager):
+        """
+        Contains information required by the MPI workers to coordinate
+        parallel processing.
 
-        def __init__(self, max_workers: int | None, reader_rank: int = 0) -> None:
+        Stores rank that is responsible for reading, rank that is responsible
+        for writing and which ranks are responsible for processing chunk data in
+        parallel.
+
+        Must call finalize() after use to release resources or use in context
+        manager.
+        """
+
+        def __init__(
+            self,
+            max_workers: int | None,
+            reader_rank: int = 0,
+            *,
+            comm: TypeComm = COMM,
+        ) -> None:
+            self.comm = comm
+            self.rank = comm.Get_rank()
             self.reader_rank = reader_rank
 
-            max_workers = parallel.get_size(max_workers)
-            self.active_ranks = parallel.ranks_on_same_node(reader_rank, max_workers)
+            max_workers = parallel.get_size(comm, max_workers)
+            self.pipeline_ranks = parallel.ranks_on_same_node(
+                comm, reader_rank, max_workers
+            )
 
-            self.active_ranks.discard(reader_rank)
-            self.writer_rank = self.active_ranks.pop()
-            self.active_ranks.add(reader_rank)
+            self.pipeline_ranks.discard(reader_rank)
+            self.writer_rank = self.pipeline_ranks.pop()
+            self.pipeline_ranks.add(reader_rank)
 
-        def get_comm(self) -> Comm:
-            rank = parallel.COMM.Get_rank()
-            if rank in self.active_ranks:
-                return parallel.COMM.Split(1, rank)
+            if self.rank in self.pipeline_ranks:
+                self.pipeline_comm = self.comm.Split(1, self.rank)
             else:
-                return parallel.COMM.Split(MPI.UNDEFINED, rank)
+                self.pipeline_comm = self.comm.Split(MPI.UNDEFINED, self.rank)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *args, **kwargs) -> None:
+            self.finalize()
+
+        def on_writer(self) -> bool:
+            """Whether current rank is the writer."""
+            return self.rank == self.writer_rank
+
+        def on_pipeline(self) -> bool:
+            """Whether current rank is a pipeline worker."""
+            return self.rank in self.pipeline_ranks
+
+        def finalize(self):
+            """Free up the pipeline communicator."""
+            if self.on_pipeline():
+                self.pipeline_comm.Free()
 
     def scatter_data_chunk(comm: Comm, reader_rank: int, chunk: DataChunk) -> DataChunk:
         """Takes a chunk of catalog data, splits it into chunks and broadcasts
@@ -632,7 +678,6 @@ if parallel.use_mpi():
             return comm.recv(source=0, tag=2)
 
     def chunk_processing_task(
-        comm: Comm,
         worker_config: WorkerManager,
         patch_centers: AngularCoordinates | Catalog | None,
         chunk_iter: Iterator[DataChunk],
@@ -642,14 +687,14 @@ if parallel.use_mpi():
         if patch_centers is not None:
             patch_centers = patch_centers.to_3d()
 
-        reader_rank = parallel.world_to_comm_rank(comm, worker_config.reader_rank)
-
         for chunk in chunk_iter:
-            worker_chunk = scatter_data_chunk(comm, reader_rank, chunk)
+            worker_chunk = scatter_data_chunk(
+                worker_config.pipeline_comm, worker_config.reader_rank, chunk
+            )
             patches = split_into_patches(worker_chunk, patch_centers)
-            parallel.COMM.send(patches, dest=worker_config.writer_rank, tag=1)
+            worker_config.comm.send(patches, dest=worker_config.writer_rank, tag=1)
 
-        comm.Barrier()
+        worker_config.pipeline_comm.Barrier()
 
     def writer_task(
         cache_directory: Path | str,
@@ -657,18 +702,20 @@ if parallel.use_mpi():
         chunk_info: DataChunkInfo,
         overwrite: bool = True,
         buffersize: int = -1,
+        comm: TypeComm = COMM,
     ) -> None:
         """A dedicated writer process that recieves a dictionary with patch IDs
         and patch data to write using a :obj:`CatalogWriter`, terminated when
         receiving :obj:`EndOfQueue` sentinel."""
-        recv = parallel.COMM.recv
         with CatalogWriter(
             cache_directory,
             chunk_info=chunk_info,
             overwrite=overwrite,
             buffersize=buffersize,
         ) as writer:
-            while (patches := recv(source=MPI.ANY_SOURCE, tag=1)) is not EndOfQueue:
+            while (
+                patches := comm.recv(source=MPI.ANY_SOURCE, tag=1)
+            ) is not EndOfQueue:
                 writer.process_patches(patches)
 
     def write_patches(
@@ -680,6 +727,7 @@ if parallel.use_mpi():
         progress: bool,
         max_workers: int | None = None,
         buffersize: int = -1,
+        comm: TypeComm = COMM,
     ) -> None:
         """
         Read catalog from an input source and write the data to catalog cache
@@ -718,42 +766,40 @@ if parallel.use_mpi():
             buffersize:
                 Optional, maximum number of records to store in the internal
                 cache of each patch writer.
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
         """
-        max_workers = parallel.get_size(max_workers)
+        max_workers = parallel.get_size(comm, max_workers)
         if max_workers < 2:
             raise ValueError("catalog creation requires at least two workers")
         log_debug("running preprocessing on %d workers", max_workers)
 
-        rank = parallel.COMM.Get_rank()
-        worker_config = WorkerManager(max_workers, 0)
-        worker_comm = worker_config.get_comm()
-
-        if rank == worker_config.writer_rank:
-            writer_task(
-                cache_directory=path,
-                chunk_info=reader.copy_chunk_info(drop_patch_ids=True),
-                overwrite=overwrite,
-                buffersize=buffersize,
-            )
-
-        elif rank in worker_config.active_ranks:
-            if patch_centers is not None:
-                patch_centers = get_patch_centers(patch_centers)
-
-            with reader:
-                chunk_iter = Indicator(reader) if progress else iter(reader)
-                chunk_processing_task(
-                    worker_comm,
-                    worker_config,
-                    patch_centers,
-                    chunk_iter,
+        with WorkerManager(max_workers, 0, comm=comm) as worker_config:
+            if worker_config.on_writer():
+                writer_task(
+                    cache_directory=path,
+                    chunk_info=reader.copy_chunk_info(drop_patch_ids=True),
+                    overwrite=overwrite,
+                    buffersize=buffersize,
+                    comm=comm,
                 )
 
-            worker_comm.Free()
+            elif worker_config.on_pipeline():
+                if patch_centers is not None:
+                    patch_centers = get_patch_centers(patch_centers)
 
-        if parallel.COMM.Get_rank() == worker_config.reader_rank:
-            parallel.COMM.send(EndOfQueue, dest=worker_config.writer_rank, tag=1)
-        parallel.COMM.Barrier()
+                with reader:
+                    chunk_iter = Indicator(reader) if progress else iter(reader)
+                    chunk_processing_task(
+                        worker_config,
+                        patch_centers,
+                        chunk_iter,
+                    )
+
+        if comm.Get_rank() == worker_config.reader_rank:
+            comm.send(EndOfQueue, dest=worker_config.writer_rank, tag=1)
+        comm.Barrier()
 
 else:
     """Implementation of parallel input data processing based on python's
@@ -832,15 +878,16 @@ else:
         progress: bool,
         max_workers: int | None = None,
         buffersize: int = -1,
+        comm: TypeComm = COMM,
     ) -> None:
         """
         Read catalog from an input source and write the data to catalog cache
         directory.
 
         Creates patch centers automatically from data source if none are
-        provided. This is an implementation with MPI parallelsim. There is a
-        dedicated process that handles writing data to the catalog cache
-        directory.
+        provided. This is an implementation with multiprocessing parallelsim.
+        There is a dedicated process that handles writing data to the catalog
+        cache directory.
 
         Args:
             path:
@@ -865,8 +912,11 @@ else:
             buffersize:
                 Optional, maximum number of records to store in the internal
                 cache of each patch writer.
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
         """
-        max_workers = parallel.get_size(max_workers)
+        max_workers = parallel.get_size(COMM, max_workers)
 
         if max_workers == 1:
             log_debug("running preprocessing sequentially")
@@ -952,6 +1002,9 @@ class Catalog(Mapping[int, Patch]):
         max_workers:
             Limit the  number of parallel workers for this operation (all by
             default).
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to
+            use.
     """
 
     __slots__ = ("cache_directory", "_patches")
@@ -959,7 +1012,11 @@ class Catalog(Mapping[int, Patch]):
     _patches: dict[int, Patch]
 
     def __init__(
-        self, cache_directory: Path | str, *, max_workers: int | None = None
+        self,
+        cache_directory: Path | str,
+        *,
+        max_workers: int | None = None,
+        comm: TypeComm = COMM,
     ) -> None:
         log_info("restoring from cache directory: %s", cache_directory)
 
@@ -972,6 +1029,7 @@ class Catalog(Mapping[int, Patch]):
             patch_centers=None,
             progress=False,
             max_workers=max_workers,
+            comm=comm,
         )
 
     @classmethod
@@ -993,6 +1051,7 @@ class Catalog(Mapping[int, Patch]):
         max_workers: int | None = None,
         chunksize: int | None = None,
         probe_size: int = -1,
+        comm: TypeComm = COMM,
         **reader_kwargs,
     ) -> Catalog:
         """
@@ -1052,6 +1111,9 @@ class Catalog(Mapping[int, Patch]):
             probe_size:
                 The approximate number of records to read when generating
                 patch centers (``patch_num``).
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
 
         Returns:
             A new catalog instance.
@@ -1070,11 +1132,14 @@ class Catalog(Mapping[int, Patch]):
             patch_name=patch_name,
             chunksize=chunksize,
             degrees=degrees,
+            comm=comm,
             **reader_kwargs,
         )
         mode = PatchMode.determine(patch_centers, patch_name, patch_num)
         if mode == PatchMode.create:
-            patch_centers = create_patch_centers(reader, patch_num, probe_size)
+            patch_centers = create_patch_centers(
+                reader, patch_num, probe_size, comm=comm
+            )
 
         # split the data into patches and create the cached Patch instances.
         write_patches(
@@ -1085,6 +1150,7 @@ class Catalog(Mapping[int, Patch]):
             progress=progress,
             max_workers=max_workers,
             buffersize=-1,
+            comm=comm,
         )
 
         log_info("computing patch metadata")
@@ -1095,6 +1161,7 @@ class Catalog(Mapping[int, Patch]):
             patch_centers=patch_centers,
             progress=progress,
             max_workers=max_workers,
+            comm=comm,
         )
         return new
 
@@ -1117,6 +1184,7 @@ class Catalog(Mapping[int, Patch]):
         max_workers: int | None = None,
         chunksize: int | None = None,
         probe_size: int = -1,
+        comm: TypeComm = COMM,
         **reader_kwargs,
     ) -> Catalog:
         """
@@ -1176,6 +1244,9 @@ class Catalog(Mapping[int, Patch]):
             probe_size:
                 The approximate number of records to read when generating
                 patch centers (``patch_num``).
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
 
         Returns:
             A new catalog instance.
@@ -1197,11 +1268,14 @@ class Catalog(Mapping[int, Patch]):
             patch_name=patch_name,
             chunksize=chunksize,
             degrees=degrees,
+            comm=comm,
             **reader_kwargs,
         )
         mode = PatchMode.determine(patch_centers, patch_name, patch_num)
         if mode == PatchMode.create:
-            patch_centers = create_patch_centers(reader, patch_num, probe_size)
+            patch_centers = create_patch_centers(
+                reader, patch_num, probe_size, comm=comm
+            )
 
         # split the data into patches and create the cached Patch instances.
         write_patches(
@@ -1212,6 +1286,7 @@ class Catalog(Mapping[int, Patch]):
             progress=progress,
             max_workers=max_workers,
             buffersize=-1,
+            comm=comm,
         )
 
         log_info("computing patch metadata")
@@ -1222,6 +1297,7 @@ class Catalog(Mapping[int, Patch]):
             patch_centers=patch_centers,
             progress=progress,
             max_workers=max_workers,
+            comm=comm,
         )
         return new
 
@@ -1239,6 +1315,7 @@ class Catalog(Mapping[int, Patch]):
         max_workers: int | None = None,
         chunksize: int | None = None,
         probe_size: int = -1,
+        comm: TypeComm = COMM,
     ) -> Catalog:
         """
         Create a new catalog instance from a data file.
@@ -1288,6 +1365,9 @@ class Catalog(Mapping[int, Patch]):
             probe_size:
                 The number of initial random samples to draw read when
                 generating patch centers (``patch_num``).
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
 
         Returns:
             A new catalog instance.
@@ -1297,11 +1377,13 @@ class Catalog(Mapping[int, Patch]):
                 If the cache directory exists or is not a valid catalog when
                 providing ``overwrite=True``.
         """
-        rand_iter = RandomReader(generator, num_randoms, chunksize)
+        rand_iter = RandomReader(generator, num_randoms, chunksize, comm=comm)
 
         mode = PatchMode.determine(patch_centers, None, patch_num)
         if mode == PatchMode.create:
-            patch_centers = create_patch_centers(rand_iter, patch_num, probe_size)
+            patch_centers = create_patch_centers(
+                rand_iter, patch_num, probe_size, comm=comm
+            )
 
         # split the data into patches and create the cached Patch instances.
         write_patches(
@@ -1312,6 +1394,7 @@ class Catalog(Mapping[int, Patch]):
             progress=progress,
             max_workers=max_workers,
             buffersize=-1,
+            comm=comm,
         )
 
         log_info("computing patch metadata")
@@ -1322,6 +1405,7 @@ class Catalog(Mapping[int, Patch]):
             patch_centers=patch_centers,
             progress=progress,
             max_workers=max_workers,
+            comm=comm,
         )
         return new
 
@@ -1395,6 +1479,7 @@ class Catalog(Mapping[int, Patch]):
         force: bool = False,
         progress: bool = False,
         max_workers: int | None = None,
+        comm: TypeComm = COMM,
     ) -> None:
         """
         Build binary search trees on for each patch.
@@ -1420,6 +1505,9 @@ class Catalog(Mapping[int, Patch]):
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
                 default). Takes precedence over the value in the configuration.
+            comm:
+                MPI communicator (or mock communitaor for multiprocessing) to
+                use.
         """
         if binning is not None:
             binning = Binning(binning, closed=closed)
@@ -1430,6 +1518,7 @@ class Catalog(Mapping[int, Patch]):
         )
 
         patch_tree_iter = parallel.iter_unordered(
+            comm,
             BinnedTrees.build,
             self.values(),
             func_args=(binning,),

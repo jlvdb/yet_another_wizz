@@ -24,6 +24,7 @@ from yaw.correlation.paircounts import (
 )
 from yaw.utils import parallel
 from yaw.utils.logging import Indicator
+from yaw.utils.parallel import COMM
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 
     from yaw.catalog import Catalog, Patch
     from yaw.config import Configuration
+    from yaw.utils.parallel import TypeComm
 
 __all__ = [
     "autocorrelate",
@@ -43,13 +45,13 @@ logger = logging.getLogger(__name__)
 
 def log_info(*args) -> None:
     """Emit an info-level log message on the root MPI worker."""
-    if parallel.on_root():
+    if parallel.on_root(COMM):
         logger.info(*args)
 
 
 def log_debug(*args) -> None:
     """Emit a debug-level log message on the root MPI worker."""
-    if parallel.on_root():
+    if parallel.on_root(COMM):
         logger.debug(*args)
 
 
@@ -298,6 +300,7 @@ class PatchLinkage:
         *optional_catalog: Catalog,
         progress: bool = False,
         max_workers: int | None = None,
+        comm: TypeComm = COMM,
     ) -> list[NormalisedCounts]:
         """
         Compute pair counts between the patches of two catalogs.
@@ -326,6 +329,7 @@ class PatchLinkage:
         ]
 
         count_iter = parallel.iter_unordered(
+            comm,
             process_patch_pair,
             patch_pairs,
             func_args=(self.config,),
@@ -355,6 +359,7 @@ class PatchLinkage:
         *optional_catalog: Catalog | None,
         progress: bool = False,
         max_workers: int | None = None,
+        comm: TypeComm = COMM,
     ) -> list[NormalisedCounts | None]:
         """
         A version of ``count_pairs()`` which returns ``list[None]`` instead of
@@ -368,6 +373,7 @@ class PatchLinkage:
                 *optional_catalog,
                 progress=progress,
                 max_workers=max_workers,
+                comm=comm,
             )
 
 
@@ -379,6 +385,7 @@ def autocorrelate(
     count_rr: bool = True,
     progress: bool = False,
     max_workers: int | None = None,
+    comm: TypeComm = COMM,
 ) -> list[CorrFunc]:
     """
     Measure the angular autocorrelation amplitude of an object catalog.
@@ -407,6 +414,8 @@ def autocorrelate(
         max_workers:
             Limit the  number of parallel workers for this operation (all by
             default). Takes precedence over the value in the configuration.
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
 
     Returns:
         List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
@@ -418,7 +427,9 @@ def autocorrelate(
         InconsistentPatchesError:
             If the patches of the data or random catalog do not overlap.
     """
-    kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
+    kwargs = dict(
+        progress=progress, max_workers=(max_workers or config.max_workers), comm=comm
+    )
     edges = config.binning.edges
     closed = config.binning.closed
 
@@ -454,6 +465,7 @@ def crosscorrelate(
     unk_rand: Catalog | None = None,
     progress: bool = False,
     max_workers: int | None = None,
+    comm: TypeComm = COMM,
 ) -> list[CorrFunc]:
     """
     Measure the angular cross-correlation amplitude between two object catalogs.
@@ -490,6 +502,8 @@ def crosscorrelate(
         max_workers:
             Limit the  number of parallel workers for this operation (all by
             default). Takes precedence over the value in the configuration.
+        comm:
+            MPI communicator (or mock communitaor for multiprocessing) to use.
 
     Returns:
         List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
@@ -506,7 +520,9 @@ def crosscorrelate(
     if not count_dr and not count_rd:
         raise ValueError("at least one random dataset must be provided")
 
-    kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
+    kwargs = dict(
+        progress=progress, max_workers=(max_workers or config.max_workers), comm=comm
+    )
     edges = config.binning.edges
     closed = config.binning.closed
     randoms = []
