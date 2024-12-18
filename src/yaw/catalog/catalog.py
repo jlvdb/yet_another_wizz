@@ -1031,7 +1031,8 @@ class Catalog(Mapping[int, Patch]):
                 input file to read a sparse sampling of the object coordinates.
                 Ignored if ``patch_centers`` or ``patch_name`` is given.
             kappa_name:
-                Optional column name in the data frame for kappa (or other scalar field).
+                Optional column name in the data frame for kappa (or other
+                scalar field).
             degrees:
                 Whether the input coordinates are given in degreees (default).
             overwrite:
@@ -1160,7 +1161,8 @@ class Catalog(Mapping[int, Patch]):
                 input file to read a sparse sampling of the object coordinates.
                 Ignored if ``patch_centers`` or ``patch_name`` is given.
             kappa_name:
-                Optional column or path name in the file for kappa (or other scalar field).
+                Optional column or path name in the file for kappa (or other
+                scalar field).
             degrees:
                 Whether the input coordinates are given in degreees (default).
             overwrite:

@@ -14,6 +14,7 @@ __all__ = [
     "BinMethod",
     "BinMethodAuto",
     "Closed",
+    "CountMode",
     "CovKind",
     "NotSet",
     "PlotStyle",
@@ -51,6 +52,30 @@ class Closed(StrEnum):
 
     right = auto()
     left = auto()
+
+
+class CountMode(StrEnum):
+    """
+    Possible values for parameter ``mode``.
+
+    Attributes:
+        nn:
+            Weighted pair counts (default).
+        nk:
+            Weighted pair counts (left) and weighted kappa/scalar (right) counts.
+        kn:
+            Weighted kappa/scalar (left) and weighted pair counts (right) counts.
+        kk:
+            Weighted kappa/scalar counts.
+
+    .. Note::
+        Methods omitted here, all string methods should be inherited.
+    """
+
+    nn = auto()
+    nk = auto()
+    kn = auto()
+    kk = auto()
 
 
 class BinMethodAuto(StrEnum):
