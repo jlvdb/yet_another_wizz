@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from yaw._version import __version__
 from yaw.cli.config import ProjectConfig
@@ -11,9 +10,6 @@ from yaw.cli.pipeline import run_setup
 from yaw.cli.tasks import TaskList
 from yaw.config.base import TextIndenter
 from yaw.utils import parallel, transform_matches
-
-if TYPE_CHECKING:
-    from argparse import ArgumentParser
 
 
 class DumpConfigAction(argparse.Action):
@@ -64,7 +60,7 @@ class NameSpace:
     progress: bool = field(default=False, kw_only=True)
 
     @classmethod
-    def parse_args(cls) -> ArgumentParser:
+    def parse_args(cls) -> NameSpace:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description=(

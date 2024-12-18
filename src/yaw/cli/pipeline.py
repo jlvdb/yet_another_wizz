@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import random
 import string
+import warnings
 from pathlib import Path
 from shutil import rmtree
 
@@ -152,9 +153,19 @@ class Pipeline:
         cache_path.mkdir(exist_ok=True)
 
     def _update_max_workers(self, max_workers: int | None) -> None:
-        self.config.correlation = self.config.correlation.modify(
-            max_workers=max_workers
-        )
+        if parallel.use_mpi() and (
+            max_workers is not None or self.config.correlation.max_workers is not None
+        ):
+            if parallel.on_root():
+                msg = "ignoring 'correlation.max_workers' and --workers in MPI environment"
+                warnings.warn(msg)
+            self.config.correlation = self.config.correlation.modify(max_workers=None)
+
+        elif max_workers is not None:
+            logger.debug(f"setting number of workers to {max_workers}")
+            self.config.correlation = self.config.correlation.modify(
+                max_workers=max_workers
+            )
 
     @parallel.broadcasted
     def _check_config(self) -> None:
