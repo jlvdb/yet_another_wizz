@@ -584,7 +584,6 @@ def compute_scalar_normalisation(
 def autocorrelate_scalar(
     config: Configuration,
     data: Catalog,
-    random: Catalog | None = None,
     *,
     progress: bool = False,
     max_workers: int | None = None,
@@ -603,8 +602,6 @@ def autocorrelate_scalar(
             correlation scales.
         data:
             :obj:`~yaw.Catalog` holding the data sample.
-        random:
-            :obj:`~yaw.Catalog` holding the random sample (optional).
 
     Keyword Args:
         progress:
@@ -625,8 +622,6 @@ def autocorrelate_scalar(
     closed = config.binning.closed
 
     data.build_trees(edges, closed=closed, **kwargs)
-    if random is not None:
-        raise NotImplementedError("data-random pair counts not yet implemented")
 
     if parallel.on_root():
         logger.info("computing auto-correlation with DD")
@@ -642,8 +637,7 @@ def autocorrelate_scalar(
         counts=links.count_pairs(data, mode="kk", **kwargs),
         sum_weights=links.count_pairs(data, mode="nn", **kwargs),
     )
-    DR = [None for _ in DD]  # to be implemented
-    return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]
+    return [ScalarCorrFunc(dd) for dd in DD]
 
 
 def crosscorrelate_scalar(

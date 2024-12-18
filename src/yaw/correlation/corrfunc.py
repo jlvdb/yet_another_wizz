@@ -354,18 +354,15 @@ class ScalarCorrFunc(CorrFunc):
     def __init__(
         self,
         dd: NormalisedCounts,
-        dr: NormalisedCounts | None,
+        dr: NormalisedCounts | None = None,
     ) -> None:
-        if dr is None:
-            from warnings import warn
-
-            warn("no data-random counts provided, results may be inaccurate")
-        else:
+        if dr is not None:
             try:
                 dd.is_compatible(dr, require=True)
             except ValueError as err:
                 msg = "pair counts 'dr' and 'dd' are not compatible"
                 raise ValueError(msg) from err
+
         self.dd = dd
         self.dr = dr
 
