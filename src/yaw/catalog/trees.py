@@ -194,8 +194,8 @@ class AngularTree:
             The sum of weights stored in the tree, defaults to number of points
             if no weights are provided.
         sum_kappa:
-            The sum of kappa (or other scalar value) stored in the tree,
-            defaults to `None`.
+            The weighted sum of kappa (or other scalar value) stored in the
+            tree, defaults to `None`.
         tree:
             The underlying :obj:`scipy.spatial.KDTree`, may be ``None`` if the
             tree does not contain any data.
@@ -237,7 +237,7 @@ class AngularTree:
             self.sum_kappa = None
         else:
             self.kappa = np.asarray(kappa).astype(np.float64, copy=False)
-            self.sum_kappa = float(self.kappa.sum())
+            self.sum_kappa = float(np.sum(self.kappa * self.weights))
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
