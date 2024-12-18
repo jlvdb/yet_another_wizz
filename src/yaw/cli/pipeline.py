@@ -119,7 +119,7 @@ class Pipeline:
                 directory = ProjectDirectory.create(
                     project_path, bin_indices, overwrite=overwrite
                 )
-        directory = parallel.COMM.bcast(directory, root=0)
+        directory = parallel.bcast_auto(directory, root=0)
 
         init_file_logging(directory.log_path)
         if parallel.on_root():
@@ -171,7 +171,7 @@ class Pipeline:
 
         while self.tasks:
             task = self.tasks.pop()
-            task = parallel.COMM.bcast(task, root=0)  # order may differ on workers
+            task = parallel.bcast_auto(task, root=0)  # order may differ on workers
             if parallel.on_root():
                 logger.client(f"running '{task.name}'")
 

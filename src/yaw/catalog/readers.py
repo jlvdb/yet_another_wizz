@@ -510,7 +510,7 @@ class FitsReader(FileReader):
             self._hdu_data = self._file[hdu].data
             self._num_records = len(self._hdu_data)
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = parallel.bcast_auto(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"FITS file: {path}")
 
@@ -585,7 +585,7 @@ class HDFReader(FileReader):
             self._file = h5py.File(str(path), mode="r")
             self._num_records = len(self._file[ra_name])
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = parallel.bcast_auto(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {path}")
 
@@ -661,7 +661,7 @@ class ParquetReader(FileReader):
             self._file = parquet.ParquetFile(str(path))
             self._num_records = self._file.metadata.num_rows
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = parallel.bcast_auto(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"Parquet file: {path}")
 

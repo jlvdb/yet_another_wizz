@@ -222,7 +222,7 @@ def create_patch_centers(
             config=dict(num_threads=parallel.get_size()),
         )
         patch_centers = AngularCoordinates.from_3d(cat.patch_centers)
-    return parallel.COMM.bcast(patch_centers, root=0)
+    return parallel.bcast_auto(patch_centers, root=0)
 
 
 def assign_patch_centers(patch_centers: NDArray, data: TypeDataChunk) -> TypePatchIDs:
@@ -361,7 +361,7 @@ def load_patches(
     patch_ids = None
     if parallel.on_root():
         patch_ids = read_patch_ids(cache_directory)
-    patch_ids = parallel.COMM.bcast(patch_ids, root=0)
+    patch_ids = parallel.bcast_auto(patch_ids, root=0)
 
     # instantiate patches, which triggers computing the patch meta-data
     path_template = str(cache_directory / PATCH_NAME_TEMPLATE)
@@ -382,7 +382,7 @@ def load_patches(
         patch_iter = Indicator(patch_iter, len(patch_ids))
 
     patches = {get_id_from_patch_path(patch.cache_path): patch for patch in patch_iter}
-    return parallel.COMM.bcast(patches, root=0)
+    return parallel.bcast_auto(patches, root=0)
 
 
 class CatalogWriter(AbstractContextManager, HandlesDataChunk):

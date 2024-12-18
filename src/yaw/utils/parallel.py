@@ -103,28 +103,34 @@ class MockComm:
     not installed."""
 
     def Barrier(self) -> None:
-        """Mock-implementation of a synchronisation barrier, does nothing
-        here."""
+        """Mock-implementation of a synchronisation barrier."""
         pass
 
-    def Bcast(self, value: T, *args, **kwargs) -> T:
-        """Mock-implementation of broadcasting array buffers, returns value
-        here."""
-        return value
+    def barrier(self) -> None:
+        """Mock-implementation of a synchronisation barrier."""
+        pass
 
-    def bcast(self, value: T, *args, **kwargs) -> T:
-        """Mock-implementation of broadcasting python objects, returns value
-        here."""
+    def Bcast(self, value: T, root: int = 0) -> None:
+        """Broadcast into array buffer, does nothing."""
+        pass
+
+    def bcast(self, value: T, root: int = 0) -> T:
+        """Broadcasts python object, returns first function argument."""
         return value
 
     def Get_size(self) -> int:
-        """Mock-implementation of getting number of parallel workers, here the
-        number of processes."""
+        """Get the number of parallel workers, i.e. number of processes."""
         return _num_processes()
 
-    def Get_rank(self) -> int:
-        """Mock-implementation of getting the worker rank, always 0 here."""
+    def Get_rank(self) -> Literal[0]:
+        """Current worker rank, always 0."""
         return 0
+
+
+def set_comm(comm: Comm | MockComm) -> None:
+    """Update the communicator that `yet_another_wizz` uses"""
+    global COMM
+    COMM = comm
 
 
 if use_mpi():
@@ -135,29 +141,26 @@ else:
     """The default communicator that `yet_another_wizz` uses (mock-up comm)."""
 
 
-def get_size(max_workers: int | None = None, comm: Comm = COMM) -> int:
+def get_size(max_workers: int | None = None, *, comm: Comm = COMM) -> int:
     """Get the smaller value of ``max_workers`` or the size of the
     communicator."""
-    if use_mpi():
-        size = comm.Get_size()
-    else:
-        size = _num_processes()
+    size = comm.Get_size()
     max_workers = max_workers or size
     return min(max_workers, size)
 
 
-def on_root(comm: Comm = COMM) -> bool:
+def on_root(*, comm: Comm = COMM) -> bool:
     """Whether currently on the root worker with rank 0."""
     return comm.Get_rank() == 0
 
 
-def on_worker(comm: Comm = COMM) -> bool:
+def on_worker(*, comm: Comm = COMM) -> bool:
     """Whether currently on a non-root worker."""
-    return comm.Get_rank() != 0
+    return not on_root(comm=comm)
 
 
 def ranks_on_same_node(
-    rank: int = 0, max_workers: int | None = None, comm: Comm = COMM
+    rank: int = 0, max_workers: int | None = None, *, comm: Comm = COMM
 ) -> set[int]:
     """Get the set of MPI ranks that are associated with the same CPU as the
     root rank."""
@@ -195,7 +198,7 @@ def broadcasted(func):
         result = None
         if on_root():
             result = func(*args, **kwargs)
-        return COMM.bcast(result, root=0)
+        return bcast_auto(result, root=0)
 
     return wrapper
 
@@ -235,7 +238,7 @@ class ParallelJob:
 
 
 def _mpi_root_task(
-    iterable: Iterable, ranks: Iterable[int], comm: Comm = COMM
+    iterable: Iterable, ranks: Iterable[int], *, comm: Comm = COMM
 ) -> Iterator:
     """On the root rank, send the job arguments to the remaining ranks and
     collect the results in an iterator."""
@@ -262,7 +265,7 @@ def _mpi_root_task(
             active_workers -= 1
 
 
-def _mpi_worker_task(func: ParallelJob, comm: Comm = COMM) -> None:
+def _mpi_worker_task(func: ParallelJob, *, comm: Comm = COMM) -> None:
     """On the worker rank, receive function arguments and return the function
     call results to the root rank."""
     rank = comm.Get_rank()
@@ -413,24 +416,24 @@ def new_uninitialised(cls: type[TypeBroadcastable]) -> TypeBroadcastable:
     return inst
 
 
-def bcast_array(array: NDArray, comm: Comm = COMM) -> NDArray:
+def bcast_array(array: NDArray, root: int = 0, *, comm: Comm = COMM) -> NDArray:
     """Broadcast a numpy array to all non-root ranks. Input array may have any
     value on non-root ranks."""
     array_info = ()
-    if on_root():
+    if comm.Get_rank() == root:
         array = np.ascontiguousarray(array)
         array_info = (array.shape, array.dtype)
-    array_info = comm.bcast(array_info, root=0)
+    array_info = comm.bcast(array_info, root=root)
 
-    if on_worker():
+    if comm.Get_rank() != root:
         shape, dtype = array_info
         array = np.empty(shape, dtype=dtype)
-    comm.Bcast(array, root=0)
+    comm.Bcast(array, root=root)
 
     return array
 
 
-def get_bcast_method(inst: T, comm: Comm = COMM) -> Callable[[T], T]:
+def get_bcast_method(inst: T, root: int = 0, *, comm: Comm = COMM) -> Callable[[T], T]:
     """Determine if the object must be broadcastes by recursion, using MPI
     broadcasting mechanisms, or using pickling."""
     if isinstance(inst, Broadcastable):
@@ -440,22 +443,31 @@ def get_bcast_method(inst: T, comm: Comm = COMM) -> Callable[[T], T]:
     else:
         bcast_method = comm.bcast
 
-    return comm.bcast(bcast_method, root=0)
+    return comm.bcast(bcast_method, root=root)
 
 
-def bcast_instance(inst: TypeBroadcastable, *, comm: Comm = COMM) -> TypeBroadcastable:
+def bcast_instance(
+    inst: TypeBroadcastable, root: int = 0, *, comm: Comm = COMM
+) -> TypeBroadcastable:
     """Broadcast an instance of a subclass of ``Broadcastable`` to all non-root
     ranks. Instance may have any value on non-root ranks."""
     if not use_mpi():
         return inst
 
-    cls = comm.bcast(type(inst), root=0)
-    if on_worker():
+    cls = comm.bcast(type(inst), root=root)
+    if comm.Get_rank() != root:
         inst = new_uninitialised(cls)
 
     for name in inst.__slots__:
         value = getattr(inst, name)
-        bcast = get_bcast_method(value, comm=comm)
-        setattr(inst, name, bcast(value))
+        bcast = get_bcast_method(value, root=root, comm=comm)
+        setattr(inst, name, bcast(value, root=root))
 
     return inst
+
+
+def bcast_auto(obj: T, root: int = 0, *, comm: Comm = COMM) -> T:
+    """Broadcast an object with the most appropriate mechanism, instance may
+    have any value on non-root ranks."""
+    bcast = get_bcast_method(obj, root=root, comm=comm)
+    return bcast(obj, root=root)

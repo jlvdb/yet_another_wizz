@@ -11,7 +11,7 @@ def dummy_task(*args, **kwargs):
 
 class TestMockComm:
     def test_Bcast(self):
-        assert parallel.COMM.Bcast(Dummy) is Dummy
+        assert parallel.COMM.Bcast(Dummy) is None
 
     def test_bcast(self):
         assert parallel.COMM.bcast(Dummy) is Dummy

@@ -139,7 +139,7 @@ class HistData(CorrData):
         counts = np.empty((len(catalog), config.num_bins))
         for i, patch_count in enumerate(patch_count_iter):
             counts[i] = patch_count
-        parallel.COMM.Bcast(counts, root=0)
+        parallel.bcast_auto(counts, root=0)
 
         return cls(
             config.binning.copy(),
