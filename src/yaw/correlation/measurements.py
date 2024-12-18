@@ -406,7 +406,7 @@ def autocorrelate(
             Show a progress on the terminal (disabled by default).
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default). Takes precedence over the value in the configuration.
+            default, only multiprocessing).
 
     Returns:
         List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
@@ -418,7 +418,8 @@ def autocorrelate(
         InconsistentPatchesError:
             If the patches of the data or random catalog do not overlap.
     """
-    kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
+    max_workers = parallel.ignore_max_workers_mpi(max_workers or config.max_workers)
+    kwargs = dict(progress=progress, max_workers=max_workers)
     edges = config.binning.edges
     closed = config.binning.closed
 
@@ -489,7 +490,7 @@ def crosscorrelate(
             Show a progress on the terminal (disabled by default).
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default). Takes precedence over the value in the configuration.
+            default, only multiprocessing).
 
     Returns:
         List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
@@ -501,12 +502,13 @@ def crosscorrelate(
         InconsistentPatchesError:
             If the patches of the data or random catalogs do not overlap.
     """
+    max_workers = parallel.ignore_max_workers_mpi(max_workers or config.max_workers)
     count_dr = unk_rand is not None
     count_rd = ref_rand is not None
     if not count_dr and not count_rd:
         raise ValueError("at least one random dataset must be provided")
 
-    kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
+    kwargs = dict(progress=progress, max_workers=max_workers)
     edges = config.binning.edges
     closed = config.binning.closed
     randoms = []

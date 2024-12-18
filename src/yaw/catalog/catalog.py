@@ -356,7 +356,7 @@ def load_patches(
             Show a progress on the terminal (disabled by default).
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default).
+            default, only multiprocessing).
     """
     patch_ids = None
     if parallel.on_root():
@@ -714,7 +714,7 @@ if parallel.use_mpi():
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             buffersize:
                 Optional, maximum number of records to store in the internal
                 cache of each patch writer.
@@ -861,7 +861,7 @@ else:
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             buffersize:
                 Optional, maximum number of records to store in the internal
                 cache of each patch writer.
@@ -951,7 +951,7 @@ class Catalog(Mapping[int, Patch]):
     Keyword Args:
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default).
+            default, only multiprocessing).
     """
 
     __slots__ = ("cache_directory", "_patches")
@@ -962,6 +962,7 @@ class Catalog(Mapping[int, Patch]):
         self, cache_directory: Path | str, *, max_workers: int | None = None
     ) -> None:
         log_info("restoring from cache directory: %s", cache_directory)
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
 
         self.cache_directory = Path(cache_directory)
         if not self.cache_directory.exists():
@@ -1045,7 +1046,7 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             chunksize:
                 The maximum number of records to load into memory at once when
                 processing the input file in chunks.
@@ -1061,6 +1062,8 @@ class Catalog(Mapping[int, Patch]):
                 If the cache directory exists or is not a valid catalog when
                 providing ``overwrite=True``.
         """
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
+
         reader = DataFrameReader(
             dataframe,
             ra_name=ra_name,
@@ -1169,7 +1172,7 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             chunksize:
                 The maximum number of records to load into memory at once when
                 processing the input file in chunks.
@@ -1188,6 +1191,8 @@ class Catalog(Mapping[int, Patch]):
         Additional reader keyword arguments are passed on to the file reader
         class constuctor.
         """
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
+
         reader = new_filereader(
             path,
             ra_name=ra_name,
@@ -1282,7 +1287,7 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             chunksize:
                 The maximum number of records to generate and write at once.
             probe_size:
@@ -1298,6 +1303,7 @@ class Catalog(Mapping[int, Patch]):
                 providing ``overwrite=True``.
         """
         rand_iter = RandomReader(generator, num_randoms, chunksize)
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
 
         mode = PatchMode.determine(patch_centers, None, patch_num)
         if mode == PatchMode.create:
@@ -1419,8 +1425,9 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default). Takes precedence over the value in the configuration.
+                default, only multiprocessing).
         """
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
         if binning is not None:
             binning = Binning(binning, closed=closed)
 

@@ -633,7 +633,7 @@ class Configuration(YawConfig):
         ),
         Parameter(
             name="max_workers",
-            help="Limit the number of workers for parallel operations.",
+            help="Limit the number of workers for parallel operations (only multiprocessing).",
             type=int,
             default=None,
         ),
@@ -741,7 +741,7 @@ class Configuration(YawConfig):
                 Optional cosmological model to use for distance computations.
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
 
         Returns:
             New configuration instance.
@@ -832,8 +832,8 @@ class Configuration(YawConfig):
             cosmology:
                 Optional cosmological model to use for distance computations.
             max_workers:
-                Limit the  number of parallel workers for this operation (all by
-                default).
+                Limit the number of parallel workers for this operation (all by
+                default, only multiprocessing).
 
         Returns:
             New instance with updated parameter values.

@@ -16,6 +16,7 @@ import multiprocessing
 import os
 import subprocess
 import sys
+import warnings
 from abc import ABC
 from functools import partial, wraps
 from typing import TYPE_CHECKING
@@ -207,6 +208,16 @@ class EndOfQueue:
     pass
 
 
+def ignore_max_workers_mpi(max_workers: int | None) -> int | None:
+    """Discard max_worker values and reset it to None when running under MPI,
+    issue an appropriate warning when doing so."""
+    if use_mpi() and max_workers is not None:
+        if on_root():
+            warnings.warn("ignoring 'max_workers' in MPI environment")
+        return None
+    return max_workers
+
+
 class ParallelJob:
     """
     Wrapper for a function that binds arguments and keyword arguments, similar
@@ -353,7 +364,7 @@ def iter_unordered(
     unpacked. Additionally limit the number of workers to use (also applies to
     MPI) or run only on the same node as the root worker (MPI only).
     """
-    max_workers = get_size(max_workers)
+    max_workers = get_size(ignore_max_workers_mpi(max_workers), comm=comm)
     iter_kwargs = dict(
         func_args=(func_args or tuple()),
         func_kwargs=(func_kwargs or dict()),

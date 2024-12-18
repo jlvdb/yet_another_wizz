@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import warnings
 from collections.abc import Iterable
-from logging import Filter, Formatter
+from logging import Formatter
 from math import nan
 from timeit import default_timer
 from typing import TYPE_CHECKING, TypeVar
@@ -184,16 +185,6 @@ class CustomFormatter(Formatter):
         return formatter.format(record)
 
 
-class OnlyYAWFilter(Filter):
-    """Filter all log message that are not emmited by any of the internal
-    ``yaw`` loggers."""
-
-    def filter(self, record):
-        record.exc_info = None
-        record.exc_text = None
-        return record.name.startswith("yaw")
-
-
 def get_log_formatter() -> Formatter:
     """Create a plain logging formatter with time stamps."""
     return Formatter("%(asctime)s - %(levelname)s - %(name)s > %(message)s")
@@ -209,7 +200,6 @@ def configure_handler(handler: Handler, *, pretty: bool, level: int) -> None:
     """Setup a log handler for the use with yet_another_wizz."""
     handler.setFormatter(get_pretty_formatter() if pretty else get_log_formatter())
     handler.setLevel(level)
-    handler.addFilter(OnlyYAWFilter())
 
 
 def emit_parallel_mode_log(logger: Logger) -> None:
@@ -295,10 +285,13 @@ def get_logger(
         configure_handler(handler, pretty=False, level=level_code)
         handlers.append(handler)
 
-    logging.basicConfig(level=logging.DEBUG, handlers=handlers)
-    logging.captureWarnings(capture_warnings)
-    logger = logging.getLogger(LOGGER_NAME)
     sys.excepthook = log_uncaught_exceptions
+    logging.captureWarnings(capture_warnings)
+    if pretty:
+        warnings.showwarning = lambda message, *args, **kwargs: logger.warning(message)
+
+    logging.basicConfig(level=logging.DEBUG, handlers=handlers)
+    logger = logging.getLogger(LOGGER_NAME)
 
     if on_root():
         emit_parallel_mode_log(logger)
