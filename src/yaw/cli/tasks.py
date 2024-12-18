@@ -23,8 +23,9 @@ from typing import TYPE_CHECKING
 import yaw
 from yaw.cli import plotting
 from yaw.cli.handles import load_optional_data
+from yaw.cli.utils import broadcasted
 from yaw.config.base import ConfigError, TextIndenter, format_yaml_record_commented
-from yaw.utils import parallel
+from yaw.utils.parallel import COMM, on_root
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -49,7 +50,7 @@ def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
         N = len(iterable)
 
     for i, item in enumerate(iterable, 1):
-        if parallel.on_root():
+        if on_root(COMM):
             logger.client(f"processing bin {i} / {N}")
         yield item
 
@@ -112,7 +113,7 @@ class Task(ABC):
             raise ConfigError(f"missing input '{name}' for task '{self.name}'")
 
     @abstractmethod
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory: ProjectDirectory) -> bool:
         pass
 
@@ -165,11 +166,11 @@ def create_catalog(
             max_workers=max_workers,
         )
         try:
-            if parallel.on_root():
+            if on_root(COMM):
                 global_cache.set_patch_centers(cat.get_centers())
         except RuntimeError:
             pass
-        parallel.COMM.Barrier()
+        COMM.Barrier()
 
 
 def run_autocorr(
@@ -200,7 +201,7 @@ class LoadRefTask(Task):
         auto_link=True,
     )
 
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory) -> bool:
         return directory.cache.reference.exists()
 
@@ -231,7 +232,7 @@ class LoadUnkTask(Task):
     # has no inputs, but we want to enforce LoadRefTask to be run first if
     # possible to determine patch centers
 
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory) -> bool:
         return directory.cache.unknown.exists()
 
@@ -260,7 +261,7 @@ class AutoRefTask(Task):
         inputs={LoadRefTask},
     )
 
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_ref.exists()
 
@@ -286,7 +287,7 @@ class AutoUnkTask(Task):
         inputs={LoadUnkTask},
     )
 
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_unk.exists()
 
@@ -313,7 +314,7 @@ class CrossCorrTask(Task):
         inputs={LoadRefTask, LoadUnkTask},
     )
 
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.cross.exists()
 
@@ -351,7 +352,7 @@ class EstimateTask(Task):
         optionals={AutoRefTask, AutoUnkTask},
     )
 
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory) -> bool:
         return (
             directory.estimate.auto_ref.exists()
@@ -389,7 +390,7 @@ class HistTask(Task):
         inputs={LoadUnkTask},
     )
 
-    @parallel.broadcasted
+    @broadcasted
     def completed(self, directory) -> bool:
         return directory.true.unknown.exists()
 
@@ -443,7 +444,7 @@ class PlotTask(Task):
         plot_created |= plotting.plot_wpp(directory.plot.auto_unk_path, auto_unks)
         plot_created |= plotting.plot_nz(directory.plot.redshifts_path, nz_ests, hists)
 
-        if not plot_created and parallel.on_root():
+        if not plot_created and on_root(COMM):
             logger.warning("no data to plot")
 
 

@@ -9,8 +9,10 @@ from yaw._version import __version__
 from yaw.cli.config import ProjectConfig
 from yaw.cli.pipeline import run_setup
 from yaw.cli.tasks import TaskList
+from yaw.cli.utils import broadcasted
 from yaw.config.base import TextIndenter
-from yaw.utils import parallel, transform_matches
+from yaw.utils import transform_matches
+from yaw.utils.parallel import COMM, on_root
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 
 class DumpConfigAction(argparse.Action):
     def __call__(self, parser, *args, **kwargs):
-        if parallel.on_root():
+        if on_root(COMM):
             indenter = TextIndenter(num_spaces=4)
             padding = 22
 
@@ -38,7 +40,7 @@ def path_absolute(path: str) -> Path:
     return Path(path).expanduser().absolute()
 
 
-@parallel.broadcasted
+@broadcasted
 def path_exists(path: str) -> Path:
     filepath = path_absolute(path)
     if not filepath.exists():

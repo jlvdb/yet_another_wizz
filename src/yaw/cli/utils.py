@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from functools import wraps
 from typing import TYPE_CHECKING
 
 from yaw.utils.logging import (
@@ -10,9 +11,13 @@ from yaw.utils.logging import (
     configure_handler,
     term_supports_color,
 )
+from yaw.utils.parallel import COMM, on_root
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import TypeVar
+
+    T = TypeVar("T")
 
 SUPPORTS_COLOR = term_supports_color()
 
@@ -82,3 +87,21 @@ def init_file_logging(log_path: Path | str) -> None:
     handler = logging.FileHandler(log_path)
     configure_handler(handler, pretty=False, level=logging.DEBUG)
     logger.addHandler(handler)
+
+
+def broadcasted(func: T) -> T:
+    """
+    Decorator for a function that should only run on the root MPI worker.
+
+    Calls the function as usual on the root worker and broadcasts the function
+    return value(s) to all other workers before returning.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        result = None
+        if on_root(COMM):
+            result = func(*args, **kwargs)
+        return COMM.bcast(result, root=0)
+
+    return wrapper

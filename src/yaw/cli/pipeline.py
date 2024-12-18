@@ -11,9 +11,10 @@ import yaml
 from yaw._version import __version_tuple__
 from yaw.cli.config import ProjectConfig
 from yaw.cli.directory import ProjectDirectory
-from yaw.cli.logging import init_file_logging
 from yaw.cli.tasks import TaskList
-from yaw.utils import get_logger, parallel, write_yaml
+from yaw.cli.utils import broadcasted, init_file_logging
+from yaw.utils import get_logger, write_yaml
+from yaw.utils.parallel import COMM, on_root
 
 logger = logging.getLogger("yaw.cli.pipeline")
 
@@ -23,7 +24,7 @@ class LockFile:
         self.path = Path(path)
         self.content = content
 
-    @parallel.broadcasted
+    @broadcasted
     def inspect(self) -> str | None:
         if not self.path.exists():
             return None
@@ -31,7 +32,7 @@ class LockFile:
         with self.path.open() as f:
             return f.read()
 
-    @parallel.broadcasted
+    @broadcasted
     def acquire(self, *, resume: bool = False) -> None:
         if self.path.exists() and not resume:
             raise FileExistsError(f"lock file already exists: {self.path}")
@@ -39,12 +40,12 @@ class LockFile:
         with self.path.open(mode="w") as f:
             f.write(self.content)
 
-    @parallel.broadcasted
+    @broadcasted
     def release(self) -> None:
         self.path.unlink()
 
 
-@parallel.broadcasted
+@broadcasted
 def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
     with open(setup_file) as f:
         config_dict = yaml.safe_load(f)
@@ -55,7 +56,7 @@ def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
     return config, tasks
 
 
-@parallel.broadcasted
+@broadcasted
 def write_config(
     setup_file: Path | str, config: ProjectConfig, tasks: TaskList
 ) -> None:
@@ -81,7 +82,7 @@ class Pipeline:
         resume: bool = False,
         progress: bool = True,
     ) -> None:
-        if parallel.on_root():
+        if on_root(COMM):
             logger.info(f"using project directory: {directory.path}")
 
         self.directory = directory
@@ -112,17 +113,17 @@ class Pipeline:
         bin_indices = config.get_bin_indices()
 
         directory = None
-        if parallel.on_root():
+        if on_root(COMM):
             if Path(project_path).exists() and not overwrite:
                 directory = ProjectDirectory(project_path)
             else:
                 directory = ProjectDirectory.create(
                     project_path, bin_indices, overwrite=overwrite
                 )
-        directory = parallel.COMM.bcast(directory, root=0)
+        directory = COMM.bcast(directory, root=0)
 
         init_file_logging(directory.log_path)
-        if parallel.on_root():
+        if on_root(COMM):
             logger.info(f"using configuration from: {setup_file}")
 
         write_config(directory.config_path, config, tasks)
@@ -136,7 +137,7 @@ class Pipeline:
             max_workers=max_workers,
         )
 
-    @parallel.broadcasted
+    @broadcasted
     def _update_cache_path(self, root_path: Path | str | None) -> None:
         if root_path is None:
             return
@@ -156,12 +157,12 @@ class Pipeline:
             max_workers=max_workers
         )
 
-    @parallel.broadcasted
+    @broadcasted
     def _check_config(self) -> None:
         NotImplemented
 
     def run(self) -> None:
-        if parallel.on_root():
+        if on_root(COMM):
             if len(self.tasks) > 0:
                 msg = "resuming" if self._resume else "running"
                 msg = msg + f" tasks: {self.tasks}"
@@ -171,8 +172,8 @@ class Pipeline:
 
         while self.tasks:
             task = self.tasks.pop()
-            task = parallel.COMM.bcast(task, root=0)  # order may differ on workers
-            if parallel.on_root():
+            task = COMM.bcast(task, root=0)  # order may differ on workers
+            if on_root(COMM):
                 logger.client(f"running '{task.name}'")
 
             lock = LockFile(self.directory.lock_path, task.name)
@@ -190,10 +191,10 @@ class Pipeline:
             lock.release()
 
         self.tasks.clear()
-        if parallel.on_root():
+        if on_root():
             logger.client("done")
 
-    @parallel.broadcasted
+    @broadcasted
     def drop_cache(self) -> None:
         logger.client("dropping cache directory")
 
