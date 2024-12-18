@@ -23,6 +23,7 @@ from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisa
 from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Any
 
     from h5py import Group
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CorrFunc",
-    "CorrFunc_scalar",
+    "ScalarCorrFunc",
 ]
 
 
@@ -77,6 +78,15 @@ def landy_szalay(
     if rd is None:
         rd = dr
     return ((dd - dr) + (rr - rd)) / rr
+
+
+@named("SC")
+def scalar_correlation(*, dd: NDArray, dr: NDArray | None = None) -> NDArray:
+    """Scalar field estimator with optional DR pair counts."""
+    if dr is None:
+        return dd
+    else:
+        return dd - dr
 
 
 class CorrFunc(
@@ -271,6 +281,11 @@ class CorrFunc(
 
         return self.dd.is_compatible(other.dd, require=require)
 
+    def get_estimator(self) -> Callable[..., NDArray]:
+        """Get the most appropriate correlation estimator for evaluating the
+        pair counts."""
+        return landy_szalay if self.rr is not None else davis_peebles
+
     def sample(self) -> CorrData:
         """
         Compute an estimate of the correlation function in bins of redshift.
@@ -285,8 +300,7 @@ class CorrFunc(
             The correlation function estimate with jackknife samples wrapped in
             a :obj:`~yaw.CorrData` instance.
         """
-        estimator = landy_szalay if self.rr is not None else davis_peebles
-
+        estimator = self.get_estimator()
         if parallel.on_root():
             logger.debug(
                 "sampling correlation function with estimator '%s'", estimator.name
@@ -304,26 +318,78 @@ class CorrFunc(
         return CorrData(self.binning, corr_data, corr_samples)
 
 
-@named("SC")
-def scalar_correlation(*, dd: NDArray, dr: NDArray | None = None) -> NDArray:
-    """Scalar field estimator with optional DR pair counts."""
-    if dr is None:
-        return dd
-    else:
-        return dd - dr
-
-
-class CorrFunc_scalar(CorrFunc):
+class ScalarCorrFunc(CorrFunc):
     """
-    Dummy-impl.
+    Container for scalar field correlation function amplitude pair counts.
+
+    The container is typically created by :func:`~yaw.crosscorrelate_scalar` or
+    :func:`~yaw.autocorrelate_scalar` and stores pair counts in bins of redshift
+    and per spatial patch of the input :obj:`~yaw.Catalog` s. The data-data and
+    data-random pair counts are stored in separate attributes.
+
+    Additionally implements comparison with the ``==`` operator, addition with
+    ``+`` and scaling of the pair counts by a scalar with ``*``.
+
+    Args:
+        dd:
+            The data-data pair counts as
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
+        dr:
+            The data-random pair counts as
+            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
+
+    Raises:
+        ValueError:
+            If any of the pair counts are not compatible (by binning or number
+            of patches).
     """
 
     __slots__ = ("dd", "dr")
 
+    dd: NormalisedCounts
+    """The data-data pair counts."""
+    dr: NormalisedCounts | None
+    """The data-random pair counts."""
+
     def __init__(
         self,
         dd: NormalisedCounts,
-        dr: NormalisedCounts | None = None,
+        dr: NormalisedCounts | None,
     ) -> None:
+        if dr is None:
+            from warnings import warn
+
+            warn("no data-random counts provided, results may be inaccurate")
+        else:
+            try:
+                dd.is_compatible(dr, require=True)
+            except ValueError as err:
+                msg = "pair counts 'dr' and 'dd' are not compatible"
+                raise ValueError(msg) from err
         self.dd = dd
         self.dr = dr
+
+    @classmethod
+    def from_hdf(cls, source: Group) -> CorrFunc:
+        def _try_load(root: Group, name: str) -> NormalisedCounts | None:
+            if name in root:
+                return NormalisedCounts.from_hdf(root[name])
+
+        # ignore "version" since this method did not change from legacy
+        names = ("data_data", "data_random")
+        kwargs = {
+            kind: _try_load(source, name) for kind, name in zip(cls.__slots__, names)
+        }
+        return cls.from_dict(kwargs)
+
+    def to_hdf(self, dest: Group) -> None:
+        write_version_tag(dest)
+
+        names = ("data_data", "data_random")
+        for name, count in zip(names, self.to_dict().values()):
+            if count is not None:
+                group = dest.create_group(name)
+                count.to_hdf(group)
+
+    def get_estimator(self) -> Callable[..., NDArray]:
+        return scalar_correlation

@@ -16,7 +16,7 @@ import numpy as np
 from yaw.catalog.catalog import InconsistentPatchesError
 from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
-from yaw.correlation.corrfunc import CorrFunc, CorrFunc_scalar
+from yaw.correlation.corrfunc import CorrFunc, ScalarCorrFunc
 from yaw.correlation.paircounts import (
     NormalisedCounts,
     PatchedCounts,
@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 __all__ = [
     "autocorrelate",
     "crosscorrelate",
+    "autocorrelate_scalar",
+    "crosscorrelate_scalar",
 ]
 
 logger = logging.getLogger(__name__)
@@ -582,10 +584,11 @@ def compute_scalar_normalisation(
 def autocorrelate_scalar(
     config: Configuration,
     data: Catalog,
+    random: Catalog | None = None,
     *,
     progress: bool = False,
     max_workers: int | None = None,
-) -> list[CorrFunc_scalar]:
+) -> list[ScalarCorrFunc]:
     """
     Measure the angular autocorrelation amplitude of a scalar field.
 
@@ -600,6 +603,8 @@ def autocorrelate_scalar(
             correlation scales.
         data:
             :obj:`~yaw.Catalog` holding the data sample.
+        random:
+            :obj:`~yaw.Catalog` holding the random sample (optional).
 
     Keyword Args:
         progress:
@@ -613,13 +618,15 @@ def autocorrelate_scalar(
         configured scale).
     """
     if parallel.on_root():
-        logger.info("building trees for 2 catalogs")
+        logger.info(f"building trees for {1} catalogs")
     kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
 
     edges = config.binning.edges
     closed = config.binning.closed
 
     data.build_trees(edges, closed=closed, **kwargs)
+    if random is not None:
+        raise NotImplementedError("data-random pair counts not yet implemented")
 
     if parallel.on_root():
         logger.info("computing auto-correlation with DD")
@@ -635,7 +642,8 @@ def autocorrelate_scalar(
         counts=links.count_pairs(data, mode="kk", **kwargs),
         sum_weights=links.count_pairs(data, mode="nn", **kwargs),
     )
-    return [CorrFunc_scalar(dd, None) for dd in DD]
+    DR = [None for _ in DD]  # to be implemented
+    return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]
 
 
 def crosscorrelate_scalar(
@@ -646,7 +654,7 @@ def crosscorrelate_scalar(
     unk_rand: Catalog | None = None,
     progress: bool = False,
     max_workers: int | None = None,
-) -> list[CorrFunc_scalar]:
+) -> list[ScalarCorrFunc]:
     """
     Measure the angular cross-correlation amplitude between two object catalogs,
     with one of the catalogue being the scalar field.
@@ -727,4 +735,4 @@ def crosscorrelate_scalar(
                 reference, unk_rand, mode="nn", **kwargs
             ),
         )
-    return [CorrFunc_scalar(dd, dr) for dd, dr in zip(DD, DR)]
+    return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]

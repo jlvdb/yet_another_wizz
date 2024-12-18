@@ -13,6 +13,14 @@ two functions, which both take a configuration object, and multiple
     crosscorrelate
     autocorrelate
 
+Similar versions exist for scalar-field correlation functions.
+
+.. autosummary::
+    :toctree: autogen
+
+    crosscorrelate_scalar
+    autocorrelate_scalar
+
 
 .. _corrfunc:
 
@@ -27,6 +35,7 @@ estimate covariances):
     :toctree: autogen
 
     CorrFunc
+    ScalarCorrFunc
 
 
 The container itself is a wrapper around another set of containers that store
