@@ -237,7 +237,10 @@ class AngularTree:
             self.sum_kappa = None
         else:
             self.kappa = np.asarray(kappa).astype(np.float64, copy=False)
-            self.sum_kappa = float(np.sum(self.kappa * self.weights))
+            if self.weights is None:
+                self.sum_kappa = float(np.sum(self.kappa))
+            else:
+                self.sum_kappa = float(np.sum(self.kappa * self.weights))
 
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
