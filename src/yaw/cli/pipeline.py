@@ -14,6 +14,7 @@ from yaw.cli.config import ProjectConfig
 from yaw.cli.directory import ProjectDirectory
 from yaw.cli.logging import init_file_logging
 from yaw.cli.tasks import TaskList
+from yaw.config.base import ConfigError
 from yaw.utils import get_logger, parallel, write_yaml
 
 logger = logging.getLogger("yaw.cli.pipeline")
@@ -51,7 +52,11 @@ def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
         config_dict = yaml.safe_load(f)
         task_list = config_dict.pop("tasks")
 
-    config = ProjectConfig.from_dict(config_dict)
+    try:
+        config = ProjectConfig.from_dict(config_dict)
+    except ConfigError as err:
+        raise ConfigError("in setup: " + err.args[0]) from err
+
     tasks = TaskList.from_list(task_list)
     return config, tasks
 
@@ -87,12 +92,12 @@ class Pipeline:
 
         self.directory = directory
         self.config = config
-        self._check_config()
         self._update_cache_path(cache_path)
         self._update_max_workers(max_workers)
 
         self.tasks = tasks
         self.tasks.schedule(self.directory, resume=resume)
+        self.tasks.check_config_requirements()
 
         self._resume = resume
         self.progress = progress
@@ -166,10 +171,6 @@ class Pipeline:
             self.config.correlation = self.config.correlation.modify(
                 max_workers=max_workers
             )
-
-    @parallel.broadcasted
-    def _check_config(self) -> None:
-        NotImplemented
 
     def run(self) -> None:
         if parallel.on_root():

@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from yaw.cli.directory import CacheDirectory, ProjectDirectory
     from yaw.cli.handles import CacheHandle, CorrFuncHandle, Handle
     from yaw.config import Configuration
+    from yaw.config.base import BaseConfig
 
     TypeTask = TypeVar("TypeTask", bound="Task")
     T = TypeVar("T")
@@ -45,6 +46,10 @@ def load_optional_data(handle: Handle[T]) -> T | None:
     if not handle.exists():
         return None
     return handle.load()
+
+
+class TaskError(Exception):
+    pass
 
 
 def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
@@ -110,6 +115,17 @@ class Task(ABC):
             return True
 
         return False
+
+    def _require_config_item(self, config: BaseConfig, path: str) -> None:
+        print(path)
+        for attr in reversed(path.split(".")):
+            config = getattr(config, attr)
+            print(config)
+            if config is None:
+                raise TaskError(f"task '{self.properties.name}' requries '{path}'")
+
+    def check_config_requirements(self, config: ProjectConfig) -> None:
+        pass
 
     def check_inputs(self) -> None:
         expect = set(t.name for t in self.properties.inputs)
@@ -271,6 +287,9 @@ class AutoRefTask(Task):
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_ref.exists()
 
+    def check_config_requirements(self, config: ProjectConfig) -> None:
+        self._require_config_item(config, "inputs.reference.path_rand")
+
     def run(
         self,
         directory: ProjectDirectory,
@@ -296,6 +315,9 @@ class AutoUnkTask(Task):
     @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.auto_unk.exists()
+
+    def check_config_requirements(self, config: ProjectConfig) -> None:
+        self._require_config_item(config, "config.inputs.unknown.path_rand")
 
     def run(
         self,
@@ -323,6 +345,19 @@ class CrossCorrTask(Task):
     @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.paircounts.cross.exists()
+
+    def check_config_requirements(self, config: ProjectConfig) -> None:
+        paths = ("config.inputs.reference.path_rand", "config.inputs.unknown.path_rand")
+        for path in paths:
+            try:
+                return self._require_config_item(config, path)
+            except TaskError:
+                pass
+        else:
+            name = self.properties.name
+            raise TaskError(
+                f"{name} requries at least one of '{paths[0]}' and '{paths[1]}'"
+            )
 
     def run(
         self,
@@ -400,6 +435,9 @@ class HistTask(Task):
     @parallel.broadcasted
     def completed(self, directory) -> bool:
         return directory.true.unknown.exists()
+
+    def check_config_requirements(self, config: ProjectConfig) -> None:
+        self._require_config_item(config, "config.inputs.unknown.redshift")
 
     def run(
         self,
@@ -524,6 +562,10 @@ class TaskList(Container, Sized):
         if directory is not None:  # check for completed tasks
             return deque(task for task in queue if not task.completed(directory))
         return queue
+
+    def check_config_requirements(self, config: ProjectConfig) -> None:
+        for task in self._tasks:
+            task.check_config_requirements(config)
 
     def clear(self) -> None:
         self._queue = deque()
