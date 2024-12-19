@@ -302,4 +302,6 @@ class ProjectConfig(BaseConfig):
         return cls(correlation, inputs)
 
     def get_bin_indices(self) -> list[int]:
+        if self.inputs.unknown is None:
+            return []
         return sorted(self.inputs.unknown.path_data.keys())

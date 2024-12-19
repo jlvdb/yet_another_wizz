@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from typing import TYPE_CHECKING
 
@@ -8,11 +9,20 @@ from yaw.utils.plotting import check_plotting_enabled
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
+    from typing import Any
 
     from typing_extensions import Self
 
     from yaw.correlation import CorrData
     from yaw.redshifts import HistData, RedshiftData
+
+logger = logging.getLogger("yaw.cli.tasks")
+
+
+def any_tomographic_items(items: Iterable[Any | None]) -> bool:
+    if len(items) == 0:
+        return False
+    return all(item is not None for item in items)
 
 
 @check_plotting_enabled
@@ -84,6 +94,7 @@ def plot_wss(fig_path: Path, auto_ref: CorrData | None) -> bool:
     if auto_ref is None:
         return False
 
+    logger.info("plotting reference autocorrelation")
     with WrappedFigure(fig_path, 1, r"$w_{\rm ss}$") as fig:
         auto_ref.plot(ax=fig.axes[0], indicate_zero=True)
 
@@ -91,9 +102,10 @@ def plot_wss(fig_path: Path, auto_ref: CorrData | None) -> bool:
 
 
 def plot_wpp(fig_path: Path, auto_unks: Iterable[CorrData | None]) -> bool:
-    if any(auto_unk is None for auto_unk in auto_unks):
+    if not any_tomographic_items(auto_unks):
         return False
 
+    logger.info("plotting unknown autocorrelations")
     with WrappedFigure(fig_path, len(auto_unks), r"$w_{\rm pp}$") as fig:
         for ax, auto_unk in zip(fig.axes, auto_unks):
             auto_unk.plot(ax=ax, indicate_zero=True)
@@ -106,11 +118,10 @@ def plot_nz(
     nz_ests: Iterable[RedshiftData | None],
     hists: Iterable[HistData | None],
 ) -> bool:
-    if any(nz_est is None for nz_est in nz_ests) and any(
-        hist is None for hist in hists
-    ):
+    if not (any_tomographic_items(nz_ests) or any_tomographic_items(hists)):
         return False
 
+    logger.info("plotting redshift estimates")
     with WrappedFigure(fig_path, len(nz_ests), r"Density estimate") as fig:
         for ax, nz_est, hist in zip(fig.axes, nz_ests, hists):
             if hist:

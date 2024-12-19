@@ -141,10 +141,3 @@ class TomographyWrapper(Mapping[int, T]):
 
     def exists(self) -> bool:
         return all(handle.exists() for handle in self._handles.values())
-
-
-def load_optional_data(handle: Handle[T]) -> T | None:
-    try:
-        return handle.load()
-    except FileNotFoundError:
-        return None

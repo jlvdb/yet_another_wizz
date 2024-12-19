@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING
 
 import yaw
 from yaw.cli import plotting
-from yaw.cli.handles import load_optional_data
 from yaw.config.base import ConfigError, TextIndenter, format_yaml_record_commented
 from yaw.utils import parallel
 
@@ -32,13 +31,20 @@ if TYPE_CHECKING:
 
     from yaw.cli.config import CatPairConfig, ProjectConfig
     from yaw.cli.directory import CacheDirectory, ProjectDirectory
-    from yaw.cli.handles import CacheHandle, CorrFuncHandle
+    from yaw.cli.handles import CacheHandle, CorrFuncHandle, Handle
     from yaw.config import Configuration
 
     TypeTask = TypeVar("TypeTask", bound="Task")
     T = TypeVar("T")
 
 logger = logging.getLogger("yaw.cli.tasks")
+
+
+@parallel.broadcasted
+def load_optional_data(handle: Handle[T]) -> T | None:
+    if not handle.exists():
+        return None
+    return handle.load()
 
 
 def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
@@ -148,6 +154,7 @@ def create_catalog(
 
     for cache_path, input_path in paths.items():
         if input_path is None:
+            logger.info("skipping unconfigured random catalog")
             continue
 
         cat = yaw.Catalog.from_file(
@@ -371,15 +378,16 @@ class EstimateTask(Task):
             auto_ref = auto_ref.sample()
             auto_ref.to_files(directory.estimate.auto_ref.template)
 
-        for idx, cross_handle in bin_iter_progress(directory.paircounts.cross.items()):
+        for idx in bin_iter_progress(directory.indices):
             auto_unk = load_optional_data(directory.paircounts.auto_unk[idx])
             if auto_unk:
                 auto_unk = auto_unk.sample()
                 auto_unk.to_files(directory.estimate.auto_unk[idx].template)
 
-            cross = cross_handle.load().sample()
-            ncc = yaw.RedshiftData.from_corrdata(cross, auto_ref, auto_unk)
-            ncc.to_files(directory.estimate.nz_est[idx].template)
+            cross = load_optional_data(directory.paircounts.cross[idx])
+            if cross:
+                ncc = yaw.RedshiftData.from_corrdata(cross.sample(), auto_ref, auto_unk)
+                ncc.to_files(directory.estimate.nz_est[idx].template)
 
 
 class HistTask(Task):
