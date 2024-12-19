@@ -298,6 +298,7 @@ class PatchLinkage:
         *optional_catalog: Catalog,
         progress: bool = False,
         max_workers: int | None = None,
+        count_type_info: str | None = None,
     ) -> list[NormalisedCounts]:
         """
         Compute pair counts between the patches of two catalogs.
@@ -311,6 +312,8 @@ class PatchLinkage:
         - Store the results in a list of ``NormalisedCounts`` instances (one per
           correlation scale).
         """
+        if count_type_info is not None:
+            log_info(f"counting {count_type_info} from patch pairs")
         auto = len(optional_catalog) == 0
         num_patches = len(main_catalog)
         patch_pairs = self.get_patch_pairs(main_catalog, *optional_catalog)
@@ -355,6 +358,7 @@ class PatchLinkage:
         *optional_catalog: Catalog | None,
         progress: bool = False,
         max_workers: int | None = None,
+        count_type_info: str | None = None,
     ) -> list[NormalisedCounts | None]:
         """
         A version of ``count_pairs()`` which returns ``list[None]`` instead of
@@ -368,6 +372,7 @@ class PatchLinkage:
                 *optional_catalog,
                 progress=progress,
                 max_workers=max_workers,
+                count_type_info=count_type_info,
             )
 
 
@@ -436,12 +441,10 @@ def autocorrelate(
         config.scales.num_scales,
         "with" if config.scales.rweight else "without",
     )
-    log_info("counting DD from patch pairs")
-    DD = links.count_pairs(data, **kwargs)
-    log_info("counting DR from patch pairs")
-    DR = links.count_pairs(data, random, **kwargs)
-    log_info("counting RR from patch pairs")
-    RR = links.count_pairs_optional(random if count_rr else None, **kwargs)
+    DD = links.count_pairs(data, **kwargs, count_type_info="DD")
+    DR = links.count_pairs(data, random, **kwargs, count_type_info="DR")
+    optional_random = random if count_rr else None
+    RR = links.count_pairs_optional(optional_random, **kwargs, count_type_info="RR")
 
     return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
 
@@ -540,13 +543,9 @@ def crosscorrelate(
         config.scales.num_scales,
         "with" if config.scales.rweight else "without",
     )
-    log_info("counting DD from patch pairs")
-    DD = links.count_pairs(reference, unknown, **kwargs)
-    log_info("counting DR from patch pairs")
-    DR = links.count_pairs_optional(reference, unk_rand, **kwargs)
-    log_info("counting RD from patch pairs")
-    RD = links.count_pairs_optional(ref_rand, unknown, **kwargs)
-    log_info("counting RR from patch pairs")
-    RR = links.count_pairs_optional(ref_rand, unk_rand, **kwargs)
+    DD = links.count_pairs(reference, unknown, **kwargs, count_type_info="DD")
+    DR = links.count_pairs_optional(reference, unk_rand, **kwargs, count_type_info="DR")
+    RD = links.count_pairs_optional(ref_rand, unknown, **kwargs, count_type_info="RD")
+    RR = links.count_pairs_optional(ref_rand, unk_rand, **kwargs, count_type_info="RR")
 
     return [CorrFunc(dd, dr, rd, rr) for dd, dr, rd, rr in zip(DD, DR, RD, RR)]

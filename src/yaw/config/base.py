@@ -489,6 +489,8 @@ class BaseConfig(YamlSerialisable):
             value = getattr(self, name)
             if isinstance(value, BaseConfig):
                 the_dict[name] = value.to_dict()
+            elif isinstance(param, ConfigSection) and value is None:
+                the_dict[name] = None
             else:
                 the_dict[name] = param.as_builtin(value)
 
