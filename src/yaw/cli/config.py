@@ -65,8 +65,15 @@ class IntMappingParameter(Parameter[T]):
     """
 
     def parse(self, value: Mapping[int, Any] | None) -> dict[int, T]:
-        if self.nullable and value is None:
-            return None
+        if self.nullable:
+            if value is None:
+                return None
+            elif any(val is None for val in value.values()):
+                raise ConfigError(
+                    "parameter is optional, but setting individual mapping "
+                    "items to 'None' is not permitted",
+                    self.name,
+                )
 
         if not isinstance(value, Mapping):
             raise ConfigError("expected a mapping-type (config section)", self.name)
@@ -174,15 +181,17 @@ class UnknownCatConfig(CatPairConfig):
         CatPairConfig,
         IntMappingParameter(
             name="path_data",
-            type=new_path_checked,
+            type=Path,
             help="Mapping of bin index to data catalog path.",
+            to_type=new_path_checked,
             to_builtin=str,
         ),
         IntMappingParameter(
             name="path_rand",
             help="Mapping of bin index to random catalog path if needed for correlations.",
-            type=new_path_checked,
+            type=Path,
             default=None,
+            to_type=new_path_checked,
             to_builtin=str,
         ),
     )
@@ -247,9 +256,15 @@ class InputConfig(BaseConfig):
         cls._check_dict(the_dict)
 
         with raise_configerror_with_level("reference"):
-            reference = ReferenceCatConfig.from_dict(the_dict["reference"])
+            try:
+                reference = ReferenceCatConfig.from_dict(the_dict["reference"])
+            except KeyError:
+                reference = None
         with raise_configerror_with_level("unknown"):
-            unknown = UnknownCatConfig.from_dict(the_dict["unknown"])
+            try:
+                unknown = UnknownCatConfig.from_dict(the_dict["unknown"])
+            except KeyError:
+                unknown = None
 
         parsed = cls._parse_params(the_dict)
         return cls(reference, unknown, **parsed)
