@@ -585,8 +585,8 @@ def compute_scalar_normalisation(
 ) -> NormalisedScalarCounts:
     """Computes a correction for the scalar field counts based on the mean kappa
     per spatial patch."""
-    sum_kappa = np.empty((len(binning), catalog.num_patches, catalog.num_patches))
-    sum_weights = np.empty_like(sum_kappa)
+    sum_kappa = np.zeros((len(binning), catalog.num_patches, catalog.num_patches))
+    sum_weights = np.zeros_like(sum_kappa)
     for pid, patch in catalog.items():
         for bin_idx, tree in enumerate(BinnedTrees(patch)):
             sum_kappa[bin_idx, pid, pid] = tree.sum_kappa
