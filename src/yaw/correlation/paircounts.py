@@ -33,6 +33,7 @@ __all__ = [
     "PatchedSumWeights",
     "PatchedCounts",
     "NormalisedCounts",
+    "NormalisedScalarCounts",
 ]
 
 
@@ -500,11 +501,11 @@ class NormalisedCounts(BinwisePatchwiseArray):
     def __init__(self, counts: PatchedCounts, sum_weights: PatchedSumWeights) -> None:
         if counts.num_patches != sum_weights.num_patches:
             raise ValueError(
-                "number of patches of 'count' and sum_weights' does not match"
+                "number of patches of 'count' and 'sum_weights' does not match"
             )
         if counts.num_bins != sum_weights.num_bins:
             raise ValueError(
-                "number of bins of 'count' and sum_weights' does not match"
+                "number of bins of 'count' and 'sum_weights' does not match"
             )
 
         self.counts = counts
@@ -606,4 +607,99 @@ class NormalisedCounts(BinwisePatchwiseArray):
 
         data = counts.data / sum_weights.data
         samples = counts.samples / sum_weights.samples
+        return SampledData(self.binning, data, samples)
+
+
+class NormalisedScalarCounts(NormalisedCounts):
+    """TODO"""
+
+    __slots__ = ("kk_counts", "nn_counts")
+
+    kk_counts: PatchedCounts
+    """TODO"""
+    nn_counts: PatchedCounts
+    """TODO"""
+
+    def __init__(self, kk_counts: PatchedCounts, nn_counts: PatchedCounts) -> None:
+        if kk_counts.num_patches != nn_counts.num_patches:
+            raise ValueError(
+                "number of patches of 'kk_counts' and 'nn_counts' does not match"
+            )
+        if kk_counts.num_bins != nn_counts.num_bins:
+            raise ValueError(
+                "number of bins of 'kk_counts' and 'nn_counts'' does not match"
+            )
+
+        self.kk_counts = kk_counts
+        self.nn_counts = nn_counts
+
+    @classmethod
+    def from_hdf(cls, source: Group) -> NormalisedCounts:
+        kk_counts = PatchedCounts.from_hdf(source["kk_counts"])
+        nn_counts = PatchedCounts.from_hdf(source["nn_counts"])
+        return cls(kk_counts=kk_counts, nn_counts=nn_counts)
+
+    def to_hdf(self, dest: Group) -> None:
+        write_version_tag(dest)
+
+        group = dest.create_group("kk_counts")
+        self.kk_counts.to_hdf(group)
+
+        group = dest.create_group("nn_counts")
+        self.nn_counts.to_hdf(group)
+
+    @property
+    def binning(self) -> Binning:
+        return self.kk_counts.binning
+
+    @property
+    def auto(self) -> bool:
+        return self.kk_counts.auto
+
+    @property
+    def num_patches(self) -> int:
+        return self.kk_counts.num_patches
+
+    def is_compatible(self, other: Any, *, require: bool = False) -> bool:
+        if not isinstance(other, type(self)):
+            if not require:
+                return False
+            raise TypeError(f"{type(other)} is not compatible with {type(self)}")
+
+        return self.kk_counts.is_compatible(other.kk_counts, require=require)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.kk_counts == other.kk_counts and self.nn_counts == other.nn_counts
+
+    def __add__(self, other: Any) -> NormalisedCounts:
+        raise NotImplementedError
+
+    def __radd__(self, other: Any) -> NormalisedCounts:
+        raise NotImplementedError
+
+    def __mul__(self, other: Any) -> NormalisedCounts:
+        raise NotImplementedError
+
+    def _make_bin_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
+        kk_counts = self.kk_counts.bins[item]
+        nn_counts = self.nn_counts.bins[item]
+        return type(self)(kk_counts, nn_counts)
+
+    def _make_patch_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
+        kk_counts = self.kk_counts.patches[item]
+        nn_counts = self.nn_counts.patches[item]
+        return type(self)(kk_counts, nn_counts)
+
+    def get_array(self) -> NDArray:
+        raise NotImplementedError
+
+    def sample_patch_sum(self) -> SampledData:
+        kk_counts = self.kk_counts.sample_patch_sum()
+        nn_counts = self.nn_counts.sample_patch_sum()
+
+        data = kk_counts.data / nn_counts.data
+        samples = kk_counts.samples / nn_counts.samples
         return SampledData(self.binning, data, samples)

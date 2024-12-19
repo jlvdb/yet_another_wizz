@@ -19,6 +19,7 @@ from yaw.coordinates import AngularDistances
 from yaw.correlation.corrfunc import CorrFunc, ScalarCorrFunc
 from yaw.correlation.paircounts import (
     NormalisedCounts,
+    NormalisedScalarCounts,
     PatchedCounts,
     PatchedSumWeights,
 )
@@ -371,6 +372,28 @@ class PatchLinkage:
                 mode=mode,
             )
 
+    def count_scalar_pairs(
+        self,
+        main_catalog: Catalog,
+        *optional_catalog: Catalog,
+        progress: bool = False,
+        max_workers: int | None = None,
+    ) -> list[NormalisedCounts]:
+        counts = {
+            mode: self.count_pairs(
+                main_catalog,
+                *optional_catalog,
+                mode=mode,
+                progress=progress,
+                max_workers=max_workers,
+            )
+            for mode in ("kk", "nn")
+        }
+        return [
+            NormalisedScalarCounts(kk.counts, nn.counts)
+            for kk, nn in zip(counts["kk"], counts["nn"])
+        ]
+
 
 # ######### NN correlations ####################################################
 
@@ -556,6 +579,16 @@ def crosscorrelate(
 # ######### NK/KK correlations #################################################
 
 
+def compute_normalised_scalar_pairs(
+    links: PatchLinkage,
+    *catalogs: Catalog,
+    **count_kwargs,
+) -> list[NormalisedCounts]:
+    raw_counts = links.count_pairs_optional(*catalogs, mode="kk", **count_kwargs)
+    sum_weights = links.count_pairs_optional(*catalogs, mode="nn", **count_kwargs)
+    return [NormalisedCounts(cts, wgt) for cts, wgt in zip(raw_counts, sum_weights)]
+
+
 def compute_scalar_normalisation(
     catalog: Catalog, binning: Binning
 ) -> NormalisedCounts:
@@ -633,10 +666,7 @@ def autocorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = NormalisedCounts(
-        counts=links.count_pairs(data, mode="kk", **kwargs),
-        sum_weights=links.count_pairs(data, mode="nn", **kwargs),
-    )
+    DD = links.count_scalar_pairs(data, **kwargs)
     return [ScalarCorrFunc(dd) for dd in DD]
 
 
@@ -716,17 +746,9 @@ def crosscorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = NormalisedCounts(
-        counts=links.count_pairs(reference, unknown, mode="kn", **kwargs),
-        sum_weights=links.count_pairs(reference, unknown, mode="nn", **kwargs),
-    )
+    DD = links.count_scalar_pairs(reference, unknown, **kwargs)
     if not count_dr:
-        DR = compute_scalar_normalisation(unknown, config.binning)
+        DR = [compute_scalar_normalisation(unknown, config.binning)] * len(DD)
     else:
-        DR = NormalisedCounts(
-            counts=links.count_pairs_optional(reference, unk_rand, mode="kn", **kwargs),
-            sum_weights=links.count_pairs_optional(
-                reference, unk_rand, mode="nn", **kwargs
-            ),
-        )
+        DR = links.count_scalar_pairs(reference, unk_rand, **kwargs)
     return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]
