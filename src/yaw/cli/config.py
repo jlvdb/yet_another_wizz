@@ -212,7 +212,10 @@ class UnknownCatConfig(CatPairConfig):
     patches: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
-        if self.path_data.keys() != self.path_rand.keys():
+        if (
+            self.path_rand is not None
+            and self.path_data.keys() != self.path_rand.keys()
+        ):
             raise ConfigError("keys for 'path_data' and 'path_rand' do not match")
 
     def iter_bins(self) -> Iterator[tuple[int, CatPairConfig]]:
