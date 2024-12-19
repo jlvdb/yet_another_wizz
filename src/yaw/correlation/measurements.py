@@ -580,39 +580,21 @@ def crosscorrelate(
 # ######### NK/KK correlations #################################################
 
 
-def compute_normalised_scalar_pairs(
-    links: PatchLinkage,
-    *catalogs: Catalog,
-    **count_kwargs,
-) -> list[NormalisedCounts]:
-    raw_counts = links.count_pairs_optional(*catalogs, mode="kk", **count_kwargs)
-    sum_weights = links.count_pairs_optional(*catalogs, mode="nn", **count_kwargs)
-    return [NormalisedCounts(cts, wgt) for cts, wgt in zip(raw_counts, sum_weights)]
-
-
 def compute_scalar_normalisation(
     catalog: Catalog, binning: Binning
-) -> NormalisedCounts:
+) -> NormalisedScalarCounts:
     """Computes a correction for the scalar field counts based on the mean kappa
     per spatial patch."""
     sum_kappa = np.empty((len(binning), catalog.num_patches, catalog.num_patches))
-    sum_weights = np.empty((len(binning), catalog.num_patches))
+    sum_weights = np.empty_like(sum_kappa)
     for pid, patch in catalog.items():
-        trees = BinnedTrees(patch)  # encodes redshift binning
-        sum_kappa[:, pid, pid] = [tree.sum_kappa for tree in trees]
-        sum_weights[:, pid] = [tree.sum_weights for tree in trees]
+        for bin_idx, tree in enumerate(BinnedTrees(patch)):
+            sum_kappa[bin_idx, pid, pid] = tree.sum_kappa
+            sum_weights[bin_idx, pid, pid] = tree.sum_weights
 
-    # collect sum of weights such that: mean kappa = sum kappa / sum weight
-    # trick: PatchedSumWeights computes sum_weights1*sum_weights2 internally,
-    #        we only want sum_weights1, so setting sum_weights2 to 1.0
-    sum_weights = PatchedSumWeights(
-        binning,
-        sum_weights1=sum_weights,
-        sum_weights2=np.ones_like(sum_weights),
-        auto=False,
-    )
-
-    return NormalisedCounts(counts=sum_kappa, sum_weights=sum_weights)
+    kk_counts = PatchedCounts(binning, sum_kappa, auto=False)
+    nn_counts = PatchedCounts(binning, sum_weights, auto=False)
+    return NormalisedScalarCounts(kk_counts, nn_counts)
 
 
 def autocorrelate_scalar(
@@ -667,7 +649,7 @@ def autocorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_scalar_pairs(data, count_mode='kk', **kwargs)
+    DD = links.count_scalar_pairs(data, count_mode="kk", **kwargs)
     return [ScalarCorrFunc(dd) for dd in DD]
 
 
@@ -747,9 +729,9 @@ def crosscorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_scalar_pairs(reference, unknown,  count_mode='kn', **kwargs)
+    DD = links.count_scalar_pairs(reference, unknown, count_mode="kn", **kwargs)
     if not count_dr:
-        DR = [compute_scalar_normalisation(unknown, config.binning)] * len(DD)
+        DR = [compute_scalar_normalisation(unknown, config.binning.binning)] * len(DD)
     else:
-        DR = links.count_scalar_pairs(reference, unk_rand,  count_mode='kn', **kwargs)
+        DR = links.count_scalar_pairs(reference, unk_rand, count_mode="kn", **kwargs)
     return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]
