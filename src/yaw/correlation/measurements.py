@@ -731,7 +731,7 @@ def crosscorrelate_scalar(
         )
     DD = links.count_scalar_pairs(reference, unknown, count_mode="kn", **kwargs)
     if not count_dr:
-        DR = [compute_scalar_normalisation(unknown, config.binning.binning)] * len(DD)
+        DR = [compute_scalar_normalisation(reference, config.binning.binning)] * len(DD)
     else:
         DR = links.count_scalar_pairs(reference, unk_rand, count_mode="kn", **kwargs)
     return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]
