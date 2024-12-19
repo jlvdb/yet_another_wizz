@@ -97,7 +97,7 @@ class Pipeline:
 
         self.tasks = tasks
         self.tasks.schedule(self.directory, resume=resume)
-        self.tasks.check_config_requirements()
+        self.tasks.check_config_requirements(config)
 
         self._resume = resume
         self.progress = progress

@@ -172,7 +172,14 @@ class CatPairConfig(BaseConfig):
 
 @dataclass
 class ReferenceCatConfig(CatPairConfig):
-    pass
+    _paramspec = update_paramspec(
+        CatPairConfig,
+        Parameter(
+            name="redshift",
+            help="Name of column with estimated or true redshifts.",
+            type=str,
+        ),
+    )
 
 
 @dataclass
@@ -203,6 +210,10 @@ class UnknownCatConfig(CatPairConfig):
     redshift: str | None = field(default=None, kw_only=True)
     weight: str | None = field(default=None, kw_only=True)
     patches: str | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if self.path_data.keys() != self.path_rand.keys():
+            raise ConfigError("keys for 'path_data' and 'path_rand' do not match")
 
     def iter_bins(self) -> Iterator[tuple[int, CatPairConfig]]:
         columns = self.get_columns()

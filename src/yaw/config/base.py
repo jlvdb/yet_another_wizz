@@ -60,6 +60,7 @@ class ConfigError(Exception):
             self.args = (f"{level_name}.{msg}", *args)
         else:
             self.args = (f"{level_name}: {msg}", *args)
+        self.has_attr = True
         return self
 
 

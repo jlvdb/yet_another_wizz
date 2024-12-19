@@ -49,7 +49,8 @@ def load_optional_data(handle: Handle[T]) -> T | None:
 
 
 class TaskError(Exception):
-    pass
+    def __init__(self, task: Task, msg: str):
+        super().__init__(f"in tasks: {task.properties.name}: {msg}")
 
 
 def bin_iter_progress(iterable: Iterable[T]) -> Iterator[T]:
@@ -117,12 +118,13 @@ class Task(ABC):
         return False
 
     def _require_config_item(self, config: BaseConfig, path: str) -> None:
-        print(path)
-        for attr in reversed(path.split(".")):
+        current_path = ""
+        for attr in path.split("."):
+            current_path = f"{current_path}.{attr}"
             config = getattr(config, attr)
-            print(config)
             if config is None:
-                raise TaskError(f"task '{self.properties.name}' requries '{path}'")
+                current_path = current_path.strip(".")
+                raise TaskError(self, f"requries '{current_path}'")
 
     def check_config_requirements(self, config: ProjectConfig) -> None:
         pass
@@ -317,7 +319,8 @@ class AutoUnkTask(Task):
         return directory.paircounts.auto_unk.exists()
 
     def check_config_requirements(self, config: ProjectConfig) -> None:
-        self._require_config_item(config, "config.inputs.unknown.path_rand")
+        self._require_config_item(config, "inputs.unknown.path_rand")
+        self._require_config_item(config, "inputs.unknown.redshift")
 
     def run(
         self,
@@ -347,17 +350,14 @@ class CrossCorrTask(Task):
         return directory.paircounts.cross.exists()
 
     def check_config_requirements(self, config: ProjectConfig) -> None:
-        paths = ("config.inputs.reference.path_rand", "config.inputs.unknown.path_rand")
+        paths = ("inputs.reference.path_rand", "inputs.unknown.path_rand")
         for path in paths:
             try:
                 return self._require_config_item(config, path)
             except TaskError:
                 pass
         else:
-            name = self.properties.name
-            raise TaskError(
-                f"{name} requries at least one of '{paths[0]}' and '{paths[1]}'"
-            )
+            raise TaskError(self, f"requries '{paths[0]}' and/or '{paths[1]}'")
 
     def run(
         self,
@@ -437,7 +437,7 @@ class HistTask(Task):
         return directory.true.unknown.exists()
 
     def check_config_requirements(self, config: ProjectConfig) -> None:
-        self._require_config_item(config, "config.inputs.unknown.redshift")
+        self._require_config_item(config, "inputs.unknown.redshift")
 
     def run(
         self,
