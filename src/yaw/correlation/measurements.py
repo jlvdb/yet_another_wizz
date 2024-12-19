@@ -378,6 +378,7 @@ class PatchLinkage:
         *optional_catalog: Catalog,
         progress: bool = False,
         max_workers: int | None = None,
+        count_mode: str = "nn",
     ) -> list[NormalisedCounts]:
         counts = {
             mode: self.count_pairs(
@@ -387,11 +388,11 @@ class PatchLinkage:
                 progress=progress,
                 max_workers=max_workers,
             )
-            for mode in ("kk", "nn")
+            for mode in (count_mode, "nn")
         }
         return [
             NormalisedScalarCounts(kk.counts, nn.counts)
-            for kk, nn in zip(counts["kk"], counts["nn"])
+            for kk, nn in zip(counts[count_mode], counts["nn"])
         ]
 
 
@@ -666,7 +667,7 @@ def autocorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_scalar_pairs(data, **kwargs)
+    DD = links.count_scalar_pairs(data, count_mode='kk', **kwargs)
     return [ScalarCorrFunc(dd) for dd in DD]
 
 
@@ -746,9 +747,9 @@ def crosscorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_scalar_pairs(reference, unknown, **kwargs)
+    DD = links.count_scalar_pairs(reference, unknown,  count_mode='kn', **kwargs)
     if not count_dr:
         DR = [compute_scalar_normalisation(unknown, config.binning)] * len(DD)
     else:
-        DR = links.count_scalar_pairs(reference, unk_rand, **kwargs)
+        DR = links.count_scalar_pairs(reference, unk_rand,  count_mode='kn', **kwargs)
     return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]
