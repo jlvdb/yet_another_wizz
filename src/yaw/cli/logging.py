@@ -1,20 +1,18 @@
+"""
+Implements an extension to the logging facilities of `yet_another_wizz` that
+allows rendering pipeline-specific messages at a custom log level between INFO
+and WARNING.
+"""
+
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-from yaw.utils.logging import (
-    LOGGER_NAME,
-    Colors,
-    CustomFormatter,
-    configure_handler,
-    term_supports_color,
-)
+from yaw.utils.logging import LOGGER_NAME, Colors, CustomFormatter, configure_handler
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-SUPPORTS_COLOR = term_supports_color()
 
 
 def addLoggingLevel(levelName, levelNum, methodName=None):
@@ -78,6 +76,8 @@ CustomFormatter.FORMATS[logging.CLIENT] = (
 
 
 def init_file_logging(log_path: Path | str) -> None:
+    """Initialises the `yet_another_wizz` logger to terminal output and
+    additionally logs all messages to the provided log file."""
     logger = logging.getLogger(LOGGER_NAME)
     handler = logging.FileHandler(log_path)
     configure_handler(handler, pretty=False, level=logging.DEBUG)

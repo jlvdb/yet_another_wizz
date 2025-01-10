@@ -1,3 +1,8 @@
+"""
+Implements the the commandline parser and package entry-point for
+`yet_another_wizz`.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -13,6 +18,9 @@ from yaw.utils import parallel, transform_matches
 
 
 class DumpConfigAction(argparse.Action):
+    """Parser action that dumps a default YAML setup configuration to standard
+    output and exists the program."""
+
     def __call__(self, parser, *args, **kwargs):
         if parallel.on_root():
             indenter = TextIndenter(num_spaces=4)
@@ -31,11 +39,22 @@ class DumpConfigAction(argparse.Action):
 
 
 def path_absolute(path: str) -> Path:
+    """Get the absolute path from the given input."""
     return Path(path).expanduser().absolute()
 
 
 @parallel.broadcasted
 def path_exists(path: str) -> Path:
+    """
+    Checks if path exists and synchronises result between MPI workers if needed.
+
+    Args:
+        path:
+            File path to check.
+
+    Returns:
+        A new :obj:`pathlib.Path` instance.
+    """
     filepath = path_absolute(path)
     if not filepath.exists():
         raise argparse.ArgumentTypeError(f"file '{path}' not found")
@@ -46,6 +65,14 @@ def path_exists(path: str) -> Path:
 
 @dataclass
 class NameSpace:
+    """
+    Simple dataclass where each attribute corresponds to one command line
+    argument.
+
+    Provides constructor that parses the command line arguments into the new
+    instance.
+    """
+
     # required
     wdir: Path
     setup: Path
@@ -61,6 +88,7 @@ class NameSpace:
 
     @classmethod
     def parse_args(cls) -> NameSpace:
+        """Create a new instance by parsing command line arguments."""
         parser = argparse.ArgumentParser(
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description=(
@@ -159,5 +187,7 @@ class NameSpace:
 
 
 def main():
+    """Module entry point and commandline executable, creates and executes
+    pipeline."""
     args = NameSpace.parse_args()
     run_setup(**asdict(args))

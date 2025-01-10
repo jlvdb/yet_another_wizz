@@ -1,6 +1,11 @@
 """
 Implements some base-functionality used by the configuration classes in this
 module.
+
+Configuration classes are essentially a set of parameter classes that specify
+the parameter types and how to parse them from and to builtin python types.
+Configuration classes can also contain other configuration classes as members,
+which are then parsed hierarchically. This functionality is implemented here.
 """
 
 from __future__ import annotations
@@ -334,8 +339,8 @@ class SequenceParameter(Parameter[T]):
 @dataclass(frozen=True)
 class ConfigSection:
     """
-    Use to indicate that a given parameter represents an independent (sub-)
-    configuration, parsed independently.
+    Used to indicate that a given parameter represents an independent (sub-)
+    configuration, parsed recursively.
 
     Args:
         config_class:

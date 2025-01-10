@@ -1,3 +1,8 @@
+"""
+Implementation of the top-level pipeline that combines the project directory,
+pipeline configuration, and scheduling and running the list of tasks.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -21,12 +26,24 @@ logger = logging.getLogger("yaw.cli.pipeline")
 
 
 class LockFile:
+    """Lock file, while present indicates that a task is currently running or
+    previously exited unexpectedly."""
+
     def __init__(self, path: Path | str, content: str) -> None:
         self.path = Path(path)
         self.content = content
 
     @parallel.broadcasted
     def inspect(self) -> str | None:
+        """
+        Checks if the lock file exists and read it's contents.
+
+        Results are broadcasted to MPI workers if needed.
+
+        Returns:
+            ``None`` if lock file does not exists, otherwise file contents as
+            string.
+        """
         if not self.path.exists():
             return None
 
@@ -35,6 +52,15 @@ class LockFile:
 
     @parallel.broadcasted
     def acquire(self, *, resume: bool = False) -> None:
+        """
+        Attempts to create the lock file.
+
+        Synchronised across MPI workers if needed.
+
+        Raises:
+            FileExistsError:
+                If lock file already exists.
+        """
         if self.path.exists() and not resume:
             raise FileExistsError(f"lock file already exists: {self.path}")
 
@@ -43,11 +69,28 @@ class LockFile:
 
     @parallel.broadcasted
     def release(self) -> None:
+        """
+        Deletes the lock file.
+
+        Synchronised across MPI workers if needed.
+        """
         self.path.unlink()
 
 
 @parallel.broadcasted
 def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
+    """
+    Reads project configuration and task list from the given input setup file.
+
+    Results are broadcasted between MPI workers if needed.
+
+    Args:
+        setup_file:
+            Path to setup YAML file.
+
+    Returns:
+        The project configuration instance and list of tasks.
+    """
     with open(setup_file) as f:
         config_dict = yaml.safe_load(f)
         task_list = config_dict.pop("tasks")
@@ -65,6 +108,20 @@ def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
 def write_config(
     setup_file: Path | str, config: ProjectConfig, tasks: TaskList
 ) -> None:
+    """
+    Writes the project configuration and task list as YAML file in the project
+    directory.
+
+    Synchronised between MPI workers if needed.
+
+    Args:
+        setup_file:
+            Path to setup YAML file.
+        config:
+            Current project configuration.
+        tasks:
+            Current list of tasks.
+    """
     version = ".".join(str(v) for v in __version_tuple__[:3])
     header = f"yaw_cli v{version} configuration"
 
@@ -76,6 +133,35 @@ def write_config(
 
 
 class Pipeline:
+    """
+    Automatic pipeline for `yet_another_wizz`.
+
+    Runs a list of tasks with a configuration of parameters and inputs and
+    stores outputs in a project directory. The project directory additionally
+    contains log files from all runs and its configuration as a setup YAML
+    file.
+
+    Args:
+        directory:
+            Project directory instance.
+        config:
+            Project config instance.
+        tasks:
+            Task list instance used to schedule tasks to execute.
+
+    Keyword Args:
+        cache_path:
+            Optional external cache path to use instead of default in project
+            directory (not deleted automatically).
+        max_workers:
+            Overwrite the maximum number of parallel workers in the setup file.
+        resume:
+            Resume operation from a previous (failed) run.
+        progress:
+            Whether to show a progress bar on terminal for tasks that support
+            it.
+    """
+
     def __init__(
         self,
         directory: ProjectDirectory,
@@ -114,6 +200,35 @@ class Pipeline:
         resume: bool = False,
         progress: bool = True,
     ) -> Pipeline:
+        """
+        Create a new pipeline instance from a setup YAML file.
+
+        Read the configuration from the provided setup file and operate on the
+        given project directory
+
+        Args:
+            project_path:
+                Path to project directory to use.
+            setup_file:
+                YAML file specifying the inputs, configuration parameters and
+                tasks to perform.
+
+        Keyword Args:
+            cache_path:
+                Optional external cache path to use instead of default in
+                project directory (not deleted automatically).
+            max_workers:
+                Overwrite the maximum number of parallel workers in the setup
+                file.
+            overwrite:
+                Overwrite an existing project directory, this will fail if the
+                given path does not point to a valid existing project directory.
+            resume:
+                Resume operation from a previous (failed) run.
+            progress:
+                Whether to show a progress bar on terminal for tasks that
+                support it.
+        """
         config, tasks = read_config(setup_file)
         bin_indices = config.get_bin_indices()
 
@@ -144,6 +259,16 @@ class Pipeline:
 
     @parallel.broadcasted
     def _update_cache_path(self, root_path: Path | str | None) -> None:
+        """
+        Update to an external cache path if the project directory does not
+        contain a cache directory already.
+
+        Synchronised between MPI workers if needed.
+
+        Args:
+            root_path:
+                External path in which catalogs are cached.
+        """
         if root_path is None:
             return
         if self.directory.cache_exists():
@@ -158,6 +283,7 @@ class Pipeline:
         cache_path.mkdir(exist_ok=True)
 
     def _update_max_workers(self, max_workers: int | None) -> None:
+        """Updates the maximum parallel workers to use."""
         if parallel.use_mpi() and (
             max_workers is not None or self.config.correlation.max_workers is not None
         ):
@@ -173,6 +299,7 @@ class Pipeline:
             )
 
     def run(self) -> None:
+        """Schedule and run the pipeline tasks."""
         if parallel.on_root():
             if len(self.tasks) > 0:
                 msg = "resuming" if self._resume else "running"
@@ -207,6 +334,15 @@ class Pipeline:
 
     @parallel.broadcasted
     def drop_cache(self) -> None:
+        """
+        Delete the cache directory.
+
+        Synchronised between MPI workers if needed.
+
+        Args:
+            root_path:
+                External path in which catalogs are cached.
+        """
         logger.client("dropping cache directory")
 
         if not self.directory.cache.path.exists():
@@ -233,6 +369,39 @@ def run_setup(
     quiet: int = False,
     progress: bool = False,
 ) -> None:
+    """
+    Create and run a pipeline from a given setup configuration.
+
+    Automatically sets up the logging facility.
+
+    Args:
+        wdir:
+            Project directory path.
+        setup:
+            Path to setup YAML file with configuration, inputs, and task list.
+
+    Keyword Args:
+        cache_path:
+            Optional external cache path to use instead of default in project
+            directory (not deleted automatically).
+        workers:
+            Overwrite the maximum number of parallel workers in the setup file.
+        drop:
+            Drop cache directory after completing all pipeline tasks.
+        overwrite:
+            Overwrite an existing project directory, this will fail if the given
+            path does not point to a valid existing project directory.
+        resume:
+            Resume operation from a previous (failed) run.
+        verbose:
+            Whether to display DEBUG level log messages on terminal instead of
+            INFO level.
+        quiet:
+            Whether to disable logging to terminal alltogether.
+        progress:
+            Whether to show a progress bar on terminal for tasks that support
+            it.
+    """
     if quiet:
         get_logger(stdout=False)
         progress = False

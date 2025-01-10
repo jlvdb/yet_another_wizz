@@ -26,6 +26,8 @@ T = TypeVar("T")
 
 
 def new_path_checked(path: Path | str) -> Path:
+    """Create and return a new `pathlib.Path` instance and raise a
+    `FileNotFoundError` if the target path does not exist."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"input file not found: {path}")
@@ -104,6 +106,31 @@ class IntMappingParameter(Parameter[T]):
 
 @dataclass
 class CatPairConfig(BaseConfig):
+    """
+    Configuration for a pair of data- and optional random input catalogs.
+
+    The catalogs are specified as file paths and through a set of column names
+    to read from the input. Column names are assumend to be identical in both
+    catalogs. The right ascension (``ra``) and declination (``dec``) columns are
+    always required, additional columns are optional, depending on the context.
+
+    Args:
+        path_data:
+            Path to an existing data catalog.
+        path_rand:
+            Path to an existing random catalog.
+        ra:
+            Column name of right ascension in degrees.
+        dec:
+            Column name of declination in degrees.
+        redshift:
+            Optional column name of object redshifts.
+        weight:
+            Optional column name of object weights.
+        patches:
+            Optional column name of patch indices to use.
+    """
+
     _paramspec = (
         Parameter(
             name="path_data",
@@ -151,14 +178,23 @@ class CatPairConfig(BaseConfig):
     )
 
     path_data: Path | str
+    """Path to an existing data catalog."""
     path_rand: Path | str | None = field(default=None)
+    """Path to an existing random catalog."""
     ra: str = field(kw_only=True)
+    """Column name of right ascension in degrees."""
     dec: str = field(kw_only=True)
+    """Column name of declination in degrees."""
     redshift: str | None = field(default=None, kw_only=True)
+    """Optional column name of object redshifts."""
     weight: str | None = field(default=None, kw_only=True)
+    """Optional column name of object weights."""
     patches: str | None = field(default=None, kw_only=True)
+    """Optional column name of patch indices to use."""
 
     def get_columns(self) -> dict[str, str]:
+        """Get a dictionary mapping from class attribute to column name in the
+        input file."""
         return dict(
             (attr, value)
             for attr, value in asdict(self).items()
@@ -172,6 +208,32 @@ class CatPairConfig(BaseConfig):
 
 @dataclass
 class ReferenceCatConfig(CatPairConfig):
+    """
+    Configuration for a pair of reference data- and optional random input
+    catalogs.
+
+    The catalogs are specified as file paths and through a set of column names
+    to read from the input. Column names are assumend to be identical in both
+    catalogs. The right ascension (``ra``), declination (``dec``), and redshift
+    (``redshift``) columns are always required.
+
+    Args:
+        path_data:
+            Path to an existing data catalog.
+        path_rand:
+            Optional path to an existing random catalog.
+        ra:
+            Column name of right ascension in degrees.
+        dec:
+            Column name of declination in degrees.
+        redshift:
+            Column name of object redshifts.
+        weight:
+            Optional column name of object weights.
+        patches:
+            Optional column name of patch indices to use.
+    """
+
     _paramspec = update_paramspec(
         CatPairConfig,
         Parameter(
@@ -181,9 +243,40 @@ class ReferenceCatConfig(CatPairConfig):
         ),
     )
 
+    redshift: str = field(kw_only=True)
+    """Column name of object redshifts."""
+
 
 @dataclass
 class UnknownCatConfig(CatPairConfig):
+    """
+    Configuration for a pair of unknown data- and optional random input
+    catalogs for a set of tomographic bins.
+
+    The catalogs are specified as dictionaries of bin index to file paths and
+    through a set of column names to read from the input. Column names are
+    assumend to be identical in both catalogs. The right ascension (``ra``),
+    declination (``dec``), and redshift (``redshift``) columns are always
+    required.
+
+    Args:
+        path_data:
+            Path or mapping of bin index to path to existing data catalog(s).
+        path_rand:
+            Optional path or mapping of bin index to path to existing random
+            catalog(s), bin indices must match ``path_data``.
+        ra:
+            Column name of right ascension in degrees.
+        dec:
+            Column name of declination in degrees.
+        redshift:
+            Column name of object redshifts.
+        weight:
+            Optional column name of object weights.
+        patches:
+            Optional column name of patch indices to use.
+    """
+
     _paramspec = update_paramspec(
         CatPairConfig,
         IntMappingParameter(
@@ -204,12 +297,20 @@ class UnknownCatConfig(CatPairConfig):
     )
 
     path_data: Mapping[int, Path | str]
+    """Path or mapping of bin index to path to existing data catalog(s)."""
     path_rand: Mapping[int, Path | str] | None = field(default=None)
+    """Optional path or mapping of bin index to path to existing random
+    catalog(s), bin indices must match ``path_data``."""
     ra: str = field(kw_only=True)
+    """Column name of right ascension in degrees."""
     dec: str = field(kw_only=True)
+    """Column name of declination in degrees."""
     redshift: str | None = field(default=None, kw_only=True)
+    """Optional column name of object redshifts."""
     weight: str | None = field(default=None, kw_only=True)
+    """Optional column name of object weights."""
     patches: str | None = field(default=None, kw_only=True)
+    """Optional column name of patch indices to use."""
 
     def __post_init__(self) -> None:
         if (
@@ -219,6 +320,12 @@ class UnknownCatConfig(CatPairConfig):
             raise ConfigError("keys for 'path_data' and 'path_rand' do not match")
 
     def iter_bins(self) -> Iterator[tuple[int, CatPairConfig]]:
+        """Iterate catalog configuration bin-wise.
+
+        Yields:
+            Tuples of bin index and a :obj:`CatPairConfig` instance for that
+            particular bin.
+        """
         columns = self.get_columns()
         for idx, data in self.path_data.items():
             rand = None if self.path_rand is None else self.path_rand[idx]
@@ -232,6 +339,25 @@ class UnknownCatConfig(CatPairConfig):
 
 @dataclass
 class InputConfig(BaseConfig):
+    """
+    Configuration for pipeline input catalogs.
+
+    Specifies reference and unknown catalogs in separate sub-configurations, as
+    well as optional global parameters for handling inputs.
+
+    Args:
+        reference:
+            Reference catalog input configuration.
+        unknown:
+            Unknown catalog(s) input configuration.
+        num_patches:
+            Optional number of patches to use, signals generating patch centers
+            on the fly and applying them to subsequently loaded catalogs.
+        cache_path:
+            Optional override of the default cache directory path (within the
+            project directory).
+    """
+
     _paramspec = (
         ConfigSection(
             ReferenceCatConfig,
@@ -261,9 +387,15 @@ class InputConfig(BaseConfig):
     )
 
     reference: ReferenceCatConfig
+    """Reference catalog input configuration."""
     unknown: UnknownCatConfig
+    """Unknown catalog(s) input configuration."""
     num_patches: int | None = field(default=None, kw_only=True)
+    """Optional number of patches to use, signals generating patch centers on
+    the fly and applying them to subsequently loaded catalogs."""
     cache_path: Path | str | None = field(default=None, kw_only=True)
+    """Optional override of the default cache directory path (within the project
+    directory)."""
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
@@ -286,6 +418,19 @@ class InputConfig(BaseConfig):
 
 @dataclass
 class ProjectConfig(BaseConfig):
+    """
+    Configuration of the whole project setup.
+
+    Specifies input catalogs and measurement parameters in separate sub-
+    configurations.
+
+    Args:
+        correlation:
+            Configuration for `yet_another_wizz` measurements.
+        inputs:
+            Configuration of pipeline input data.
+    """
+
     _paramspec = (
         ConfigSection(
             Configuration,
@@ -302,7 +447,9 @@ class ProjectConfig(BaseConfig):
     )
 
     correlation: Configuration
+    """Configuration for `yet_another_wizz` measurements."""
     inputs: InputConfig
+    """Configuration of pipeline input data."""
 
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any]):
@@ -316,6 +463,7 @@ class ProjectConfig(BaseConfig):
         return cls(correlation, inputs)
 
     def get_bin_indices(self) -> list[int]:
+        """Get a list of bin indices configured for the unknown catalogs."""
         if self.inputs.unknown is None:
             return []
         return sorted(self.inputs.unknown.path_data.keys())
