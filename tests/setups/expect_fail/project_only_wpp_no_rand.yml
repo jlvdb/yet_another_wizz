@@ -1,0 +1,25 @@
+# yaw_cli v3.0.3 configuration
+
+correlation:
+    scales:
+        rmin: 500
+        rmax: 1500
+        unit: kpc
+    binning:
+        zmin: 0.08
+        zmax: 1.4
+        num_bins: 132
+
+inputs:
+    unknown:
+        path_data:
+            1: /net/home/fohlen13/jlvdb/CCdev/inputs/nomag/legacy/unknown1.pqt
+        ra: ra
+        dec: dec
+        weight: weight
+        redshift: z
+    num_patches: 64
+
+tasks:
+  - auto_unk
+  - plot
