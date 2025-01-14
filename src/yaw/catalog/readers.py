@@ -245,6 +245,12 @@ class DataReader(DataChunkReader):
         self._columns = {
             attr: name for attr, name in zip(ATTR_ORDER, columns) if name is not None
         }
+
+        available_columns = self.get_available_columns()
+        for name in self._columns.values():
+            if name not in available_columns:
+                raise KeyError(f"column '{name}' does not exist in source")
+
         self._chunk_info = DataChunkInfo(
             has_weights=weight_name is not None,
             has_redshifts=redshift_name is not None,
@@ -261,6 +267,11 @@ class DataReader(DataChunkReader):
                 "selecting input columns: %s",
                 ", ".join(self._columns.values()),
             )
+
+    @abstractmethod
+    def get_available_columns(self) -> set[str]:
+        """Get a set of all column names available in the input source."""
+        pass
 
     def get_probe(self, probe_size: int) -> TypeDataChunk:
         """
@@ -384,6 +395,9 @@ class DataFrameReader(DataReader):
     def __exit__(self, *args, **kwargs) -> None:
         return None
 
+    def get_available_columns(self) -> set[str]:
+        return set(self._data.columns.to_list())
+
     def _get_next_chunk(self) -> TypeDataChunk:
         end = self._num_samples  # already incremented by chunksize in __next__
         start = end - self.chunksize
@@ -496,7 +510,7 @@ class FitsReader(FileReader):
             self._hdu_data = self._file[hdu].data
             self._num_records = len(self._hdu_data)
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = parallel.bcast_auto(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"FITS file: {path}")
 
@@ -509,6 +523,10 @@ class FitsReader(FileReader):
             chunksize=chunksize,
             degrees=degrees,
         )
+
+    @parallel.broadcasted
+    def get_available_columns(self) -> set[str]:
+        return set(self._hdu_data.columns.names)
 
     def _get_next_chunk(self) -> DataChunk:
         def get_data_swapped(colname: str) -> NDArray:
@@ -567,7 +585,7 @@ class HDFReader(FileReader):
             self._file = h5py.File(str(path), mode="r")
             self._num_records = len(self._file[ra_name])
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = parallel.bcast_auto(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"HDF5 file: {path}")
 
@@ -583,6 +601,10 @@ class HDFReader(FileReader):
         # this final check is necessary since HDF5 columns are independent
         if parallel.on_root():
             common_len_assert([self._file[col] for col in self._columns.values()])
+
+    @parallel.broadcasted
+    def get_available_columns(self) -> set[str]:
+        return set(self._file.keys())
 
     def _get_next_chunk(self) -> DataChunk:
         end = self._num_samples  # already incremented by chunksize in __next__
@@ -639,7 +661,7 @@ class ParquetReader(FileReader):
             self._file = parquet.ParquetFile(str(path))
             self._num_records = self._file.metadata.num_rows
 
-        self._num_records = parallel.COMM.bcast(self._num_records, root=0)
+        self._num_records = parallel.bcast_auto(self._num_records, root=0)
         self.chunksize = min(self._num_records, chunksize or CHUNKSIZE)
         issue_io_log(self.num_records, self.num_chunks, f"Parquet file: {path}")
 
@@ -652,6 +674,10 @@ class ParquetReader(FileReader):
             chunksize=chunksize,
             degrees=degrees,
         )
+
+    @parallel.broadcasted
+    def get_available_columns(self) -> set[str]:
+        return set(self._file.schema.names)
 
     def _reset_iter_state(self) -> None:
         super()._reset_iter_state()

@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import warnings
 from collections.abc import Iterable
-from logging import Filter, Formatter
+from logging import Formatter
 from math import nan
 from timeit import default_timer
 from typing import TYPE_CHECKING, TypeVar
@@ -33,6 +34,9 @@ __all__ = [
 INDICATOR_PREFIX = ""
 """Globabl variable that inserts a prefix when showing the ``Indicator``
 progress bar."""
+
+LOGGER_NAME = "yaw"
+"""Name of the logger used by `yet_another_wizz`."""
 
 
 def set_indicator_prefix(prefix: str) -> None:
@@ -181,14 +185,16 @@ class CustomFormatter(Formatter):
         return formatter.format(record)
 
 
-class OnlyYAWFilter(Filter):
-    """Filter all log message that are not emmited by any of the internal
-    ``yaw`` loggers."""
+class ModuleFilter(logging.Filter):
+    """Filter that removes all log messages with a name that does not start with
+    the given ``module_name``."""
+
+    def __init__(self, module_name):
+        super().__init__()
+        self.module_name = module_name
 
     def filter(self, record):
-        record.exc_info = None
-        record.exc_text = None
-        return record.name.startswith("yaw")
+        return record.name.startswith(self.module_name)
 
 
 def get_log_formatter() -> Formatter:
@@ -206,7 +212,7 @@ def configure_handler(handler: Handler, *, pretty: bool, level: int) -> None:
     """Setup a log handler for the use with yet_another_wizz."""
     handler.setFormatter(get_pretty_formatter() if pretty else get_log_formatter())
     handler.setLevel(level)
-    handler.addFilter(OnlyYAWFilter())
+    handler.addFilter(ModuleFilter(LOGGER_NAME))
 
 
 def emit_parallel_mode_log(logger: Logger) -> None:
@@ -242,6 +248,9 @@ def get_logger(
     related to `yet_another_wizz`. By default, records are written to `stdout`,
     but logs can be directed to a file instead (or both).
 
+    .. Note::
+        The logger adds an exception hook to log uncaught exceptions.
+
     Args:
         level:
             The lowest log level to emit (``error``, ``warning``, ``info``, or
@@ -264,11 +273,22 @@ def get_logger(
     Returns:
         The fully configured logger instance.
     """
+
+    def log_uncaught_exceptions(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            msg = "user interrupt"
+        else:
+            msg = exc_value
+        logger.critical(msg, exc_info=(exc_type, exc_value, exc_traceback))
+        # proceed with the original exception handling
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
     level_code = getattr(logging, level.upper())
     handlers = []
 
     if stdout:
-        emit_welcome(sys.stdout)
+        if on_root():
+            emit_welcome(sys.stdout)
         handler = logging.StreamHandler(sys.stdout)
         configure_handler(handler, pretty=pretty, level=level_code)
         handlers.append(handler)
@@ -278,9 +298,14 @@ def get_logger(
         configure_handler(handler, pretty=False, level=level_code)
         handlers.append(handler)
 
-    logging.basicConfig(level=level_code, handlers=handlers)
+    sys.excepthook = log_uncaught_exceptions
     logging.captureWarnings(capture_warnings)
-    logger = logging.getLogger("yaw")
+    if pretty:
+        warnings.showwarning = lambda message, *args, **kwargs: logger.warning(message)
 
-    emit_parallel_mode_log(logger)
+    logging.basicConfig(level=logging.DEBUG, handlers=handlers)
+    logger = logging.getLogger(LOGGER_NAME)
+
+    if on_root():
+        emit_parallel_mode_log(logger)
     return logger
