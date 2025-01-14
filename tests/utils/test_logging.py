@@ -30,9 +30,9 @@ def test_Indicator(capsys):
     "name,filtered",
     [("yaw", True), ("yaw.utils", True), ("mod", False), ("mod.yaw", False)],
 )
-def test_OnlyYAWFilter(name, filtered):
+def test_ModuleFilter(name, filtered):
     record = LogRecord(name, DEBUG, "file.py", 1, "log msg", None, None)
-    assert logging.OnlyYAWFilter().filter(record) is filtered
+    assert logging.ModuleFilter(logging.LOGGER_NAME).filter(record) is filtered
 
 
 def send_logs(log_msg):
