@@ -185,6 +185,18 @@ class CustomFormatter(Formatter):
         return formatter.format(record)
 
 
+class ModuleFilter(logging.Filter):
+    """Filter that removes all log messages with a name that does not start with
+    the given ``module_name``."""
+
+    def __init__(self, module_name):
+        super().__init__()
+        self.module_name = module_name
+
+    def filter(self, record):
+        return record.name.startswith(self.module_name)
+
+
 def get_log_formatter() -> Formatter:
     """Create a plain logging formatter with time stamps."""
     return Formatter("%(asctime)s - %(levelname)s - %(name)s > %(message)s")
@@ -200,6 +212,7 @@ def configure_handler(handler: Handler, *, pretty: bool, level: int) -> None:
     """Setup a log handler for the use with yet_another_wizz."""
     handler.setFormatter(get_pretty_formatter() if pretty else get_log_formatter())
     handler.setLevel(level)
+    handler.addFilter(ModuleFilter(LOGGER_NAME))
 
 
 def emit_parallel_mode_log(logger: Logger) -> None:

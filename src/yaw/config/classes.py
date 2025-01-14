@@ -47,7 +47,7 @@ __all__ = [
     "ScalesConfig",
 ]
 
-logger = logging.getLogger("yaw.config")  # instead of "yaw.config.classes"
+logger = logging.getLogger(__name__.removesuffix(".classes"))
 
 
 @dataclass(frozen=True)

@@ -73,7 +73,7 @@ PATCH_NAME_TEMPLATE = "patch_{:d}"
 PATCH_INFO_FILE = "patch_ids.bin"
 """Name of file listing patch IDs in catalog cache directory."""
 
-logger = logging.getLogger("yaw.catalog")  # instead of "yaw.catalog.catalog"
+logger = logging.getLogger(__name__.removesuffix(".catalog"))
 
 
 def log_info(*args) -> None:

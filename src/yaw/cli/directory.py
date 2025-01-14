@@ -27,7 +27,7 @@ from yaw.cli.handles import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-logger = logging.getLogger("yaw.cli.pipeline")
+logger = logging.getLogger(__name__)
 
 
 class Directory:

@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     TypeTask = TypeVar("TypeTask", bound="Task")
     T = TypeVar("T")
 
-logger = logging.getLogger("yaw.cli.tasks")
+logger = logging.getLogger(__name__)
 
 
 def create_catalog(

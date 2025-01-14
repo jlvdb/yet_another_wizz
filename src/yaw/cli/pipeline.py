@@ -22,7 +22,7 @@ from yaw.cli.tasks import TaskList
 from yaw.config.base import ConfigError
 from yaw.utils import get_logger, parallel, write_yaml
 
-logger = logging.getLogger("yaw.cli.pipeline")
+logger = logging.getLogger(__name__)
 
 
 class LockFile:

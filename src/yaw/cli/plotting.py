@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from yaw.correlation import CorrData
     from yaw.redshifts import HistData, RedshiftData
 
-logger = logging.getLogger("yaw.cli.tasks")
+logger = logging.getLogger(__name__)
 
 
 def any_tomographic_items(items: Iterable[Any | None]) -> bool:
