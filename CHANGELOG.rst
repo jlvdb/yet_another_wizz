@@ -7,6 +7,7 @@ Version 3.1.0
 -------------
 
 Implemented a new version of the commandline client as entry point ``yaw_cli``.
+The documentation update with examples will follow soon in a separate release.
 
 .. rubric:: Added features
 
