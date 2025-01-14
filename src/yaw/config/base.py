@@ -203,7 +203,13 @@ class Parameter(Generic[T]):
             choices = self.choices
             if issubclass(choices, StrEnum):
                 choices = get_options(choices)
-            choices = tuple(self.parse(choice) for choice in choices)
+            choices = tuple(
+                self.parse(
+                    choice,
+                    verify_choices=False,  # self.choices not yet initialised
+                )
+                for choice in choices
+            )
             object.__setattr__(self, "choices", choices)
 
         if self.default is not NotSet:
@@ -219,25 +225,26 @@ class Parameter(Generic[T]):
         """Whether the parameter has only a limited number of allowed values."""
         return self.choices is not NotSet
 
-    def _parse_item(self, value: Any) -> T:
+    def _parse_item(self, value: Any, *, verify_choices: bool = True) -> T:
         try:
             parsed = self.to_type(value)
         except Exception as err:
             msg = f"could not convert to type {self.type.__name__}: {err}"
             raise ConfigError(msg, self.name) from err
 
-        if self.has_choices and parsed not in self.choices:
+        if verify_choices and self.has_choices and parsed not in self.choices:
             choice_str = ", ".join(self.choices)
             msg = f"invalid value '{value}', allowed choices are: {choice_str}"
             raise ConfigError(msg, self.name)
 
         return parsed
 
-    def parse(self, value: Any) -> T:
-        """Parse the input to the specifed parameter type."""
+    def parse(self, value: Any, *, verify_choices: bool = True) -> T:
+        """Parse the input to the specifed parameter type, by default also
+        check that the value is one of the allowed parameter choices."""
         if self.nullable and value is None:
             return None
-        return self._parse_item(value)
+        return self._parse_item(value, verify_choices=verify_choices)
 
     def as_builtin(self, value: T) -> TypeBuiltin:
         """Convert the typed value back to builtin python types supported by
