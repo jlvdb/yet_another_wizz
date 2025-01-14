@@ -247,8 +247,6 @@ class Task(ABC):
         self.optionals: set[Task] = set()
 
     def __hash__(self):
-        # To allow repeating tasks in the future, use this line:
-        # return hash(self.__class__)
         return hash(self.name)
 
     def connect_input(self, task: Task) -> bool:

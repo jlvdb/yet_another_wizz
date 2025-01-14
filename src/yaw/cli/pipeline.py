@@ -93,7 +93,7 @@ def read_config(setup_file: Path | str) -> tuple[ProjectConfig, TaskList]:
     """
     with open(setup_file) as f:
         config_dict = yaml.safe_load(f)
-        task_list = config_dict.pop("tasks")
+        task_list = set(config_dict.pop("tasks"))  # silently drop repeated tasks
 
     try:
         config = ProjectConfig.from_dict(config_dict)
