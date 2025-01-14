@@ -3,6 +3,12 @@
 Change log
 ==========
 
+Version 3.1.1
+-------------
+
+Removed the unnecessary version requirement for numpy version 2.x.
+
+
 Version 3.1.0
 -------------
 
