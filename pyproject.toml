@@ -62,6 +62,7 @@ test = [
     "coverage",
     "pytest",
     "pytest-cov",
+    "pytest-skip-slow",
     "pandas",
 ]
 dev = [
