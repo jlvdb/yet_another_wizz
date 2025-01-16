@@ -176,9 +176,6 @@ failing_setups = {
 }
 
 
-passing_setups = list((Path(__file__).parent / "setups" / "expect_pass").iterdir())
-
-
 @mark.parametrize("setup_name,execpt_info", failing_setups.items())
 def test_failing_setups(mock_setup, setup_name, execpt_info) -> None:
     old_num_threads = os.environ["YAW_NUM_THREADS"]
@@ -195,7 +192,10 @@ def test_failing_setups(mock_setup, setup_name, execpt_info) -> None:
 
 
 @mark.slow
-@mark.parametrize("yaml_path", passing_setups)
+@mark.parametrize(
+    "yaml_path",
+    (Path(__file__).parent / "setups" / "expect_pass").iterdir(),
+)
 def test_passing_setups(mock_setup, yaml_path) -> None:
     old_num_threads = os.environ["YAW_NUM_THREADS"]
     os.environ["YAW_NUM_THREADS"] = "5"
