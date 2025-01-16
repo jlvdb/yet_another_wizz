@@ -27,7 +27,7 @@ jobs:
           pip install --upgrade --editable .[test]
 
       - name: Run tests and coverage
-        run: python -m pytest tests --cov=src/ --cov-report=xml
+        run: python -m pytest tests --slow --cov=src/ --cov-report=xml
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
