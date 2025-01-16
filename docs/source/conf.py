@@ -6,6 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+import subprocess
 from pathlib import Path
 
 PKG_ROOT = Path("../../").resolve()
@@ -86,6 +87,7 @@ html_context = {
     "default_mode": "auto",
 }
 
+
 # -- Build custom files ------------------------------------------------------
 
 
@@ -121,5 +123,10 @@ def write_readme(path):
         f.writelines(lines[start:])
 
 
+def write_empty_cli_yaml(path):
+    subprocess.check_call(f"yaw_cli -d > {path}", shell=True)
+
+
 write_readme("user_guide/README.rst")
 write_changes("changes.rst")
+write_empty_cli_yaml("user_guide/default_setup.yml")

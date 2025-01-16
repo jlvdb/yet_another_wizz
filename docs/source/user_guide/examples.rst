@@ -51,8 +51,6 @@ reference sample:
 
         mpiexec python yaw_script.py
 
-.. caution::
-    Previous versions of `yet_another_wizz` could also be run as a command line
-    tool when installing the sparate command-line client ``yet_another_wizz_cli``.
-    This tool is deprecated as of version 3.0 but maybe be integrated directly
-    into `yet_another_wizz` in a future release.
+
+.. literalinclude:: default_setup.yml
+    :language: yaml
