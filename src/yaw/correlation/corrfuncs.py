@@ -281,7 +281,7 @@ class CorrData(SampledData):
         plot_kwargs.update(dict(color=color, label=label))
         ebar_kwargs = dict(fmt=".", ls="none")
         ebar_kwargs.update(plot_kwargs)
-        alpha = 0.2
+        alpha = 0.25
         # plot zero line
         if zero_line:
             lw = 0.7
