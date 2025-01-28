@@ -297,10 +297,10 @@ class AngularTree:
         if self.kappa is None or other.kappa is None:
             raise ValueError("missing required 'kappa' for both tree.")
         w1 = np.copy(self.weights)
-        if self.weights == None:
+        if self.weights is None:
             w1 = 1
         w2 = np.copy(other.weights)
-        if other.weights == None:
+        if other.weights is None:
             w2 = 1
         return (
             w1 * self.kappa,
