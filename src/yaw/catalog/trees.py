@@ -296,9 +296,15 @@ class AngularTree:
         # CountMode.kk
         if self.kappa is None or other.kappa is None:
             raise ValueError("missing required 'kappa' for both tree.")
+        w1 = np.copy(self.weights)
+        if self.weights == None:
+            w1 = 1
+        w2 = np.copy(other.weights)
+        if other.weights == None:
+            w2 = 1
         return (
-            self.weights * self.kappa if self.weights else self.kappa,
-            other.weights * other.kappa if other.weights else other.kappa,
+            w1 * self.kappa,
+            w2 * other.kappa,
         )
 
     def count(
