@@ -282,30 +282,24 @@ class AngularTree:
                 raise ValueError("missing required 'kappa' for second tree.")
             return (
                 self.weights,
-                other.weights * other.kappa if other.weights else other.kappa,
+                other.weights * other.kappa if other.weights is not None else other.kappa,
             )
 
         elif mode == CountMode.kn:
             if self.kappa is None:
                 raise ValueError("missing required 'kappa' for first tree.")
             return (
-                self.weights * self.kappa if self.weights else self.kappa,
+                self.weights * self.kappa if self.weights is not None else self.kappa,
                 other.weights,
             )
 
         # CountMode.kk
         if self.kappa is None or other.kappa is None:
             raise ValueError("missing required 'kappa' for both tree.")
-        w1 = np.copy(self.weights)
-        if self.weights is None:
-            w1 = 1
-        w2 = np.copy(other.weights)
-        if other.weights is None:
-            w2 = 1
         return (
-            w1 * self.kappa,
-            w2 * other.kappa,
-        )
+                self.weights * self.kappa if self.weights is not None else self.kappa,
+                other.weights * other.kappa if other.weights is not None else other.kappa,
+            )
 
     def count(
         self,
