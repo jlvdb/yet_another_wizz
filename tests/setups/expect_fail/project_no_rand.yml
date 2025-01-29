@@ -6,25 +6,25 @@ correlation:
         rmax: 1000
         unit: kpc
     binning:
-        zmin: 0.2
-        zmax: 1.8
-        num_bins: 5
-    max_workers: 5
+        zmin: 0.15
+        zmax: 0.7
+        num_bins: 11
+    max_workers: 11
 
 inputs:
     reference:
-        path_data: $PATH$/reference.pqt
+        path_data: $DATA$
         ra: ra
         dec: dec
         redshift: z
     unknown:
         path_data:
-            1: $PATH$/unknown1.pqt
+            1: $DATA$
         ra: ra
         dec: dec
         weight: weight
         redshift: z
-    num_patches: 5
+    num_patches: 11
 
 tasks:
   - cross_corr

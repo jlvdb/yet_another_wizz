@@ -5,25 +5,25 @@ correlation:
         rmin: 100
         rmax: 1000
         unit: kpc
-    max_workers: 5
+    max_workers: 11
 
 inputs:
     reference:
-        path_data: $PATH$/reference.pqt
-        path_rand: $PATH$/ref_rand.pqt
+        path_data: $DATA$
+        path_rand: $RAND$
         ra: ra
         dec: dec
         redshift: z
     unknown:
         path_data:
-            1: $PATH$/unknown1.pqt
+            1: $DATA$
         path_rand:
-            1: $PATH$/unk_rand1.pqt
+            1: $RAND$
         ra: ra
         dec: dec
         weight: weight
         redshift: z
-    num_patches: 5
+    num_patches: 11
 
 tasks:
   - auto_ref
