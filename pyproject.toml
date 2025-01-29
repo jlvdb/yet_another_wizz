@@ -82,6 +82,7 @@ where = [
 
 [tool.setuptools.package-data]
 yaw = [
+    "examples/*.pqt",
     "examples/*.hdf",
     "examples/*.dat",
     "examples/*.cov",

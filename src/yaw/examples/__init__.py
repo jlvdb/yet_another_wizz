@@ -1,10 +1,13 @@
 """
-This module provides some precomputed example data, which are loaded when
+This module provides precomputed example data products, which are loaded when
 importing the module.
+
+The data is based on spectroscopic data and randoms from the southern field the
+2-degree Field Lensing Survey (2dFLenS, Blake et al. 2016, MNRAS, 462, 4240).
 
 >>> from yaw import examples  # reads the data sets from disk
 >>> examples.w_sp
-CorrFunc(counts=dd|dr|rd|rr, auto=False, binning=30 bins @ (0.100...1.200], num_patches=64)
+CorrFunc(counts=dd|dr, auto=False, binning=11 bins @ (0.150...0.700], num_patches=11)
 """
 
 from pathlib import Path
@@ -18,10 +21,18 @@ __all__ = [
     "normalised_counts",
     "patched_count",
     "patched_sum_weights",
+    "path_data",
+    "path_rand",
 ]
 
 
 _path = Path(__file__).parent
+
+path_data = _path / "2dflens_kidss_data.pqt"
+"""Path to a sample of 2dFLenS high-z data as Parquet file."""
+path_rand = _path / "2dflens_kidss_rand_5x.pqt"
+"""Path to a sample of 2dFLenS high-z randoms as Parquet file."""
+
 
 w_sp = CorrFunc.from_file(_path / "cross.hdf")
 """Example data from a crosscorrelation measurement
