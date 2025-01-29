@@ -5,7 +5,6 @@ correlation:
         rmin: 100
         rmax: 1000
         unit: kpc
-    max_workers: 11
 
 inputs:
     reference:
@@ -23,7 +22,7 @@ inputs:
         dec: dec
         weight: weight
         redshift: z
-    num_patches: 11
+    num_patches: 6
 
 tasks:
   - auto_ref

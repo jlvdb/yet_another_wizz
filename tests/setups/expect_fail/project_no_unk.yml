@@ -9,7 +9,6 @@ correlation:
         zmin: 0.15
         zmax: 0.7
         num_bins: 11
-    max_workers: 11
 
 inputs:
     reference:
@@ -18,7 +17,7 @@ inputs:
         ra: ra
         dec: dec
         redshift: z
-    num_patches: 11
+    num_patches: 6
 
 tasks:
   - auto_ref
