@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 from pytest import mark, raises
 
-from yaw import examples
 from yaw.cli import run_setup
 from yaw.cli.tasks import TaskError
 from yaw.config import ConfigError
+from yaw.examples import PATH
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -41,8 +41,8 @@ def finalise_setup(in_yaml: Path | str, out_yml: Path | str) -> None:
     with open(in_yaml) as in_file:
         config = in_file.read()
 
-    config = config.replace("$DATA$", str(examples.path_data))
-    config = config.replace("$RAND$", str(examples.path_rand))
+    config = config.replace("$DATA$", str(PATH.data))
+    config = config.replace("$RAND$", str(PATH.rand))
 
     with open(out_yml, mode="w") as out_file:
         out_file.write(config)

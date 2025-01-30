@@ -14,9 +14,9 @@ inputs:
     reference:
         path_data: $DATA$
         path_rand: $RAND$
-        ra: ra
-        dec: dec
-        redshift: z
+        ra: RA
+        dec: Dec
+        redshift: redshift
     num_patches: 6
 
 tasks:

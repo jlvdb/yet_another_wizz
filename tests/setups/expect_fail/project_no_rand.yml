@@ -13,16 +13,16 @@ correlation:
 inputs:
     reference:
         path_data: $DATA$
-        ra: ra
-        dec: dec
-        redshift: z
+        ra: RA
+        dec: Dec
+        redshift: redshift
     unknown:
         path_data:
             1: $DATA$
-        ra: ra
-        dec: dec
-        weight: weight
-        redshift: z
+        ra: RA
+        dec: Dec
+        weight: wei
+        redshift: redshift
     num_patches: 6
 
 tasks:

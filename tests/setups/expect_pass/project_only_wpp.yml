@@ -16,10 +16,10 @@ inputs:
             1: $DATA$
         path_rand:
             1: $RAND$
-        ra: ra
-        dec: dec
-        weight: weight
-        redshift: z
+        ra: RA
+        dec: Dec
+        weight: wei
+        redshift: redshift
     num_patches: 6
 
 tasks:
