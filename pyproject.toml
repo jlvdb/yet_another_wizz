@@ -21,6 +21,7 @@ dependencies = [
     "numpy",
     "pyarrow",
     "pyyaml",
+    "requests",
     "scipy",
     "StrEnum",  # enum.StrEnum python 3.11+ only
     "treecorr>=4.3",
