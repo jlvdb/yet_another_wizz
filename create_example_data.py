@@ -9,15 +9,15 @@ from yaw.examples import PATH, ExampleData, config
 
 if __name__ == "__main__":
     print("downloading 2dFLenS data and updating example data")
-    example = ExampleData.download_and_update()
+    ExampleData.download_and_update()
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
 
         print("building catalogs")
-        cat_ref_rand = example.create_rand_cat(temp_dir / "ref_rand")
-        cat_ref_data = example.create_data_cat(temp_dir / "ref_data")
-        cat_unk_data = example.create_data_cat(temp_dir / "unk_data")
+        cat_ref_rand = ExampleData.create_rand_cat(temp_dir / "ref_rand")
+        cat_ref_data = ExampleData.create_data_cat(temp_dir / "ref_data")
+        cat_unk_data = ExampleData.create_data_cat(temp_dir / "unk_data")
 
         print("running crosscorrelation")
         (cross,) = yaw.crosscorrelate(
