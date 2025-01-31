@@ -5,8 +5,10 @@ repos:
   hooks:
     - id: end-of-file-fixer
     - id: trailing-whitespace
+      exclude: '^.*\.cov$'
     - id: no-commit-to-branch
     - id: check-added-large-files
+      exclude: '^.*\.pqt$'
 
 - repo: https://github.com/pycqa/isort
   rev: 5.13.2
