@@ -204,7 +204,8 @@ def create_patch_centers(
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
     log_info(
-        "computing patch centers from subset of %s records",
+        f"computing %d patch centers from subset of %s records",
+        patch_num,
         format_long_num(probe_size),
     )
 

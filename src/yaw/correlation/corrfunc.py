@@ -187,9 +187,12 @@ class CorrFunc(
     def to_hdf(self, dest: Group) -> None:
         write_version_tag(dest)
 
-        names = ("data_data", "data_random", "random_data", "random_random")
-        for name, count in zip(names, self.to_dict().values()):
+        name_map = dict(
+            dd="data_data", dr="data_random", rd="random_data", rr="random_random"
+        )
+        for attr, count in self.to_dict().items():
             if count is not None:
+                name = name_map[attr]
                 group = dest.create_group(name)
                 count.to_hdf(group)
 
