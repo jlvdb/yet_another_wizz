@@ -10,8 +10,13 @@ CorrData object.
 """
 
 from yaw.correlation.corrdata import CorrData
-from yaw.correlation.corrfunc import CorrFunc
-from yaw.correlation.measurements import autocorrelate, crosscorrelate
+from yaw.correlation.corrfunc import CorrFunc, ScalarCorrFunc
+from yaw.correlation.measurements import (
+    autocorrelate,
+    autocorrelate_scalar,
+    crosscorrelate,
+    crosscorrelate_scalar,
+)
 from yaw.correlation.paircounts import (
     NormalisedCounts,
     PatchedCounts,
@@ -24,6 +29,9 @@ __all__ = [
     "NormalisedCounts",
     "PatchedCounts",
     "PatchedSumWeights",
+    "ScalarCorrFunc",
     "autocorrelate",
+    "autocorrelate_scalar",
     "crosscorrelate",
+    "crosscorrelate_scalar",
 ]
