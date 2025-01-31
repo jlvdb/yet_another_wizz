@@ -73,7 +73,19 @@ PATCH_NAME_TEMPLATE = "patch_{:d}"
 PATCH_INFO_FILE = "patch_ids.bin"
 """Name of file listing patch IDs in catalog cache directory."""
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.removesuffix(".catalog"))
+
+
+def log_info(*args) -> None:
+    """Emit an info-level log message on the root MPI worker."""
+    if parallel.on_root():
+        logger.info(*args)
+
+
+def log_debug(*args) -> None:
+    """Emit a debug-level log message on the root MPI worker."""
+    if parallel.on_root():
+        logger.debug(*args)
 
 
 class InconsistentPatchesError(Exception):
@@ -127,8 +139,6 @@ class PatchMode(Enum):
                 If the number of patches exceeds the maximum allowed number or
                 none of the input parameters are provided.
         """
-        log_sink = logger.debug if parallel.on_root() else lambda *x: x
-
         if patch_centers is not None:
             if not isinstance(patch_centers, (AngularCoordinates, Catalog)):
                 raise TypeError(
@@ -136,14 +146,14 @@ class PatchMode(Enum):
                 )
             check_patch_ids(len(patch_centers))
 
-            log_sink("applying %d patches", len(patch_centers))
+            log_debug("applying %d patches", len(patch_centers))
             return PatchMode.apply
 
         if patch_name is not None:
             if not isinstance(patch_name, str):
                 raise TypeError("'patch_name' must be a string")
 
-            log_sink("dividing patches based on '%s'", patch_name)
+            log_debug("dividing patches based on '%s'", patch_name)
             return PatchMode.divide
 
         elif patch_num is not None:
@@ -151,7 +161,7 @@ class PatchMode(Enum):
                 raise TypeError("'patch_num' must be an integer")
             check_patch_ids(patch_num)
 
-            log_sink("creating %d patches", patch_num)
+            log_debug("creating %d patches", patch_num)
             return PatchMode.create
 
         raise ValueError("no patch method specified")
@@ -193,11 +203,11 @@ def create_patch_centers(
     """
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
-    if parallel.on_root():
-        logger.info(
-            "computing patch centers from subset of %s records",
-            format_long_num(probe_size),
-        )
+    log_info(
+        f"computing %d patch centers from subset of %s records",
+        patch_num,
+        format_long_num(probe_size),
+    )
 
     data_probe = reader.get_probe(probe_size)
 
@@ -213,7 +223,7 @@ def create_patch_centers(
             config=dict(num_threads=parallel.get_size()),
         )
         patch_centers = AngularCoordinates.from_3d(cat.patch_centers)
-    return parallel.COMM.bcast(patch_centers, root=0)
+    return parallel.bcast_auto(patch_centers, root=0)
 
 
 def assign_patch_centers(patch_centers: NDArray, data: TypeDataChunk) -> TypePatchIDs:
@@ -347,12 +357,12 @@ def load_patches(
             Show a progress on the terminal (disabled by default).
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default).
+            default, only multiprocessing).
     """
     patch_ids = None
     if parallel.on_root():
         patch_ids = read_patch_ids(cache_directory)
-    patch_ids = parallel.COMM.bcast(patch_ids, root=0)
+    patch_ids = parallel.bcast_auto(patch_ids, root=0)
 
     # instantiate patches, which triggers computing the patch meta-data
     path_template = str(cache_directory / PATCH_NAME_TEMPLATE)
@@ -373,7 +383,7 @@ def load_patches(
         patch_iter = Indicator(patch_iter, len(patch_ids))
 
     patches = {get_id_from_patch_path(patch.cache_path): patch for patch in patch_iter}
-    return parallel.COMM.bcast(patches, root=0)
+    return parallel.bcast_auto(patches, root=0)
 
 
 class CatalogWriter(AbstractContextManager, HandlesDataChunk):
@@ -430,12 +440,11 @@ class CatalogWriter(AbstractContextManager, HandlesDataChunk):
         self.cache_directory = Path(cache_directory)
         cache_exists = self.cache_directory.exists()
 
-        if parallel.on_root():
-            logger.info(
-                "%s cache directory: %s",
-                "overwriting" if cache_exists and overwrite else "using",
-                cache_directory,
-            )
+        log_info(
+            "%s cache directory: %s",
+            "overwriting" if cache_exists and overwrite else "using",
+            cache_directory,
+        )
 
         if self.cache_directory.exists():
             if overwrite:
@@ -706,7 +715,7 @@ if parallel.use_mpi():
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             buffersize:
                 Optional, maximum number of records to store in the internal
                 cache of each patch writer.
@@ -714,8 +723,7 @@ if parallel.use_mpi():
         max_workers = parallel.get_size(max_workers)
         if max_workers < 2:
             raise ValueError("catalog creation requires at least two workers")
-        if parallel.on_root():
-            logger.debug("running preprocessing on %d workers", max_workers)
+        log_debug("running preprocessing on %d workers", max_workers)
 
         rank = parallel.COMM.Get_rank()
         worker_config = WorkerManager(max_workers, 0)
@@ -854,7 +862,7 @@ else:
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             buffersize:
                 Optional, maximum number of records to store in the internal
                 cache of each patch writer.
@@ -862,7 +870,7 @@ else:
         max_workers = parallel.get_size(max_workers)
 
         if max_workers == 1:
-            logger.debug("running preprocessing sequentially")
+            log_debug("running preprocessing sequentially")
             return write_patches_unthreaded(
                 path,
                 reader,
@@ -873,7 +881,7 @@ else:
             )
 
         else:
-            logger.debug("running preprocessing on %d workers", max_workers)
+            log_debug("running preprocessing on %d workers", max_workers)
 
         with (
             reader,
@@ -944,7 +952,7 @@ class Catalog(Mapping[int, Patch]):
     Keyword Args:
         max_workers:
             Limit the  number of parallel workers for this operation (all by
-            default).
+            default, only multiprocessing).
     """
 
     __slots__ = ("cache_directory", "_patches")
@@ -954,8 +962,8 @@ class Catalog(Mapping[int, Patch]):
     def __init__(
         self, cache_directory: Path | str, *, max_workers: int | None = None
     ) -> None:
-        if parallel.on_root():
-            logger.info("restoring from cache directory: %s", cache_directory)
+        log_info("restoring from cache directory: %s", cache_directory)
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
 
         self.cache_directory = Path(cache_directory)
         if not self.cache_directory.exists():
@@ -1043,7 +1051,7 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             chunksize:
                 The maximum number of records to load into memory at once when
                 processing the input file in chunks.
@@ -1059,6 +1067,8 @@ class Catalog(Mapping[int, Patch]):
                 If the cache directory exists or is not a valid catalog when
                 providing ``overwrite=True``.
         """
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
+
         reader = DataFrameReader(
             dataframe,
             ra_name=ra_name,
@@ -1086,8 +1096,7 @@ class Catalog(Mapping[int, Patch]):
             buffersize=-1,
         )
 
-        if parallel.on_root():
-            logger.info("computing patch metadata")
+        log_info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new._patches = load_patches(
@@ -1173,7 +1182,7 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             chunksize:
                 The maximum number of records to load into memory at once when
                 processing the input file in chunks.
@@ -1192,6 +1201,8 @@ class Catalog(Mapping[int, Patch]):
         Additional reader keyword arguments are passed on to the file reader
         class constuctor.
         """
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
+
         reader = new_filereader(
             path,
             ra_name=ra_name,
@@ -1219,8 +1230,7 @@ class Catalog(Mapping[int, Patch]):
             buffersize=-1,
         )
 
-        if parallel.on_root():
-            logger.info("computing patch metadata")
+        log_info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new._patches = load_patches(
@@ -1288,7 +1298,7 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default).
+                default, only multiprocessing).
             chunksize:
                 The maximum number of records to generate and write at once.
             probe_size:
@@ -1304,6 +1314,7 @@ class Catalog(Mapping[int, Patch]):
                 providing ``overwrite=True``.
         """
         rand_iter = RandomReader(generator, num_randoms, chunksize)
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
 
         mode = PatchMode.determine(patch_centers, None, patch_num)
         if mode == PatchMode.create:
@@ -1320,8 +1331,7 @@ class Catalog(Mapping[int, Patch]):
             buffersize=-1,
         )
 
-        if parallel.on_root():
-            logger.info("computing patch metadata")
+        log_info("computing patch metadata")
         new = cls.__new__(cls)
         new.cache_directory = Path(cache_directory)
         new._patches = load_patches(
@@ -1426,16 +1436,16 @@ class Catalog(Mapping[int, Patch]):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default). Takes precedence over the value in the configuration.
+                default, only multiprocessing).
         """
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
         if binning is not None:
             binning = Binning(binning, closed=closed)
 
-        if parallel.on_root():
-            logger.debug(
-                "building patch-wise trees (%s)",
-                "unbinned" if binning is None else f"using {len(binning)} bins",
-            )
+        log_debug(
+            "building patch-wise trees (%s)",
+            "unbinned" if binning is None else f"using {len(binning)} bins",
+        )
 
         patch_tree_iter = parallel.iter_unordered(
             BinnedTrees.build,

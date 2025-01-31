@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 
-logger = logging.getLogger("yaw.correlation")
+logger = logging.getLogger(__name__)
 
 
 class EstimatorError(Exception):
@@ -215,13 +215,10 @@ class CorrFunc(
 
         return bcast_instance(new)
 
+    @parallel.broadcasted
     def to_file(self, path: Path | str) -> None:
-        if parallel.on_root():
-            logger.info("writing %s to: %s", type(self).__name__, path)
-
-            super().to_file(path)
-
-        parallel.COMM.Barrier()
+        logger.info("writing %s to: %s", type(self).__name__, path)
+        super().to_file(path)
 
     def to_dict(self) -> dict[str, Any]:
         return {

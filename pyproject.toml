@@ -18,7 +18,7 @@ dependencies = [
     "astropy",
     "deprecated",
     "h5py",
-    "numpy>=2.0",
+    "numpy",
     "pyarrow",
     "pyyaml",
     "scipy",
@@ -58,7 +58,7 @@ style = [
 ]
 test = [
     "yet_another_wizz[plot]",
-    "yet_another_wizz[healpy]",
+    "yet_another_wizz[healpix]",
     "coverage",
     "pytest",
     "pytest-cov",
@@ -70,6 +70,9 @@ dev = [
     "yet_another_wizz[style]",
     "ipykernel",
 ]
+
+[project.scripts]
+yaw_cli = "yaw.cli:main"
 
 [tool.setuptools.packages.find]
 where = [

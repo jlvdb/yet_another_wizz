@@ -3,17 +3,53 @@
 Change log
 ==========
 
+Version 3.1.1
+-------------
+
+Removed the unnecessary version requirement for numpy version 2.x.
+
+
+Version 3.1.0
+-------------
+
+Implemented a new version of the commandline client as entry point ``yaw_cli``.
+The documentation update with examples will follow soon in a separate release.
+
+.. rubric:: Added features
+
+- The newly added commandline client retains the functionality of
+  ``yaw_cli run`` and removes the other dedicated modes which call specific
+  functionality. As the base code, the new client supports both MPI and
+  multiprocessing parallelism. Some of the commandline options have been
+  removed, renamed, or added compared to the original version of the client.
+  Use ``yaw_cli --help`` for information on the new specification.
+- Added ``set_comm()``` in ``yaw.utils.parallel`` to use a specific MPI
+  communicator which is used globally by `yet_another_wizz` in the current
+  python session.
+
+.. rubric:: Changes
+
+- Reimplemented the configuration classes, which are now defined as a set of
+  (hierarchical) parameters. Each parameter implements a name, description
+  string, and methods to convert from and to built-in python types (e.g. for
+  serialisation to YAML). These changes do not affect the public API and
+  simplify detecting invalid configurations and providing more accurate error
+  messages to the user.
+- Removed all explicit references to the internal MPI communicator
+  ``yaw.parallel.COMM``.
+
+
 Version 3.0.7
 -------------
 
-Adapted the random generator seeding such that the new `randoms.BoxRandoms`
-generator generates the same results as the legacy `randoms.UniformRandoms`.
+Adapted the random generator seeding such that the new ``randoms.BoxRandoms``
+generator generates the same results as the legacy ``randoms.UniformRandoms``.
 
 
 Version 3.0.6
 -------------
 
-Added new generator method `.generate_dataframe()`.
+Added new generator method ``.generate_dataframe()``.
 
 
 Version 3.0.5

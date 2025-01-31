@@ -118,7 +118,7 @@ class HistData(CorrData):
                 Show a progress on the terminal (disabled by default).
             max_workers:
                 Limit the  number of parallel workers for this operation (all by
-                default). Takes precedence over the value in the configuration.
+                default, only multiprocessing).
         """
         if parallel.on_root():
             logger.info("computing redshift histogram")
@@ -126,6 +126,7 @@ class HistData(CorrData):
         if isinstance(config, Configuration):
             max_workers = max_workers or config.max_workers
             config = config.binning
+        max_workers = parallel.ignore_max_workers_mpi(max_workers)
 
         patch_count_iter = parallel.iter_unordered(
             _redshift_histogram,
@@ -139,7 +140,7 @@ class HistData(CorrData):
         counts = np.empty((len(catalog), config.num_bins))
         for i, patch_count in enumerate(patch_count_iter):
             counts[i] = patch_count
-        parallel.COMM.Bcast(counts, root=0)
+        parallel.bcast_auto(counts, root=0)
 
         return cls(
             config.binning.copy(),
