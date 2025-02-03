@@ -119,17 +119,20 @@ class ExampleData:
         from scipy.cluster.vq import vq
 
         # 11 precomputed patch centers
-        patch_centers = np.frombuffer(
-            b"d\x87\x8d\x94\x07\\\x17@\xa3\x93'\xf4\xc0\xfc\xe0\xbf\xb0\xfb\xcd"
-            b"~,\t\x18@\x98\xb1\x9f\xed\x12w\xe1\xbf\x97v$\xbf\x1f\xb0\x18@\xa1"
-            b"\x0fD)_\xba\xe2\xbfr\x8e\x02\xba\x8d\xbf\x18@\x9d\x9cR\xc7\xba"
-            b"\x04\xe0\xbf\xf4\xfa0\x95\xa1\x92\xa7?R\xd4\x9f{\xba\x0c\xe1\xbf"
-            b"\xb1\x0f\xe3\t\xf0\x19\xc9?\xcd2b\x93\x93\xb0\xe0\xbf\xc5\x97\xec"
-            b"\x10\xd7\xe1\xd5?\x1cS$\x18\xa4C\xe1\xbf\xdc\x03\xfa\xb1!\xd6\xe3"
-            b"?G\xd7\x04\x8apU\xe1\xbfk\xfb\xcf`\x88\x98\xde?\x1c\x99<m\xa7\x1f"
-            b"\xe1\xbf\xdc3\x85\xf7\xddc\xeb?'\xe1\xf8W\xf6\xff\xe0\xbf4\xbd"
-            b"\x9eV\x10\xe7\xe7?\xeb\xe0\x13\xa6R\xe8\xe0\xbf"
-        ).reshape((11, 2))
+        patch_centers = (
+            "64878d94075c1740a39327f4c0fce0bf"
+            "b0fbcd7e2c09184098b19fed1277e1bf"
+            "977624bf1fb01840a10f44295fbae2bf"
+            "728e02ba8dbf18409d9c52c7ba04e0bf"
+            "f4fa3095a192a73f52d49f7bba0ce1bf"
+            "b10fe309f019c93fcd32629393b0e0bf"
+            "c597ec10d7e1d53f1c532418a443e1bf"
+            "dc03fab121d6e33f47d7048a7055e1bf"
+            "6bfbcf608898de3f1c993c6da71fe1bf"
+            "dc3385f7dd63eb3f27e1f857f6ffe0bf"
+            "34bd9e5610e7e73febe013a652e8e0bf"
+        )
+        patch_centers = np.frombuffer(bytes.fromhex(patch_centers)).reshape((11, 2))
         centers = AngularCoordinates(patch_centers).to_3d()
 
         coords = AngularCoordinates(
