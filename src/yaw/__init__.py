@@ -8,7 +8,13 @@ from yaw.binning import Binning
 from yaw.catalog import Catalog
 from yaw.config import Configuration
 from yaw.coordinates import AngularCoordinates, AngularDistances
-from yaw.correlation import CorrData, CorrFunc, autocorrelate, crosscorrelate
+from yaw.correlation import (
+    CorrData,
+    CorrFunc,
+    autocorrelate,
+    crosscorrelate,
+    load_corrfunc,
+)
 from yaw.redshifts import HistData, RedshiftData
 
 __all__ = [
@@ -25,4 +31,5 @@ __all__ = [
     "RedshiftData",
     "autocorrelate",
     "crosscorrelate",
+    "load_corrfunc",
 ]

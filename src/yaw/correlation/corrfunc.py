@@ -13,17 +13,18 @@ from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import h5py
 import numpy as np
 
 from yaw.binning import Binning
 from yaw.correlation.corrdata import CorrData
-from yaw.correlation.paircounts import NormalisedCounts
+from yaw.correlation.paircounts import NormalisedCounts, NormalisedScalarCounts
 from yaw.utils import parallel, write_version_tag
 from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
 from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from typing import Any
 
     from h5py import Group
@@ -183,26 +184,45 @@ class CorrFunc(
         return self.dd.auto
 
     @classmethod
-    def from_hdf(cls, source: Group) -> CorrFunc:
-        def _try_load(root: Group, name: str) -> NormalisedCounts | None:
+    def _deserialise_hdf(
+        cls, source: Group, item_type: type[NormalisedCounts], names: Iterable[str]
+    ):
+        def _try_load(root: Group, name: str) -> Any | None:
             if name in root:
-                return NormalisedCounts.from_hdf(root[name])
+                return item_type.from_hdf(root[name])
+
+        try:
+            kind = source["kind"][()].decode("utf-8")
+        except KeyError:
+            kind = "CorrFunc"
+        if kind != cls.__name__:
+            raise ValueError(f"input file stores pair counts for type '{kind}'")
 
         # ignore "version" since this method did not change from legacy
-        names = ("data_data", "data_random", "random_data", "random_random")
         kwargs = {
             kind: _try_load(source, name) for kind, name in zip(cls.__slots__, names)
         }
         return cls.from_dict(kwargs)
 
-    def to_hdf(self, dest: Group) -> None:
-        write_version_tag(dest)
-
+    @classmethod
+    def from_hdf(cls, source: Group) -> CorrFunc:
         names = ("data_data", "data_random", "random_data", "random_random")
-        for name, count in zip(names, self.to_dict().values()):
+        return cls._deserialise_hdf(source, NormalisedCounts, names)
+
+    def _serialise_hdf(self, dest: Group, **attrs: dict[str, NormalisedCounts]) -> None:
+        write_version_tag(dest)
+        dest.create_dataset("kind", data=type(self).__name__)
+
+        for name, count in attrs.items():
             if count is not None:
                 group = dest.create_group(name)
                 count.to_hdf(group)
+
+    def to_hdf(self, dest: Group) -> None:
+        names = ("data_data", "data_random", "random_data", "random_random")
+        values = self.to_dict().values()
+        attrs = dict(zip(names, values))
+        self._serialise_hdf(dest, **attrs)
 
     @classmethod
     def from_file(cls, path: Path | str) -> CorrFunc:
@@ -330,10 +350,10 @@ class ScalarCorrFunc(CorrFunc):
     Args:
         dd:
             The data-data pair counts as
-            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedScalarCounts`.
         dr:
             The data-random pair counts as
-            :obj:`~yaw.correlation.paircounts.NormalisedCounts`.
+            :obj:`~yaw.correlation.paircounts.NormalisedScalarCounts`.
 
     Raises:
         ValueError:
@@ -343,15 +363,15 @@ class ScalarCorrFunc(CorrFunc):
 
     __slots__ = ("dd", "dr")
 
-    dd: NormalisedCounts
+    dd: NormalisedScalarCounts
     """The data-data pair counts."""
-    dr: NormalisedCounts | None
+    dr: NormalisedScalarCounts | None
     """The data-random pair counts."""
 
     def __init__(
         self,
-        dd: NormalisedCounts,
-        dr: NormalisedCounts | None = None,
+        dd: NormalisedScalarCounts,
+        dr: NormalisedScalarCounts | None = None,
     ) -> None:
         if dr is not None:
             try:
@@ -364,26 +384,30 @@ class ScalarCorrFunc(CorrFunc):
         self.dr = dr
 
     @classmethod
-    def from_hdf(cls, source: Group) -> CorrFunc:
-        def _try_load(root: Group, name: str) -> NormalisedCounts | None:
-            if name in root:
-                return NormalisedCounts.from_hdf(root[name])
-
-        # ignore "version" since this method did not change from legacy
+    def from_hdf(cls, source: Group) -> ScalarCorrFunc:
         names = ("data_data", "data_random")
-        kwargs = {
-            kind: _try_load(source, name) for kind, name in zip(cls.__slots__, names)
-        }
-        return cls.from_dict(kwargs)
+        return cls._deserialise_hdf(source, NormalisedScalarCounts, names)
 
     def to_hdf(self, dest: Group) -> None:
-        write_version_tag(dest)
-
         names = ("data_data", "data_random")
-        for name, count in zip(names, self.to_dict().values()):
-            if count is not None:
-                group = dest.create_group(name)
-                count.to_hdf(group)
+        values = self.to_dict().values()
+        attrs = dict(zip(names, values))
+        self._serialise_hdf(dest, **attrs)
 
     def get_estimator(self) -> Callable[..., NDArray]:
         return scalar_correlation
+
+
+def load_corrfunc(path: Path | str) -> CorrFunc | ScalarCorrFunc:
+    """TODO"""
+    with h5py.File(str(path)) as f:
+        for cls in (CorrFunc, ScalarCorrFunc):
+            try:
+                return cls.from_hdf(f)
+            except ValueError as err:
+                if "stores pair counts" not in str(err):
+                    raise
+        else:
+            raise ValueError(
+                "input file not compatible with any 'CorrFunc' implementation"
+            )
