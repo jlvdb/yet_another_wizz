@@ -305,6 +305,7 @@ class PatchLinkage:
         *optional_catalog: Catalog,
         progress: bool = False,
         max_workers: int | None = None,
+        mode: str = "nn",
         count_type_info: str | None = None,
     ) -> list[NormalisedCounts]:
         """
@@ -366,6 +367,7 @@ class PatchLinkage:
         *optional_catalog: Catalog | None,
         progress: bool = False,
         max_workers: int | None = None,
+        mode: str = "nn",
         count_type_info: str | None = None,
     ) -> list[NormalisedCounts | None]:
         """
@@ -380,6 +382,7 @@ class PatchLinkage:
                 *optional_catalog,
                 progress=progress,
                 max_workers=max_workers,
+                mode=mode,
                 count_type_info=count_type_info,
             )
 
@@ -389,21 +392,25 @@ class PatchLinkage:
         *optional_catalog: Catalog,
         progress: bool = False,
         max_workers: int | None = None,
-        count_mode: str = "nn",
+        mode: str = "nn",
+        count_type_info: str | None = None,
     ) -> list[NormalisedCounts]:
-        counts = {
-            mode: self.count_pairs(
+        counts = {}
+        for count_mode in (mode, "nn"):
+            if count_type_info is not None:
+                log_info(f"counting {count_type_info} ({mode}) from patch pairs")
+
+            counts[count_mode] = self.count_pairs(
                 main_catalog,
                 *optional_catalog,
-                mode=mode,
+                mode=count_mode,
                 progress=progress,
                 max_workers=max_workers,
+                count_type_info=count_type_info,
             )
-            for mode in (count_mode, "nn")
-        }
         return [
             NormalisedScalarCounts(kk.counts, nn.counts)
-            for kk, nn in zip(counts[count_mode], counts["nn"])
+            for kk, nn in zip(counts[mode], counts["nn"])
         ]
 
 
@@ -657,7 +664,7 @@ def autocorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_scalar_pairs(data, count_mode="kk", **kwargs)
+    DD = links.count_scalar_pairs(data, mode="kk", **kwargs, count_type_info="DD")
     return [ScalarCorrFunc(dd) for dd in DD]
 
 
@@ -737,9 +744,13 @@ def crosscorrelate_scalar(
             config.scales.num_scales,
             "with" if config.scales.rweight else "without",
         )
-    DD = links.count_scalar_pairs(reference, unknown, count_mode="kn", **kwargs)
+    DD = links.count_scalar_pairs(
+        reference, unknown, mode="kn", **kwargs, count_type_info="DD"
+    )
     if not count_dr:
         DR = [compute_scalar_normalisation(reference, config.binning.binning)] * len(DD)
     else:
-        DR = links.count_scalar_pairs(reference, unk_rand, count_mode="kn", **kwargs)
+        DR = links.count_scalar_pairs(
+            reference, unk_rand, mode="kn", **kwargs, count_type_info="DR"
+        )
     return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]

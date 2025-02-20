@@ -11,6 +11,7 @@ from yaw.coordinates import AngularCoordinates, AngularDistances
 from yaw.correlation import (
     CorrData,
     CorrFunc,
+    ScalarCorrFunc,
     autocorrelate,
     crosscorrelate,
     load_corrfunc,
@@ -29,6 +30,7 @@ __all__ = [
     "CorrFunc",
     "HistData",
     "RedshiftData",
+    "ScalarCorrFunc",
     "autocorrelate",
     "crosscorrelate",
     "load_corrfunc",
