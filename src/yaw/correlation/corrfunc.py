@@ -212,20 +212,19 @@ class CorrFunc(
         )
         return cls._deserialise_hdf(source, NormalisedCounts, names)
 
-    def _serialise_hdf(self, dest: Group, **attrs: dict[str, NormalisedCounts]) -> None:
+    def _serialise_hdf(self, dest: Group, names: Mapping[str, str]) -> None:
         write_version_tag(dest)
         dest.create_dataset("kind", data=type(self).__name__)
 
-        for name, count in attrs.items():
-            group = dest.create_group(name)
+        for kind, count in self.to_dict().items():
+            group = dest.create_group(names[kind])
             count.to_hdf(group)
 
     def to_hdf(self, dest: Group) -> None:
         names = dict(
             dd="data_data", dr="data_random", rd="random_data", rr="random_random"
         )
-        attrs = {names[kind]: count for kind, count in self.to_dict().items()}
-        self._serialise_hdf(dest, **attrs)
+        self._serialise_hdf(dest, names)
 
     @classmethod
     def from_file(cls, path: Path | str) -> CorrFunc:
@@ -388,14 +387,12 @@ class ScalarCorrFunc(CorrFunc):
 
     @classmethod
     def from_hdf(cls, source: Group) -> ScalarCorrFunc:
-        names = ("data_data", "data_random")
+        names = dict(dd="data_data", dr="data_random")
         return cls._deserialise_hdf(source, NormalisedScalarCounts, names)
 
     def to_hdf(self, dest: Group) -> None:
-        names = ("data_data", "data_random")
-        values = self.to_dict().values()
-        attrs = dict(zip(names, values))
-        self._serialise_hdf(dest, **attrs)
+        names = dict(dd="data_data", dr="data_random")
+        self._serialise_hdf(dest, names)
 
     def get_estimator(self) -> Callable[..., NDArray]:
         return scalar_correlation
