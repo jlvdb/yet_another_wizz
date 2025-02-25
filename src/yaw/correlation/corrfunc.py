@@ -24,7 +24,7 @@ from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisa
 from yaw.utils.parallel import Broadcastable, bcast_instance
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Mapping
     from typing import Any
 
     from h5py import Group
@@ -185,28 +185,31 @@ class CorrFunc(
 
     @classmethod
     def _deserialise_hdf(
-        cls, source: Group, item_type: type[NormalisedCounts], names: Iterable[str]
+        cls,
+        source: Group,
+        item_type: type[NormalisedCounts],
+        names_map: Mapping[str, str],
     ):
         def _try_load(root: Group, name: str) -> Any | None:
             if name in root:
                 return item_type.from_hdf(root[name])
 
         try:
-            kind = source["kind"][()].decode("utf-8")
+            cf_class = source["kind"][()].decode("utf-8")
         except KeyError:
-            kind = "CorrFunc"
-        if kind != cls.__name__:
-            raise ValueError(f"input file stores pair counts for type '{kind}'")
+            cf_class = "CorrFunc"
+        if cf_class != cls.__name__:
+            raise ValueError(f"input file stores pair counts for type '{cf_class}'")
 
         # ignore "version" since this method did not change from legacy
-        kwargs = {
-            kind: _try_load(source, name) for kind, name in zip(cls.__slots__, names)
-        }
+        kwargs = {kind: _try_load(source, name) for kind, name in names_map.items()}
         return cls.from_dict(kwargs)
 
     @classmethod
     def from_hdf(cls, source: Group) -> CorrFunc:
-        names = ("data_data", "data_random", "random_data", "random_random")
+        names = dict(
+            dd="data_data", dr="data_random", rd="random_data", rr="random_random"
+        )
         return cls._deserialise_hdf(source, NormalisedCounts, names)
 
     def _serialise_hdf(self, dest: Group, **attrs: dict[str, NormalisedCounts]) -> None:
@@ -214,14 +217,14 @@ class CorrFunc(
         dest.create_dataset("kind", data=type(self).__name__)
 
         for name, count in attrs.items():
-            if count is not None:
-                group = dest.create_group(name)
-                count.to_hdf(group)
+            group = dest.create_group(name)
+            count.to_hdf(group)
 
     def to_hdf(self, dest: Group) -> None:
-        names = ("data_data", "data_random", "random_data", "random_random")
-        values = self.to_dict().values()
-        attrs = dict(zip(names, values))
+        names = dict(
+            dd="data_data", dr="data_random", rd="random_data", rr="random_random"
+        )
+        attrs = {names[kind]: count for kind, count in self.to_dict().items()}
         self._serialise_hdf(dest, **attrs)
 
     @classmethod

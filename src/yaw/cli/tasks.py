@@ -89,6 +89,14 @@ def create_catalog(
             logger.info("skipping unconfigured random catalog")
             continue
 
+        if columns["patches"] is not None:
+            patch_args = dict(patch_name=columns["patches"])
+        else:
+            patch_args = dict(
+                patch_centers=global_cache.get_patch_centers(),
+                patch_num=num_patches,
+            )
+
         cat = yaw.Catalog.from_file(
             cache_directory=cache_path,
             path=input_path,
@@ -96,9 +104,7 @@ def create_catalog(
             dec_name=columns["dec"],
             weight_name=columns["weight"],
             redshift_name=columns["redshift"],
-            patch_centers=global_cache.get_patch_centers(),
-            patch_name=columns["patches"],
-            patch_num=num_patches,
+            **patch_args,
             overwrite=True,
             progress=progress,
             max_workers=max_workers,
