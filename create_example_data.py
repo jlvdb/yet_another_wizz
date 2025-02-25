@@ -16,12 +16,8 @@ if __name__ == "__main__":
 
         print("building catalogs")
         cat_ref_rand = ExampleData.create_rand_cat(temp_dir / "ref_rand")
-        cat_ref_data = ExampleData.create_data_cat(
-            temp_dir / "ref_data", patch_centers=cat_ref_rand
-        )
-        cat_unk_data = ExampleData.create_data_cat(
-            temp_dir / "unk_data", patch_centers=cat_ref_rand
-        )
+        cat_ref_data = ExampleData.create_data_cat(temp_dir / "ref_data")
+        cat_unk_data = ExampleData.create_data_cat(temp_dir / "unk_data")
 
         print("running crosscorrelation")
         (cross,) = yaw.crosscorrelate(
