@@ -178,21 +178,21 @@ class CorrFunc(
                 return NormalisedCounts.from_hdf(root[name])
 
         # ignore "version" since this method did not change from legacy
-        names = ("data_data", "data_random", "random_data", "random_random")
-        kwargs = {
-            kind: _try_load(source, name) for kind, name in zip(cls.__slots__, names)
-        }
+        names = dict(
+            dd="data_data", dr="data_random", rd="random_data", rr="random_random"
+        )
+        kwargs = {kind: _try_load(source, name) for kind, name in names.items()}
         return cls.from_dict(kwargs)
 
     def to_hdf(self, dest: Group) -> None:
         write_version_tag(dest)
 
-        name_map = dict(
+        names = dict(
             dd="data_data", dr="data_random", rd="random_data", rr="random_random"
         )
-        for attr, count in self.to_dict().items():
+        for kind, name in names.items():
+            count = getattr(self, kind)
             if count is not None:
-                name = name_map[attr]
                 group = dest.create_group(name)
                 count.to_hdf(group)
 
