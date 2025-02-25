@@ -395,6 +395,16 @@ class PatchLinkage:
         mode: str = "nn",
         count_type_info: str | None = None,
     ) -> list[NormalisedCounts]:
+        """
+        Compute pair counts for scalar correlation functions between the patches
+        of two catalogs.
+
+        Omit ``optional_catalog`` for an autocorrelation measurement.
+
+        Runs :meth:`count_pairs` first in the provided scalar counting mode
+        (typically "kn" or "kk" for cross- or autocorrelation functions) and
+        then in the regular density counting mode ("nn").
+        """
         counts = {}
         for count_mode in (mode, "nn"):
             if count_type_info is not None:

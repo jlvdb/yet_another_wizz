@@ -190,6 +190,8 @@ class CorrFunc(
         item_type: type[NormalisedCounts],
         names_map: Mapping[str, str],
     ):
+        """TODO"""
+
         def _try_load(root: Group, name: str) -> Any | None:
             if name in root:
                 return item_type.from_hdf(root[name])
@@ -213,6 +215,7 @@ class CorrFunc(
         return cls._deserialise_hdf(source, NormalisedCounts, names)
 
     def _serialise_hdf(self, dest: Group, names: Mapping[str, str]) -> None:
+        """TODO"""
         write_version_tag(dest)
         dest.create_dataset("kind", data=type(self).__name__)
 

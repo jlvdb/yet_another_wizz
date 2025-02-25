@@ -448,6 +448,12 @@ def new_filereader(
     degrees: bool = True,
     **reader_kwargs,
 ) -> FileReader:
+    """
+    Creates a new file reader based on the file extension.
+
+    Guesses the appropriate reader class based on the file's extension, all other
+    parameters are the same as for the individual readers.
+    """
     ext = Path(path).suffix.lower()
     if ext in (".fits", ".cat"):
         reader_cls = FitsReader

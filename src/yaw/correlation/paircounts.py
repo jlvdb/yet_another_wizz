@@ -694,6 +694,7 @@ class NormalisedScalarCounts(NormalisedCounts):
         return type(self)(kk_counts, nn_counts)
 
     def get_array(self) -> NDArray:
+        # TODO
         raise NotImplementedError
 
     def sample_patch_sum(self) -> SampledData:
