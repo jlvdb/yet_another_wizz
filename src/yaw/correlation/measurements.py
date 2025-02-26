@@ -430,7 +430,8 @@ class PatchLinkage:
 
 
 def ensure_unique_catalogs(func: T) -> T:
-    """TODO"""
+    """Checks that all function arguments of type :class:`~yaw.Catalog` have
+    distinct cache directories."""
 
     @wraps(func)
     def wrapper(*args, **kwargs):

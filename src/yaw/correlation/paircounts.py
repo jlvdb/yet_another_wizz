@@ -570,16 +570,16 @@ class BaseNormalisedCounts(BinwisePatchwiseArray):
 
 class NormalisedCounts(BaseNormalisedCounts):
     """
-    Stores the normalised pair counts in spatial patches from catalogs in a
-    correlation measurement.
+    Stores normalised pair counts from a correlation measurement.
 
     This class stores the raw pair counts (:obj:`counts`) and the product of the
     sum of weights (:obj:`sum_weights`) per redshift bin and combination of
-    patch pairs. The total of the normalised counts per redshift bin, including
-    jackknife samples thereof, can be obtained by calling
-    :meth:`sample_patch_sum`. The method computes the sum of pair counts over
-    all possible pairs of patches and normalises them by dividing them by the
-    product of the sum of weights from catalog 1 and 2.
+    patch pairs between the two catalogs use for the pair counting. The total
+    of the normalised counts per redshift bin, including jackknife samples
+    thereof, can be obtained by calling :meth:`sample_patch_sum`. The method
+    computes the sum of pair counts over all possible pairs of patches and
+    normalises them by dividing them by the product of the sum of weights from
+    catalog 1 and 2.
 
     Implements comparison with the ``==`` operator.
 
@@ -597,12 +597,12 @@ class NormalisedCounts(BaseNormalisedCounts):
 
     @property
     def counts(self) -> PatchedCounts:
-        """TODO"""
+        """Container of correlation pair counts."""
         return self._counts
 
     @property
     def sum_weights(self) -> PatchedSumWeights:
-        """TODO"""
+        """Container of sum of weights in patches of catalogs 1 and 2."""
         return self._weights
 
     @classmethod
@@ -613,7 +613,25 @@ class NormalisedCounts(BaseNormalisedCounts):
 
 
 class NormalisedScalarCounts(BaseNormalisedCounts):
-    """TODO"""
+    """
+    Stores normalised pair counts from a correlation measurement including a
+    scalar field.
+
+    This class stores the pair counts weighted by the scalar field and the
+    regular (number) pair counts, which are used as normalisation. The counts
+    are recorded per redshift bin and combination of patch pairs between the two
+    catalogs use for the pair counting. The total of the normalised counts per
+    redshift bin, including jackknife samples thereof, can be obtained by
+    calling :meth:`sample_patch_sum`.
+
+    Implements comparison with the ``==`` operator.
+
+    Args:
+        kappa_counts:
+            Container of correlation pair counts with scalar field weights.
+        number_counts:
+            Container of regular pair counts used as normalisation.
+    """
 
     __slots__ = ("_counts", "_weights")
 
@@ -624,12 +642,12 @@ class NormalisedScalarCounts(BaseNormalisedCounts):
 
     @property
     def kappa_counts(self) -> PatchedCounts:
-        """TODO"""
+        """Container of correlation pair counts with scalar field weights."""
         return self._counts
 
     @property
     def number_counts(self) -> PatchedCounts:
-        """TODO"""
+        """Container of regular pair counts used as normalisation."""
         return self._weights
 
     @classmethod

@@ -112,11 +112,12 @@ class BaseCorrFunc(
     __slots__ = ("_counts_dict",)
 
     _counts_dict: dict[str, T]
-    """TODO"""
+    """Stores normalised pair counts for obtained from data/random catalogs."""
     _counts_type: type[T]
-    """TODO"""
+    """The type of the container used in `_counts_dict`."""
     _counts_name: dict[str, str]
-    """TODO"""
+    """Mapping of keys in `_counts_dict` to group names in HDF5 file when
+    serialising data."""
 
     def _init(self, dd: T, **counts: T | None) -> None:
         if type(dd) is not self._counts_type:
@@ -272,7 +273,7 @@ class BaseCorrFunc(
 
     @property
     def dd(self) -> T:
-        """TODO"""
+        """The data-data pair counts."""
         return self._counts_dict["dd"]
 
 
@@ -337,17 +338,17 @@ class CorrFunc(BaseCorrFunc[NormalisedCounts]):
 
     @property
     def dr(self) -> NormalisedCounts | None:
-        """TODO"""
+        """The data-random pair counts."""
         return self._counts_dict.get("dr", None)
 
     @property
     def rd(self) -> NormalisedCounts | None:
-        """TODO"""
+        """The random-data pair counts."""
         return self._counts_dict.get("rd", None)
 
     @property
     def rr(self) -> NormalisedCounts | None:
-        """TODO"""
+        """The random-random pair counts."""
         return self._counts_dict.get("rr", None)
 
 
@@ -394,7 +395,7 @@ class ScalarCorrFunc(CorrFunc):
 
     @property
     def dr(self) -> NormalisedCounts | None:
-        """TODO"""
+        """The data-random pair counts."""
         return self._counts_dict.get("dr", None)
 
 
