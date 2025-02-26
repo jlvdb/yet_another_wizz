@@ -8,12 +8,13 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 from dataclasses import dataclass
-from itertools import compress
+from functools import wraps
+from itertools import chain, compress
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.catalog.catalog import InconsistentPatchesError
+from yaw.catalog.catalog import Catalog, InconsistentPatchesError
 from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
 from yaw.correlation.corrfunc import CorrFunc, ScalarCorrFunc
@@ -27,14 +28,17 @@ from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from typing import TypeVar
 
     from numpy.typing import NDArray
     from typing_extensions import Self
 
     from yaw.binning import Binning
-    from yaw.catalog import Catalog, Patch
+    from yaw.catalog import Patch
     from yaw.config import Configuration
+
+    T = TypeVar("T", bound=Callable)
 
 __all__ = [
     "autocorrelate",
@@ -425,9 +429,28 @@ class PatchLinkage:
         ]
 
 
+def ensure_unique_catalogs(func: T) -> T:
+    """TODO"""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        args_iter = chain(args, kwargs.values())
+        catalogs = [arg for arg in args_iter if isinstance(arg, Catalog)]
+        cache_paths = set(str(cat.cache_directory.resolve()) for cat in catalogs)
+        if len(catalogs) != len(cache_paths):
+            raise ValueError(
+                "each catalog must have a separate cache directory to avoid interference."
+            )
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
 # ######### NN correlations ####################################################
 
 
+@ensure_unique_catalogs
 def autocorrelate(
     config: Configuration,
     data: Catalog,
@@ -501,6 +524,7 @@ def autocorrelate(
     return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
 
 
+@ensure_unique_catalogs
 def crosscorrelate(
     config: Configuration,
     reference: Catalog,
@@ -623,6 +647,7 @@ def compute_scalar_normalisation(
     return NormalisedScalarCounts(kk_counts, nn_counts)
 
 
+@ensure_unique_catalogs
 def autocorrelate_scalar(
     config: Configuration,
     data: Catalog,
@@ -679,6 +704,7 @@ def autocorrelate_scalar(
     return [ScalarCorrFunc(dd) for dd in DD]
 
 
+@ensure_unique_catalogs
 def crosscorrelate_scalar(
     config: Configuration,
     reference: Catalog,
