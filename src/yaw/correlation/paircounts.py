@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
     from h5py import Group
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.utils.abc import TypeSliceIndex
 
@@ -207,7 +208,7 @@ class PatchedSumWeights(BinwisePatchwiseArray):
         self.sum_weights2 = sum_weights2.astype(np.float64)
 
     @classmethod
-    def from_hdf(cls, source: Group) -> PatchedSumWeights:
+    def from_hdf(cls: type[Self], source: Group) -> Self:
         new = cls.__new__(cls)
         new.auto = source["auto"][()]
 
@@ -245,7 +246,7 @@ class PatchedSumWeights(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedSumWeights:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
@@ -253,7 +254,7 @@ class PatchedSumWeights(BinwisePatchwiseArray):
             binning, self.sum_weights1[item], self.sum_weights2[item], auto=self.auto
         )
 
-    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedSumWeights:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
         if isinstance(item, int):
             item = [item]
         return type(self)(
@@ -341,7 +342,9 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts = counts.astype(np.float64)
 
     @classmethod
-    def zeros(cls, binning: Binning, num_patches: int, *, auto: bool) -> PatchedCounts:
+    def zeros(
+        cls: type[Self], binning: Binning, num_patches: int, *, auto: bool
+    ) -> Self:
         """
         Create a new instance with all pair counts initialised to zero.
 
@@ -365,7 +368,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         return cls(binning, counts, auto=auto)
 
     @classmethod
-    def from_hdf(cls, source: Group) -> PatchedCounts:
+    def from_hdf(cls: type[Self], source: Group) -> Self:
         auto = source["auto"][()]
 
         if is_legacy_dataset(source):
@@ -418,14 +421,14 @@ class PatchedCounts(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedCounts:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
 
         return type(self)(binning, self.counts[item], auto=self.auto)
 
-    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedCounts:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
         if isinstance(item, int):
             item = [item]
 
@@ -485,7 +488,7 @@ class BaseNormalisedCounts(BinwisePatchwiseArray):
         pass
 
     @classmethod
-    def from_hdf(cls, source: Group) -> NormalisedCounts:
+    def from_hdf(cls: type[Self], source: Group) -> Self:
         counts_name, weights_name = cls._get_hdf_names(load_version_tag(source))
         _counts = PatchedCounts.from_hdf(source[counts_name])
         _weights = PatchedSumWeights.from_hdf(source[weights_name])
@@ -528,12 +531,12 @@ class BaseNormalisedCounts(BinwisePatchwiseArray):
 
         return self._counts == other._counts and self._weights == other._weights
 
-    def _make_bin_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         _counts = self._counts.bins[item]
         _weights = self._weights.bins[item]
         return type(self)(_counts, _weights)
 
-    def _make_patch_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
         _counts = self._counts.patches[item]
         _weights = self._weights.patches[item]
         return type(self)(_counts, _weights)

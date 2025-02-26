@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from typing import TypeVar
 
     from numpy.typing import ArrayLike, DTypeLike
+    from typing_extensions import Self
 
     TypePatchIDs = NewType("TypePatchIDs", NDArray[np.int16])
     T = TypeVar("T")
@@ -71,7 +72,7 @@ class DataChunkInfo:
     has_kappa: bool = field(default=False)
 
     @classmethod
-    def from_bytes(cls, info_bytes: bytes) -> DataChunkInfo:
+    def from_bytes(cls: type[Self], info_bytes: bytes) -> Self:
         """
         Restore a class instance from a single byte of bit flags.
 

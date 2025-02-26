@@ -12,7 +12,7 @@ import logging
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 from numpy.exceptions import AxisError
@@ -27,12 +27,9 @@ if TYPE_CHECKING:
     from typing import Any
 
     from numpy.typing import ArrayLike, NDArray
+    from typing_extensions import Self
 
     from yaw.utils.plotting import Axis
-
-    # container class types
-    TypeSampledData = TypeVar("TypeSampledData", bound="SampledData")
-    TypeCorrData = TypeVar("TypeCorrData", bound="CorrData")
 
     # concrete types
     TypeSliceIndex = Union[int, slice]
@@ -215,7 +212,7 @@ class SampledData(BinwiseData):
             and np.array_equal(self.samples, other.samples, equal_nan=True)
         )
 
-    def __add__(self, other: Any) -> TypeSampledData:
+    def __add__(self, other: Any) -> Self:
         """Add data and samples of other to self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -228,7 +225,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def __sub__(self, other: Any) -> TypeSampledData:
+    def __sub__(self, other: Any) -> Self:
         """Subtract data and samples of other from self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -241,7 +238,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def _make_bin_slice(self: TypeSampledData, item: TypeSliceIndex) -> TypeSampledData:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         if not isinstance(item, (int, np.integer, slice)):
             raise TypeError("item selector must be a slice or integer type")
 
@@ -421,7 +418,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
         return f"correlation function covariance matrix ({n}x{n})"
 
     @classmethod
-    def from_files(cls: type[TypeCorrData], path_prefix: Path | str) -> TypeCorrData:
+    def from_files(cls: type[Self], path_prefix: Path | str) -> Self:
         """
         Restore the class instance from a set of ASCII files.
 

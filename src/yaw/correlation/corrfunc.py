@@ -12,13 +12,17 @@ import logging
 from abc import abstractmethod
 from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 import h5py
 
 from yaw.binning import Binning
 from yaw.correlation.corrdata import CorrData
-from yaw.correlation.paircounts import NormalisedCounts, NormalisedScalarCounts
+from yaw.correlation.paircounts import (
+    BaseNormalisedCounts,
+    NormalisedCounts,
+    NormalisedScalarCounts,
+)
 from yaw.utils import parallel, write_version_tag
 from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData, Serialisable
 from yaw.utils.parallel import Broadcastable, bcast_instance
@@ -29,9 +33,11 @@ if TYPE_CHECKING:
 
     from h5py import Group
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
-    from yaw.correlation.paircounts import BaseNormalisedCounts
     from yaw.utils.abc import TypeSliceIndex
+
+T = TypeVar("T", bound=BaseNormalisedCounts)
 
 __all__ = [
     "CorrFunc",
@@ -92,7 +98,7 @@ def scalar_correlation(*, dd: NDArray, dr: NDArray | None = None) -> NDArray:
 
 
 class BaseCorrFunc(
-    BinwiseData, PatchwiseData, Serialisable, HdfSerializable, Broadcastable
+    Generic[T], BinwiseData, PatchwiseData, Serialisable, HdfSerializable, Broadcastable
 ):
     """
     Base class for storing correlation function data based on pair counts.
@@ -105,16 +111,14 @@ class BaseCorrFunc(
 
     __slots__ = ("_counts_dict",)
 
-    _counts_dict: dict[str, BaseNormalisedCounts]
+    _counts_dict: dict[str, T]
     """TODO"""
-    _counts_type: type[BaseNormalisedCounts]
+    _counts_type: type[T]
     """TODO"""
     _counts_name: dict[str, str]
     """TODO"""
 
-    def _init(
-        self, dd: BaseNormalisedCounts, **counts: BaseNormalisedCounts | None
-    ) -> None:
+    def _init(self, dd: T, **counts: T | None) -> None:
         if type(dd) is not self._counts_type:
             raise TypeError(f"pair counts must be of type {self._counts_type}")
         if len(counts) == 0:
@@ -149,7 +153,7 @@ class BaseCorrFunc(
         return self.dd.auto
 
     @classmethod
-    def from_hdf(cls, source: Group) -> CorrFunc:
+    def from_hdf(cls: type[Self], source: Group) -> Self:
         def _try_load(name: str) -> Any | None:
             if name not in source:
                 return None
@@ -176,7 +180,7 @@ class BaseCorrFunc(
             count.to_hdf(group)
 
     @classmethod
-    def from_file(cls, path: Path | str) -> CorrFunc:
+    def from_file(cls: type[Self], path: Path | str) -> Self:
         new = None
 
         if parallel.on_root():
@@ -211,17 +215,17 @@ class BaseCorrFunc(
 
         return True
 
-    def _make_bin_slice(self, item: TypeSliceIndex) -> CorrFunc:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         kwargs = {kind: count.bins[item] for kind, count in self._counts_dict.items()}
         return type(self).from_dict(kwargs)
 
-    def _make_patch_slice(self, item: TypeSliceIndex) -> CorrFunc:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
         kwargs = {
             kind: count.patches[item] for kind, count in self._counts_dict.items()
         }
         return type(self).from_dict(kwargs)
 
-    def is_compatible(self, other: CorrFunc, *, require: bool = False) -> bool:
+    def is_compatible(self, other: Any, *, require: bool = False) -> bool:
         if type(self) is not type(other):
             if not require:
                 return False
@@ -267,12 +271,12 @@ class BaseCorrFunc(
         return CorrData(self.binning, corr_data, corr_samples)
 
     @property
-    def dd(self) -> BaseNormalisedCounts:
+    def dd(self) -> T:
         """TODO"""
         return self._counts_dict["dd"]
 
 
-class CorrFunc(BaseCorrFunc):
+class CorrFunc(BaseCorrFunc[NormalisedCounts]):
     """
     Container for correlation function amplitude pair counts.
 
@@ -332,10 +336,6 @@ class CorrFunc(BaseCorrFunc):
         return davis_peebles if self.rr is None else landy_szalay
 
     @property
-    def dd(self) -> NormalisedCounts:
-        return self._counts_dict["dd"]
-
-    @property
     def dr(self) -> NormalisedCounts | None:
         """TODO"""
         return self._counts_dict.get("dr", None)
@@ -391,10 +391,6 @@ class ScalarCorrFunc(CorrFunc):
 
     def get_estimator(self) -> Callable[..., NDArray]:
         return scalar_correlation
-
-    @property
-    def dd(self) -> NormalisedScalarCounts:
-        return self._counts_dict["dd"]
 
     @property
     def dr(self) -> NormalisedCounts | None:

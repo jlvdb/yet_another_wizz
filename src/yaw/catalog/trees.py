@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.catalog.patch import Patch
     from yaw.coordinates import AngularCoordinates
@@ -245,7 +246,7 @@ class AngularTree:
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
     @classmethod
-    def empty(cls, *, has_weights: bool, has_kappa: bool) -> AngularTree:
+    def empty(cls: type[Self], *, has_weights: bool, has_kappa: bool) -> Self:
         """Special constructor for a tree that does not contain data."""
         new = cls.__new__(cls)
         new.num_records = 0
@@ -274,32 +275,30 @@ class AngularTree:
         """Get the weights used for pair counts from self and the other tree."""
         mode = CountMode(mode)
 
+        def get_weight(tree) -> NDArray:
+            weight = tree.kappa if tree.kappa is not None else 1
+            if tree.weights is not None:
+                weight *= tree.weights
+            return weight
+
         if mode == CountMode.nn:
             return (self.weights, other.weights)
 
         elif mode == CountMode.nk:
             if other.kappa is None:
                 raise ValueError("missing required 'kappa' for second tree.")
-            return (
-                self.weights,
-                other.weights * other.kappa if other.weights is not None else other.kappa,
-            )
+            return self.weights, get_weight(other)
 
         elif mode == CountMode.kn:
             if self.kappa is None:
                 raise ValueError("missing required 'kappa' for first tree.")
-            return (
-                self.weights * self.kappa if self.weights is not None else self.kappa,
-                other.weights,
-            )
+            return get_weight(self), other.weights
 
         # CountMode.kk
         if self.kappa is None or other.kappa is None:
             raise ValueError("missing required 'kappa' for both tree.")
-        return (
-                self.weights * self.kappa if self.weights is not None else self.kappa,
-                other.weights * other.kappa if other.weights is not None else other.kappa,
-            )
+
+        return get_weight(self), get_weight(other)
 
     def count(
         self,
@@ -482,13 +481,13 @@ class BinnedTrees(Iterable[AngularTree]):
 
     @classmethod
     def build(
-        cls,
+        cls: type[Self],
         patch: Patch,
         binning: Binning | None,
         *,
         leafsize: int = 16,
         force: bool = False,
-    ) -> BinnedTrees:
+    ) -> Self:
         """
         Rebuild the trees from a given patch.
 

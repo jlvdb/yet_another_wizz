@@ -36,13 +36,14 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import TypeVar
 
+    from typing_extensions import Self
+
     from yaw.cli.config import CatPairConfig, ProjectConfig
     from yaw.cli.directory import CacheDirectory, ProjectDirectory
     from yaw.cli.handles import CacheHandle, CorrFuncHandle, Handle
     from yaw.config import Configuration
     from yaw.config.base import BaseConfig
 
-    TypeTask = TypeVar("TypeTask", bound="Task")
     T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -731,7 +732,7 @@ class TaskList(Container, Sized):
         return "\n".join(lines)
 
     @classmethod
-    def from_list(cls, task_names: Iterable[str]) -> TaskList:
+    def from_list(cls: type[Self], task_names: Iterable[str]) -> Self:
         """Create a new instance from an iterable of task names."""
         tasks = [REGISTERED_TASKS[name] for name in task_names]
         return cls(task() for task in tasks)

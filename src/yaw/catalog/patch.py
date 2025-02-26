@@ -102,12 +102,12 @@ class Metadata(YamlSerialisable):
 
     @classmethod
     def compute(
-        cls,
+        cls: type[Self],
         coords: AngularCoordinates,
         *,
         weights: NDArray | None = None,
         center: AngularCoordinates | None = None,
-    ) -> Metadata:
+    ) -> Self:
         """
         Compute the meta data from the patch data.
 
@@ -147,7 +147,7 @@ class Metadata(YamlSerialisable):
         return new
 
     @classmethod
-    def from_dict(cls, kwarg_dict: dict) -> Metadata:
+    def from_dict(cls: type[Self], kwarg_dict: dict) -> Self:
         center = AngularCoordinates(kwarg_dict.pop("center"))
         radius = AngularDistances(kwarg_dict.pop("radius"))
         return cls(center=center, radius=radius, **kwarg_dict)

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.binning import Binning
     from yaw.catalog import Catalog, Patch
@@ -187,11 +188,11 @@ class PatchLinkage:
 
     @classmethod
     def from_catalogs(
-        cls,
+        cls: type[Self],
         config: Configuration,
         catalog: Catalog,
         *catalogs: Catalog,
-    ) -> PatchLinkage:
+    ) -> Self:
         """
         Creates a patch linkage instance from a configuration and a set of input
         catalogs.

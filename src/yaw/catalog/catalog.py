@@ -204,7 +204,7 @@ def create_patch_centers(
     if probe_size < 10 * patch_num:
         probe_size = int(100_000 * np.sqrt(patch_num))
     log_info(
-        f"computing %d patch centers from subset of %s records",
+        "computing %d patch centers from subset of %s records",
         patch_num,
         format_long_num(probe_size),
     )
@@ -978,7 +978,7 @@ class Catalog(Mapping[int, Patch]):
 
     @classmethod
     def from_dataframe(
-        cls,
+        cls: type[Self],
         cache_directory: Path | str,
         dataframe: DataFrame,
         *,
@@ -997,7 +997,7 @@ class Catalog(Mapping[int, Patch]):
         chunksize: int | None = None,
         probe_size: int = -1,
         **reader_kwargs,
-    ) -> Catalog:
+    ) -> Self:
         """
         Create a new catalog instance from a :obj:`pandas.DataFrame`.
 
@@ -1109,7 +1109,7 @@ class Catalog(Mapping[int, Patch]):
 
     @classmethod
     def from_file(
-        cls,
+        cls: type[Self],
         cache_directory: Path | str,
         path: Path | str,
         *,
@@ -1128,7 +1128,7 @@ class Catalog(Mapping[int, Patch]):
         chunksize: int | None = None,
         probe_size: int = -1,
         **reader_kwargs,
-    ) -> Catalog:
+    ) -> Self:
         """
         Create a new catalog instance from a data file.
 
@@ -1243,7 +1243,7 @@ class Catalog(Mapping[int, Patch]):
 
     @classmethod
     def from_random(
-        cls,
+        cls: type[Self],
         cache_directory: Path | str,
         generator: RandomsBase,
         num_randoms: int,
@@ -1255,7 +1255,7 @@ class Catalog(Mapping[int, Patch]):
         max_workers: int | None = None,
         chunksize: int | None = None,
         probe_size: int = -1,
-    ) -> Catalog:
+    ) -> Self:
         """
         Create a new catalog instance from a data file.
 

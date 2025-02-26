@@ -512,10 +512,10 @@ class BaseConfig(YamlSerialisable):
     @classmethod
     @abstractmethod
     def from_dict(
-        cls: type[TypeBaseConfig],
+        cls: type[Self],
         the_dict: dict[str, Any],
         **kwargs,
-    ) -> TypeBaseConfig:
+    ) -> Self:
         cls._check_dict(the_dict)
         parsed = cls._parse_params(the_dict)
         return cls(**parsed)
@@ -534,12 +534,12 @@ class YawConfig(BaseConfig):
 
     @classmethod
     @abstractmethod
-    def create(cls: type[TypeBaseConfig], **kwargs: Any) -> TypeBaseConfig:
+    def create(cls: type[Self], **kwargs: Any) -> Self:
         """Create a new instance with the given parameter values."""
         pass
 
     @abstractmethod
-    def modify(self: TypeBaseConfig, **kwargs: Any | NotSet) -> TypeBaseConfig:
+    def modify(self, **kwargs: Any | NotSet) -> Self:
         """Create a new instance by modifing the original instance with the
         given parameter values."""
         pass
