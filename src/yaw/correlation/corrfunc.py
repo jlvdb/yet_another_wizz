@@ -164,7 +164,7 @@ class BaseCorrFunc(
         except KeyError:
             cf_class = "CorrFunc"
         if cf_class != cls.__name__:
-            raise ValueError(f"input file stores pair counts for type '{cf_class}'")
+            raise TypeError(f"input file stores pair counts for type '{cf_class}'")
 
         # ignore "version" since this method did not change from legacy
         kwargs = {kind: _try_load(name) for kind, name in cls._counts_name.items()}
@@ -398,12 +398,12 @@ class ScalarCorrFunc(CorrFunc):
         return self._counts_dict.get("dr", None)
 
 
-def load_corrfunc(path: Path | str) -> CorrFunc | ScalarCorrFunc:
+def load_corrfunc(path: Path | str) -> BaseCorrFunc:
     """
     Read back correlation function pair counts from a HDF5 file.
 
-    Automatically determines, based on header data, which :class:`CorrFunc`
-    (sub-)class to use when deserialising.
+    Automatically determines, based on the file's metadata, which correlation
+    data class to use.
 
     Args:
         path:
@@ -411,16 +411,16 @@ def load_corrfunc(path: Path | str) -> CorrFunc | ScalarCorrFunc:
 
     Returns:
         Correlation function pair count data wrapped in an appropriate instance
-        of :class:`CorrFunc`.
+        of :class:`BaseCorrFunc`.
     """
     with h5py.File(str(path)) as f:
-        for cls in (CorrFunc, ScalarCorrFunc):
+        for cls in BaseCorrFunc.__subclasses__():
             try:
                 return cls.from_hdf(f)
-            except ValueError as err:
+            except TypeError as err:
                 if "stores pair counts" not in str(err):
-                    raise
-        else:
-            raise ValueError(
-                "input file not compatible with any 'CorrFunc' implementation"
-            )
+                    continue
+        raise ValueError(
+            "input file is not compatible with any correlation data implementation: "
+            + str(path)
+        )
