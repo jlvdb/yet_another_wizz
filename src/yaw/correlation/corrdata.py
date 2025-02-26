@@ -134,7 +134,7 @@ class SampledData(BinwiseData):
     binning: Binning
     """Accessor for the redshift :obj:`~yaw.Binning` attribute."""
     data: NDArray
-    """Array containing the values in each of the `N` redshift bin."""
+    """Array containing the values in each of the `N` redshift bins."""
     samples: NDArray
     """2-dim array containing `M` jackknife samples of the data, expected to
     have shape `(M, N)`."""
