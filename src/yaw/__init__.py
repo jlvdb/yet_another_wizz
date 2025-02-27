@@ -13,7 +13,9 @@ from yaw.correlation import (
     CorrFunc,
     ScalarCorrFunc,
     autocorrelate,
+    autocorrelate_scalar,
     crosscorrelate,
+    crosscorrelate_scalar,
     load_corrfunc,
 )
 from yaw.redshifts import HistData, RedshiftData
@@ -32,6 +34,8 @@ __all__ = [
     "RedshiftData",
     "ScalarCorrFunc",
     "autocorrelate",
+    "autocorrelate_scalar",
     "crosscorrelate",
+    "crosscorrelate_scalar",
     "load_corrfunc",
 ]
