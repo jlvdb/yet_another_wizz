@@ -435,7 +435,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
             path_prefix = Path(path_prefix)
 
-            edges, closed, data = load_data(path_prefix.with_suffix(".dat"))
+            edges, closed, data, _ = load_data(path_prefix.with_suffix(".dat"))
             samples = load_samples(path_prefix.with_suffix(".smp"))
             binning = Binning(edges, closed=closed)
 
@@ -554,14 +554,14 @@ def write_data(
             f.write(" ".join(formatted) + "\n")
 
 
-def load_data(path: Path) -> tuple[NDArray, str, NDArray]:
+def load_data(path: Path) -> tuple[NDArray, str, NDArray, NDArray]:
     """Read data from a ASCII text file, i.e. bin edges, redshift estimate and
     its uncertainty."""
     _, _, closed = load_header(path)
 
-    zleft, zright, data, _ = np.loadtxt(path).T
+    zleft, zright, data, error = np.loadtxt(path).T
     edges = np.append(zleft, zright[-1])
-    return edges, closed, data
+    return edges, closed, data, error
 
 
 def write_samples(
