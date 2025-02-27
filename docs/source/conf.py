@@ -80,7 +80,6 @@ html_theme_options = {
     },
     "pygments_light_style": "xcode",
     "pygments_dark_style": "github-dark",
-    "announcement": "<p>Version 3.0 released, check the change logs before migrating.</p>",
 }
 html_sidebars = {"**": ["sidebar-nav-bs.html", "sidebar-ethical-ads.html"]}
 html_context = {
