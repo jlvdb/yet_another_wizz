@@ -17,11 +17,10 @@ import numpy as np
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Any, TypeVar
+    from typing import Any
 
     from numpy.typing import ArrayLike, NDArray
-
-    TypeArray = TypeVar("TypeArray", bound="CustomNumpyArray")
+    from typing_extensions import Self
 
 __all__ = [
     "AngularCoordinates",
@@ -54,14 +53,14 @@ class CustomNumpyArray(Iterable, Sized):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self: TypeArray, idx: ArrayLike) -> TypeArray:
+    def __getitem__(self, idx: ArrayLike) -> Self:
         return type(self)(self.data[idx])
 
-    def __iter__(self: TypeArray) -> Iterator[TypeArray]:
+    def __iter__(self) -> Iterator[Self]:
         for i in range(len(self)):
             yield self[i]
 
-    def copy(self: TypeArray) -> TypeArray:
+    def copy(self) -> Self:
         """Create a copy of this instance."""
         return type(self)(self.data.copy())
 
@@ -94,7 +93,7 @@ class AngularCoordinates(CustomNumpyArray):
             raise ValueError("invalid coordinate dimensions, expected 2")
 
     @classmethod
-    def from_coords(cls, coords: Iterable[AngularCoordinates]) -> AngularCoordinates:
+    def from_coords(cls: type[Self], coords: Iterable[AngularCoordinates]) -> Self:
         """
         Concatenate a set of angular coordinates with arbitrary length.
 
@@ -108,7 +107,7 @@ class AngularCoordinates(CustomNumpyArray):
         return cls(np.concatenate(list(coords)))
 
     @classmethod
-    def from_3d(cls, xyz: ArrayLike) -> AngularCoordinates:
+    def from_3d(cls: type[Self], xyz: ArrayLike) -> Self:
         """
         Compute angular coordinates from 3-dim Euclidean (`xyz`) coordinates.
 
@@ -163,7 +162,7 @@ class AngularCoordinates(CustomNumpyArray):
 
         return self.data == other.data
 
-    def mean(self, weights: ArrayLike | None = None) -> AngularCoordinates:
+    def mean(self, weights: ArrayLike | None = None) -> Self:
         """
         Compute the mean angular coordinate.
 
@@ -181,7 +180,7 @@ class AngularCoordinates(CustomNumpyArray):
         mean_xyz = np.average(self.to_3d(), weights=weights, axis=0)
         return type(self).from_3d(mean_xyz)
 
-    def distance(self, other: AngularCoordinates) -> AngularDistances:
+    def distance(self, other: AngularCoordinates) -> Self:
         """
         Compute the angular distance to another set of angular coordinates.
 
@@ -229,7 +228,7 @@ class AngularDistances(CustomNumpyArray):
         self.data = np.atleast_1d(data).astype(np.float64, copy=False)
 
     @classmethod
-    def from_dists(cls, dists: Iterable[AngularDistances]) -> AngularDistances:
+    def from_dists(cls: type[Self], dists: Iterable[AngularDistances]) -> Self:
         """
         Concatenate a set of angular distances with arbitrary length.
 
@@ -243,7 +242,7 @@ class AngularDistances(CustomNumpyArray):
         return cls(np.concatenate(list(dists)))
 
     @classmethod
-    def from_3d(cls, dists: ArrayLike) -> AngularDistances:
+    def from_3d(cls: type[Self], dists: ArrayLike) -> Self:
         """
         Convert angular distances from 3-dim Euclidean (`xyz`) distances.
 
@@ -289,19 +288,19 @@ class AngularDistances(CustomNumpyArray):
 
         return self.data < other.data
 
-    def __add__(self, other: Any) -> AngularDistances:
+    def __add__(self, other: Any) -> Self:
         if type(self) is not type(other):
             return NotImplemented
 
         return type(self)(self.data + other.data)
 
-    def __sub__(self, other: Any) -> AngularDistances:
+    def __sub__(self, other: Any) -> Self:
         if type(self) is not type(other):
             return NotImplemented
 
         return type(self)(self.data - other.data)
 
-    def min(self) -> AngularDistances:
+    def min(self) -> Self:
         """
         Get the minimum contained distance.
 
@@ -310,7 +309,7 @@ class AngularDistances(CustomNumpyArray):
         """
         return type(self)(self.data.min())
 
-    def max(self) -> AngularDistances:
+    def max(self) -> Self:
         """
         Get the maximum contained distance.
 

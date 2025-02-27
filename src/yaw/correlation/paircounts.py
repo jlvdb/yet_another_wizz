@@ -17,7 +17,12 @@ import numpy as np
 
 from yaw.binning import Binning, load_legacy_binning
 from yaw.correlation.corrdata import SampledData
-from yaw.utils import HDF_COMPRESSION, is_legacy_dataset, write_version_tag
+from yaw.utils import (
+    HDF_COMPRESSION,
+    is_legacy_dataset,
+    load_version_tag,
+    write_version_tag,
+)
 from yaw.utils.abc import BinwiseData, HdfSerializable, PatchwiseData
 from yaw.utils.parallel import Broadcastable
 
@@ -26,6 +31,7 @@ if TYPE_CHECKING:
 
     from h5py import Group
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.utils.abc import TypeSliceIndex
 
@@ -33,6 +39,7 @@ __all__ = [
     "PatchedSumWeights",
     "PatchedCounts",
     "NormalisedCounts",
+    "NormalisedScalarCounts",
 ]
 
 
@@ -201,7 +208,7 @@ class PatchedSumWeights(BinwisePatchwiseArray):
         self.sum_weights2 = sum_weights2.astype(np.float64)
 
     @classmethod
-    def from_hdf(cls, source: Group) -> PatchedSumWeights:
+    def from_hdf(cls: type[Self], source: Group) -> Self:
         new = cls.__new__(cls)
         new.auto = source["auto"][()]
 
@@ -239,7 +246,7 @@ class PatchedSumWeights(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedSumWeights:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
@@ -247,7 +254,7 @@ class PatchedSumWeights(BinwisePatchwiseArray):
             binning, self.sum_weights1[item], self.sum_weights2[item], auto=self.auto
         )
 
-    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedSumWeights:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
         if isinstance(item, int):
             item = [item]
         return type(self)(
@@ -335,7 +342,9 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts = counts.astype(np.float64)
 
     @classmethod
-    def zeros(cls, binning: Binning, num_patches: int, *, auto: bool) -> PatchedCounts:
+    def zeros(
+        cls: type[Self], binning: Binning, num_patches: int, *, auto: bool
+    ) -> Self:
         """
         Create a new instance with all pair counts initialised to zero.
 
@@ -359,7 +368,7 @@ class PatchedCounts(BinwisePatchwiseArray):
         return cls(binning, counts, auto=auto)
 
     @classmethod
-    def from_hdf(cls, source: Group) -> PatchedCounts:
+    def from_hdf(cls: type[Self], source: Group) -> Self:
         auto = source["auto"][()]
 
         if is_legacy_dataset(source):
@@ -412,33 +421,14 @@ class PatchedCounts(BinwisePatchwiseArray):
             and self.auto == other.auto
         )
 
-    def __add__(self, other: Any) -> PatchedCounts:
-        if not isinstance(other, type(self)):
-            return NotImplemented
-
-        self.is_compatible(other, require=True)
-        return type(self)(self.binning, self.counts + other.counts, auto=self.auto)
-
-    def __radd__(self, other: Any) -> PatchedCounts:
-        if np.isscalar(other) and other == 0:
-            return self  # this convenient when applying sum()
-
-        return self.__add__(other)
-
-    def __mul__(self, other: Any) -> PatchedCounts:
-        if not np.isscalar(other) or isinstance(other, (bool, np.bool_)):
-            return NotImplemented
-
-        return type(self)(self.binning, self.counts * other, auto=self.auto)
-
-    def _make_bin_slice(self, item: TypeSliceIndex) -> PatchedCounts:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         binning = self.binning[item]
         if isinstance(item, int):
             item = [item]
 
         return type(self)(binning, self.counts[item], auto=self.auto)
 
-    def _make_patch_slice(self, item: TypeSliceIndex) -> PatchedCounts:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
         if isinstance(item, int):
             item = [item]
 
@@ -466,121 +456,90 @@ class PatchedCounts(BinwisePatchwiseArray):
         self.counts[:, patch_id1, patch_id2] = counts_binned
 
 
-class NormalisedCounts(BinwisePatchwiseArray):
-    """
-    Stores the normalised pair counts in spatial patches from catalogs in a
-    correlation measurement.
+class BaseNormalisedCounts(BinwisePatchwiseArray):
+    """Base class for storing normalised pair counts."""
 
-    This class stores the raw pair counts (:obj:`counts`) and the product of the
-    sum of weights (:obj:`sum_weights`) per redshift bin and combination of
-    patch pairs. The total of the normalised counts per redshift bin, including
-    jackknife samples thereof, can be obtained by calling
-    :meth:`sample_patch_sum`. The method computes the sum of pair counts over
-    all possible pairs of patches and normalises them by dividing them by the
-    product of the sum of weights from catalog 1 and 2.
+    __slots__ = ("_counts", "_weights")
 
-    Implements comparison with the ``==`` operator, addition of counts with the
-    ``+``/``+=`` operator and scalar multiplication of the counts with the ``*``
-    operator.
+    _counts: BinwisePatchwiseArray
+    """Container storing correlation pair counts."""
+    _weights: BinwisePatchwiseArray
+    """Container defining normalisation for pair counts."""
 
-    Args:
-        counts:
-            Container of correlation pair counts.
-        sum_weights:
-            Container of sum of weights in patches of catalogs 1 and 2.
-    """
-
-    __slots__ = ("counts", "sum_weights")
-
-    counts: PatchedCounts
-    """Container of correlation pair counts."""
-    sum_weights: PatchedSumWeights
-    """Container of sum of weights in patches of catalogs 1 and 2."""
-
-    def __init__(self, counts: PatchedCounts, sum_weights: PatchedSumWeights) -> None:
-        if counts.num_patches != sum_weights.num_patches:
+    def _init(
+        self, counts: BinwisePatchwiseArray, weights: BinwisePatchwiseArray
+    ) -> None:
+        if counts.num_patches != weights.num_patches:
             raise ValueError(
-                "number of patches of 'count' and sum_weights' does not match"
+                "number of patches of counts- and weights-container does not match"
             )
-        if counts.num_bins != sum_weights.num_bins:
+        if counts.num_bins != weights.num_bins:
             raise ValueError(
-                "number of bins of 'count' and sum_weights' does not match"
+                "number of bins of counts- and weights-container does not match"
             )
 
-        self.counts = counts
-        self.sum_weights = sum_weights
+        self._counts = counts
+        self._weights = weights
 
     @classmethod
-    def from_hdf(cls, source: Group) -> NormalisedCounts:
-        name = "count" if is_legacy_dataset(source) else "counts"
-        counts = PatchedCounts.from_hdf(source[name])
+    @abstractmethod
+    def _get_hdf_names(cls, version_tag: str) -> tuple[str, str]:
+        """Get the name of the HDF5 groups that store the counts and weights."""
+        pass
 
-        name = "total" if is_legacy_dataset(source) else "sum_weights"
-        sum_weights = PatchedSumWeights.from_hdf(source[name])
+    @classmethod
+    def from_hdf(cls: type[Self], source: Group) -> Self:
+        counts_name, weights_name = cls._get_hdf_names(load_version_tag(source))
+        _counts = PatchedCounts.from_hdf(source[counts_name])
+        _weights = PatchedSumWeights.from_hdf(source[weights_name])
 
-        return cls(counts=counts, sum_weights=sum_weights)
+        return cls(_counts, _weights)
 
     def to_hdf(self, dest: Group) -> None:
         write_version_tag(dest)
+        counts_name, weights_name = self._get_hdf_names(load_version_tag(dest))
 
-        group = dest.create_group("counts")
-        self.counts.to_hdf(group)
+        group = dest.create_group(counts_name)
+        self._counts.to_hdf(group)
 
-        group = dest.create_group("sum_weights")
-        self.sum_weights.to_hdf(group)
+        group = dest.create_group(weights_name)
+        self._weights.to_hdf(group)
 
     @property
     def binning(self) -> Binning:
-        return self.counts.binning
+        return self._counts.binning
 
     @property
     def auto(self) -> bool:
-        return self.counts.auto
+        return self._counts.auto
 
     @property
     def num_patches(self) -> int:
-        return self.counts.num_patches
+        return self._counts.num_patches
 
     def is_compatible(self, other: Any, *, require: bool = False) -> bool:
-        if not isinstance(other, type(self)):
+        if type(self) is not type(other):
             if not require:
                 return False
             raise TypeError(f"{type(other)} is not compatible with {type(self)}")
 
-        return self.counts.is_compatible(other.counts, require=require)
+        return self._counts.is_compatible(other._counts, require=require)
 
     def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, type(self)):
+        if type(self) is not type(other):
             return NotImplemented
 
-        return self.counts == other.counts and self.sum_weights == other.sum_weights
+        return self._counts == other._counts and self._weights == other._weights
 
-    def __add__(self, other: Any) -> NormalisedCounts:
-        if not isinstance(other, type(self)):
-            return NotImplemented
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
+        _counts = self._counts.bins[item]
+        _weights = self._weights.bins[item]
+        return type(self)(_counts, _weights)
 
-        if self.sum_weights != other.sum_weights:
-            raise ValueError("'sum_weights' must be identical for operation")
-        return type(self)(self.counts + other.counts, self.sum_weights)
-
-    def __radd__(self, other: Any) -> NormalisedCounts:
-        if np.isscalar(other) and other == 0:
-            return self  # allows using sum() on an iterable of NormalisedCounts
-
-        return self.__add__(other)
-
-    def __mul__(self, other: Any) -> NormalisedCounts:
-        return type(self)(self.count * other, self.sum_weights)
-
-    def _make_bin_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
-        counts = self.counts.bins[item]
-        sum_weights = self.sum_weights.bins[item]
-        return type(self)(counts, sum_weights)
-
-    def _make_patch_slice(self, item: TypeSliceIndex) -> NormalisedCounts:
-        counts = self.counts.patches[item]
-        sum_weights = self.sum_weights.patches[item]
-        return type(self)(counts, sum_weights)
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
+        _counts = self._counts.patches[item]
+        _weights = self._weights.patches[item]
+        return type(self)(_counts, _weights)
 
     def get_array(self) -> NDArray:
         """
@@ -596,14 +555,101 @@ class NormalisedCounts(BinwisePatchwiseArray):
         Returns:
             Internal data represented as numpy array.
         """
-        counts = self.counts.get_array()
-        sum_weights = self.sum_weights.sample_patch_sum()
-        return counts / sum_weights.data[:, np.newaxis, np.newaxis]
+        _counts = self._counts.get_array()
+        _weights = self._weights.sample_patch_sum()
+        return _counts / _weights.data[:, np.newaxis, np.newaxis]
 
     def sample_patch_sum(self) -> SampledData:
-        counts = self.counts.sample_patch_sum()
-        sum_weights = self.sum_weights.sample_patch_sum()
+        _counts = self._counts.sample_patch_sum()
+        _weights = self._weights.sample_patch_sum()
 
-        data = counts.data / sum_weights.data
-        samples = counts.samples / sum_weights.samples
+        data = _counts.data / _weights.data
+        samples = _counts.samples / _weights.samples
         return SampledData(self.binning, data, samples)
+
+
+class NormalisedCounts(BaseNormalisedCounts):
+    """
+    Stores normalised pair counts from a correlation measurement.
+
+    This class stores the raw pair counts (:obj:`counts`) and the product of the
+    sum of weights (:obj:`sum_weights`) per redshift bin and combination of
+    patch pairs between the two catalogs use for the pair counting. The total
+    of the normalised counts per redshift bin, including jackknife samples
+    thereof, can be obtained by calling :meth:`sample_patch_sum`. The method
+    computes the sum of pair counts over all possible pairs of patches and
+    normalises them by dividing them by the product of the sum of weights from
+    catalog 1 and 2.
+
+    Implements comparison with the ``==`` operator.
+
+    Args:
+        counts:
+            Container of correlation pair counts.
+        sum_weights:
+            Container of sum of weights in patches of catalogs 1 and 2.
+    """
+
+    __slots__ = ("_counts", "_weights")
+
+    def __init__(self, counts: PatchedCounts, sum_weights: PatchedSumWeights) -> None:
+        self._init(counts, sum_weights)
+
+    @property
+    def counts(self) -> PatchedCounts:
+        """Container of correlation pair counts."""
+        return self._counts
+
+    @property
+    def sum_weights(self) -> PatchedSumWeights:
+        """Container of sum of weights in patches of catalogs 1 and 2."""
+        return self._weights
+
+    @classmethod
+    def _get_hdf_names(cls, version_tag: str) -> tuple[str, str]:
+        if version_tag.startswith("2"):
+            return ("count", "total")
+        return ("counts", "sum_weights")
+
+
+class NormalisedScalarCounts(BaseNormalisedCounts):
+    """
+    Stores normalised pair counts from a correlation measurement including a
+    scalar field.
+
+    This class stores the pair counts weighted by the scalar field and the
+    regular (number) pair counts, which are used as normalisation. The counts
+    are recorded per redshift bin and combination of patch pairs between the two
+    catalogs use for the pair counting. The total of the normalised counts per
+    redshift bin, including jackknife samples thereof, can be obtained by
+    calling :meth:`sample_patch_sum`.
+
+    Implements comparison with the ``==`` operator.
+
+    Args:
+        kappa_counts:
+            Container of correlation pair counts with scalar field weights.
+        number_counts:
+            Container of regular pair counts used as normalisation.
+    """
+
+    __slots__ = ("_counts", "_weights")
+
+    def __init__(
+        self, kappa_counts: PatchedCounts, number_counts: PatchedCounts
+    ) -> None:
+        self._init(kappa_counts, number_counts)
+
+    @property
+    def kappa_counts(self) -> PatchedCounts:
+        """Container of correlation pair counts with scalar field weights."""
+        return self._counts
+
+    @property
+    def number_counts(self) -> PatchedCounts:
+        """Container of regular pair counts used as normalisation."""
+        return self._weights
+
+    @classmethod
+    def _get_hdf_names(cls, version_tag: str) -> tuple[str, str]:
+        return ("kappa_counts", "number_counts")

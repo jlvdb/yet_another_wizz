@@ -36,13 +36,14 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import TypeVar
 
+    from typing_extensions import Self
+
     from yaw.cli.config import CatPairConfig, ProjectConfig
     from yaw.cli.directory import CacheDirectory, ProjectDirectory
     from yaw.cli.handles import CacheHandle, CorrFuncHandle, Handle
     from yaw.config import Configuration
     from yaw.config.base import BaseConfig
 
-    TypeTask = TypeVar("TypeTask", bound="Task")
     T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,14 @@ def create_catalog(
             logger.info("skipping unconfigured random catalog")
             continue
 
+        if columns["patches"] is not None:
+            patch_args = dict(patch_name=columns["patches"])
+        else:
+            patch_args = dict(
+                patch_centers=global_cache.get_patch_centers(),
+                patch_num=num_patches,
+            )
+
         cat = yaw.Catalog.from_file(
             cache_directory=cache_path,
             path=input_path,
@@ -96,9 +105,7 @@ def create_catalog(
             dec_name=columns["dec"],
             weight_name=columns["weight"],
             redshift_name=columns["redshift"],
-            patch_centers=global_cache.get_patch_centers(),
-            patch_name=columns["patches"],
-            patch_num=num_patches,
+            **patch_args,
             overwrite=True,
             progress=progress,
             max_workers=max_workers,
@@ -725,7 +732,7 @@ class TaskList(Container, Sized):
         return "\n".join(lines)
 
     @classmethod
-    def from_list(cls, task_names: Iterable[str]) -> TaskList:
+    def from_list(cls: type[Self], task_names: Iterable[str]) -> Self:
         """Create a new instance from an iterable of task names."""
         tasks = [REGISTERED_TASKS[name] for name in task_names]
         return cls(task() for task in tasks)
