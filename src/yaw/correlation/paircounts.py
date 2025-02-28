@@ -487,8 +487,8 @@ class BaseNormalisedCounts(BinwisePatchwiseArray):
         """Get the name of the HDF5 groups that store the counts and weights."""
         pass
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def from_hdf(cls: type[Self], source: Group) -> Self:
         pass
 
