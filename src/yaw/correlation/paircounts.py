@@ -487,13 +487,10 @@ class BaseNormalisedCounts(BinwisePatchwiseArray):
         """Get the name of the HDF5 groups that store the counts and weights."""
         pass
 
+    @abstractmethod
     @classmethod
     def from_hdf(cls: type[Self], source: Group) -> Self:
-        counts_name, weights_name = cls._get_hdf_names(load_version_tag(source))
-        _counts = PatchedCounts.from_hdf(source[counts_name])
-        _weights = PatchedSumWeights.from_hdf(source[weights_name])
-
-        return cls(_counts, _weights)
+        pass
 
     def to_hdf(self, dest: Group) -> None:
         write_version_tag(dest)
@@ -611,6 +608,13 @@ class NormalisedCounts(BaseNormalisedCounts):
             return ("count", "total")
         return ("counts", "sum_weights")
 
+    @classmethod
+    def from_hdf(cls: type[Self], source: Group) -> Self:
+        counts_name, weights_name = cls._get_hdf_names(load_version_tag(source))
+        _counts = PatchedCounts.from_hdf(source[counts_name])
+        _weights = PatchedSumWeights.from_hdf(source[weights_name])
+        return cls(_counts, _weights)
+
 
 class NormalisedScalarCounts(BaseNormalisedCounts):
     """
@@ -653,3 +657,10 @@ class NormalisedScalarCounts(BaseNormalisedCounts):
     @classmethod
     def _get_hdf_names(cls, version_tag: str) -> tuple[str, str]:
         return ("kappa_counts", "number_counts")
+
+    @classmethod
+    def from_hdf(cls: type[Self], source: Group) -> Self:
+        counts_name, weights_name = cls._get_hdf_names(load_version_tag(source))
+        _counts = PatchedCounts.from_hdf(source[counts_name])
+        _weights = PatchedCounts.from_hdf(source[weights_name])
+        return cls(_counts, _weights)
