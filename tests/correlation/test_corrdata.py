@@ -41,10 +41,11 @@ def test_read_write_data(tmp_path):
         error=error,
         closed=closed,
     )
-    edges_loaded, closed_loaded, data_loaded = corrdata.load_data(path)
+    edges_loaded, closed_loaded, data_loaded, error_loaded = corrdata.load_data(path)
     assert_almost_equal(edges, edges_loaded)
     assert closed == closed_loaded
     assert_almost_equal(data, data_loaded)
+    assert_almost_equal(error, error_loaded)
 
 
 def test_read_write_samples(tmp_path):

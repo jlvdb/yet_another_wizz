@@ -231,6 +231,7 @@ class DataReader(DataChunkReader):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
+        kappa_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
         **kwargs,
@@ -241,6 +242,7 @@ class DataReader(DataChunkReader):
             weight_name,
             redshift_name,
             patch_name,
+            kappa_name,
         )  # match to ATTR_ORDER
         self._columns = {
             attr: name for attr, name in zip(ATTR_ORDER, columns) if name is not None
@@ -255,6 +257,7 @@ class DataReader(DataChunkReader):
             has_weights=weight_name is not None,
             has_redshifts=redshift_name is not None,
             has_patch_ids=patch_name is not None,
+            has_kappa=kappa_name is not None,
         )
 
         self.degrees = degrees
@@ -351,6 +354,8 @@ class DataFrameReader(DataReader):
             Optional column name of the object redshifts.
         patch_name:
             Optional column name of patch IDs, must meet patch ID requirements.
+        kappa_name:
+            Optional column name of the object kappa (or any scalar values).
         chunksize:
             Size of each data chunk, optional.
         degrees:
@@ -366,6 +371,7 @@ class DataFrameReader(DataReader):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
+        kappa_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
         **kwargs,
@@ -381,6 +387,7 @@ class DataFrameReader(DataReader):
             weight_name=weight_name,
             redshift_name=redshift_name,
             patch_name=patch_name,
+            kappa_name=kappa_name,
             chunksize=chunksize,
             degrees=degrees,
         )
@@ -436,10 +443,17 @@ def new_filereader(
     weight_name: str | None = None,
     redshift_name: str | None = None,
     patch_name: str | None = None,
+    kappa_name: str | None = None,
     chunksize: int | None = None,
     degrees: bool = True,
     **reader_kwargs,
 ) -> FileReader:
+    """
+    Creates a new file reader based on the file extension.
+
+    Guesses the appropriate reader class based on the file's extension, all other
+    parameters are the same as for the individual readers.
+    """
     ext = Path(path).suffix.lower()
     if ext in (".fits", ".cat"):
         reader_cls = FitsReader
@@ -457,6 +471,7 @@ def new_filereader(
         weight_name=weight_name,
         redshift_name=redshift_name,
         patch_name=patch_name,
+        kappa_name=kappa_name,
         chunksize=chunksize,
         degrees=degrees,
         **reader_kwargs,
@@ -482,6 +497,8 @@ class FitsReader(FileReader):
             Optional column name of the object redshifts.
         patch_name:
             Optional column name of patch IDs, must meet patch ID requirements.
+        kappa_name:
+            Optional column name of the object kappa (or any scalar values).
         chunksize:
             Size of each data chunk, optional.
         degrees:
@@ -499,6 +516,7 @@ class FitsReader(FileReader):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
+        kappa_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
         hdu: int = 1,
@@ -520,6 +538,7 @@ class FitsReader(FileReader):
             weight_name=weight_name,
             redshift_name=redshift_name,
             patch_name=patch_name,
+            kappa_name=kappa_name,
             chunksize=chunksize,
             degrees=degrees,
         )
@@ -560,6 +579,8 @@ class HDFReader(FileReader):
             Optional column name of the object redshifts.
         patch_name:
             Optional column name of patch IDs, must meet patch ID requirements.
+        kappa_name:
+            Optional column name of the object kappa (or any scalar values).
         chunksize:
             Size of each data chunk, optional.
         degrees:
@@ -575,6 +596,7 @@ class HDFReader(FileReader):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
+        kappa_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
         **kwargs,
@@ -595,6 +617,7 @@ class HDFReader(FileReader):
             weight_name=weight_name,
             redshift_name=redshift_name,
             patch_name=patch_name,
+            kappa_name=kappa_name,
             chunksize=chunksize,
             degrees=degrees,
         )
@@ -636,6 +659,8 @@ class ParquetReader(FileReader):
             Optional column name of the object redshifts.
         patch_name:
             Optional column name of patch IDs, must meet patch ID requirements.
+        kappa_name:
+            Optional column name of the object kappa (or any scalar values).
         chunksize:
             Size of each data chunk, optional.
         degrees:
@@ -651,6 +676,7 @@ class ParquetReader(FileReader):
         weight_name: str | None = None,
         redshift_name: str | None = None,
         patch_name: str | None = None,
+        kappa_name: str | None = None,
         chunksize: int | None = None,
         degrees: bool = True,
         **kwargs,
@@ -671,6 +697,7 @@ class ParquetReader(FileReader):
             weight_name=weight_name,
             redshift_name=redshift_name,
             patch_name=patch_name,
+            kappa_name=kappa_name,
             chunksize=chunksize,
             degrees=degrees,
         )

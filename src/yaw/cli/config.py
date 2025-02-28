@@ -20,7 +20,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Any
 
-    from yaw.config.base import TypeBaseConfig, TypeBuiltin
+    from typing_extensions import Self
+
+    from yaw.config.base import TypeBuiltin
 
 T = TypeVar("T")
 
@@ -202,7 +204,7 @@ class CatPairConfig(BaseConfig):
         )
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any]) -> TypeBaseConfig:
+    def from_dict(cls: type[Self], the_dict: dict[str, Any]) -> Self:
         return super().from_dict(the_dict)
 
 
@@ -333,7 +335,7 @@ class UnknownCatConfig(CatPairConfig):
             yield idx, conf
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any]):
+    def from_dict(cls: type[Self], the_dict: dict[str, Any]) -> Self:
         return super().from_dict(the_dict)
 
 
@@ -398,7 +400,7 @@ class InputConfig(BaseConfig):
     directory)."""
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any]):
+    def from_dict(cls: type[Self], the_dict: dict[str, Any]) -> Self:
         cls._check_dict(the_dict)
 
         with raise_configerror_with_level("reference"):
@@ -452,7 +454,7 @@ class ProjectConfig(BaseConfig):
     """Configuration of pipeline input data."""
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any]):
+    def from_dict(cls: type[Self], the_dict: dict[str, Any]) -> Self:
         cls._check_dict(the_dict)
 
         with raise_configerror_with_level("correlation"):

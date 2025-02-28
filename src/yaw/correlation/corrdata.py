@@ -12,7 +12,7 @@ import logging
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 from numpy.exceptions import AxisError
@@ -27,12 +27,9 @@ if TYPE_CHECKING:
     from typing import Any
 
     from numpy.typing import ArrayLike, NDArray
+    from typing_extensions import Self
 
     from yaw.utils.plotting import Axis
-
-    # container class types
-    TypeSampledData = TypeVar("TypeSampledData", bound="SampledData")
-    TypeCorrData = TypeVar("TypeCorrData", bound="CorrData")
 
     # concrete types
     TypeSliceIndex = Union[int, slice]
@@ -134,7 +131,7 @@ class SampledData(BinwiseData):
     binning: Binning
     """Accessor for the redshift :obj:`~yaw.Binning` attribute."""
     data: NDArray
-    """Array containing the values in each of the `N` redshift bin."""
+    """Array containing the values in each of the `N` redshift bins."""
     samples: NDArray
     """2-dim array containing `M` jackknife samples of the data, expected to
     have shape `(M, N)`."""
@@ -215,7 +212,7 @@ class SampledData(BinwiseData):
             and np.array_equal(self.samples, other.samples, equal_nan=True)
         )
 
-    def __add__(self, other: Any) -> TypeSampledData:
+    def __add__(self, other: Any) -> Self:
         """Add data and samples of other to self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -228,7 +225,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def __sub__(self, other: Any) -> TypeSampledData:
+    def __sub__(self, other: Any) -> Self:
         """Subtract data and samples of other from self."""
         if not isinstance(other, type(self)):
             return NotImplemented
@@ -241,7 +238,7 @@ class SampledData(BinwiseData):
             closed=self.closed,
         )
 
-    def _make_bin_slice(self: TypeSampledData, item: TypeSliceIndex) -> TypeSampledData:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         if not isinstance(item, (int, np.integer, slice)):
             raise TypeError("item selector must be a slice or integer type")
 
@@ -421,7 +418,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
         return f"correlation function covariance matrix ({n}x{n})"
 
     @classmethod
-    def from_files(cls: type[TypeCorrData], path_prefix: Path | str) -> TypeCorrData:
+    def from_files(cls: type[Self], path_prefix: Path | str) -> Self:
         """
         Restore the class instance from a set of ASCII files.
 
@@ -438,7 +435,7 @@ class CorrData(AsciiSerializable, SampledData, Broadcastable):
 
             path_prefix = Path(path_prefix)
 
-            edges, closed, data = load_data(path_prefix.with_suffix(".dat"))
+            edges, closed, data, _ = load_data(path_prefix.with_suffix(".dat"))
             samples = load_samples(path_prefix.with_suffix(".smp"))
             binning = Binning(edges, closed=closed)
 
@@ -557,14 +554,14 @@ def write_data(
             f.write(" ".join(formatted) + "\n")
 
 
-def load_data(path: Path) -> tuple[NDArray, str, NDArray]:
+def load_data(path: Path) -> tuple[NDArray, str, NDArray, NDArray]:
     """Read data from a ASCII text file, i.e. bin edges, redshift estimate and
     its uncertainty."""
     _, _, closed = load_header(path)
 
-    zleft, zright, data, _ = np.loadtxt(path).T
+    zleft, zright, data, error = np.loadtxt(path).T
     edges = np.append(zleft, zright[-1])
-    return edges, closed, data
+    return edges, closed, data, error
 
 
 def write_samples(

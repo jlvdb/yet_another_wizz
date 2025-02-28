@@ -26,6 +26,7 @@ from yaw.utils.logging import Indicator
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.binning import Binning
     from yaw.catalog import Catalog, Patch
@@ -98,12 +99,12 @@ class HistData(CorrData):
 
     @classmethod
     def from_catalog(
-        cls,
+        cls: type[Self],
         catalog: Catalog,
         config: Configuration | BinningConfig,
         progress: bool = False,
         max_workers: int | None = None,
-    ) -> HistData:
+    ) -> Self:
         """
         Compute a redshift histogram from a data catalog.
 
@@ -165,7 +166,7 @@ class HistData(CorrData):
 
     _default_plot_style = PlotStyle.step
 
-    def normalised(self, *args, **kwargs) -> HistData:
+    def normalised(self, *args, **kwargs) -> Self:
         """
         Normalises the redshift histogram to a probability density.
 
@@ -214,11 +215,11 @@ class RedshiftData(CorrData):
 
     @classmethod
     def from_corrdata(
-        cls,
+        cls: type[Self],
         cross_data: CorrData,
         ref_data: CorrData | None = None,
         unk_data: CorrData | None = None,
-    ) -> RedshiftData:
+    ) -> Self:
         """
         Compute a redshift estimate from a set of cross- and autocorrelation
         functions.
@@ -293,11 +294,11 @@ class RedshiftData(CorrData):
 
     @classmethod
     def from_corrfuncs(
-        cls,
+        cls: type[Self],
         cross_corr: CorrFunc,
         ref_corr: CorrFunc | None = None,
         unk_corr: CorrFunc | None = None,
-    ) -> RedshiftData:
+    ) -> Self:
         """
         Compute a redshift estimate from a set of cross- and autocorrelation
         pair counts.
@@ -351,7 +352,7 @@ class RedshiftData(CorrData):
 
     _default_plot_style = PlotStyle.point
 
-    def normalised(self, target: TypeCorrData | None = None) -> RedshiftData:
+    def normalised(self, target: TypeCorrData | None = None) -> Self:
         """
         Attempts to normalise the redshift estimate to a probability density.
 

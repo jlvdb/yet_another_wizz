@@ -14,6 +14,7 @@ are parsed and verified automatically:
     BinMethodAuto
     BinMethod
     Closed
+    CountMode
     CovKind
     PlotStyle
     Unit

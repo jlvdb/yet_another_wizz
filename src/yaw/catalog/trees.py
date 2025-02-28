@@ -24,7 +24,7 @@ from scipy.spatial import KDTree
 from yaw.binning import Binning
 from yaw.coordinates import AngularDistances
 from yaw.datachunk import DataChunk
-from yaw.options import Closed
+from yaw.options import Closed, CountMode
 from yaw.utils import groupby
 
 if TYPE_CHECKING:
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
     from yaw.catalog.patch import Patch
     from yaw.coordinates import AngularCoordinates
@@ -176,6 +177,8 @@ class AngularTree:
             an instance of :obj:`~yaw.AngularCoordinates`.
         weights:
             Optional array of weights for each point.
+        kappa:
+            Optional array of kappa (or other scalar values) for each point.
 
     Keyword Args:
         leafsize:
@@ -186,21 +189,34 @@ class AngularTree:
             The number of data points stored in this tree.
         weights:
             The array of weights for the datapoints, default on 1.0.
+        kappa:
+            The array of kappa for the datapoints, if not supplied it is None.
         sum_weights:
             The sum of weights stored in the tree, defaults to number of points
             if no weights are provided.
+        sum_kappa:
+            The weighted sum of kappa (or other scalar value) stored in the
+            tree, defaults to `None`.
         tree:
             The underlying :obj:`scipy.spatial.KDTree`, may be ``None`` if the
             tree does not contain any data.
     """
 
-    __slots__ = ("num_records", "weights", "sum_weights", "tree")
+    __slots__ = (
+        "num_records",
+        "weights",
+        "sum_weights",
+        "tree",
+        "kappa",
+        "sum_kappa",
+    )
     tree: KDTree | None
 
     def __init__(
         self,
         coords: AngularCoordinates,
         weights: NDArray | None = None,
+        kappa: NDArray | None = None,
         *,
         leafsize: int = 16,
     ) -> None:
@@ -217,15 +233,27 @@ class AngularTree:
             self.weights = np.asarray(weights).astype(np.float64, copy=False)
             self.sum_weights = float(self.weights.sum())
 
+        if kappa is None:
+            self.kappa = None
+            self.sum_kappa = None
+        else:
+            self.kappa = np.asarray(kappa).astype(np.float64, copy=False)
+            if self.weights is None:
+                self.sum_kappa = float(np.sum(self.kappa))
+            else:
+                self.sum_kappa = float(np.sum(self.kappa * self.weights))
+
         self.tree = KDTree(coords.to_3d(), leafsize=leafsize, copy_data=True)
 
     @classmethod
-    def empty(cls, *, has_weights: bool) -> AngularTree:
+    def empty(cls: type[Self], *, has_weights: bool, has_kappa: bool) -> Self:
         """Special constructor for a tree that does not contain data."""
         new = cls.__new__(cls)
         new.num_records = 0
         new.weights = np.empty(0) if has_weights else None
         new.sum_weights = 0.0
+        new.kappa = np.empty(0) if has_kappa else None
+        new.sum_kappa = 0.0
         new.tree = None
         return new
 
@@ -239,6 +267,39 @@ class AngularTree:
             return np.empty((0, 3))
         return self.tree.data
 
+    def get_pair_weights(
+        self,
+        other: AngularTree,
+        mode: CountMode | str,
+    ) -> tuple[NDArray, NDArray]:
+        """Get the weights used for pair counts from self and the other tree."""
+        mode = CountMode(mode)
+
+        def get_weight(tree) -> NDArray:
+            weight = tree.kappa if tree.kappa is not None else 1
+            if tree.weights is not None:
+                weight *= tree.weights
+            return weight
+
+        if mode == CountMode.nn:
+            return (self.weights, other.weights)
+
+        elif mode == CountMode.nk:
+            if other.kappa is None:
+                raise ValueError("missing required 'kappa' for second tree.")
+            return self.weights, get_weight(other)
+
+        elif mode == CountMode.kn:
+            if self.kappa is None:
+                raise ValueError("missing required 'kappa' for first tree.")
+            return get_weight(self), other.weights
+
+        # CountMode.kk
+        if self.kappa is None or other.kappa is None:
+            raise ValueError("missing required 'kappa' for both tree.")
+
+        return get_weight(self), get_weight(other)
+
     def count(
         self,
         other: AngularTree,
@@ -247,6 +308,7 @@ class AngularTree:
         *,
         weight_scale: float | None = None,
         weight_res: int = 50,
+        mode: CountMode | str = CountMode.nn,
     ) -> NDArray[np.float64]:
         """
         Count the nubmer of neighbours with another tree.
@@ -267,6 +329,9 @@ class AngularTree:
             weight_res:
                 The number of angular bins to use to approximate the weighting
                 by separation.
+            mode:
+                Counting mode used for trees, where "n" stands for regular pair
+                counts and "k" for kappa/scalar field counts, defaults to "nn".
 
         Returns:
             Pair counts between pairs of lower and upper angular limits.
@@ -274,6 +339,7 @@ class AngularTree:
         ang_limits = parse_ang_limits(ang_min, ang_max)
         ang_bins = get_ang_bins(ang_limits, weight_scale, weight_res)
         cumulative = len(ang_bins) < 8  # approx. turnover in processing speed
+        weights = self.get_pair_weights(other, mode)
 
         if self.tree is None or other.tree is None:
             return np.zeros(len(ang_limits))
@@ -282,7 +348,7 @@ class AngularTree:
             counts = self.tree.count_neighbors(
                 other.tree,
                 r=AngularDistances(ang_bins).to_3d(),
-                weights=(self.weights, other.weights),
+                weights=weights,
                 cumulative=cumulative,
             ).astype(np.float64)
         except IndexError:
@@ -334,7 +400,8 @@ def build_trees(
     if binning is None:
         coords = DataChunk.get_coords(chunk)
         weights = DataChunk.getattr(chunk, "weights", None)
-        trees = AngularTree(coords, weights, leafsize=leafsize)
+        kappa = DataChunk.getattr(chunk, "kappa", None)
+        trees = AngularTree(coords, weights, kappa, leafsize=leafsize)
 
     else:
         redshifts = DataChunk.getattr(chunk, "redshifts", None)
@@ -347,10 +414,16 @@ def build_trees(
             if 0 < i <= len(binning):
                 coords = DataChunk.get_coords(bin_array)
                 weights = DataChunk.getattr(bin_array, "weights", None)
-                trees[i] = AngularTree(coords, weights=weights, leafsize=leafsize)
+                kappa = DataChunk.getattr(bin_array, "kappa", None)
+                trees[i] = AngularTree(
+                    coords, weights=weights, kappa=kappa, leafsize=leafsize
+                )
 
         # fill in dummy trees for bins that contain no data
-        empty_tree = AngularTree.empty(has_weights=weights is not None)
+        empty_tree = AngularTree.empty(
+            has_weights=weights is not None,
+            has_kappa=kappa is not None,
+        )
         trees = tuple(trees.get(i + 1, empty_tree) for i in range(len(binning)))
 
     return trees
@@ -408,13 +481,13 @@ class BinnedTrees(Iterable[AngularTree]):
 
     @classmethod
     def build(
-        cls,
+        cls: type[Self],
         patch: Patch,
         binning: Binning | None,
         *,
         leafsize: int = 16,
         force: bool = False,
-    ) -> BinnedTrees:
+    ) -> Self:
         """
         Rebuild the trees from a given patch.
 

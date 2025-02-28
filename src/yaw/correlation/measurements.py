@@ -8,17 +8,19 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 from dataclasses import dataclass
-from itertools import compress
+from functools import wraps
+from itertools import chain, compress
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yaw.catalog.catalog import InconsistentPatchesError
+from yaw.catalog.catalog import Catalog, InconsistentPatchesError
 from yaw.catalog.trees import BinnedTrees
 from yaw.coordinates import AngularDistances
-from yaw.correlation.corrfunc import CorrFunc
+from yaw.correlation.corrfunc import CorrFunc, ScalarCorrFunc
 from yaw.correlation.paircounts import (
     NormalisedCounts,
+    NormalisedScalarCounts,
     PatchedCounts,
     PatchedSumWeights,
 )
@@ -26,16 +28,23 @@ from yaw.utils import parallel
 from yaw.utils.logging import Indicator
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from typing import TypeVar
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
-    from yaw.catalog import Catalog, Patch
+    from yaw.binning import Binning
+    from yaw.catalog import Patch
     from yaw.config import Configuration
+
+    T = TypeVar("T", bound=Callable)
 
 __all__ = [
     "autocorrelate",
     "crosscorrelate",
+    "autocorrelate_scalar",
+    "crosscorrelate_scalar",
 ]
 
 logger = logging.getLogger(__name__)
@@ -76,7 +85,9 @@ class PatchPaircounts:
     counts: NDArray
 
 
-def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPaircounts:
+def process_patch_pair(
+    patch_pair: PatchPair, config: Configuration, mode: str = "nn"
+) -> PatchPaircounts:
     """
     Compute the correlation pair counts for a pair of patches.
 
@@ -105,6 +116,7 @@ def process_patch_pair(patch_pair: PatchPair, config: Configuration) -> PatchPai
             ang_max,
             weight_scale=config.scales.rweight,
             weight_res=config.scales.resolution,
+            mode=mode,
         )
 
         binned_counts[:, i] = counts
@@ -180,11 +192,11 @@ class PatchLinkage:
 
     @classmethod
     def from_catalogs(
-        cls,
+        cls: type[Self],
         config: Configuration,
         catalog: Catalog,
         *catalogs: Catalog,
-    ) -> PatchLinkage:
+    ) -> Self:
         """
         Creates a patch linkage instance from a configuration and a set of input
         catalogs.
@@ -298,6 +310,7 @@ class PatchLinkage:
         *optional_catalog: Catalog,
         progress: bool = False,
         max_workers: int | None = None,
+        mode: str = "nn",
         count_type_info: str | None = None,
     ) -> list[NormalisedCounts]:
         """
@@ -332,6 +345,7 @@ class PatchLinkage:
             process_patch_pair,
             patch_pairs,
             func_args=(self.config,),
+            func_kwargs=dict(mode=mode),
             max_workers=max_workers,
         )
         if progress:
@@ -358,6 +372,7 @@ class PatchLinkage:
         *optional_catalog: Catalog | None,
         progress: bool = False,
         max_workers: int | None = None,
+        mode: str = "nn",
         count_type_info: str | None = None,
     ) -> list[NormalisedCounts | None]:
         """
@@ -372,10 +387,71 @@ class PatchLinkage:
                 *optional_catalog,
                 progress=progress,
                 max_workers=max_workers,
+                mode=mode,
                 count_type_info=count_type_info,
             )
 
+    def count_scalar_pairs(
+        self,
+        main_catalog: Catalog,
+        *optional_catalog: Catalog,
+        progress: bool = False,
+        max_workers: int | None = None,
+        mode: str = "nn",
+        count_type_info: str | None = None,
+    ) -> list[NormalisedCounts]:
+        """
+        Compute pair counts for scalar correlation functions between the patches
+        of two catalogs.
 
+        Omit ``optional_catalog`` for an autocorrelation measurement.
+
+        Runs :meth:`count_pairs` first in the provided scalar counting mode
+        (typically "kn" or "kk" for cross- or autocorrelation functions) and
+        then in the regular density counting mode ("nn").
+        """
+        counts = {}
+        for count_mode in (mode, "nn"):
+            if count_type_info is not None:
+                log_info(f"counting {count_type_info} ({mode}) from patch pairs")
+
+            counts[count_mode] = self.count_pairs(
+                main_catalog,
+                *optional_catalog,
+                mode=count_mode,
+                progress=progress,
+                max_workers=max_workers,
+                count_type_info=count_type_info,
+            )
+        return [
+            NormalisedScalarCounts(kk.counts, nn.counts)
+            for kk, nn in zip(counts[mode], counts["nn"])
+        ]
+
+
+def ensure_unique_catalogs(func: T) -> T:
+    """Checks that all function arguments of type :class:`~yaw.Catalog` have
+    distinct cache directories."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        args_iter = chain(args, kwargs.values())
+        catalogs = [arg for arg in args_iter if isinstance(arg, Catalog)]
+        cache_paths = set(str(cat.cache_directory.resolve()) for cat in catalogs)
+        if len(catalogs) != len(cache_paths):
+            raise ValueError(
+                "each catalog must have a separate cache directory to avoid interference."
+            )
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+# ######### NN correlations ####################################################
+
+
+@ensure_unique_catalogs
 def autocorrelate(
     config: Configuration,
     data: Catalog,
@@ -449,6 +525,7 @@ def autocorrelate(
     return [CorrFunc(dd, dr, None, rr) for dd, dr, rr in zip(DD, DR, RR)]
 
 
+@ensure_unique_catalogs
 def crosscorrelate(
     config: Configuration,
     reference: Catalog,
@@ -549,3 +626,169 @@ def crosscorrelate(
     RR = links.count_pairs_optional(ref_rand, unk_rand, **kwargs, count_type_info="RR")
 
     return [CorrFunc(dd, dr, rd, rr) for dd, dr, rd, rr in zip(DD, DR, RD, RR)]
+
+
+# ######### NK/KK correlations #################################################
+
+
+def compute_scalar_normalisation(
+    catalog: Catalog, binning: Binning
+) -> NormalisedScalarCounts:
+    """Computes a correction for the scalar field counts based on the mean kappa
+    per spatial patch."""
+    sum_kappa = np.zeros((len(binning), catalog.num_patches, catalog.num_patches))
+    sum_weights = np.zeros_like(sum_kappa)
+    for pid, patch in catalog.items():
+        for bin_idx, tree in enumerate(BinnedTrees(patch)):
+            sum_kappa[bin_idx, pid, pid] = tree.sum_kappa
+            sum_weights[bin_idx, pid, pid] = tree.sum_weights
+
+    kk_counts = PatchedCounts(binning, sum_kappa, auto=False)
+    nn_counts = PatchedCounts(binning, sum_weights, auto=False)
+    return NormalisedScalarCounts(kk_counts, nn_counts)
+
+
+@ensure_unique_catalogs
+def autocorrelate_scalar(
+    config: Configuration,
+    data: Catalog,
+    *,
+    progress: bool = False,
+    max_workers: int | None = None,
+) -> list[ScalarCorrFunc]:
+    """
+    Measure the angular autocorrelation amplitude of a scalar field.
+
+    The autocorrelation amplitude is measured in slices of redshift, which
+    requires that the data sample and its randoms have redshifts attached. If
+    any of the input catalogs have weights, they will be used to weight the pair
+    counts accordingly.
+
+    Args:
+        config:
+            :obj:`~yaw.Configuration` defining the redshift binning and
+            correlation scales.
+        data:
+            :obj:`~yaw.Catalog` holding the data sample.
+
+    Keyword Args:
+        progress:
+            Show a progress on the terminal (disabled by default).
+        max_workers:
+            Limit the  number of parallel workers for this operation (all by
+            default). Takes precedence over the value in the configuration.
+
+    Returns:
+        List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
+        configured scale).
+    """
+    if parallel.on_root():
+        logger.info(f"building trees for {1} catalogs")
+    kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
+
+    edges = config.binning.edges
+    closed = config.binning.closed
+
+    data.build_trees(edges, closed=closed, **kwargs)
+
+    if parallel.on_root():
+        logger.info("computing auto-correlation with DD")
+
+    links = PatchLinkage.from_catalogs(config, data)
+    if parallel.on_root():
+        logger.debug(
+            "using %d scales %s weighting",
+            config.scales.num_scales,
+            "with" if config.scales.rweight else "without",
+        )
+    DD = links.count_scalar_pairs(data, mode="kk", **kwargs, count_type_info="DD")
+    return [ScalarCorrFunc(dd) for dd in DD]
+
+
+@ensure_unique_catalogs
+def crosscorrelate_scalar(
+    config: Configuration,
+    reference: Catalog,
+    unknown: Catalog,
+    *,
+    unk_rand: Catalog | None = None,
+    progress: bool = False,
+    max_workers: int | None = None,
+) -> list[ScalarCorrFunc]:
+    """
+    Measure the angular cross-correlation amplitude between two object catalogs,
+    with one of the catalogue being the scalar field.
+
+    The cross-correlation amplitude is measured between the unknown sample and
+    redshift slices of the reference samples as defined in the configuration.
+    This requires that the reference sample (and its randoms, if provided) have
+    redshifts attached. If any of the input catalogs have weights, they will be
+    used to weight the pair counts accordingly.
+
+    .. note::
+        The unknown sample randoms are optional. If supplied, the correlation
+        will be NK - RK; otherwise, NK will be returned, with the mean k
+        subtracted over the footprint.
+
+    Args:
+        config:
+            :obj:`~yaw.Configuration` defining the redshift binning and
+            correlation scales.
+        reference:
+            :obj:`~yaw.Catalog` holding the reference sample data.
+        unknown:
+            :obj:`~yaw.Catalog` holding the unknown sample data.
+
+    Keyword Args:
+        unk_rand:
+            :obj:`~yaw.Catalog` holding the unknown random data (optional).
+        progress:
+            Show a progress on the terminal (disabled by default).
+        max_workers:
+            Limit the  number of parallel workers for this operation (all by
+            default). Takes precedence over the value in the configuration.
+
+    Returns:
+        List of :obj:`~yaw.CorrFunc` containers with pair counts (one for each
+        configured scale).
+    """
+    count_dr = unk_rand is not None
+
+    if parallel.on_root():
+        logger.info("building trees for %d catalogs", 2 + count_dr)
+    kwargs = dict(progress=progress, max_workers=(max_workers or config.max_workers))
+
+    edges = config.binning.edges
+    closed = config.binning.closed
+    randoms = []
+
+    reference.build_trees(edges, closed=closed, **kwargs)
+
+    unknown.build_trees(None, **kwargs)
+
+    if count_dr:
+        unk_rand.build_trees(None, **kwargs)
+        randoms.append(unk_rand)
+
+    if parallel.on_root():
+        logger.info(
+            "computing cross-correlation with DD" + (", DR" if count_dr else "")
+        )
+
+    links = PatchLinkage.from_catalogs(config, reference, unknown, *randoms)
+    if parallel.on_root():
+        logger.debug(
+            "using %d scales %s weighting",
+            config.scales.num_scales,
+            "with" if config.scales.rweight else "without",
+        )
+    DD = links.count_scalar_pairs(
+        reference, unknown, mode="kn", **kwargs, count_type_info="DD"
+    )
+    if not count_dr:
+        DR = [compute_scalar_normalisation(reference, config.binning.binning)] * len(DD)
+    else:
+        DR = links.count_scalar_pairs(
+            reference, unk_rand, mode="kn", **kwargs, count_type_info="DR"
+        )
+    return [ScalarCorrFunc(dd, dr) for dd, dr in zip(DD, DR)]

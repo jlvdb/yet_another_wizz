@@ -19,15 +19,9 @@ from yaw.utils.misc import write_yaml
 if TYPE_CHECKING:
     from typing import Any
 
-    from yaw.binning import Binning
+    from typing_extensions import Self
 
-    # meta-class types
-    TypeSerialisable = TypeVar("TypeSerialisable", bound="Serialisable")
-    TypeYamlSerialisable = TypeVar("TypeYamlSerialisable", bound="YamlSerialisable")
-    TypeHdfSerializable = TypeVar("TypeHdfSerializable", bound="HdfSerializable")
-    TypeAsciiSerializable = TypeVar("TypeAsciiSerializable", bound="AsciiSerializable")
-    TypeBinwiseData = TypeVar("TypeBinwiseData", bound="BinwiseData")
-    TypePatchwiseData = TypeVar("TypePatchwiseData", bound="PatchwiseData")
+    from yaw.binning import Binning
 
     # concrete types
     TypeSliceIndex = Union[int, slice]
@@ -42,9 +36,7 @@ class Serialisable(ABC):
     dictionaries."""
 
     @classmethod
-    def from_dict(
-        cls: type[TypeSerialisable], the_dict: dict[str, Any]
-    ) -> TypeSerialisable:
+    def from_dict(cls: type[Self], the_dict: dict[str, Any]) -> Self:
         """
         Restore the class instance from a python dictionary.
 
@@ -75,9 +67,7 @@ class YamlSerialisable(Serialisable):
     YAML files."""
 
     @classmethod
-    def from_file(
-        cls: type[TypeYamlSerialisable], path: Path | str
-    ) -> TypeYamlSerialisable:
+    def from_file(cls: type[Self], path: Path | str) -> Self:
         """
         Restore the class instance from a YAML file.
 
@@ -112,9 +102,7 @@ class HdfSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_hdf(
-        cls: type[TypeHdfSerializable], source: h5py.Group
-    ) -> TypeHdfSerializable:
+    def from_hdf(cls: type[Self], source: h5py.Group) -> Self:
         """
         Restore the class instance from a specific HDF5-file group.
 
@@ -139,9 +127,7 @@ class HdfSerializable(ABC):
         pass
 
     @classmethod
-    def from_file(
-        cls: type[TypeHdfSerializable], path: Path | str
-    ) -> TypeHdfSerializable:
+    def from_file(cls: type[Self], path: Path | str) -> Self:
         """
         Restore the class instance from a HDF5 file.
 
@@ -175,9 +161,7 @@ class AsciiSerializable(ABC):
 
     @classmethod
     @abstractmethod
-    def from_files(
-        cls: type[TypeAsciiSerializable], path_prefix: Path | str
-    ) -> TypeAsciiSerializable:
+    def from_files(cls: type[Self], path_prefix: Path | str) -> Self:
         """
         Restore the class instance from a set of ASCII files.
 
@@ -254,15 +238,13 @@ class PatchwiseData(ABC):
         pass
 
     @abstractmethod
-    def _make_patch_slice(
-        self: TypePatchwiseData, item: TypeSliceIndex
-    ) -> TypePatchwiseData:
+    def _make_patch_slice(self, item: TypeSliceIndex) -> Self:
         """Factory method called by :meth:`patches` to create a new instance
         from a subset of patches."""
         pass
 
     @property
-    def patches(self: TypePatchwiseData) -> Indexer[TypeSliceIndex, TypePatchwiseData]:
+    def patches(self) -> Indexer[TypeSliceIndex, Self]:
         """
         Indexing helper to create a new instance from a subset of patches.
 
@@ -321,13 +303,13 @@ class BinwiseData(ABC):
         return len(self.binning)
 
     @abstractmethod
-    def _make_bin_slice(self: TypeBinwiseData, item: TypeSliceIndex) -> TypeBinwiseData:
+    def _make_bin_slice(self, item: TypeSliceIndex) -> Self:
         """Factory method called by :meth:`bins` to create a new instance
         from a subset of bins."""
         pass
 
     @property
-    def bins(self: TypeBinwiseData) -> Indexer[TypeSliceIndex, TypeBinwiseData]:
+    def bins(self) -> Indexer[TypeSliceIndex, Self]:
         """
         Indexing helper to create a new instance from a subset of patches.
 
