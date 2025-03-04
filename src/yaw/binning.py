@@ -5,7 +5,7 @@ Implements a utility class that expresses a set of contiguous bin edges.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, TypeVar, Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -18,9 +18,7 @@ if TYPE_CHECKING:
 
     from h5py import Group
     from numpy.typing import ArrayLike, NDArray
-
-    # container class types
-    TypeBinning = TypeVar("TypeBinning", bound="Binning")
+    from typing_extensions import Self
 
     # concrete types
     TypeSliceIndex = Union[int, slice]
@@ -82,7 +80,7 @@ class Binning(HdfSerializable):
         self.closed = Closed(closed)
 
     @classmethod
-    def from_hdf(cls: type[TypeBinning], source: Group) -> TypeBinning:
+    def from_hdf(cls: type[Self], source: Group) -> Self:
         # ignore "version" since there is no equivalent in legacy
         edges = source["edges"][:]
         closed = source["closed"][()].decode("utf-8")
@@ -146,7 +144,7 @@ class Binning(HdfSerializable):
         """Array containing the width of the bins."""
         return np.diff(self.edges)
 
-    def copy(self: TypeBinning) -> TypeBinning:
+    def copy(self) -> Self:
         """Create a copy of this instance."""
         return Binning(self.edges.copy(), closed=str(self.closed))
 

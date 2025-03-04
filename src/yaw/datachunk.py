@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from typing import TypeVar
 
     from numpy.typing import ArrayLike, DTypeLike
+    from typing_extensions import Self
 
     TypePatchIDs = NewType("TypePatchIDs", NDArray[np.int16])
     T = TypeVar("T")
@@ -43,7 +44,7 @@ PATCH_ID_DTYPE = "i2"
 """Default data type for patch IDs, larger integer type will likely result in
 memory issues with covariance matrix."""
 
-ATTR_ORDER = ("ra", "dec", "weights", "redshifts", "patch_ids")
+ATTR_ORDER = ("ra", "dec", "weights", "redshifts", "patch_ids", "kappa")
 """The order of attributes in a DataChunk."""
 
 
@@ -60,15 +61,18 @@ class DataChunkInfo:
             Whether redshifts are available.
         has_patch_ids:
             Whether patch IDs are available.
+        has_kappa:
+            Whether kappa (or any scalar values) are available.
     """
 
     # match to ATTR_ORDER
     has_weights: bool = field(default=False)
     has_redshifts: bool = field(default=False)
     has_patch_ids: bool = field(default=False)
+    has_kappa: bool = field(default=False)
 
     @classmethod
-    def from_bytes(cls, info_bytes: bytes) -> DataChunkInfo:
+    def from_bytes(cls: type[Self], info_bytes: bytes) -> Self:
         """
         Restore a class instance from a single byte of bit flags.
 
@@ -84,6 +88,7 @@ class DataChunkInfo:
             has_weights=bool(state & (1 << 2)),
             has_redshifts=bool(state & (1 << 3)),
             has_patch_ids=bool(state & (1 << 4)),
+            has_kappa=bool(state & (1 << 5)),
         )
 
     def to_bytes(self) -> bytes:
@@ -102,6 +107,7 @@ class DataChunkInfo:
             | (self.has_weights << 2)
             | (self.has_redshifts << 3)
             | (self.has_patch_ids << 4)
+            | (self.has_kappa << 5)
         )
         return info.to_bytes(1, byteorder="big")
 
@@ -139,6 +145,11 @@ class HandlesDataChunk(ABC):
     def has_patch_ids(self) -> bool:
         """Whether this data source provides patch IDs."""
         return self._chunk_info.has_patch_ids
+
+    @property
+    def has_kappa(self) -> bool:
+        """Whether this data source provides kappa (or any scalar values)."""
+        return self._chunk_info.has_kappa
 
     def copy_chunk_info(self, *, drop_patch_ids: bool = False) -> DataChunkInfo:
         """Copy the data attribute information."""
@@ -192,6 +203,7 @@ class DataChunk:
         weights: NDArray | None = None,
         redshifts: NDArray | None = None,
         patch_ids: NDArray | None = None,
+        kappa: NDArray | None = None,
         degrees: bool = True,
         chkfinite: bool = True,
     ) -> tuple[DataChunkInfo, TypeDataChunk]:
@@ -215,6 +227,8 @@ class DataChunk:
                 Array of object redshifts, optional.
             patch_ids:
                 Array of patch IDs, must fit into 16-bit integer type, optional.
+            kappa:
+                Array of object kappa (or any scalar values), optional.
             degrees:
                 Whether the input coordinates are given in degrees (the default).
             chkfinite:
@@ -222,13 +236,13 @@ class DataChunk:
 
         Returns:
             Numpy array with input values stored in fields with order ``ra``,
-            ``dec``, (``weights``, ``redshifts``, ``patch_ids``).
+            ``dec``, (``weights``, ``redshifts``, ``patch_ids``, ``kappa``).
 
         Raises:
             ValueError:
                 If any of the input arrays cannot be casted.
         """
-        values = (ra, dec, weights, redshifts, patch_ids)  # match to ATTR_ORDER
+        values = (ra, dec, weights, redshifts, patch_ids, kappa)  # match to ATTR_ORDER
         inputs = {
             attr: value for attr, value in zip(ATTR_ORDER, values) if value is not None
         }
@@ -236,6 +250,7 @@ class DataChunk:
             has_weights=weights is not None,
             has_redshifts=redshifts is not None,
             has_patch_ids=patch_ids is not None,
+            has_kappa=kappa is not None,
         )
 
         if patch_ids is not None:

@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from numpy.typing import NDArray
+    from typing_extensions import Self
 
 __all__ = [
     "BinningConfig",
@@ -147,7 +148,7 @@ class ScalesConfig(YawConfig):
         )
 
     @classmethod
-    def from_dict(cls, the_dict):
+    def from_dict(cls: type[Self], the_dict) -> Self:
         cls._check_dict(the_dict)
         parsed = cls._parse_params(the_dict)
 
@@ -163,14 +164,14 @@ class ScalesConfig(YawConfig):
 
     @classmethod
     def create(
-        cls,
+        cls: type[Self],
         *,
         rmin: Iterable[float] | float,
         rmax: Iterable[float] | float,
         unit: Unit = Unit.kpc,
         rweight: float | None = None,
         resolution: int | None = None,
-    ) -> ScalesConfig:
+    ) -> Self:
         """
         Create a new instance with the given parameters.
 
@@ -210,7 +211,7 @@ class ScalesConfig(YawConfig):
         unit: Unit | NotSet = NotSet,
         rweight: float | None | NotSet = NotSet,
         resolution: int | None | NotSet = NotSet,
-    ) -> ScalesConfig:
+    ) -> Self:
         """
         Create a new configuration instance with updated parameter values.
 
@@ -360,8 +361,10 @@ class BinningConfig(YawConfig):
 
     @classmethod
     def from_dict(
-        cls, the_dict: dict[str, Any], cosmology: TypeCosmology | None = None
-    ) -> BinningConfig:
+        cls: type[Self],
+        the_dict: dict[str, Any],
+        cosmology: TypeCosmology | None = None,
+    ) -> Self:
         """
         Restore the class instance from a python dictionary.
 
@@ -413,7 +416,7 @@ class BinningConfig(YawConfig):
 
     @classmethod
     def create(
-        cls,
+        cls: type[Self],
         *,
         zmin: float | None = None,
         zmax: float | None = None,
@@ -422,7 +425,7 @@ class BinningConfig(YawConfig):
         edges: Iterable[float] | None = None,
         closed: Closed | str = Closed.right,
         cosmology: TypeCosmology | None = None,
-    ) -> BinningConfig:
+    ) -> Self:
         """
         Create a new instance with the given parameters.
 
@@ -476,7 +479,7 @@ class BinningConfig(YawConfig):
         edges: Iterable[float] | NotSet = NotSet,
         closed: Closed | str | NotSet = NotSet,
         cosmology: TypeCosmology | None | NotSet = NotSet,
-    ) -> BinningConfig:
+    ) -> Self:
         """
         Create a new configuration instance with updated parameter values.
 
@@ -660,7 +663,7 @@ class Configuration(YawConfig):
         )
 
     @classmethod
-    def from_dict(cls, the_dict: dict[str, Any]) -> Configuration:
+    def from_dict(cls: type[Self], the_dict: dict[str, Any]) -> Self:
         cls._check_dict(the_dict)
 
         with raise_configerror_with_level("scales"):
@@ -673,7 +676,7 @@ class Configuration(YawConfig):
 
     @classmethod
     @parallel.broadcasted
-    def from_file(cls, path: Path | str) -> Configuration:
+    def from_file(cls: type[Self], path: Path | str) -> Self:
         logger.info("reading configuration file: %s", path)
         return super().from_file(path)
 
@@ -684,7 +687,7 @@ class Configuration(YawConfig):
 
     @classmethod
     def create(
-        cls,
+        cls: type[Self],
         *,
         # ScalesConfig
         rmin: Iterable[float] | float,
@@ -702,7 +705,7 @@ class Configuration(YawConfig):
         # uncategorized
         cosmology: TypeCosmology | str | None = default_cosmology,
         max_workers: int | None = None,
-    ) -> Configuration:
+    ) -> Self:
         """
         Create a new instance with the given parameters.
 
@@ -791,7 +794,7 @@ class Configuration(YawConfig):
         # uncategorized
         cosmology: TypeCosmology | str | None | NotSet = NotSet,
         max_workers: int | None | NotSet = NotSet,
-    ) -> Configuration:
+    ) -> Self:
         """
         Create a new configuration instance with updated parameter values.
 

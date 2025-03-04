@@ -27,6 +27,8 @@ from yaw.cli.handles import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from typing_extensions import Self
+
 logger = logging.getLogger(__name__)
 
 
@@ -288,12 +290,12 @@ class ProjectDirectory:
 
     @classmethod
     def create(
-        cls,
+        cls: type[Self],
         path: Path | str,
         bin_indices: Iterable[int],
         *,
         overwrite: bool = False,
-    ) -> None:
+    ) -> Self:
         """
         The global project directory that contains all intermediate and final
         pipeline data products.
