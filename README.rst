@@ -105,6 +105,12 @@ Acknowledgements
 ----------------
 
 Jan Luca van den Busch acknowledges support from the European Research Council
-under grant numbers 770935. The authors also thank Hendrik Hildebrandt,
-Benjamin Joachimi, Angus H. Wright, and Chris Blake for vital feedback and
-support throughout the development of this software.
+under grant numbers 770935 as well as from the Max Planck Society and the
+Alexander von Humboldt Foundation in the framework of the Max Planck-Humboldt
+Research Award endowed by the Federal Ministry of Education and Research and
+the Deutsches Zentrum für Luft- und Raumfahrt (DLR), made possible by the
+Bundesministerium für Wirtschaft und Klimaschutz, under project 50QE2305.
+
+The authors also thank Hendrik Hildebrandt, Benjamin Joachimi, Angus H. Wright,
+and Chris Blake for vital feedback and support throughout the development of
+this software.
