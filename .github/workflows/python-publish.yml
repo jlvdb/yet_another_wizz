@@ -32,5 +32,4 @@ jobs:
       - name: Upload to PyPI
         uses: pypa/gh-action-pypi-publish@15c56dba361d8335944d31a2ecd17d700fc7bcbc
         with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          attestations: true
